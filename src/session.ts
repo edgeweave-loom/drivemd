@@ -18,15 +18,13 @@ export interface SessionState {
 }
 
 /**
- * The sign-in state behind the screens, for `useSyncExternalStore`. signIn and
- * continueSession open Google's popup, so call them straight from a click or
- * tap handler.
+ * The sign-in state behind the screens, for `useSyncExternalStore`. signIn
+ * opens Google's popup, so call it straight from a click or tap handler.
  */
 export interface Session {
   subscribe: (listener: () => void) => () => void;
   getSnapshot: () => SessionState;
   signIn: () => void;
-  continueSession: () => void;
   signOut: () => void;
   retry: () => void;
 }
@@ -139,16 +137,6 @@ export function createSession(): Session {
     getSnapshot: () => state,
     signIn() {
       start(auth.requestAccessToken());
-    },
-    continueSession() {
-      const { screen } = state;
-      if (screen.name !== "continue") return;
-      const current = auth.getAccessToken();
-      start(
-        current === undefined
-          ? auth.requestAccessToken(screen.email)
-          : Promise.resolve(current),
-      );
     },
     signOut() {
       epoch += 1;
