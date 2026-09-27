@@ -33,6 +33,14 @@ Open http://localhost:5173, not `127.0.0.1`: it is the only local origin the OAu
 | `npm run lint`     | Lint with type-aware and security rules; any warning fails      |
 | `npm run format`   | Format every file with Prettier (`npm run format:check` checks) |
 
-Write the failing test first, then the code that makes it pass. CI runs the checks above on every pull request and on every push to `dev` and `main`. Before them, it verifies registry signatures, blocks malware and critical advisories in any dependency, and blocks any advisory in the dependencies that ship.
+Write the failing test first, then the code that makes it pass. CI runs the checks above on every pull request and on every push to `dev` and `main`.
 
-`.npmrc` enforces the Node.js versions in `engines`, turns off dependency install scripts and saves exact versions. After adding a dependency, check that it works without its install script.
+## Security
+
+The app's access token can read and write the user's whole Drive, so the repository guards against injected code and a compromised supply chain:
+
+- Strict TypeScript and type-aware ESLint, whose rules reject `eval` and unsanitized DOM sinks such as `innerHTML` and `dangerouslySetInnerHTML`.
+- `.npmrc` saves exact versions in `package.json`, turns off dependency install scripts and refuses Node.js versions outside `engines`. After adding a dependency, check that it works without its install script.
+- CI installs from the lockfile with `npm ci`, verifies registry signatures, blocks malware and critical advisories in any dependency, and blocks any advisory in the dependencies that ship.
+- Dependabot proposes npm and GitHub Actions updates weekly, for releases at least 7 days old.
+- Workflows pin every action to a commit SHA, start from no permissions and grant each job only what it needs; zizmor audits them in CI, and gitleaks scans the full history on every push. The zizmor and gitleaks versions are pinned in the workflows and bumped by hand.
