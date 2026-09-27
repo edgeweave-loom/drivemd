@@ -19,8 +19,8 @@ export default defineConfig({
         functions: 95,
         statements: 95,
         branches: 90,
-        // Sign-in guards the full Drive scope: every branch is tested.
-        "src/auth.ts": { 100: true },
+        // These modules handle the full-Drive token: every branch is tested.
+        "src/{auth,drive,session}.ts": { 100: true },
       },
     },
   },
