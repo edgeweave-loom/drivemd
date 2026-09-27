@@ -14,14 +14,14 @@ Vite, React and TypeScript; Google Identity Services and the Drive REST API v3; 
 
 ## Development
 
-You need Node.js 22 (see `.nvmrc`) and npm.
+You need Node.js 22.22.2 or later on the 22 line (`.nvmrc`), or a later LTS listed in `engines`, and npm.
 
 ```sh
 npm ci
 npm run dev
 ```
 
-The dev server runs at http://localhost:5173 and refuses to start on another port: it is the only local origin the OAuth client authorizes.
+Open http://localhost:5173, not `127.0.0.1`: it is the only local origin the OAuth client authorizes, so the dev server refuses to start on another port.
 
 | Command            | What it does                                                    |
 | ------------------ | --------------------------------------------------------------- |
@@ -40,6 +40,7 @@ Write the failing test first, then the code that makes it pass. CI runs the chec
 The app's access token can read and write the user's whole Drive, so the repository guards against injected code and a compromised supply chain:
 
 - Strict TypeScript and type-aware ESLint, whose rules reject `eval` and unsanitized DOM sinks such as `innerHTML` and `dangerouslySetInnerHTML`.
-- npm installs exact versions from the lockfile without dependency install scripts (`.npmrc`); after adding a dependency, check that it works without its install script. CI verifies registry signatures and fails on high-severity advisories.
+- npm installs exact versions from the lockfile, without dependency install scripts and only on the Node.js versions in `engines` (`.npmrc`). After adding a dependency, check that it works without its install script.
+- CI verifies registry signatures, blocks malware and critical advisories in any dependency, and blocks any advisory in the dependencies that ship.
 - Dependabot proposes npm and GitHub Actions updates weekly, for releases at least 7 days old.
 - Workflows pin every action to a commit SHA and grant each job the fewest permissions; zizmor audits them in CI, and gitleaks scans the full history on every push.

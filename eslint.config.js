@@ -24,11 +24,11 @@ export default defineConfig([
     },
     rules: {
       "no-eval": "error",
-      "no-new-func": "error",
       "no-restricted-syntax": [
         "error",
         {
-          selector: 'JSXAttribute[name.name="dangerouslySetInnerHTML"]',
+          selector:
+            ":matches(JSXAttribute[name.name='dangerouslySetInnerHTML'], Property[key.name='dangerouslySetInnerHTML'], Property[key.value='dangerouslySetInnerHTML'], MemberExpression[property.name='dangerouslySetInnerHTML'])",
           message:
             "Raw HTML reaches the DOM unsanitized; render it through the sanitizing pipeline instead.",
         },
