@@ -11,7 +11,7 @@ export type Screen =
 export interface SessionState {
   screen: Screen;
   /** Whether Google's script is ready to open its sign-in popup. */
-  google: "loading" | "ready" | "failed";
+  google: "loading" | "ready" | "failed" | "unconfigured";
   /** A sign-in the user started has not settled yet. */
   waiting: boolean;
   message: string | undefined;
@@ -88,6 +88,7 @@ export function createSession(): Session {
         screen: { name: "home", email },
         waiting: false,
         message: undefined,
+        blocked: undefined,
       });
     } catch (error) {
       if (run !== epoch) return;
@@ -108,13 +109,18 @@ export function createSession(): Session {
   }
 
   function loadGoogle(): void {
-    update({ google: "loading", message: undefined });
+    update({ google: "loading", message: undefined, blocked: undefined });
     auth.loadGoogleIdentity().then(
       () => {
         update({ google: "ready" });
       },
       (error: unknown) => {
-        update({ google: "failed", message: messageFor(error) });
+        const unconfigured =
+          error instanceof AuthError && error.reason === "not_configured";
+        update({
+          google: unconfigured ? "unconfigured" : "failed",
+          message: messageFor(error),
+        });
       },
     );
   }
@@ -213,8 +219,11 @@ function describeBlock(
   const blocked = URL.canParse(event.blockedURI)
     ? new URL(event.blockedURI).origin
     : event.blockedURI;
-  const trustedTypes = event.effectiveDirective.includes("trusted-types");
-  if (!trustedTypes && !SIGN_IN_ORIGINS.has(blocked)) return;
+  const directive = event.effectiveDirective;
+  const googleLoad =
+    /^(script|connect|frame)-src/.test(directive) &&
+    SIGN_IN_ORIGINS.has(blocked);
+  if (!googleLoad && !directive.includes("trusted-types")) return;
   return `The browser's security policy blocked ${blocked} (${event.effectiveDirective}).`;
 }
 

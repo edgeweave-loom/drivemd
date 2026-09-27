@@ -142,6 +142,18 @@ describe("on start", () => {
     expect(session.getSnapshot().message).toBeUndefined();
   });
 
+  it("reports a missing client ID as a setup problem, not a failure to retry", async () => {
+    vi.mocked(auth.loadGoogleIdentity).mockRejectedValueOnce(
+      new AuthError("not_configured", "VITE_GOOGLE_CLIENT_ID is not set"),
+    );
+    const session = createSession();
+
+    await vi.waitFor(() => {
+      expect(session.getSnapshot().google).toBe("unconfigured");
+    });
+    expect(session.getSnapshot().message).toMatch(/not configured/);
+  });
+
   it("explains a failed load of Google's script and retries it", async () => {
     vi.mocked(auth.loadGoogleIdentity).mockRejectedValueOnce(
       new AuthError("unavailable", "The GIS script failed to load"),
@@ -435,8 +447,37 @@ describe("while the app is open", () => {
     },
   );
 
+  it("forgets what was blocked once Google's script loads again or sign-in works", async () => {
+    vi.mocked(auth.loadGoogleIdentity).mockRejectedValueOnce(
+      new AuthError("unavailable", "The GIS script failed to load"),
+    );
+    const session = createSession();
+    violate({
+      blockedURI: "https://accounts.google.com/gsi/client",
+      effectiveDirective: "script-src-elem",
+    });
+    await vi.waitFor(() => {
+      expect(session.getSnapshot().google).toBe("failed");
+    });
+
+    session.retry();
+    expect(session.getSnapshot().blocked).toBeUndefined();
+    violate({
+      blockedURI: "trusted-types-sink",
+      effectiveDirective: "require-trusted-types-for",
+    });
+    vi.mocked(auth.requestAccessToken).mockResolvedValue(TOKEN);
+    session.signIn();
+    await settled(session);
+    expect(session.getSnapshot().blocked).toBeUndefined();
+  });
+
   it.each([
     { blockedURI: "inline", effectiveDirective: "style-src-elem" },
+    {
+      blockedURI: "https://accounts.google.com/gsi/style",
+      effectiveDirective: "style-src-elem",
+    },
     {
       blockedURI: "https://extension.example/x.js",
       effectiveDirective: "script-src-elem",

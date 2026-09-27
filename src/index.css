@@ -23,6 +23,46 @@ body {
   margin: 0;
 }
 
-main {
-  padding: 1rem;
+.app {
+  display: grid;
+  gap: 1rem;
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.app h1 {
+  margin: 0;
+}
+
+.app p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+button {
+  min-height: 44px;
+  padding: 0 1.25rem;
+  border: 1px solid light-dark(#d1d9e0, #3d444d);
+  border-radius: 0.5rem;
+  background: light-dark(#f6f8fa, #212830);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.primary {
+  border-color: transparent;
+  background: light-dark(#0969da, #1f6feb);
+  color: #ffffff;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.hint,
+.message {
+  color: light-dark(#59636e, #9198a1);
 }
