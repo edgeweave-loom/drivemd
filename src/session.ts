@@ -98,6 +98,14 @@ export function createSession(): Session {
     );
   }
 
+  function checkExpiry(): void {
+    const { screen } = state;
+    if (document.visibilityState === "hidden" || screen.name !== "home") return;
+    if (auth.getAccessToken() === undefined) {
+      update({ screen: { name: "continue", email: screen.email } });
+    }
+  }
+
   loadGoogle();
   const token = auth.getAccessToken();
   if (token === undefined) {
@@ -106,6 +114,21 @@ export function createSession(): Session {
     update({ screen: { name: "loading" }, waiting: true });
     void finish(Promise.resolve(token), epoch);
   }
+  document.addEventListener("visibilitychange", checkExpiry);
+  window.addEventListener("pageshow", checkExpiry);
+  document.addEventListener("securitypolicyviolation", (event) => {
+    update({
+      message: `The browser blocked ${event.blockedURI} (${event.effectiveDirective}).`,
+    });
+  });
+  auth.onSignOutElsewhere(() => {
+    epoch += 1;
+    update({
+      screen: { name: "sign-in" },
+      waiting: false,
+      message: "You signed out in another tab.",
+    });
+  });
 
   return {
     subscribe(listener) {

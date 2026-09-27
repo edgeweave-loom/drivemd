@@ -13,6 +13,7 @@ vi.mock("./auth.ts", async (importOriginal) => ({
   getRememberedAccount: vi.fn(),
   rememberAccount: vi.fn(),
   signOut: vi.fn(),
+  onSignOutElsewhere: vi.fn(),
 }));
 
 vi.mock("./drive.ts", async (importOriginal) => ({
@@ -271,4 +272,61 @@ describe("signing out", () => {
       expect(auth.rememberAccount).not.toHaveBeenCalled();
     },
   );
+
+  it("follows a sign-out in another tab", () => {
+    const session = createSession();
+    const [[onSignOut]] = vi.mocked(auth.onSignOutElsewhere).mock.calls as [
+      [() => void],
+    ];
+    onSignOut();
+
+    expect(session.getSnapshot()).toMatchObject({
+      screen: { name: "sign-in" },
+      message: "You signed out in another tab.",
+    });
+  });
+});
+
+describe("while the app is open", () => {
+  it.each(["visibilitychange", "pageshow"])(
+    "asks to Continue on %s once the token has expired",
+    async (event) => {
+      vi.mocked(auth.getAccessToken).mockReturnValue(TOKEN);
+      const session = createSession();
+      await settled(session);
+
+      vi.mocked(auth.getAccessToken).mockReturnValue(undefined);
+      (event === "pageshow" ? window : document).dispatchEvent(
+        new Event(event),
+      );
+      expect(screenOf(session)).toEqual({ name: "continue", email: EMAIL });
+    },
+  );
+
+  it("keeps the session while the token is valid or the page is hidden", async () => {
+    vi.mocked(auth.getAccessToken).mockReturnValue(TOKEN);
+    const session = createSession();
+    await settled(session);
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
+    vi.mocked(auth.getAccessToken).mockReturnValue(undefined);
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
+  });
+
+  it("shows what the page's security policy blocked", () => {
+    const session = createSession();
+    document.dispatchEvent(
+      Object.assign(new Event("securitypolicyviolation"), {
+        blockedURI: "https://attacker.example/x.js",
+        effectiveDirective: "script-src-elem",
+      }),
+    );
+
+    expect(session.getSnapshot().message).toBe(
+      "The browser blocked https://attacker.example/x.js (script-src-elem).",
+    );
+  });
 });
