@@ -8,19 +8,16 @@ export function App({ session }: { session: Session }) {
     <main className="app">
       <h1>DriveMD</h1>
       <Screen session={session} state={state} />
-      {state.waiting && (
+      {state.waiting && state.screen.name !== "loading" && (
         <p className="hint">Waiting for Google… Nothing happened? Tap again.</p>
       )}
-      {state.message !== undefined && (
-        <p role="status" className="message">
-          {state.message}
-        </p>
-      )}
-      {state.blocked !== undefined && (
-        <p role="status" className="message">
-          {state.blocked}
-        </p>
-      )}
+      {[state.message, state.blocked]
+        .filter((line) => line !== undefined)
+        .map((line) => (
+          <p key={line} role="status" className="message">
+            {line}
+          </p>
+        ))}
     </main>
   );
 }
@@ -35,9 +32,9 @@ function Screen({ session, state }: { session: Session; state: SessionState }) {
         <>
           <p>Browse and edit the Markdown files in your Google Drive.</p>
           <GoogleButton
-            session={session}
-            state={state}
+            google={state.google}
             onClick={session.signIn}
+            onRetry={session.retry}
           >
             Sign in with Google
           </GoogleButton>
@@ -50,9 +47,9 @@ function Screen({ session, state }: { session: Session; state: SessionState }) {
             Welcome back, <strong>{screen.email}</strong>.
           </p>
           <GoogleButton
-            session={session}
-            state={state}
+            google={state.google}
             onClick={session.continueSession}
+            onRetry={session.retry}
           >
             Continue
           </GoogleButton>
@@ -77,19 +74,19 @@ function Screen({ session, state }: { session: Session; state: SessionState }) {
 
 /** A button that opens Google's popup, usable once Google's script is ready. */
 function GoogleButton({
-  session,
-  state,
+  google,
   onClick,
+  onRetry,
   children,
 }: {
-  session: Session;
-  state: SessionState;
+  google: SessionState["google"];
   onClick: () => void;
+  onRetry: () => void;
   children: ReactNode;
 }) {
-  if (state.google === "failed") {
+  if (google === "failed") {
     return (
-      <button type="button" className="primary" onClick={session.retry}>
+      <button type="button" className="primary" onClick={onRetry}>
         Try again
       </button>
     );
@@ -98,7 +95,7 @@ function GoogleButton({
     <button
       type="button"
       className="primary"
-      disabled={state.google === "loading"}
+      disabled={google !== "ready"}
       onClick={onClick}
     >
       {children}

@@ -47,19 +47,30 @@ describe("Firebase Hosting", () => {
       expect(unsafe).toEqual([]);
     });
 
+    it("sets exactly the reviewed directives", () => {
+      // A new directive, such as script-src-elem, could reopen what the
+      // others close: adding one must be a deliberate change to this list.
+      expect([...csp.keys()]).toEqual([
+        "default-src",
+        "script-src",
+        "connect-src",
+        "frame-src",
+        "object-src",
+        "base-uri",
+        "form-action",
+        "frame-ancestors",
+        "require-trusted-types-for",
+        "trusted-types",
+      ]);
+    });
+
     it("runs only the app's scripts and Google's sign-in script", () => {
+      // The exact file, never the host: Google's hosts serve JSONP endpoints
+      // that would let an injected script tag bypass the policy.
       expect(csp.get("script-src")).toEqual([
         "'self'",
         "https://accounts.google.com/gsi/client",
       ]);
-    });
-
-    it("never lets a whole host serve scripts", () => {
-      // Google hosts serve JSONP endpoints that would bypass the policy.
-      const hosts = (csp.get("script-src") ?? [])
-        .filter((source) => source.startsWith("https://"))
-        .filter((source) => new URL(source).pathname === "/");
-      expect(hosts).toEqual([]);
     });
 
     it("talks only to Google sign-in and the Drive API", () => {
@@ -84,9 +95,11 @@ describe("Firebase Hosting", () => {
       expect(csp.get("require-trusted-types-for")).toEqual(["'script'"]);
     });
 
-    it("allows no Trusted Types policy but the app's own", () => {
+    it("allows no Trusted Types policy but the app's and Google's", () => {
       // A lenient "default" policy would silently undo the requirement.
-      expect(csp.get("trusted-types")).toEqual(["drivemd-gis"]);
+      // goog#html is the policy Google's Closure-built scripts create: GIS
+      // does not create it today, but it loads unpinned from Google.
+      expect(csp.get("trusted-types")).toEqual(["drivemd-gis", "goog#html"]);
     });
   });
 

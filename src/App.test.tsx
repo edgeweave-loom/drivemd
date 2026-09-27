@@ -102,11 +102,32 @@ describe("App", () => {
 
   it("offers no action while the session reopens", () => {
     render(
-      <App session={fakeSession({ screen: { name: "loading" } }).session} />,
+      <App
+        session={
+          fakeSession({ screen: { name: "loading" }, waiting: true }).session
+        }
+      />,
     );
 
     expect(screen.getByText("Opening your session…")).toBeInTheDocument();
     expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByText(/Waiting for Google/)).toBeNull();
+  });
+
+  it("offers no retry when sign-in is not configured", () => {
+    render(
+      <App
+        session={
+          fakeSession({
+            google: "unconfigured",
+            message: "Sign-in is not configured.",
+          }).session
+        }
+      />,
+    );
+
+    expect(button("Sign in with Google")).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
   });
 
   it("keeps the button usable while Google's window is open", () => {
