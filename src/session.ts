@@ -39,7 +39,6 @@ const AUTH_MESSAGES: Record<AuthErrorReason, string | undefined> = {
     "Google sign-in could not load. Check your connection, then try again.",
   popup_blocked:
     "The browser blocked Google's sign-in window. Allow pop-ups for this site, then try again.",
-  popup_closed: "Google's sign-in window closed before signing in.",
   access_denied: "You declined access to your Google account.",
   scope_denied:
     "DriveMD needs access to your Google Drive. Try again and allow it.",
