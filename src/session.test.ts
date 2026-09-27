@@ -262,6 +262,62 @@ describe("signing in", () => {
   });
 });
 
+describe("continuing", () => {
+  it("renews the token for the remembered account within the tap", async () => {
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
+    vi.mocked(auth.requestAccessToken).mockResolvedValue(TOKEN);
+    const session = createSession();
+
+    session.continueSession();
+    expect(auth.requestAccessToken).toHaveBeenCalledWith(EMAIL);
+    await settled(session);
+    expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
+  });
+
+  it("keeps the token when Drive is unreachable, then continues without a popup", async () => {
+    vi.mocked(auth.getAccessToken).mockReturnValue(TOKEN);
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
+    vi.mocked(getAccountEmail).mockRejectedValueOnce(
+      new DriveError(0, "Google Drive could not be reached"),
+    );
+    const session = createSession();
+    await settled(session);
+    expect(session.getSnapshot().message).toMatch(/could not be reached/);
+    expect(auth.clearToken).not.toHaveBeenCalled();
+
+    session.continueSession();
+    await settled(session);
+    expect(auth.requestAccessToken).not.toHaveBeenCalled();
+    expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
+  });
+
+  it("drops a reused token that belongs to another account", async () => {
+    vi.mocked(auth.getAccessToken).mockReturnValue(TOKEN);
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
+    vi.mocked(getAccountEmail)
+      .mockRejectedValueOnce(
+        new DriveError(0, "Google Drive could not be reached"),
+      )
+      .mockResolvedValueOnce("grace@example.com");
+    const session = createSession();
+    await settled(session);
+
+    session.continueSession();
+    await settled(session);
+    expect(auth.clearToken).toHaveBeenCalled();
+    expect(auth.rememberAccount).not.toHaveBeenCalled();
+    expect(screenOf(session)).toEqual({ name: "continue", email: EMAIL });
+  });
+
+  it("does nothing outside the Continue screen", () => {
+    const session = createSession();
+    session.continueSession();
+
+    expect(auth.requestAccessToken).not.toHaveBeenCalled();
+    expect(session.getSnapshot().waiting).toBe(false);
+  });
+});
+
 describe("signing out", () => {
   it.each([
     [

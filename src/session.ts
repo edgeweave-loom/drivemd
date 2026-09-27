@@ -20,13 +20,15 @@ export interface SessionState {
 }
 
 /**
- * The sign-in state behind the screens, for `useSyncExternalStore`. signIn
- * opens Google's popup, so call it straight from a click or tap handler.
+ * The sign-in state behind the screens, for `useSyncExternalStore`. signIn and
+ * continueSession open Google's popup, so call them straight from a click or
+ * tap handler.
  */
 export interface Session {
   subscribe: (listener: () => void) => () => void;
   getSnapshot: () => SessionState;
   signIn: () => void;
+  continueSession: () => void;
   signOut: () => void;
   retry: () => void;
 }
@@ -100,10 +102,10 @@ export function createSession(): Session {
     }
   }
 
-  function start(request: Promise<string>): void {
+  function start(request: Promise<string>, expectedEmail?: string): void {
     epoch += 1;
     update({ waiting: true, message: undefined });
-    void finish(request, epoch);
+    void finish(request, epoch, expectedEmail);
   }
 
   function loadGoogle(): void {
@@ -171,6 +173,15 @@ export function createSession(): Session {
     getSnapshot: () => state,
     signIn() {
       start(auth.requestAccessToken());
+    },
+    continueSession() {
+      const { screen } = state;
+      if (screen.name !== "continue") return;
+      const current = auth.getAccessToken();
+      // A fresh popup may sign in another account on purpose; a reused token
+      // must still belong to the account shown.
+      if (current === undefined) start(auth.requestAccessToken(screen.email));
+      else start(Promise.resolve(current), screen.email);
     },
     signOut() {
       epoch += 1;
