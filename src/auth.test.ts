@@ -93,18 +93,39 @@ describe("loadGoogleIdentity", () => {
     expect(gisScript()).toBeNull();
   });
 
-  it("fails when the script cannot load", async () => {
+  it("retries on the next call after the script failed to load", async () => {
+    const createPolicy = vi.fn((_name: string, rules: object) => rules);
+    vi.stubGlobal("trustedTypes", { createPolicy });
     const auth = await importAuth();
-    const loading = auth.loadGoogleIdentity();
+    const failed = auth.loadGoogleIdentity();
     gisScript()?.dispatchEvent(new Event("error"));
 
-    await expect(loading).rejects.toMatchObject({ reason: "unavailable" });
+    await expect(failed).rejects.toMatchObject({ reason: "unavailable" });
+    expect(gisScript()).toBeNull();
+    const retried = auth.loadGoogleIdentity();
+    gisScript()?.dispatchEvent(new Event("load"));
+    await expect(retried).resolves.toBeUndefined();
+    expect(createPolicy).toHaveBeenCalledTimes(1);
   });
 
   it("fails when the script defines no Google API", async () => {
     vi.stubGlobal("google", undefined);
 
     await expect(loadAuth()).rejects.toMatchObject({ reason: "unavailable" });
+    expect(gisScript()).toBeNull();
+  });
+
+  it("fails when the page refuses the Trusted Types policy", async () => {
+    vi.stubGlobal("trustedTypes", {
+      createPolicy: () => {
+        throw new TypeError("Policy refused");
+      },
+    });
+    const auth = await importAuth();
+
+    await expect(auth.loadGoogleIdentity()).rejects.toMatchObject({
+      reason: "unavailable",
+    });
   });
 
   it("goes through a Trusted Types policy that only accepts the GIS script", async () => {
@@ -192,6 +213,19 @@ describe("requestAccessToken", () => {
       tokenClient().error_callback(popupError);
     });
     expect(error).toMatchObject({ reason });
+  });
+
+  it("fails with a typed error when Google's client throws", async () => {
+    requestAccessToken.mockImplementationOnce(() => {
+      throw new Error("Invalid client state");
+    });
+    const auth = await loadAuth();
+
+    await expect(auth.requestAccessToken()).rejects.toMatchObject({
+      reason: "failed",
+    });
+    tokenClient().callback(tokenResponse());
+    expect(auth.getAccessToken()).toBeUndefined();
   });
 
   it("supersedes a pending request with a newer one", async () => {
