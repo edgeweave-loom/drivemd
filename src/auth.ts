@@ -5,6 +5,8 @@ const GIS_URL = "https://accounts.google.com/gsi/client";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
 const SCOPES = `${DRIVE_SCOPE} https://www.googleapis.com/auth/drive.install`;
 const EXPIRY_MARGIN_MS = 5 * 60_000;
+const TOKEN_KEY = "drivemd.token";
+const ACCOUNT_KEY = "drivemd.account";
 
 export type AuthErrorReason =
   | "not_configured"
@@ -40,6 +42,7 @@ let gisUrl: string | undefined;
 let client: google.accounts.oauth2.TokenClient | undefined;
 let pending: PendingRequest | undefined;
 let token: Token | undefined;
+let restored = false;
 
 /** Loads Google's script once; after a failure, the next call tries again. */
 export function loadGoogleIdentity(): Promise<void> {
@@ -119,8 +122,54 @@ export function requestAccessToken(loginHint?: string): Promise<string> {
 
 /** The current token, or undefined once it has 5 minutes or less to live. */
 export function getAccessToken(): string | undefined {
-  if (!token || token.expiresAt - Date.now() <= EXPIRY_MARGIN_MS) return;
-  return token.accessToken;
+  if (!restored) {
+    restored = true;
+    // Without a remembered account, the user signed out while this tab was
+    // closed, and reopening it must not bring the token back.
+    if (token === undefined && getRememberedAccount() !== undefined) {
+      token = readStoredToken();
+    }
+    if (token === undefined) clearToken();
+  }
+  if (token && token.expiresAt - Date.now() <= EXPIRY_MARGIN_MS) clearToken();
+  return token?.accessToken;
+}
+
+export function clearToken(): void {
+  token = undefined;
+  write("sessionStorage", TOKEN_KEY, null);
+}
+
+export function getRememberedAccount(): string | undefined {
+  const email = read("localStorage", ACCOUNT_KEY);
+  if (email === null || email === "") return;
+  return email;
+}
+
+export function rememberAccount(email: string): void {
+  write("localStorage", ACCOUNT_KEY, email);
+}
+
+/**
+ * Forgets the session on this device. It does not revoke the grant, which
+ * would sign the user out of DriveMD on every device.
+ */
+export function signOut(): void {
+  forgetSession("The user signed out");
+  write("localStorage", ACCOUNT_KEY, null);
+}
+
+/**
+ * Calls the listener after another tab of this browser signed out, once this
+ * tab has forgotten its own token.
+ */
+export function onSignOutElsewhere(listener: () => void): void {
+  window.addEventListener("storage", (event) => {
+    if (event.key !== ACCOUNT_KEY && event.key !== null) return;
+    if (getRememberedAccount() !== undefined) return;
+    forgetSession("The user signed out in another tab");
+    listener();
+  });
 }
 
 // Created once: a page cannot register two policies with the same name.
@@ -136,6 +185,11 @@ function trustedGisUrl(): string {
     gisUrl = (policy?.createScriptURL(GIS_URL) ?? GIS_URL) as string;
   }
   return gisUrl;
+}
+
+function forgetSession(reason: string): void {
+  takePending()?.reject(new AuthError("superseded", reason));
+  clearToken();
 }
 
 function takePending(): PendingRequest | undefined {
@@ -174,6 +228,7 @@ function handleTokenResponse(response: unknown): void {
     return;
   }
   token = { accessToken, expiresAt: Date.now() + lifetimeSeconds * 1000 };
+  write("sessionStorage", TOKEN_KEY, JSON.stringify(token));
   request.resolve(accessToken);
 }
 
@@ -187,6 +242,45 @@ function handleClientError(error: unknown): void {
   takePending()?.reject(
     new AuthError(reason, "The Google sign-in window failed"),
   );
+}
+
+function readStoredToken(): Token | undefined {
+  const stored = read("sessionStorage", TOKEN_KEY);
+  if (stored === null) return;
+  try {
+    const value: unknown = JSON.parse(stored);
+    if (
+      isRecord(value) &&
+      typeof value.accessToken === "string" &&
+      typeof value.expiresAt === "number"
+    ) {
+      return { accessToken: value.accessToken, expiresAt: value.expiresAt };
+    }
+  } catch {
+    // A malformed value counts as no token.
+  }
+  return;
+}
+
+type StorageArea = "localStorage" | "sessionStorage";
+
+// Browsers can refuse storage (private modes, blocked site data); the session
+// then lives in memory only.
+function read(area: StorageArea, key: string): string | null {
+  try {
+    return window[area].getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function write(area: StorageArea, key: string, value: string | null): void {
+  try {
+    if (value === null) window[area].removeItem(key);
+    else window[area].setItem(key, value);
+  } catch {
+    // See read().
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
