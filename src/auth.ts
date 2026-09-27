@@ -1,3 +1,5 @@
+import { isRecord } from "./is-record.ts";
+
 // All Google sign-in code lives here, so that swapping the popup token model
 // for a token backend touches nothing else (see "Tokens" in docs/SPEC.md).
 
@@ -281,8 +283,4 @@ function write(area: StorageArea, key: string, value: string | null): void {
   } catch {
     // See read().
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
