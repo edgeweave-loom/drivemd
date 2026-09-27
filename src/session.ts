@@ -73,7 +73,11 @@ export function createSession(): Session {
       const email = await getAccountEmail(await token);
       if (run !== epoch) return;
       auth.rememberAccount(email);
-      update({ screen: { name: "home", email }, waiting: false });
+      update({
+        screen: { name: "home", email },
+        waiting: false,
+        message: undefined,
+      });
     } catch (error) {
       if (run !== epoch) return;
       if (error instanceof DriveError && error.status === 401)
@@ -84,6 +88,12 @@ export function createSession(): Session {
         message: messageFor(error),
       });
     }
+  }
+
+  function start(request: Promise<string>): void {
+    epoch += 1;
+    update({ waiting: true, message: undefined });
+    void finish(request, epoch);
   }
 
   function loadGoogle(): void {
@@ -116,22 +126,17 @@ export function createSession(): Session {
     },
     getSnapshot: () => state,
     signIn() {
-      const request = auth.requestAccessToken();
-      epoch += 1;
-      update({ waiting: true, message: undefined });
-      void finish(request, epoch);
+      start(auth.requestAccessToken());
     },
     continueSession() {
       const { screen } = state;
       if (screen.name !== "continue") return;
       const current = auth.getAccessToken();
-      const request =
+      start(
         current === undefined
           ? auth.requestAccessToken(screen.email)
-          : Promise.resolve(current);
-      epoch += 1;
-      update({ waiting: true, message: undefined });
-      void finish(request, epoch);
+          : Promise.resolve(current),
+      );
     },
     signOut() {
       epoch += 1;
@@ -151,6 +156,7 @@ function messageFor(error: unknown): string | undefined {
   if (error instanceof DriveError) {
     if (error.status === 401) return;
     if (error.status === 0) return `${error.message}. Check your connection.`;
+    if (error.status < 400) return error.message;
     return `Google Drive refused the request: ${error.message}`;
   }
   return "Something went wrong. Try again.";

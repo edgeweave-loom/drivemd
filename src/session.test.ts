@@ -186,6 +186,34 @@ describe("signing in", () => {
     );
   });
 
+  it("clears an earlier message once signed in", async () => {
+    vi.mocked(auth.getAccessToken).mockReturnValue(TOKEN);
+    vi.mocked(auth.loadGoogleIdentity).mockRejectedValueOnce(
+      new AuthError("unavailable", "The GIS script failed to load"),
+    );
+    const session = createSession();
+
+    await settled(session);
+    expect(session.getSnapshot()).toMatchObject({
+      screen: { name: "home", email: EMAIL },
+      message: undefined,
+    });
+  });
+
+  it("reports an answer without an email as such", async () => {
+    vi.mocked(auth.requestAccessToken).mockResolvedValue(TOKEN);
+    vi.mocked(getAccountEmail).mockRejectedValue(
+      new DriveError(200, "Google Drive sent no email address"),
+    );
+    const session = createSession();
+
+    session.signIn();
+    await settled(session);
+    expect(session.getSnapshot().message).toBe(
+      "Google Drive sent no email address",
+    );
+  });
+
   it("reports Drive's refusal after sign-in", async () => {
     vi.mocked(auth.requestAccessToken).mockResolvedValue(TOKEN);
     vi.mocked(getAccountEmail).mockRejectedValue(
