@@ -83,6 +83,7 @@ SA="github-deploy@$PROJECT_ID.iam.gserviceaccount.com"
 
 gcloud services enable iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com --project "$PROJECT_ID"
 gcloud iam service-accounts create github-deploy --project "$PROJECT_ID" --display-name "GitHub staging deploy"
+sleep 60  # IAM takes up to a minute before a new account can be granted roles.
 for role in roles/firebasehosting.admin roles/serviceusage.apiKeysViewer; do
   gcloud projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$SA" --role "$role" --condition=None
 done
