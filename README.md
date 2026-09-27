@@ -14,14 +14,14 @@ Vite, React and TypeScript; Google Identity Services and the Drive REST API v3; 
 
 ## Development
 
-You need Node.js 22 (see `.nvmrc`) and npm.
+You need Node.js 22.22.2 or later on the 22 line (`.nvmrc`), or a later LTS listed in `engines`, and npm.
 
 ```sh
 npm ci
 npm run dev
 ```
 
-The dev server runs at http://localhost:5173 and refuses to start on another port: it is the only local origin the OAuth client authorizes.
+Open http://localhost:5173, not `127.0.0.1`: it is the only local origin the OAuth client authorizes, so the dev server refuses to start on another port.
 
 | Command            | What it does                                                    |
 | ------------------ | --------------------------------------------------------------- |
@@ -33,6 +33,6 @@ The dev server runs at http://localhost:5173 and refuses to start on another por
 | `npm run lint`     | Lint with type-aware and security rules; any warning fails      |
 | `npm run format`   | Format every file with Prettier (`npm run format:check` checks) |
 
-Write the failing test first, then the code that makes it pass. CI runs the checks above on every pull request and on every push to `dev` and `main`, after `npm audit signatures` and `npm audit --audit-level=high`.
+Write the failing test first, then the code that makes it pass. CI runs the checks above on every pull request and on every push to `dev` and `main`. Before them, it verifies registry signatures, blocks malware and critical advisories in any dependency, and blocks any advisory in the dependencies that ship.
 
-`.npmrc` turns off dependency install scripts and saves exact versions. After adding a dependency, check that it works without its install script.
+`.npmrc` enforces the Node.js versions in `engines`, turns off dependency install scripts and saves exact versions. After adding a dependency, check that it works without its install script.
