@@ -14,7 +14,14 @@ export default defineConfig({
     coverage: {
       include: ["src/**/*.{ts,tsx}"],
       exclude: ["src/main.tsx", "src/test/**"],
-      thresholds: { lines: 95, functions: 95, statements: 95, branches: 90 },
+      thresholds: {
+        lines: 95,
+        functions: 95,
+        statements: 95,
+        branches: 90,
+        // Sign-in guards the full Drive scope: every branch is tested.
+        "src/auth.ts": { 100: true },
+      },
     },
   },
 });

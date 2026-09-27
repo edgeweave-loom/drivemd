@@ -36,6 +36,14 @@ Open http://localhost:5173, not `127.0.0.1`: it is the only local origin the OAu
 
 Write the failing test first, then the code that makes it pass. CI runs the checks above on every pull request and on every push to `dev` and `main`.
 
+## Configuration
+
+The app reads its settings from `VITE_*` environment variables when it is built. For development, copy `.env.example` to `.env.local` and fill it in; git ignores `.env` and `.env.local`.
+
+| Variable                | Value                                                                                                                                     |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_GOOGLE_CLIENT_ID` | ID of the OAuth client of type Web application, from the spec's [Google Cloud setup](docs/SPEC.md#google-auth-scopes-and-workspace-setup) |
+
 ## Security
 
 The app's access token can read and write the user's whole Drive, so the repository guards against injected code and a compromised supply chain:
