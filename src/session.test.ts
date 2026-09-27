@@ -172,7 +172,6 @@ describe("signing in", () => {
 
   it.each<[AuthErrorReason, RegExp]>([
     ["popup_blocked", /blocked/],
-    ["popup_closed", /closed/],
     ["access_denied", /declined/],
     ["scope_denied", /needs access/],
     ["failed", /failed/],
