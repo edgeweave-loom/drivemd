@@ -15,6 +15,8 @@ export interface SessionState {
   /** A sign-in the user started has not settled yet. */
   waiting: boolean;
   message: string | undefined;
+  /** What the security policy blocked that sign-in depends on, if anything. */
+  blocked: string | undefined;
 }
 
 /**
@@ -54,6 +56,7 @@ export function createSession(): Session {
     google: "loading",
     waiting: false,
     message: undefined,
+    blocked: undefined,
   };
 
   function update(changes: Partial<SessionState>): void {
@@ -117,10 +120,24 @@ export function createSession(): Session {
     );
   }
 
-  function checkExpiry(): void {
+  function signedOutElsewhere(): void {
+    epoch += 1;
+    auth.clearToken();
+    update({
+      screen: signedOutScreen(),
+      waiting: false,
+      message: "This tab was signed out from another tab.",
+    });
+  }
+
+  // A tab coming back to the foreground may have missed a sign-out, or
+  // outlived its token.
+  function checkSession(): void {
     const { screen } = state;
     if (document.visibilityState === "hidden" || screen.name !== "home") return;
-    if (auth.getAccessToken() === undefined) {
+    if (auth.getRememberedAccount() !== screen.email) {
+      signedOutElsewhere();
+    } else if (auth.getAccessToken() === undefined) {
       update({ screen: { name: "continue", email: screen.email } });
     }
   }
@@ -136,20 +153,14 @@ export function createSession(): Session {
     update({ screen: { name: "loading" }, waiting: true });
     void finish(Promise.resolve(token), epoch, account);
   }
-  document.addEventListener("visibilitychange", checkExpiry);
-  window.addEventListener("pageshow", checkExpiry);
+  document.addEventListener("visibilitychange", checkSession);
+  window.addEventListener("pageshow", checkSession);
   document.addEventListener("securitypolicyviolation", (event) => {
-    update({
-      message: `The browser blocked ${event.blockedURI} (${event.effectiveDirective}).`,
-    });
+    const blocked = describeBlock(event);
+    if (blocked !== undefined) update({ blocked });
   });
   auth.onSignOutElsewhere(() => {
-    epoch += 1;
-    update({
-      screen: { name: "sign-in" },
-      waiting: false,
-      message: "You signed out in another tab.",
-    });
+    if (state.screen.name !== "sign-in" || state.waiting) signedOutElsewhere();
   });
 
   return {
@@ -184,6 +195,29 @@ export function createSession(): Session {
     },
     retry: loadGoogle,
   };
+}
+
+const SIGN_IN_ORIGINS = new Set([
+  "https://accounts.google.com",
+  "https://www.googleapis.com",
+]);
+
+/**
+ * Describes a violation that sign-in depends on, for diagnosing it on a phone
+ * without devtools. Other violations, such as an extension's injected script
+ * or a style Google's script inlines for widgets the app does not use, are
+ * ignored; so is the full blocked URL, which could carry more than an origin.
+ */
+function describeBlock(
+  event: SecurityPolicyViolationEvent,
+): string | undefined {
+  if (event.disposition === "report") return;
+  const blocked = URL.canParse(event.blockedURI)
+    ? new URL(event.blockedURI).origin
+    : event.blockedURI;
+  const trustedTypes = event.effectiveDirective.includes("trusted-types");
+  if (!trustedTypes && !SIGN_IN_ORIGINS.has(blocked)) return;
+  return `The browser's security policy blocked ${blocked} (${event.effectiveDirective}).`;
 }
 
 function messageFor(error: unknown): string | undefined {
