@@ -15,6 +15,8 @@ export interface SessionState {
   /** A sign-in the user started has not settled yet. */
   waiting: boolean;
   message: string | undefined;
+  /** What the security policy blocked that sign-in depends on, if anything. */
+  blocked: string | undefined;
 }
 
 /**
@@ -54,6 +56,7 @@ export function createSession(): Session {
     google: "loading",
     waiting: false,
     message: undefined,
+    blocked: undefined,
   };
 
   function update(changes: Partial<SessionState>): void {
@@ -68,12 +71,25 @@ export function createSession(): Session {
       : { name: "continue", email };
   }
 
-  async function finish(token: Promise<string>, run: number): Promise<void> {
+  async function finish(
+    token: Promise<string>,
+    run: number,
+    expectedEmail?: string,
+  ): Promise<void> {
     try {
       const email = await getAccountEmail(await token);
       if (run !== epoch) return;
+      if (expectedEmail !== undefined && email !== expectedEmail) {
+        auth.clearToken();
+        update({ screen: signedOutScreen(), waiting: false });
+        return;
+      }
       auth.rememberAccount(email);
-      update({ screen: { name: "home", email }, waiting: false });
+      update({
+        screen: { name: "home", email },
+        waiting: false,
+        message: undefined,
+      });
     } catch (error) {
       if (run !== epoch) return;
       if (error instanceof DriveError && error.status === 401)
@@ -84,6 +100,12 @@ export function createSession(): Session {
         message: messageFor(error),
       });
     }
+  }
+
+  function start(request: Promise<string>, expectedEmail?: string): void {
+    epoch += 1;
+    update({ waiting: true, message: undefined });
+    void finish(request, epoch, expectedEmail);
   }
 
   function loadGoogle(): void {
@@ -98,36 +120,47 @@ export function createSession(): Session {
     );
   }
 
-  function checkExpiry(): void {
+  function signedOutElsewhere(): void {
+    epoch += 1;
+    auth.clearToken();
+    update({
+      screen: signedOutScreen(),
+      waiting: false,
+      message: "This tab was signed out from another tab.",
+    });
+  }
+
+  // A tab coming back to the foreground may have missed a sign-out, or
+  // outlived its token.
+  function checkSession(): void {
     const { screen } = state;
     if (document.visibilityState === "hidden" || screen.name !== "home") return;
-    if (auth.getAccessToken() === undefined) {
+    if (auth.getRememberedAccount() !== screen.email) {
+      signedOutElsewhere();
+    } else if (auth.getAccessToken() === undefined) {
       update({ screen: { name: "continue", email: screen.email } });
     }
   }
 
   loadGoogle();
+  // A stored token counts only for the account the device still remembers:
+  // otherwise it predates a sign-out made while this tab was not running.
   const token = auth.getAccessToken();
-  if (token === undefined) {
+  const account = auth.getRememberedAccount();
+  if (token === undefined || account === undefined) {
     update({ screen: signedOutScreen() });
   } else {
     update({ screen: { name: "loading" }, waiting: true });
-    void finish(Promise.resolve(token), epoch);
+    void finish(Promise.resolve(token), epoch, account);
   }
-  document.addEventListener("visibilitychange", checkExpiry);
-  window.addEventListener("pageshow", checkExpiry);
+  document.addEventListener("visibilitychange", checkSession);
+  window.addEventListener("pageshow", checkSession);
   document.addEventListener("securitypolicyviolation", (event) => {
-    update({
-      message: `The browser blocked ${event.blockedURI} (${event.effectiveDirective}).`,
-    });
+    const blocked = describeBlock(event);
+    if (blocked !== undefined) update({ blocked });
   });
   auth.onSignOutElsewhere(() => {
-    epoch += 1;
-    update({
-      screen: { name: "sign-in" },
-      waiting: false,
-      message: "You signed out in another tab.",
-    });
+    if (state.screen.name !== "sign-in" || state.waiting) signedOutElsewhere();
   });
 
   return {
@@ -139,22 +172,16 @@ export function createSession(): Session {
     },
     getSnapshot: () => state,
     signIn() {
-      const request = auth.requestAccessToken();
-      epoch += 1;
-      update({ waiting: true, message: undefined });
-      void finish(request, epoch);
+      start(auth.requestAccessToken());
     },
     continueSession() {
       const { screen } = state;
       if (screen.name !== "continue") return;
       const current = auth.getAccessToken();
-      const request =
-        current === undefined
-          ? auth.requestAccessToken(screen.email)
-          : Promise.resolve(current);
-      epoch += 1;
-      update({ waiting: true, message: undefined });
-      void finish(request, epoch);
+      // A fresh popup may sign in another account on purpose; a reused token
+      // must still belong to the account shown.
+      if (current === undefined) start(auth.requestAccessToken(screen.email));
+      else start(Promise.resolve(current), screen.email);
     },
     signOut() {
       epoch += 1;
@@ -169,11 +196,35 @@ export function createSession(): Session {
   };
 }
 
+const SIGN_IN_ORIGINS = new Set([
+  "https://accounts.google.com",
+  "https://www.googleapis.com",
+]);
+
+/**
+ * Describes a violation that sign-in depends on, for diagnosing it on a phone
+ * without devtools. Other violations, such as an extension's injected script
+ * or a style Google's script inlines for widgets the app does not use, are
+ * ignored; so is the full blocked URL, which could carry more than an origin.
+ */
+function describeBlock(
+  event: SecurityPolicyViolationEvent,
+): string | undefined {
+  if (event.disposition === "report") return;
+  const blocked = URL.canParse(event.blockedURI)
+    ? new URL(event.blockedURI).origin
+    : event.blockedURI;
+  const trustedTypes = event.effectiveDirective.includes("trusted-types");
+  if (!trustedTypes && !SIGN_IN_ORIGINS.has(blocked)) return;
+  return `The browser's security policy blocked ${blocked} (${event.effectiveDirective}).`;
+}
+
 function messageFor(error: unknown): string | undefined {
   if (error instanceof AuthError) return AUTH_MESSAGES[error.reason];
   if (error instanceof DriveError) {
     if (error.status === 401) return;
     if (error.status === 0) return `${error.message}. Check your connection.`;
+    if (error.status < 400) return error.message;
     return `Google Drive refused the request: ${error.message}`;
   }
   return "Something went wrong. Try again.";

@@ -126,8 +126,13 @@ export function requestAccessToken(loginHint?: string): Promise<string> {
 /** The current token, or undefined once it has 5 minutes or less to live. */
 export function getAccessToken(): string | undefined {
   if (!restored) {
-    token ??= readStoredToken();
     restored = true;
+    // Without a remembered account, the user signed out while this tab was
+    // closed, and reopening it must not bring the token back.
+    if (token === undefined && getRememberedAccount() !== undefined) {
+      token = readStoredToken();
+    }
+    if (token === undefined) clearToken();
   }
   if (token && token.expiresAt - Date.now() <= EXPIRY_MARGIN_MS) clearToken();
   return token?.accessToken;
@@ -153,8 +158,7 @@ export function rememberAccount(email: string): void {
  * would sign the user out of DriveMD on every device.
  */
 export function signOut(): void {
-  takePending()?.reject(new AuthError("superseded", "The user signed out"));
-  clearToken();
+  forgetSession("The user signed out");
   write("localStorage", ACCOUNT_KEY, null);
 }
 
@@ -166,7 +170,7 @@ export function onSignOutElsewhere(listener: () => void): void {
   window.addEventListener("storage", (event) => {
     if (event.key !== ACCOUNT_KEY && event.key !== null) return;
     if (getRememberedAccount() !== undefined) return;
-    clearToken();
+    forgetSession("The user signed out in another tab");
     listener();
   });
 }
@@ -184,6 +188,11 @@ function trustedGisUrl(): string {
     gisUrl = (policy?.createScriptURL(GIS_URL) ?? GIS_URL) as string;
   }
   return gisUrl;
+}
+
+function forgetSession(reason: string): void {
+  takePending()?.reject(new AuthError("superseded", reason));
+  clearToken();
 }
 
 function takePending(): PendingRequest | undefined {
