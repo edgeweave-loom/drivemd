@@ -68,10 +68,19 @@ export function createSession(): Session {
       : { name: "continue", email };
   }
 
-  async function finish(token: Promise<string>, run: number): Promise<void> {
+  async function finish(
+    token: Promise<string>,
+    run: number,
+    expectedEmail?: string,
+  ): Promise<void> {
     try {
       const email = await getAccountEmail(await token);
       if (run !== epoch) return;
+      if (expectedEmail !== undefined && email !== expectedEmail) {
+        auth.clearToken();
+        update({ screen: signedOutScreen(), waiting: false });
+        return;
+      }
       auth.rememberAccount(email);
       update({
         screen: { name: "home", email },
@@ -109,12 +118,15 @@ export function createSession(): Session {
   }
 
   loadGoogle();
+  // A stored token counts only for the account the device still remembers:
+  // otherwise it predates a sign-out made while this tab was not running.
   const token = auth.getAccessToken();
-  if (token === undefined) {
+  const account = auth.getRememberedAccount();
+  if (token === undefined || account === undefined) {
     update({ screen: signedOutScreen() });
   } else {
     update({ screen: { name: "loading" }, waiting: true });
-    void finish(Promise.resolve(token), epoch);
+    void finish(Promise.resolve(token), epoch, account);
   }
 
   return {

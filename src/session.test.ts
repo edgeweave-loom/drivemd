@@ -81,14 +81,29 @@ describe("on start", () => {
     });
   });
 
-  it("reopens this tab's session with the email Drive reports", async () => {
+  it("reopens this tab's session for the account remembered on the device", async () => {
     vi.mocked(auth.getAccessToken).mockReturnValue(TOKEN);
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
     const session = createSession();
 
     expect(screenOf(session)).toEqual({ name: "loading" });
     await settled(session);
     expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
     expect(getAccountEmail).toHaveBeenCalledWith(TOKEN);
+  });
+
+  it("drops a stored token that belongs to another account", async () => {
+    vi.mocked(auth.getAccessToken).mockReturnValue(TOKEN);
+    vi.mocked(auth.getRememberedAccount).mockReturnValue("grace@example.com");
+    const session = createSession();
+
+    await settled(session);
+    expect(auth.clearToken).toHaveBeenCalled();
+    expect(auth.rememberAccount).not.toHaveBeenCalled();
+    expect(screenOf(session)).toEqual({
+      name: "continue",
+      email: "grace@example.com",
+    });
   });
 
   it("asks to Continue when Drive rejects the stored token", async () => {
@@ -188,6 +203,7 @@ describe("signing in", () => {
 
   it("clears an earlier message once signed in", async () => {
     vi.mocked(auth.getAccessToken).mockReturnValue(TOKEN);
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
     vi.mocked(auth.loadGoogleIdentity).mockRejectedValueOnce(
       new AuthError("unavailable", "The GIS script failed to load"),
     );
