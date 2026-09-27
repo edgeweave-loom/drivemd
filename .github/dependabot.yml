@@ -10,6 +10,10 @@ updates:
     groups:
       npm-minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # Node.js types follow the Node.js 22 line in .nvmrc.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: chore
       include: scope
@@ -22,8 +26,8 @@ updates:
     cooldown:
       default-days: 7
     groups:
-      actions:
-        patterns: ["*"]
+      actions-minor-and-patch:
+        update-types: [minor, patch]
     commit-message:
       prefix: ci
       include: scope
