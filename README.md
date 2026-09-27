@@ -14,7 +14,7 @@ Vite, React and TypeScript; Google Identity Services and the Drive REST API v3; 
 
 ## Development
 
-You need Node.js 22.22.2 or later on the 22 line (`.nvmrc`), or a later LTS listed in `engines`, and npm.
+You need Node.js 22.22.2 or later on the 22 line (`.nvmrc`), or 24.15.0 or later on the 24 line, and npm.
 
 ```sh
 npm ci
@@ -41,7 +41,7 @@ Write the failing test first, then the code that makes it pass. CI runs the chec
 The app's access token can read and write the user's whole Drive, so the repository guards against injected code and a compromised supply chain:
 
 - Strict TypeScript and type-aware ESLint, whose rules reject `eval` and unsanitized DOM sinks such as `innerHTML` and `dangerouslySetInnerHTML`.
-- `firebase.json` serves a strict Content Security Policy that enforces Trusted Types, along with HSTS, cross-origin isolation and no MIME sniffing. `src/security-headers.test.ts` fails if any of them weakens.
+- `firebase.json` serves a strict Content Security Policy that enforces Trusted Types, along with HSTS, isolation from other origins' windows and requests, and no MIME sniffing. `src/security-headers.test.ts` fails if any of them weakens.
 - `.npmrc` saves exact versions in `package.json`, turns off dependency install scripts and refuses Node.js versions outside `engines`. After adding a dependency, check that it works without its install script.
 - CI installs from the lockfile with `npm ci`, verifies registry signatures, blocks malware and critical advisories in any dependency, and blocks any advisory in the dependencies that ship.
 - Dependabot proposes npm and GitHub Actions updates weekly, for releases at least 7 days old.
@@ -60,7 +60,7 @@ Once CI passes, every push to `dev` deploys staging, https://md-staging.corp.edg
 One-time setup, by an owner of the project:
 
 1. Add Firebase to the project, start Hosting, and connect the custom domain `md-staging.corp.edgeweave.tech`.
-2. Create the deploy account, which can only manage Firebase Hosting, and let GitHub Actions use it from pushes to `dev` of this repository only:
+2. Create the deploy account, which can only manage Firebase Hosting, and let only the CI workflow of this repository, on `dev`, use it:
 
 ```sh
 PROJECT_ID=<project-id>
@@ -77,7 +77,7 @@ gcloud iam workload-identity-pools create github --project "$PROJECT_ID" --locat
 gcloud iam workload-identity-pools providers create-oidc drivemd --project "$PROJECT_ID" --location global \
   --workload-identity-pool github --issuer-uri https://token.actions.githubusercontent.com \
   --attribute-mapping "google.subject=assertion.sub,attribute.repository_id=assertion.repository_id" \
-  --attribute-condition "assertion.repository_id == '$REPO_ID' && assertion.ref == 'refs/heads/dev'"
+  --attribute-condition "assertion.repository_id == '$REPO_ID' && assertion.ref == 'refs/heads/dev' && assertion.workflow_ref == 'edgeweave-loom/drivemd/.github/workflows/ci.yml@refs/heads/dev'"
 gcloud iam service-accounts add-iam-policy-binding "$SA" --project "$PROJECT_ID" --role roles/iam.workloadIdentityUser \
   --member "principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository_id/$REPO_ID"
 
@@ -85,5 +85,7 @@ gh variable set FIREBASE_PROJECT_ID --body "$PROJECT_ID"
 gh variable set GCP_SERVICE_ACCOUNT --body "$SA"
 gh variable set GCP_WORKLOAD_IDENTITY_PROVIDER --body "projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/drivemd"
 ```
+
+The deploy account can manage every Hosting site of its project, so production (milestone 7) belongs in a project of its own.
 
 To see the headers and cache rules as Hosting serves them, run `npm run build`, then `npx firebase emulators:start --only hosting --project demo-drivemd`, and open http://127.0.0.1:5000 (sign-in does not work on that origin).

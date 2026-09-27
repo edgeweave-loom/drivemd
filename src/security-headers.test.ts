@@ -2,13 +2,11 @@ import { describe, expect, it } from "vitest";
 import firebase from "../firebase.json";
 
 const { hosting } = firebase;
-
-function headersOf(source: string): Map<string, string> {
-  const rule = hosting.headers.find((candidate) => candidate.source === source);
-  return new Map(rule?.headers.map(({ key, value }) => [key, value]));
-}
-
-const everyPath = headersOf("**");
+// Firebase applies every matching rule in order, so a later rule wins.
+const [firstRule, ...laterRules] = hosting.headers;
+const everyPath = new Map(
+  firstRule?.headers.map(({ key, value }) => [key, value]),
+);
 
 function contentSecurityPolicy(): Map<string, string[]> {
   const directives = new Map<string, string[]>();
@@ -22,6 +20,10 @@ function contentSecurityPolicy(): Map<string, string[]> {
 }
 
 describe("Firebase Hosting", () => {
+  it("sets the security headers for every path in the first rule", () => {
+    expect(firstRule?.source).toBe("**");
+  });
+
   it("serves the Vite build as a single-page app, except for assets", () => {
     expect(hosting.public).toBe("dist");
     // A missing asset gets a 404, not the app's HTML with a 200 that the
@@ -80,23 +82,21 @@ describe("Firebase Hosting", () => {
     );
   });
 
-  it("revalidates pages on every load and caches hashed assets for good", () => {
+  it("revalidates pages on every load", () => {
     expect(everyPath.get("Cache-Control")).toBe("no-cache");
-    expect(headersOf("/assets/**").get("Cache-Control")).toBe(
-      "public, max-age=31536000, immutable",
-    );
-    // Firebase applies matching rules in order: the later rule wins.
-    const sources = hosting.headers.map(({ source }) => source);
-    expect(sources.indexOf("/assets/**")).toBeGreaterThan(
-      sources.indexOf("**"),
-    );
   });
 
-  it("lets no narrower rule override a security header", () => {
-    const overridden = hosting.headers
-      .filter(({ source }) => source !== "**")
-      .flatMap(({ headers }) => headers.map(({ key }) => key))
-      .filter((key) => key !== "Cache-Control");
-    expect(overridden).toEqual([]);
+  it("overrides nothing after the first rule but the cache of hashed assets", () => {
+    expect(laterRules).toEqual([
+      {
+        source: "/assets/**",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+    ]);
   });
 });
