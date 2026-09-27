@@ -330,6 +330,40 @@ describe("the session", () => {
     expect(reloaded.getRememberedAccount()).toBe(EMAIL);
   });
 
+  it("forgets an expired token instead of keeping it in storage", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: 0 });
+    const auth = await loadAuth();
+    await signIn(auth);
+
+    vi.setSystemTime(55 * 60_000);
+    expect(auth.getAccessToken()).toBeUndefined();
+    expect(sessionStorage.getItem("drivemd.token")).toBeNull();
+  });
+
+  it("signs this tab out when another tab signs out", async () => {
+    const auth = await loadAuth();
+    await signIn(auth);
+    auth.rememberAccount(EMAIL);
+    const onSignOut = vi.fn();
+    auth.onSignOutElsewhere(onSignOut);
+
+    localStorage.setItem("drivemd.account", "grace@example.com");
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: "drivemd.account" }),
+    );
+    window.dispatchEvent(new StorageEvent("storage", { key: "unrelated" }));
+    expect(onSignOut).not.toHaveBeenCalled();
+    expect(auth.getAccessToken()).toBe(TOKEN);
+
+    localStorage.removeItem("drivemd.account");
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: "drivemd.account" }),
+    );
+    expect(onSignOut).toHaveBeenCalledOnce();
+    expect(auth.getAccessToken()).toBeUndefined();
+    expect(sessionStorage.getItem("drivemd.token")).toBeNull();
+  });
+
   it("forgets the token, the account and a pending request on sign-out", async () => {
     const auth = await loadAuth();
     await signIn(auth);

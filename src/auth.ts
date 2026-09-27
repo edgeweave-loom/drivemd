@@ -43,6 +43,7 @@ let gisUrl: string | undefined;
 let client: google.accounts.oauth2.TokenClient | undefined;
 let pending: PendingRequest | undefined;
 let token: Token | undefined;
+let restored = false;
 
 /** Loads Google's script once; after a failure, the next call tries again. */
 export function loadGoogleIdentity(): Promise<void> {
@@ -122,9 +123,12 @@ export function requestAccessToken(loginHint?: string): Promise<string> {
 
 /** The current token, or undefined once it has 5 minutes or less to live. */
 export function getAccessToken(): string | undefined {
-  token ??= readStoredToken();
-  if (!token || token.expiresAt - Date.now() <= EXPIRY_MARGIN_MS) return;
-  return token.accessToken;
+  if (!restored) {
+    token ??= readStoredToken();
+    restored = true;
+  }
+  if (token && token.expiresAt - Date.now() <= EXPIRY_MARGIN_MS) clearToken();
+  return token?.accessToken;
 }
 
 export function clearToken(): void {
@@ -150,6 +154,19 @@ export function signOut(): void {
   takePending()?.reject(new AuthError("superseded", "The user signed out"));
   clearToken();
   write("localStorage", ACCOUNT_KEY, null);
+}
+
+/**
+ * Calls the listener after another tab of this browser signed out, once this
+ * tab has forgotten its own token.
+ */
+export function onSignOutElsewhere(listener: () => void): void {
+  window.addEventListener("storage", (event) => {
+    if (event.key !== ACCOUNT_KEY && event.key !== null) return;
+    if (getRememberedAccount() !== undefined) return;
+    clearToken();
+    listener();
+  });
 }
 
 // Created once: a page cannot register two policies with the same name.
