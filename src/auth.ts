@@ -41,12 +41,15 @@ interface PendingRequest {
 }
 
 let loading: Promise<void> | undefined;
+let gisUrl: string | undefined;
 let client: google.accounts.oauth2.TokenClient | undefined;
 let pending: PendingRequest | undefined;
 let token: Token | undefined;
+let restored = false;
 
+/** Loads Google's script once; after a failure, the next call tries again. */
 export function loadGoogleIdentity(): Promise<void> {
-  loading ??= new Promise((resolve, reject) => {
+  loading ??= new Promise<void>((resolve, reject) => {
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
     if (!clientId) {
       reject(
@@ -55,7 +58,16 @@ export function loadGoogleIdentity(): Promise<void> {
       return;
     }
     const script = document.createElement("script");
-    script.src = trustedGisUrl();
+    const fail = (message: string) => {
+      script.remove();
+      reject(new AuthError("unavailable", message));
+    };
+    try {
+      script.src = trustedGisUrl();
+    } catch {
+      fail("The page refused the Trusted Types policy");
+      return;
+    }
     script.addEventListener("load", () => {
       try {
         client = google.accounts.oauth2.initTokenClient({
@@ -66,13 +78,16 @@ export function loadGoogleIdentity(): Promise<void> {
         });
         resolve();
       } catch {
-        reject(new AuthError("unavailable", "The GIS script defines no API"));
+        fail("The GIS script defines no API");
       }
     });
     script.addEventListener("error", () => {
-      reject(new AuthError("unavailable", "The GIS script failed to load"));
+      fail("The GIS script failed to load");
     });
     document.head.append(script);
+  }).catch((error: unknown) => {
+    loading = undefined;
+    throw error;
   });
   return loading;
 }
@@ -95,19 +110,27 @@ export function requestAccessToken(loginHint?: string): Promise<string> {
   );
   return new Promise((resolve, reject) => {
     pending = { resolve, reject };
-    tokenClient.requestAccessToken(
-      loginHint === undefined
-        ? { prompt: "select_account" }
-        : { prompt: "", login_hint: loginHint },
-    );
+    try {
+      tokenClient.requestAccessToken(
+        loginHint === undefined
+          ? { prompt: "select_account" }
+          : { prompt: "", login_hint: loginHint },
+      );
+    } catch {
+      takePending();
+      reject(new AuthError("failed", "Google's token client failed"));
+    }
   });
 }
 
 /** The current token, or undefined once it has 5 minutes or less to live. */
 export function getAccessToken(): string | undefined {
-  token ??= readStoredToken();
-  if (!token || token.expiresAt - Date.now() <= EXPIRY_MARGIN_MS) return;
-  return token.accessToken;
+  if (!restored) {
+    token ??= readStoredToken();
+    restored = true;
+  }
+  if (token && token.expiresAt - Date.now() <= EXPIRY_MARGIN_MS) clearToken();
+  return token?.accessToken;
 }
 
 export function clearToken(): void {
@@ -135,15 +158,32 @@ export function signOut(): void {
   write("localStorage", ACCOUNT_KEY, null);
 }
 
-function trustedGisUrl(): string {
-  const policy = window.trustedTypes?.createPolicy("drivemd-gis", {
-    createScriptURL: (url: string) => {
-      if (url !== GIS_URL) throw new TypeError(`Refusing to load ${url}`);
-      return url;
-    },
+/**
+ * Calls the listener after another tab of this browser signed out, once this
+ * tab has forgotten its own token.
+ */
+export function onSignOutElsewhere(listener: () => void): void {
+  window.addEventListener("storage", (event) => {
+    if (event.key !== ACCOUNT_KEY && event.key !== null) return;
+    if (getRememberedAccount() !== undefined) return;
+    clearToken();
+    listener();
   });
-  // The sink takes the TrustedScriptURL itself; DOM typings only know strings.
-  return (policy?.createScriptURL(GIS_URL) ?? GIS_URL) as string;
+}
+
+// Created once: a page cannot register two policies with the same name.
+function trustedGisUrl(): string {
+  if (gisUrl === undefined) {
+    const policy = window.trustedTypes?.createPolicy("drivemd-gis", {
+      createScriptURL: (url: string) => {
+        if (url !== GIS_URL) throw new TypeError(`Refusing to load ${url}`);
+        return url;
+      },
+    });
+    // The sink takes the TrustedScriptURL itself; DOM typings only know strings.
+    gisUrl = (policy?.createScriptURL(GIS_URL) ?? GIS_URL) as string;
+  }
+  return gisUrl;
 }
 
 function takePending(): PendingRequest | undefined {

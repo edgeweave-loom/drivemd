@@ -110,18 +110,39 @@ describe("loadGoogleIdentity", () => {
     expect(gisScript()).toBeNull();
   });
 
-  it("fails when the script cannot load", async () => {
+  it("retries on the next call after the script failed to load", async () => {
+    const createPolicy = vi.fn((_name: string, rules: object) => rules);
+    vi.stubGlobal("trustedTypes", { createPolicy });
     const auth = await importAuth();
-    const loading = auth.loadGoogleIdentity();
+    const failed = auth.loadGoogleIdentity();
     gisScript()?.dispatchEvent(new Event("error"));
 
-    await expect(loading).rejects.toMatchObject({ reason: "unavailable" });
+    await expect(failed).rejects.toMatchObject({ reason: "unavailable" });
+    expect(gisScript()).toBeNull();
+    const retried = auth.loadGoogleIdentity();
+    gisScript()?.dispatchEvent(new Event("load"));
+    await expect(retried).resolves.toBeUndefined();
+    expect(createPolicy).toHaveBeenCalledTimes(1);
   });
 
   it("fails when the script defines no Google API", async () => {
     vi.stubGlobal("google", undefined);
 
     await expect(loadAuth()).rejects.toMatchObject({ reason: "unavailable" });
+    expect(gisScript()).toBeNull();
+  });
+
+  it("fails when the page refuses the Trusted Types policy", async () => {
+    vi.stubGlobal("trustedTypes", {
+      createPolicy: () => {
+        throw new TypeError("Policy refused");
+      },
+    });
+    const auth = await importAuth();
+
+    await expect(auth.loadGoogleIdentity()).rejects.toMatchObject({
+      reason: "unavailable",
+    });
   });
 
   it("goes through a Trusted Types policy that only accepts the GIS script", async () => {
@@ -211,6 +232,19 @@ describe("requestAccessToken", () => {
     expect(error).toMatchObject({ reason });
   });
 
+  it("fails with a typed error when Google's client throws", async () => {
+    requestAccessToken.mockImplementationOnce(() => {
+      throw new Error("Invalid client state");
+    });
+    const auth = await loadAuth();
+
+    await expect(auth.requestAccessToken()).rejects.toMatchObject({
+      reason: "failed",
+    });
+    tokenClient().callback(tokenResponse());
+    expect(auth.getAccessToken()).toBeUndefined();
+  });
+
   it("supersedes a pending request with a newer one", async () => {
     const auth = await loadAuth();
     const first = auth.requestAccessToken();
@@ -294,6 +328,40 @@ describe("the session", () => {
     const reloaded = await importAuth();
     expect(reloaded.getAccessToken()).toBeUndefined();
     expect(reloaded.getRememberedAccount()).toBe(EMAIL);
+  });
+
+  it("forgets an expired token instead of keeping it in storage", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: 0 });
+    const auth = await loadAuth();
+    await signIn(auth);
+
+    vi.setSystemTime(55 * 60_000);
+    expect(auth.getAccessToken()).toBeUndefined();
+    expect(sessionStorage.getItem("drivemd.token")).toBeNull();
+  });
+
+  it("signs this tab out when another tab signs out", async () => {
+    const auth = await loadAuth();
+    await signIn(auth);
+    auth.rememberAccount(EMAIL);
+    const onSignOut = vi.fn();
+    auth.onSignOutElsewhere(onSignOut);
+
+    localStorage.setItem("drivemd.account", "grace@example.com");
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: "drivemd.account" }),
+    );
+    window.dispatchEvent(new StorageEvent("storage", { key: "unrelated" }));
+    expect(onSignOut).not.toHaveBeenCalled();
+    expect(auth.getAccessToken()).toBe(TOKEN);
+
+    localStorage.removeItem("drivemd.account");
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: "drivemd.account" }),
+    );
+    expect(onSignOut).toHaveBeenCalledOnce();
+    expect(auth.getAccessToken()).toBeUndefined();
+    expect(sessionStorage.getItem("drivemd.token")).toBeNull();
   });
 
   it("forgets the token, the account and a pending request on sign-out", async () => {
