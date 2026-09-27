@@ -45,6 +45,20 @@ async function loadAuth() {
   return auth;
 }
 
+async function signIn(auth: Awaited<ReturnType<typeof importAuth>>) {
+  const request = auth.requestAccessToken();
+  tokenClient().callback(tokenResponse());
+  return request;
+}
+
+function refuseStorage(): void {
+  for (const method of ["getItem", "setItem", "removeItem"] as const) {
+    vi.spyOn(Storage.prototype, method).mockImplementation(() => {
+      throw new DOMException("Storage is disabled", "SecurityError");
+    });
+  }
+}
+
 beforeEach(() => {
   options = undefined;
   vi.stubEnv("VITE_GOOGLE_CLIENT_ID", "example.apps.googleusercontent.com");
@@ -63,9 +77,12 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   vi.useRealTimers();
   requestAccessToken.mockReset();
   document.head.replaceChildren();
+  sessionStorage.clear();
+  localStorage.clear();
 });
 
 describe("loadGoogleIdentity", () => {
@@ -224,5 +241,73 @@ describe("getAccessToken", () => {
     expect(auth.getAccessToken()).toBe(TOKEN);
     vi.setSystemTime(55 * 60_000);
     expect(auth.getAccessToken()).toBeUndefined();
+  });
+});
+
+describe("the session", () => {
+  it("survives a reload in the same tab", async () => {
+    await signIn(await loadAuth());
+
+    const reloaded = await importAuth();
+    expect(reloaded.getAccessToken()).toBe(TOKEN);
+  });
+
+  it.each([
+    "{not json",
+    JSON.stringify({ accessToken: 42, expiresAt: "soon" }),
+  ])("ignores a malformed stored token: %s", async (stored) => {
+    sessionStorage.setItem("drivemd.token", stored);
+    const auth = await importAuth();
+
+    expect(auth.getAccessToken()).toBeUndefined();
+  });
+
+  it("lives in memory when the browser refuses storage", async () => {
+    refuseStorage();
+    const auth = await loadAuth();
+    await signIn(auth);
+    auth.rememberAccount(EMAIL);
+
+    expect(auth.getAccessToken()).toBe(TOKEN);
+    expect(auth.getRememberedAccount()).toBeUndefined();
+    auth.clearToken();
+    expect(auth.getAccessToken()).toBeUndefined();
+  });
+
+  it("remembers the account's email on the device", async () => {
+    const auth = await importAuth();
+    expect(auth.getRememberedAccount()).toBeUndefined();
+    auth.rememberAccount(EMAIL);
+
+    const relaunched = await importAuth();
+    expect(relaunched.getRememberedAccount()).toBe(EMAIL);
+    localStorage.setItem("drivemd.account", "");
+    expect(relaunched.getRememberedAccount()).toBeUndefined();
+  });
+
+  it("drops a rejected token but keeps the account for Continue", async () => {
+    const auth = await loadAuth();
+    await signIn(auth);
+    auth.rememberAccount(EMAIL);
+    auth.clearToken();
+
+    const reloaded = await importAuth();
+    expect(reloaded.getAccessToken()).toBeUndefined();
+    expect(reloaded.getRememberedAccount()).toBe(EMAIL);
+  });
+
+  it("forgets the token, the account and a pending request on sign-out", async () => {
+    const auth = await loadAuth();
+    await signIn(auth);
+    auth.rememberAccount(EMAIL);
+    const renewal = auth.requestAccessToken(EMAIL);
+    auth.signOut();
+
+    await expect(renewal).rejects.toMatchObject({ reason: "superseded" });
+    tokenClient().callback(tokenResponse());
+    expect(auth.getAccessToken()).toBeUndefined();
+    const reloaded = await importAuth();
+    expect(reloaded.getAccessToken()).toBeUndefined();
+    expect(reloaded.getRememberedAccount()).toBeUndefined();
   });
 });
