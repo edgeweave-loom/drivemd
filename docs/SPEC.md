@@ -161,6 +161,8 @@ Set the OAuth app's audience to **Internal**: apps used only inside our Workspac
 | `https://www.googleapis.com/auth/drive`         | Read and write every file the user can access, including files made by other tools |
 | `https://www.googleapis.com/auth/drive.install` | Lets the app appear in Drive's Open with menu                                      |
 
+The app shows the signed-in account's email from Drive's `about.get` (`fields=user(emailAddress)`), so it needs no `openid` or `email` scope.
+
 **Tokens**
 
 - Use the GIS token model (`initTokenClient`). Tokens last about 1 hour, and there is no refresh token without a backend.
