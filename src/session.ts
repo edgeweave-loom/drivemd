@@ -15,16 +15,20 @@ export interface SessionState {
   /** A sign-in the user started has not settled yet. */
   waiting: boolean;
   message: string | undefined;
+  /** What the security policy blocked that sign-in depends on, if anything. */
+  blocked: string | undefined;
 }
 
 /**
- * The sign-in state behind the screens, for `useSyncExternalStore`. signIn
- * opens Google's popup, so call it straight from a click or tap handler.
+ * The sign-in state behind the screens, for `useSyncExternalStore`. signIn and
+ * continueSession open Google's popup, so call them straight from a click or
+ * tap handler.
  */
 export interface Session {
   subscribe: (listener: () => void) => () => void;
   getSnapshot: () => SessionState;
   signIn: () => void;
+  continueSession: () => void;
   signOut: () => void;
   retry: () => void;
 }
@@ -51,6 +55,7 @@ export function createSession(): Session {
     google: "loading",
     waiting: false,
     message: undefined,
+    blocked: undefined,
   };
 
   function update(changes: Partial<SessionState>): void {
@@ -96,10 +101,10 @@ export function createSession(): Session {
     }
   }
 
-  function start(request: Promise<string>): void {
+  function start(request: Promise<string>, expectedEmail?: string): void {
     epoch += 1;
     update({ waiting: true, message: undefined });
-    void finish(request, epoch);
+    void finish(request, epoch, expectedEmail);
   }
 
   function loadGoogle(): void {
@@ -114,6 +119,28 @@ export function createSession(): Session {
     );
   }
 
+  function signedOutElsewhere(): void {
+    epoch += 1;
+    auth.clearToken();
+    update({
+      screen: signedOutScreen(),
+      waiting: false,
+      message: "This tab was signed out from another tab.",
+    });
+  }
+
+  // A tab coming back to the foreground may have missed a sign-out, or
+  // outlived its token.
+  function checkSession(): void {
+    const { screen } = state;
+    if (document.visibilityState === "hidden" || screen.name !== "home") return;
+    if (auth.getRememberedAccount() !== screen.email) {
+      signedOutElsewhere();
+    } else if (auth.getAccessToken() === undefined) {
+      update({ screen: { name: "continue", email: screen.email } });
+    }
+  }
+
   loadGoogle();
   // A stored token counts only for the account the device still remembers:
   // otherwise it predates a sign-out made while this tab was not running.
@@ -125,6 +152,15 @@ export function createSession(): Session {
     update({ screen: { name: "loading" }, waiting: true });
     void finish(Promise.resolve(token), epoch, account);
   }
+  document.addEventListener("visibilitychange", checkSession);
+  window.addEventListener("pageshow", checkSession);
+  document.addEventListener("securitypolicyviolation", (event) => {
+    const blocked = describeBlock(event);
+    if (blocked !== undefined) update({ blocked });
+  });
+  auth.onSignOutElsewhere(() => {
+    if (state.screen.name !== "sign-in" || state.waiting) signedOutElsewhere();
+  });
 
   return {
     subscribe(listener) {
@@ -137,6 +173,15 @@ export function createSession(): Session {
     signIn() {
       start(auth.requestAccessToken());
     },
+    continueSession() {
+      const { screen } = state;
+      if (screen.name !== "continue") return;
+      const current = auth.getAccessToken();
+      // A fresh popup may sign in another account on purpose; a reused token
+      // must still belong to the account shown.
+      if (current === undefined) start(auth.requestAccessToken(screen.email));
+      else start(Promise.resolve(current), screen.email);
+    },
     signOut() {
       epoch += 1;
       auth.signOut();
@@ -148,6 +193,29 @@ export function createSession(): Session {
     },
     retry: loadGoogle,
   };
+}
+
+const SIGN_IN_ORIGINS = new Set([
+  "https://accounts.google.com",
+  "https://www.googleapis.com",
+]);
+
+/**
+ * Describes a violation that sign-in depends on, for diagnosing it on a phone
+ * without devtools. Other violations, such as an extension's injected script
+ * or a style Google's script inlines for widgets the app does not use, are
+ * ignored; so is the full blocked URL, which could carry more than an origin.
+ */
+function describeBlock(
+  event: SecurityPolicyViolationEvent,
+): string | undefined {
+  if (event.disposition === "report") return;
+  const blocked = URL.canParse(event.blockedURI)
+    ? new URL(event.blockedURI).origin
+    : event.blockedURI;
+  const trustedTypes = event.effectiveDirective.includes("trusted-types");
+  if (!trustedTypes && !SIGN_IN_ORIGINS.has(blocked)) return;
+  return `The browser's security policy blocked ${blocked} (${event.effectiveDirective}).`;
 }
 
 function messageFor(error: unknown): string | undefined {

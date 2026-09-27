@@ -13,6 +13,7 @@ vi.mock("./auth.ts", async (importOriginal) => ({
   getRememberedAccount: vi.fn(),
   rememberAccount: vi.fn(),
   signOut: vi.fn(),
+  onSignOutElsewhere: vi.fn(),
 }));
 
 vi.mock("./drive.ts", async (importOriginal) => ({
@@ -45,6 +46,27 @@ async function settled(session: Session) {
   await vi.waitFor(() => {
     expect(session.getSnapshot().waiting).toBe(false);
   });
+}
+
+async function signedIn() {
+  vi.mocked(auth.getAccessToken).mockReturnValue(TOKEN);
+  vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
+  const session = createSession();
+  await settled(session);
+  return session;
+}
+
+function onSignOutElsewhere() {
+  const [[listener]] = vi.mocked(auth.onSignOutElsewhere).mock.calls as [
+    [() => void],
+  ];
+  listener();
+}
+
+function violate(details: Record<string, string>) {
+  document.dispatchEvent(
+    Object.assign(new Event("securitypolicyviolation"), details),
+  );
 }
 
 beforeEach(() => {
@@ -239,6 +261,62 @@ describe("signing in", () => {
   });
 });
 
+describe("continuing", () => {
+  it("renews the token for the remembered account within the tap", async () => {
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
+    vi.mocked(auth.requestAccessToken).mockResolvedValue(TOKEN);
+    const session = createSession();
+
+    session.continueSession();
+    expect(auth.requestAccessToken).toHaveBeenCalledWith(EMAIL);
+    await settled(session);
+    expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
+  });
+
+  it("keeps the token when Drive is unreachable, then continues without a popup", async () => {
+    vi.mocked(auth.getAccessToken).mockReturnValue(TOKEN);
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
+    vi.mocked(getAccountEmail).mockRejectedValueOnce(
+      new DriveError(0, "Google Drive could not be reached"),
+    );
+    const session = createSession();
+    await settled(session);
+    expect(session.getSnapshot().message).toMatch(/could not be reached/);
+    expect(auth.clearToken).not.toHaveBeenCalled();
+
+    session.continueSession();
+    await settled(session);
+    expect(auth.requestAccessToken).not.toHaveBeenCalled();
+    expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
+  });
+
+  it("drops a reused token that belongs to another account", async () => {
+    vi.mocked(auth.getAccessToken).mockReturnValue(TOKEN);
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
+    vi.mocked(getAccountEmail)
+      .mockRejectedValueOnce(
+        new DriveError(0, "Google Drive could not be reached"),
+      )
+      .mockResolvedValueOnce("grace@example.com");
+    const session = createSession();
+    await settled(session);
+
+    session.continueSession();
+    await settled(session);
+    expect(auth.clearToken).toHaveBeenCalled();
+    expect(auth.rememberAccount).not.toHaveBeenCalled();
+    expect(screenOf(session)).toEqual({ name: "continue", email: EMAIL });
+  });
+
+  it("does nothing outside the Continue screen", () => {
+    const session = createSession();
+    session.continueSession();
+
+    expect(auth.requestAccessToken).not.toHaveBeenCalled();
+    expect(session.getSnapshot().waiting).toBe(false);
+  });
+});
+
 describe("signing out", () => {
   it.each([
     [
@@ -273,4 +351,105 @@ describe("signing out", () => {
       expect(auth.rememberAccount).not.toHaveBeenCalled();
     },
   );
+
+  it("follows a sign-out in another tab", async () => {
+    const session = await signedIn();
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(undefined);
+    onSignOutElsewhere();
+
+    expect(session.getSnapshot()).toMatchObject({
+      screen: { name: "sign-in" },
+      message: "This tab was signed out from another tab.",
+    });
+  });
+
+  it("ignores a sign-out elsewhere while idle on Sign in", () => {
+    const session = createSession();
+    onSignOutElsewhere();
+
+    expect(session.getSnapshot()).toMatchObject({
+      screen: { name: "sign-in" },
+      message: undefined,
+    });
+  });
+});
+
+describe("while the app is open", () => {
+  it.each(["visibilitychange", "pageshow"])(
+    "asks to Continue on %s once the token has expired",
+    async (event) => {
+      const session = await signedIn();
+      vi.mocked(auth.getAccessToken).mockReturnValue(undefined);
+      (event === "pageshow" ? window : document).dispatchEvent(
+        new Event(event),
+      );
+
+      expect(screenOf(session)).toEqual({ name: "continue", email: EMAIL });
+    },
+  );
+
+  it("signs this tab out on return when the device signed out meanwhile", async () => {
+    const session = await signedIn();
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(undefined);
+    window.dispatchEvent(new Event("pageshow"));
+
+    expect(auth.clearToken).toHaveBeenCalled();
+    expect(session.getSnapshot()).toMatchObject({
+      screen: { name: "sign-in" },
+      message: "This tab was signed out from another tab.",
+    });
+  });
+
+  it("keeps the session while the token is valid or the page is hidden", async () => {
+    const session = await signedIn();
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
+    vi.mocked(auth.getAccessToken).mockReturnValue(undefined);
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
+  });
+
+  it.each([
+    [
+      "https://accounts.google.com/gsi/client?v=1",
+      "script-src-elem",
+      "https://accounts.google.com",
+    ],
+    [
+      "https://www.googleapis.com/drive/v3/about",
+      "connect-src",
+      "https://www.googleapis.com",
+    ],
+    ["trusted-types-sink", "require-trusted-types-for", "trusted-types-sink"],
+  ])(
+    "shows that the security policy blocked %s",
+    (blockedURI, directive, shown) => {
+      const session = createSession();
+      violate({ blockedURI, effectiveDirective: directive });
+
+      expect(session.getSnapshot().blocked).toBe(
+        `The browser's security policy blocked ${shown} (${directive}).`,
+      );
+    },
+  );
+
+  it.each([
+    { blockedURI: "inline", effectiveDirective: "style-src-elem" },
+    {
+      blockedURI: "https://extension.example/x.js",
+      effectiveDirective: "script-src-elem",
+    },
+    {
+      blockedURI: "https://accounts.google.com/gsi/client",
+      effectiveDirective: "script-src-elem",
+      disposition: "report",
+    },
+  ])("ignores a violation that sign-in does not depend on: %o", (violation) => {
+    const session = createSession();
+    violate(violation);
+
+    expect(session.getSnapshot().blocked).toBeUndefined();
+  });
 });
