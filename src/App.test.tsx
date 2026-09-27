@@ -11,6 +11,7 @@ function fakeSession(initial: Partial<SessionState> = {}) {
     google: "ready",
     waiting: false,
     message: undefined,
+    blocked: undefined,
     ...initial,
   };
   const listeners = new Set<() => void>();
@@ -114,6 +115,23 @@ describe("App", () => {
 
     expect(screen.getByText(/Waiting for Google/)).toBeInTheDocument();
     expect(button("Sign in with Google")).toBeEnabled();
+  });
+
+  it("shows what the security policy blocked next to the message", () => {
+    const blocked =
+      "The browser's security policy blocked https://accounts.google.com (script-src-elem).";
+    render(
+      <App
+        session={
+          fakeSession({ blocked, message: "Google sign-in could not load." })
+            .session
+        }
+      />,
+    );
+
+    expect(
+      screen.getAllByRole("status").map((line) => line.textContent),
+    ).toEqual(["Google sign-in could not load.", blocked]);
   });
 
   it("follows the session as it changes", () => {

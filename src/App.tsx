@@ -16,6 +16,11 @@ export function App({ session }: { session: Session }) {
           {state.message}
         </p>
       )}
+      {state.blocked !== undefined && (
+        <p role="status" className="message">
+          {state.blocked}
+        </p>
+      )}
     </main>
   );
 }

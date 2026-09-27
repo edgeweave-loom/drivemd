@@ -83,6 +83,11 @@ describe("Firebase Hosting", () => {
     it("requires Trusted Types for the DOM sinks that run scripts", () => {
       expect(csp.get("require-trusted-types-for")).toEqual(["'script'"]);
     });
+
+    it("allows no Trusted Types policy but the app's own", () => {
+      // A lenient "default" policy would silently undo the requirement.
+      expect(csp.get("trusted-types")).toEqual(["drivemd-gis"]);
+    });
   });
 
   it("isolates the app from other origins' windows and requests", () => {

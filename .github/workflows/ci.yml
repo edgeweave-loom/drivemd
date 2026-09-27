@@ -40,6 +40,17 @@ jobs:
         run: npm run coverage
       - name: Type-check and build
         run: npm run build
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
+      - name: Require the OAuth client ID for staging
+        if: github.ref == 'refs/heads/dev' && vars.FIREBASE_PROJECT_ID != ''
+        run: |
+          if [ -z "$VITE_GOOGLE_CLIENT_ID" ]; then
+            echo "::error::Set the VITE_GOOGLE_CLIENT_ID repository variable."
+            exit 1
+          fi
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
       - name: Keep the build for the staging deploy
         if: github.ref == 'refs/heads/dev' && vars.FIREBASE_PROJECT_ID != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -6,7 +6,11 @@ DriveMD is a static web app for our Google Workspace organization. It signs in w
 
 ## Status
 
-Milestone 1 is in progress: the app builds and shows its shell; sign-in and the staging deployment come next. The product spec, [`docs/SPEC.md`](docs/SPEC.md), is the source of truth, and its build plan drives the work one milestone at a time.
+Milestone 1 is in progress: the app signs in with Google and shows the signed-in account's email, and CI deploys `dev` to staging. A test on a real iPhone decides next whether sign-in needs a small token backend. The product spec, [`docs/SPEC.md`](docs/SPEC.md), is the source of truth, and its build plan drives the work one milestone at a time.
+
+## Signing in
+
+**Sign in with Google** opens Google's window, so the browser must allow pop-ups for the site. The session then lasts about an hour for the tab: a reload keeps it, while a new tab or a relaunch of the Home Screen app asks for **Continue**, which renews it for the account remembered on the device, usually with a window that closes by itself. **Sign out** forgets the session on the device, in every open tab, without revoking DriveMD's access to the Google account.
 
 ## Stack
 
@@ -62,6 +66,7 @@ Once CI passes, every push to `dev` deploys staging, https://md-staging.corp.edg
 | Variable                         | Value                                                                               |
 | -------------------------------- | ----------------------------------------------------------------------------------- |
 | `FIREBASE_PROJECT_ID`            | The Google Cloud project that hosts staging                                         |
+| `VITE_GOOGLE_CLIENT_ID`          | The OAuth client ID that the build embeds, as in Configuration                      |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | `projects/<number>/locations/global/workloadIdentityPools/github/providers/drivemd` |
 | `GCP_SERVICE_ACCOUNT`            | `github-deploy@<project>.iam.gserviceaccount.com`                                   |
 
