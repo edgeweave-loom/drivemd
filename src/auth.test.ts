@@ -280,10 +280,20 @@ describe("getAccessToken", () => {
 
 describe("the session", () => {
   it("survives a reload in the same tab", async () => {
-    await signIn(await loadAuth());
+    const auth = await loadAuth();
+    await signIn(auth);
+    auth.rememberAccount(EMAIL);
 
     const reloaded = await importAuth();
     expect(reloaded.getAccessToken()).toBe(TOKEN);
+  });
+
+  it("does not bring back the token of a tab reopened after a sign-out", async () => {
+    await signIn(await loadAuth());
+
+    const reopened = await importAuth();
+    expect(reopened.getAccessToken()).toBeUndefined();
+    expect(sessionStorage.getItem("drivemd.token")).toBeNull();
   });
 
   it.each([
@@ -291,6 +301,7 @@ describe("the session", () => {
     JSON.stringify({ accessToken: 42, expiresAt: "soon" }),
   ])("ignores a malformed stored token: %s", async (stored) => {
     sessionStorage.setItem("drivemd.token", stored);
+    localStorage.setItem("drivemd.account", EMAIL);
     const auth = await importAuth();
 
     expect(auth.getAccessToken()).toBeUndefined();
@@ -362,6 +373,19 @@ describe("the session", () => {
     expect(onSignOut).toHaveBeenCalledOnce();
     expect(auth.getAccessToken()).toBeUndefined();
     expect(sessionStorage.getItem("drivemd.token")).toBeNull();
+  });
+
+  it("cancels a pending sign-in when another tab signs out", async () => {
+    const auth = await loadAuth();
+    auth.onSignOutElsewhere(vi.fn());
+    const request = auth.requestAccessToken();
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: "drivemd.account" }),
+    );
+
+    await expect(request).rejects.toMatchObject({ reason: "superseded" });
+    tokenClient().callback(tokenResponse());
+    expect(auth.getAccessToken()).toBeUndefined();
   });
 
   it("forgets the token, the account and a pending request on sign-out", async () => {

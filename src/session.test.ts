@@ -82,14 +82,29 @@ describe("on start", () => {
     });
   });
 
-  it("reopens this tab's session with the email Drive reports", async () => {
+  it("reopens this tab's session for the account remembered on the device", async () => {
     vi.mocked(auth.getAccessToken).mockReturnValue(TOKEN);
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
     const session = createSession();
 
     expect(screenOf(session)).toEqual({ name: "loading" });
     await settled(session);
     expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
     expect(getAccountEmail).toHaveBeenCalledWith(TOKEN);
+  });
+
+  it("drops a stored token that belongs to another account", async () => {
+    vi.mocked(auth.getAccessToken).mockReturnValue(TOKEN);
+    vi.mocked(auth.getRememberedAccount).mockReturnValue("grace@example.com");
+    const session = createSession();
+
+    await settled(session);
+    expect(auth.clearToken).toHaveBeenCalled();
+    expect(auth.rememberAccount).not.toHaveBeenCalled();
+    expect(screenOf(session)).toEqual({
+      name: "continue",
+      email: "grace@example.com",
+    });
   });
 
   it("asks to Continue when Drive rejects the stored token", async () => {
@@ -184,6 +199,35 @@ describe("signing in", () => {
     await settled(session);
     expect(session.getSnapshot().message).toBe(
       "Something went wrong. Try again.",
+    );
+  });
+
+  it("clears an earlier message once signed in", async () => {
+    vi.mocked(auth.getAccessToken).mockReturnValue(TOKEN);
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
+    vi.mocked(auth.loadGoogleIdentity).mockRejectedValueOnce(
+      new AuthError("unavailable", "The GIS script failed to load"),
+    );
+    const session = createSession();
+
+    await settled(session);
+    expect(session.getSnapshot()).toMatchObject({
+      screen: { name: "home", email: EMAIL },
+      message: undefined,
+    });
+  });
+
+  it("reports an answer without an email as such", async () => {
+    vi.mocked(auth.requestAccessToken).mockResolvedValue(TOKEN);
+    vi.mocked(getAccountEmail).mockRejectedValue(
+      new DriveError(200, "Google Drive sent no email address"),
+    );
+    const session = createSession();
+
+    session.signIn();
+    await settled(session);
+    expect(session.getSnapshot().message).toBe(
+      "Google Drive sent no email address",
     );
   });
 
