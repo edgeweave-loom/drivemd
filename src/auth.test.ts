@@ -205,7 +205,6 @@ describe("requestAccessToken", () => {
 
   it.each([
     ["blocked", { type: "popup_failed_to_open" }, "popup_blocked"],
-    ["closed", { type: "popup_closed" }, "popup_closed"],
     ["failing", { type: "unknown" }, "failed"],
     ["failing without details", undefined, "failed"],
   ])("rejects when the popup is %s", async (_case, popupError, reason) => {
@@ -226,6 +225,17 @@ describe("requestAccessToken", () => {
     });
     tokenClient().callback(tokenResponse());
     expect(auth.getAccessToken()).toBeUndefined();
+  });
+
+  it("keeps waiting when Google reports its window closed", async () => {
+    // GIS also reports this while the window is still open, when the page in
+    // it cuts the window off from the app.
+    const auth = await loadAuth();
+    const request = auth.requestAccessToken();
+    tokenClient().error_callback({ type: "popup_closed" });
+    tokenClient().callback(tokenResponse());
+
+    await expect(request).resolves.toBe(TOKEN);
   });
 
   it("supersedes a pending request with a newer one", async () => {
