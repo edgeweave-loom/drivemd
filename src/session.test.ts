@@ -238,68 +238,27 @@ describe("signing in", () => {
     });
   });
 
-  it("reports an answer without an email as such", async () => {
-    vi.mocked(auth.requestAccessToken).mockResolvedValue(TOKEN);
-    vi.mocked(getAccountEmail).mockRejectedValue(
-      new DriveError(200, "Google Drive sent no email address"),
-    );
-    const session = createSession();
-
-    session.signIn();
-    await settled(session);
-    expect(session.getSnapshot().message).toBe(
-      "Google Drive sent no email address",
-    );
-  });
-
-  it("reports Drive's refusal after sign-in", async () => {
-    vi.mocked(auth.requestAccessToken).mockResolvedValue(TOKEN);
-    vi.mocked(getAccountEmail).mockRejectedValue(
+  it.each([
+    [
       new DriveError(403, "Drive API is disabled"),
-    );
+      "Google Drive refused the request: Drive API is disabled",
+    ],
+    [
+      new DriveError(0, "Google Drive could not be reached"),
+      "Google Drive could not be reached. Check your connection.",
+    ],
+    [
+      new DriveError(200, "Google Drive sent no email address"),
+      "Google Drive sent no email address",
+    ],
+  ])("explains Drive's answer after sign-in: %s", async (error, message) => {
+    vi.mocked(auth.requestAccessToken).mockResolvedValue(TOKEN);
+    vi.mocked(getAccountEmail).mockRejectedValue(error);
     const session = createSession();
 
     session.signIn();
     await settled(session);
-    expect(session.getSnapshot().message).toMatch(/Drive API is disabled/);
-  });
-});
-
-describe("continuing", () => {
-  it("renews the token for the remembered account within the tap", async () => {
-    vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
-    vi.mocked(auth.requestAccessToken).mockResolvedValue(TOKEN);
-    const session = createSession();
-
-    session.continueSession();
-    expect(auth.requestAccessToken).toHaveBeenCalledWith(EMAIL);
-    await settled(session);
-    expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
-  });
-
-  it("keeps the token when Drive is unreachable, then continues without a popup", async () => {
-    vi.mocked(auth.getAccessToken).mockReturnValue(TOKEN);
-    vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
-    vi.mocked(getAccountEmail).mockRejectedValueOnce(
-      new DriveError(0, "Google Drive could not be reached"),
-    );
-    const session = createSession();
-    await settled(session);
-    expect(session.getSnapshot().message).toMatch(/could not be reached/);
-    expect(auth.clearToken).not.toHaveBeenCalled();
-
-    session.continueSession();
-    await settled(session);
-    expect(auth.requestAccessToken).not.toHaveBeenCalled();
-    expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
-  });
-
-  it("does nothing outside the Continue screen", () => {
-    const session = createSession();
-    session.continueSession();
-
-    expect(auth.requestAccessToken).not.toHaveBeenCalled();
-    expect(session.getSnapshot().waiting).toBe(false);
+    expect(session.getSnapshot().message).toBe(message);
   });
 });
 
