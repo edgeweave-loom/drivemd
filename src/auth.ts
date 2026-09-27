@@ -14,7 +14,6 @@ export type AuthErrorReason =
   | "not_configured"
   | "unavailable"
   | "popup_blocked"
-  | "popup_closed"
   | "access_denied"
   | "scope_denied"
   | "superseded"
@@ -237,12 +236,11 @@ function handleTokenResponse(response: unknown): void {
 
 function handleClientError(error: unknown): void {
   const type = isRecord(error) ? error.type : undefined;
-  const reason =
-    type === "popup_failed_to_open"
-      ? "popup_blocked"
-      : type === "popup_closed"
-        ? "popup_closed"
-        : "failed";
+  // GIS also reports a closed window while it is still open, when the page in
+  // it cuts the window off from the app: keep waiting for the token, and let
+  // the next tap replace this request if nothing comes.
+  if (type === "popup_closed") return;
+  const reason = type === "popup_failed_to_open" ? "popup_blocked" : "failed";
   takePending()?.reject(
     new AuthError(reason, "The Google sign-in window failed"),
   );
