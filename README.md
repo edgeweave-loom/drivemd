@@ -36,7 +36,7 @@ Open http://localhost:5173, not `127.0.0.1`: it is the only local origin the OAu
 | `npm run coverage` | Run the tests once; fails under the coverage thresholds         |
 | `npm run lint`     | Lint with type-aware and security rules; any warning fails      |
 | `npm run format`   | Format every file with Prettier (`npm run format:check` checks) |
-| `npm run deploy`   | Deploy `dist/` to Firebase Hosting (CI deploys staging)         |
+| `npm run deploy`   | Deploy `dist/` to the site mapped to the `app` target           |
 
 Write the failing test first, then the code that makes it pass. CI runs the checks above on every pull request and on every push to `dev` and `main`.
 
@@ -61,18 +61,19 @@ The app's access token can read and write the user's whole Drive, so the reposit
 
 ## Deployment
 
-Once CI passes, every push to `dev` deploys staging, https://md-staging.corp.edgeweave.tech, to the default Firebase Hosting site of the `FIREBASE_PROJECT_ID` project. The deploy job only runs firebase-tools on the `dist/` that the check job built, and it authenticates through Workload Identity Federation, so no service account key exists. The job is skipped until these repository variables are set:
+Once CI passes, every push to `dev` deploys staging, https://md-staging.corp.edgeweave.tech, to the `FIREBASE_HOSTING_SITE` site of the `FIREBASE_PROJECT_ID` project: `firebase.json` names the deploy target `app`, and CI maps it to that site. The deploy job only runs firebase-tools on the `dist/` that the check job built, and it authenticates through Workload Identity Federation, so no service account key exists. The job is skipped while `FIREBASE_PROJECT_ID` is unset; once it is set, CI stops before building if any other variable below is missing:
 
 | Variable                         | Value                                                                               |
 | -------------------------------- | ----------------------------------------------------------------------------------- |
 | `FIREBASE_PROJECT_ID`            | The Google Cloud project that hosts staging                                         |
+| `FIREBASE_HOSTING_SITE`          | The Hosting site that serves staging, such as `<project>-staging`                   |
 | `VITE_GOOGLE_CLIENT_ID`          | The OAuth client ID that the build embeds, as in Configuration                      |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | `projects/<number>/locations/global/workloadIdentityPools/github/providers/drivemd` |
 | `GCP_SERVICE_ACCOUNT`            | `github-deploy@<project>.iam.gserviceaccount.com`                                   |
 
 One-time setup, by an owner of the project:
 
-1. Add Firebase to the project, start Hosting, and connect the custom domain `md-staging.corp.edgeweave.tech`.
+1. Add Firebase to the project, start Hosting, add the staging site (`FIREBASE_HOSTING_SITE`), and connect the custom domain `md-staging.corp.edgeweave.tech` to that site.
 2. Create the deploy account, which can only manage Firebase Hosting, and let only the CI workflow of this repository, on `dev`, use it:
 
 ```sh
@@ -96,10 +97,13 @@ gcloud iam service-accounts add-iam-policy-binding "$SA" --project "$PROJECT_ID"
   --member "principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository_id/$REPO_ID"
 
 gh variable set FIREBASE_PROJECT_ID --body "$PROJECT_ID"
+gh variable set FIREBASE_HOSTING_SITE --body "<staging-site-id>"
 gh variable set GCP_SERVICE_ACCOUNT --body "$SA"
 gh variable set GCP_WORKLOAD_IDENTITY_PROVIDER --body "projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/drivemd"
 ```
 
 The deploy account can manage every Hosting site of its project, so production (milestone 7) belongs in a project of its own.
 
-To see the headers and cache rules as Hosting serves them, run `npm run build`, then `npx firebase emulators:start --only hosting --project demo-drivemd`, and open http://127.0.0.1:5000 (sign-in does not work on that origin).
+CI deploys by itself. To deploy by hand, map the target to a site first, which writes a `.firebaserc` that git ignores: `npm exec --no -- firebase target:apply hosting app <site-id> --project <project-id>`, then `npm run deploy -- --project <project-id>`.
+
+To see the headers and cache rules as Hosting serves them, run `npm run build`, map the target once with `npm exec --no -- firebase target:apply hosting app demo-drivemd --project demo-drivemd`, then run `npm exec --no -- firebase emulators:start --only hosting --project demo-drivemd` and open http://127.0.0.1:5000 (sign-in does not work on that origin).
