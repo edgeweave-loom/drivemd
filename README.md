@@ -6,7 +6,7 @@ DriveMD is a static web app for our Google Workspace organization. It signs in w
 
 ## Status
 
-Milestone 1 is done: the app signs in with Google and shows the signed-in account's email, CI deploys `dev` to staging, and sign-in passed the test on a real iPhone without a token backend. Milestone 2, the Drive client, comes next. The product spec, [`docs/SPEC.md`](docs/SPEC.md), is the source of truth, and its build plan drives the work one milestone at a time.
+Milestone 1 is done: the app signs in with Google and shows the signed-in account's email, CI deploys `dev` to staging, and sign-in passed the test on a real iPhone without a token backend. Milestone 2 is done too: `src/drive.ts` is the typed Drive client that the next milestones build on, tested against mocked Drive answers. Milestone 3, the file navigator, comes next. The product spec, [`docs/SPEC.md`](docs/SPEC.md), is the source of truth, and its build plan drives the work one milestone at a time.
 
 ## Signing in
 
@@ -53,6 +53,7 @@ The app reads its settings from `VITE_*` environment variables when it is built.
 The app's access token can read and write the user's whole Drive, so the repository guards against injected code and a compromised supply chain:
 
 - Strict TypeScript and type-aware ESLint, whose rules reject `eval` and unsanitized DOM sinks such as `innerHTML` and `dangerouslySetInnerHTML`.
+- The Drive client sends the token only in the `Authorization` header, refuses an ID that is not shaped like a Drive ID before it reaches a URL or a query, escapes search text, and keeps Drive's answers out of the browser's HTTP cache.
 - `firebase.json` serves a strict Content Security Policy that enforces Trusted Types, along with HSTS, isolation from other origins' windows and requests, and no MIME sniffing. `src/security-headers.test.ts` fails if any of them weakens.
 - `.npmrc` saves exact versions in `package.json`, turns off dependency install scripts and refuses Node.js versions outside `engines`. After adding a dependency, check that it works without its install script.
 - CI installs from the lockfile with `npm ci`, verifies registry signatures, blocks malware and critical advisories in any dependency, and blocks any advisory in the dependencies that ship.

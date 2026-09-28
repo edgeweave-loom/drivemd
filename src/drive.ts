@@ -153,11 +153,18 @@ export interface Drive {
   keepRevision: (file: FileRef, revisionId: string) => Promise<void>;
   /** Marks the file as viewed now, which is what Recent sorts by. */
   markViewed: (file: FileRef) => Promise<void>;
+  /** Creates an empty Markdown file named `name` in the folder. */
+  createFile: (folder: FileRef, name: string) => Promise<DriveItem>;
+  renameFile: (file: FileRef, name: string) => Promise<DriveItem>;
+  /** Moves the file from the folder it is in to another. */
+  moveFile: (file: FileRef, from: FileRef, to: FileRef) => Promise<DriveItem>;
+  /** Moves the file to the trash, from which Drive can restore it. */
+  trashFile: (file: FileRef) => Promise<void>;
 }
 
 /** What a call writes: its method, and a body of the given type. */
 interface Change {
-  method: "PATCH";
+  method: "PATCH" | "POST";
   type: string;
   body: string | Uint8Array<ArrayBuffer>;
   /**
@@ -361,6 +368,37 @@ export function createDrive(auth: DriveAuth): Drive {
       const response = await send(url, [file], json({ keepForever: true }));
       await confirm(response);
     },
+    async createFile(folder, name) {
+      const params = { fields: ITEM_FIELDS, supportsAllDrives: "true" };
+      const file = {
+        name: named(name),
+        parents: [checked(folder.id)],
+        mimeType: "text/markdown",
+      };
+      const response = await send(
+        `${API}/files?${new URLSearchParams(params).toString()}`,
+        [folder],
+        json(file, "POST"),
+      );
+      return parse(response, readItem);
+    },
+    async renameFile(file, name) {
+      const change = json({ name: named(name) });
+      const url = fileUrl(file, { fields: ITEM_FIELDS });
+      return parse(await send(url, [file], change), readItem);
+    },
+    async moveFile(file, from, to) {
+      const url = fileUrl(file, {
+        addParents: checked(to.id),
+        removeParents: checked(from.id),
+        fields: ITEM_FIELDS,
+      });
+      return parse(await send(url, [file, from, to], json({})), readItem);
+    },
+    async trashFile(file) {
+      const url = fileUrl(file, { fields: "id" });
+      await confirm(await send(url, [file], json({ trashed: true })));
+    },
     async markViewed(file) {
       const viewed = { viewedByMeTime: new Date().toISOString() };
       const response = await send(
@@ -373,10 +411,10 @@ export function createDrive(auth: DriveAuth): Drive {
   };
 }
 
-/** A change that updates the item with the fields in `value`. */
-function json(value: object): Change {
+/** A change that sends `value` as JSON: new fields for the item, by default. */
+function json(value: object, method: Change["method"] = "PATCH"): Change {
   return {
-    method: "PATCH",
+    method,
     type: "application/json",
     body: JSON.stringify(value),
   };
@@ -415,6 +453,12 @@ function fileUrl(
 ): string {
   const query = new URLSearchParams({ ...params, supportsAllDrives: "true" });
   return `${base}/files/${checked(file.id)}?${query.toString()}`;
+}
+
+/** The name, refused when blank: the app never makes a nameless file. */
+function named(name: string): string {
+  if (name.trim() === "") throw new DriveError(400, "A file needs a name");
+  return name;
 }
 
 /** The ID, once it is known to be shaped like a Drive ID. */
@@ -521,6 +565,10 @@ function parseTarget(details: unknown): ShortcutTarget | undefined {
     mimeType,
     resourceKey: optionalString(details.targetResourceKey),
   };
+}
+
+function readItem(body: unknown): DriveItem | undefined {
+  return isRecord(body) ? parseItem(body) : undefined;
 }
 
 function parseFile(value: unknown): FileMetadata | undefined {
