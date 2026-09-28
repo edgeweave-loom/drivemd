@@ -24,6 +24,12 @@ describe("Firebase Hosting", () => {
     expect(firstRule?.source).toBe("**");
   });
 
+  it("names a deploy target rather than a site", () => {
+    // CI maps the target to FIREBASE_HOSTING_SITE, so no site ID is committed.
+    expect(hosting.target).toBe("app");
+    expect("site" in hosting).toBe(false);
+  });
+
   it("serves the Vite build as a single-page app, except for assets", () => {
     expect(hosting.public).toBe("dist");
     // A missing asset gets a 404, not the app's HTML with a 200 that the
