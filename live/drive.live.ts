@@ -82,6 +82,16 @@ function defineChecks(auth: DriveAuth): void {
     return make({ name: `${RUN} ${name}.md`, mimeType });
   }
 
+  /**
+   * A Markdown file of the given type. It is made without the .md extension,
+   * from which Drive would guess a type when told application/octet-stream,
+   * then renamed.
+   */
+  async function typed(name: string, mimeType: string) {
+    const id = await make({ name: `${RUN} ${name}`, mimeType });
+    return drive.renameFile({ id }, `${RUN} ${name}.md`);
+  }
+
   function ids(items: { id: string }[]): string[] {
     return items.map(({ id }) => id);
   }
@@ -148,13 +158,13 @@ function defineChecks(auth: DriveAuth): void {
   it.each(["text/markdown", "text/plain", "application/octet-stream"])(
     "keeps the type of a file saved as %s, and its exact bytes",
     async (mimeType) => {
-      const id = await markdown(mimeType.replace("/", "-"), mimeType);
-      const opened = await drive.getMetadata({ id });
-      expect(opened.mimeType, "the type Drive gave the new file").toBe(
-        mimeType,
-      );
+      const opened = await typed(mimeType.replace("/", "-"), mimeType);
+      expect(opened.mimeType, "the type of the new file").toBe(mimeType);
 
-      const saved = await drive.saveContent(opened, BYTES);
+      const saved = await drive.saveContent(
+        await drive.getMetadata(opened),
+        BYTES,
+      );
       expect(saved.mimeType).toBe(mimeType);
       expect(saved.md5Checksum).toBe(
         createHash("md5").update(BYTES).digest("hex"),
@@ -196,7 +206,8 @@ function defineChecks(auth: DriveAuth): void {
   });
 
   it("finds Markdown files by name whatever their type, and no Google document", async () => {
-    const plain = await markdown("found", "application/octet-stream");
+    const plain = await typed("found", "application/octet-stream");
+    expect(plain.mimeType).toBe("application/octet-stream");
     const doc = await make({
       name: `${RUN} document.md`,
       mimeType: "application/vnd.google-apps.document",
@@ -209,7 +220,7 @@ function defineChecks(auth: DriveAuth): void {
       (await found(named)).includes(doc),
     );
     await eventually("the file found by name", async () =>
-      ids(await drive.search(RUN)).includes(plain),
+      ids(await drive.search(RUN)).includes(plain.id),
     );
     const listed = ids(await drive.search(RUN)).includes(doc);
     expect(listed, "a Google document found as Markdown").toBe(false);
@@ -238,13 +249,16 @@ function defineChecks(auth: DriveAuth): void {
 
     const before = Date.now();
     await drive.markViewed(shared);
-    const { viewedByMeTime } = await answer(
-      await call("GET", `files/${shared.id}?fields=viewedByMeTime`),
-    );
-    const viewed =
-      typeof viewedByMeTime === "string" ? Date.parse(viewedByMeTime) : 0;
-    // A few seconds of leeway between this machine's clock and Drive's.
-    expect(viewed).toBeGreaterThanOrEqual(before - 5_000);
+    // Drive shows the new time a few seconds later; a few seconds of leeway
+    // also cover the gap between this machine's clock and Drive's.
+    await eventually("the new view time", async () => {
+      const { viewedByMeTime } = await answer(
+        await call("GET", `files/${shared.id}?fields=viewedByMeTime`),
+      );
+      const viewed =
+        typeof viewedByMeTime === "string" ? Date.parse(viewedByMeTime) : 0;
+      return viewed >= before - 5_000;
+    });
   });
 
   it("follows a shortcut it made, and tells when its target is in the trash", async () => {
