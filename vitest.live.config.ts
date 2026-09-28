@@ -6,8 +6,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["live/**/*.live.ts"],
-    // Drive's search index can take a while to show new files.
-    testTimeout: 180_000,
+    // A check may wait twice for Drive's search index, up to 2 minutes each.
+    testTimeout: 360_000,
     hookTimeout: 60_000,
   },
 });
