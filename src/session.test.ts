@@ -259,8 +259,8 @@ describe("signing in", () => {
       "Google Drive could not be reached. Check your connection.",
     ],
     [
-      new DriveError(200, "Google Drive sent no email address"),
-      "Google Drive sent no email address",
+      new DriveError(200, "Google Drive sent an unexpected answer"),
+      "Google Drive sent an unexpected answer",
     ],
   ])("explains Drive's answer after sign-in: %s", async (error, message) => {
     vi.mocked(auth.requestAccessToken).mockResolvedValue(TOKEN);
