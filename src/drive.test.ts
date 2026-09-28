@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DriveError, getAccountEmail } from "./drive.ts";
+import {
+  createDrive,
+  DriveError,
+  getAccountEmail,
+  type DriveAuth,
+  type FileRef,
+} from "./drive.ts";
 
 const TOKEN = "example-access-token";
+const NEW_TOKEN = "example-renewed-token";
 const ABOUT_URL =
   "https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)";
 
@@ -10,6 +17,34 @@ function answer(status: number, body: unknown): void {
     "fetch",
     vi.fn(() => Promise.resolve(Response.json(body, { status }))),
   );
+}
+
+/** Answers each Drive call with the next response, in order. */
+function respond(...responses: Response[]): void {
+  const fetchMock = vi.fn<typeof fetch>();
+  for (const response of responses) fetchMock.mockResolvedValueOnce(response);
+  vi.stubGlobal("fetch", fetchMock);
+}
+
+function refusal(status: number, message?: string): Response {
+  return Response.json({ error: { message } }, { status });
+}
+
+function sent(call = 0) {
+  const [url, init] = vi.mocked(fetch).mock.calls[call] ?? [];
+  if (typeof url !== "string") throw new Error(`No call #${String(call)}`);
+  return { url: new URL(url), headers: new Headers(init?.headers), init };
+}
+
+/** Hands out TOKEN, then NEW_TOKEN as if the user had tapped Continue. */
+function fakeAuth(): DriveAuth {
+  return {
+    token: vi
+      .fn<DriveAuth["token"]>()
+      .mockResolvedValueOnce(TOKEN)
+      .mockResolvedValue(NEW_TOKEN),
+    forget: vi.fn(),
+  };
 }
 
 afterEach(() => {
@@ -79,5 +114,222 @@ describe("getAccountEmail", () => {
     );
     expect(error).toMatchObject({ status: 0 });
     expect((error as Error).message).not.toContain(TOKEN);
+  });
+});
+
+const FILE = { id: "file-1", name: "notes.md", mimeType: "text/markdown" };
+const NOTHING_GRANTED = {
+  canAddChildren: false,
+  canComment: false,
+  canDownload: false,
+  canEdit: false,
+  canModifyContent: false,
+  canMoveItemOutOfDrive: false,
+  canMoveItemWithinDrive: false,
+  canRename: false,
+  canTrash: false,
+};
+
+function getMetadata(file: FileRef = { id: "file-1" }, auth = fakeAuth()) {
+  return createDrive(auth).getMetadata(file);
+}
+
+describe("Drive calls", () => {
+  it("send the token as a bearer, and only in the Authorization header", async () => {
+    respond(Response.json(FILE));
+
+    await getMetadata();
+    expect(sent().headers.get("Authorization")).toBe(`Bearer ${TOKEN}`);
+    expect(sent().url.href).not.toContain(TOKEN);
+  });
+
+  it("wait for a token, and do not reach Drive without one", async () => {
+    respond();
+    const auth = fakeAuth();
+    const signedOut = new Error("The user signed out");
+    vi.mocked(auth.token).mockReset().mockRejectedValue(signedOut);
+
+    await expect(getMetadata(undefined, auth)).rejects.toBe(signedOut);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("forget a refused token, and retry once with a new one", async () => {
+    respond(refusal(401, "Invalid Credentials"), Response.json(FILE));
+    const auth = fakeAuth();
+
+    await expect(getMetadata(undefined, auth)).resolves.toMatchObject(FILE);
+    expect(auth.forget).toHaveBeenCalledExactlyOnceWith(TOKEN);
+    expect(sent(1).headers.get("Authorization")).toBe(`Bearer ${NEW_TOKEN}`);
+    expect(sent(1).url).toEqual(sent(0).url);
+  });
+
+  it("forget the new token too when Drive refuses it, and report it", async () => {
+    respond(refusal(401), refusal(401, "Invalid Credentials"));
+    const auth = fakeAuth();
+
+    await expect(getMetadata(undefined, auth)).rejects.toMatchObject({
+      name: "DriveError",
+      status: 401,
+      message: "Invalid Credentials",
+    });
+    expect(vi.mocked(auth.forget).mock.calls).toEqual([[TOKEN], [NEW_TOKEN]]);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("fail with the token's error when no new token comes", async () => {
+    respond(refusal(401));
+    const auth = fakeAuth();
+    const signedOut = new Error("The user signed out");
+    vi.mocked(auth.token).mockRejectedValue(signedOut);
+
+    await expect(getMetadata(undefined, auth)).rejects.toBe(signedOut);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [refusal(404, "File not found: file-1."), "File not found: file-1."],
+    [refusal(403), "Google Drive answered 403"],
+    [new Response("Bad Gateway", { status: 502 }), "Google Drive answered 502"],
+  ])(
+    "report Drive's status and message when it refuses: %#",
+    async (response, message) => {
+      respond(response);
+
+      await expect(getMetadata()).rejects.toMatchObject({
+        name: "DriveError",
+        status: response.status,
+        message,
+      });
+    },
+  );
+
+  it("report a network failure without the token", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.reject(new TypeError(`Failed: Bearer ${TOKEN}`))),
+    );
+
+    const error = await getMetadata().catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(DriveError);
+    expect(error).toMatchObject({
+      status: 0,
+      message: "Google Drive could not be reached",
+    });
+  });
+
+  it("send the resource key of an item shared by link", async () => {
+    respond(Response.json(FILE));
+
+    await getMetadata({ id: "file-1", resourceKey: "key-1" });
+    expect(sent().headers.get("X-Goog-Drive-Resource-Keys")).toBe(
+      "file-1/key-1",
+    );
+  });
+
+  it.each([undefined, ""])(
+    "send no resource key header when the key is %j",
+    async (resourceKey) => {
+      respond(Response.json(FILE));
+
+      await getMetadata({ id: "file-1", resourceKey });
+      expect(sent().headers.has("X-Goog-Drive-Resource-Keys")).toBe(false);
+    },
+  );
+
+  it.each(["", ".", "..", "x/../../about", "x?fields=*", "x#y", "x&y", "x y"])(
+    "refuse an ID that could reach another endpoint or parameter: %j",
+    async (id) => {
+      respond(Response.json(FILE));
+      const auth = fakeAuth();
+
+      await expect(getMetadata({ id }, auth)).rejects.toMatchObject({
+        name: "DriveError",
+        status: 400,
+        message: "Not a Drive ID",
+      });
+      expect(auth.token).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("getMetadata", () => {
+  it("asks for the item and what the user may do with it, in any drive", async () => {
+    respond(Response.json(FILE));
+
+    await getMetadata();
+    const { url, init } = sent();
+    expect(init?.method).toBeUndefined();
+    expect(url.origin + url.pathname).toBe(
+      "https://www.googleapis.com/drive/v3/files/file-1",
+    );
+    expect(url.searchParams.get("supportsAllDrives")).toBe("true");
+    expect(url.searchParams.get("fields")).toBe(
+      "id,name,mimeType,resourceKey,parents,driveId," +
+        "capabilities(canAddChildren,canComment,canDownload,canEdit," +
+        "canModifyContent,canMoveItemOutOfDrive,canMoveItemWithinDrive," +
+        "canRename,canTrash)",
+    );
+  });
+
+  it("reads the item", async () => {
+    respond(
+      Response.json({
+        ...FILE,
+        resourceKey: "key-1",
+        parents: ["folder-1"],
+        driveId: "drive-1",
+        capabilities: { canEdit: true, canRename: true, canShare: true },
+      }),
+    );
+
+    await expect(getMetadata()).resolves.toEqual({
+      ...FILE,
+      resourceKey: "key-1",
+      parents: ["folder-1"],
+      driveId: "drive-1",
+      capabilities: { ...NOTHING_GRANTED, canEdit: true, canRename: true },
+    });
+  });
+
+  it.each([
+    [{}, {}],
+    [
+      {
+        resourceKey: "",
+        parents: ["folder-1", 7],
+        capabilities: { canEdit: "yes" },
+      },
+      { parents: ["folder-1"] },
+    ],
+  ])(
+    "denies what Drive does not grant, and leaves out what it does not send: %j",
+    async (sentFields, readFields) => {
+      respond(Response.json({ ...FILE, ...sentFields }));
+
+      await expect(getMetadata()).resolves.toEqual({
+        ...FILE,
+        resourceKey: undefined,
+        parents: [],
+        driveId: undefined,
+        capabilities: NOTHING_GRANTED,
+        ...readFields,
+      });
+    },
+  );
+
+  it.each([
+    null,
+    { ...FILE, id: 1 },
+    { ...FILE, name: undefined },
+    { ...FILE, mimeType: null },
+  ])("rejects a malformed answer: %j", async (body) => {
+    respond(Response.json(body));
+
+    await expect(getMetadata()).rejects.toMatchObject({
+      name: "DriveError",
+      status: 200,
+      message: "Google Drive sent an unexpected answer",
+    });
   });
 });
