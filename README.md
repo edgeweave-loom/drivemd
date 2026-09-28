@@ -57,7 +57,7 @@ The unit tests replace Google Drive with mocked answers, so a few behaviors can 
 To set up, once:
 
 1. Create an OAuth client of type **Desktop app** in the Google Cloud project, download its JSON, and save it as `client.json` in that folder, then `chmod 700` the folder and `chmod 600` the file.
-2. In your own terminal, since it asks you to paste an address, run `DRIVEMD_LIVE_ACCOUNT=<test account> npm run live-check:login`. Open the address it prints, sign in as the test account and allow access; the browser then fails to load `127.0.0.1`, and you paste its address back. The script keeps the grant only if the test account signed in, revoking it otherwise, and saves it as `grant.json`, readable only by you.
+2. In your own terminal, since it asks you to paste an address, run `DRIVEMD_LIVE_ACCOUNT=<test account> npm run live-check:login`. Open the address it prints, sign in as the test account and allow access; the browser then fails to load `127.0.0.1`, and you paste its address back. The script keeps the grant only if the test account signed in, and revokes any grant it cannot keep or that it replaces; it saves the grant as `grant.json`, readable only by you.
 
 Then `npm run live-check` runs the checks, which CI never does. They make what they need in a folder of their own in the test account's Drive and trash it at the end, and they compare IDs rather than listings, so that no failure prints the names of other files. A check that needs the shared file or the shared drive is skipped until it exists.
 
