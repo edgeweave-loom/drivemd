@@ -38,6 +38,14 @@ function sent(call = 0) {
 }
 
 /** Hands out TOKEN, then NEW_TOKEN as if the user had tapped Continue. */
+/** The JSON body of a Drive call. */
+function sentJson(call = 0): unknown {
+  const { body } = sent(call).init ?? {};
+  if (typeof body !== "string")
+    throw new Error(`No JSON in call #${String(call)}`);
+  return JSON.parse(body);
+}
+
 function fakeAuth(): DriveAuth {
   return {
     token: vi
@@ -268,6 +276,9 @@ const ITEM_FIELDS =
   "capabilities(canAddChildren,canComment,canDownload,canEdit," +
   "canModifyContent,canMoveItemOutOfDrive,canMoveItemWithinDrive," +
   "canRename,canTrash),contentRestrictions(readOnly,reason)";
+const FILE_FIELDS =
+  `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),` +
+  "md5Checksum,headRevisionId";
 
 describe("getMetadata", () => {
   it("asks for what the viewer shows and the conflict check compares, in any drive", async () => {
@@ -280,10 +291,7 @@ describe("getMetadata", () => {
       "https://www.googleapis.com/drive/v3/files/file-1",
     );
     expect(url.searchParams.get("supportsAllDrives")).toBe("true");
-    expect(url.searchParams.get("fields")).toBe(
-      `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),` +
-        "md5Checksum,headRevisionId",
-    );
+    expect(url.searchParams.get("fields")).toBe(FILE_FIELDS);
   });
 
   it("reads the file", async () => {
@@ -914,5 +922,143 @@ describe("checkShortcut", () => {
       name: "DriveError",
       status: 403,
     });
+  });
+});
+
+describe("saveContent", () => {
+  // A BOM and CRLF line endings, which the upload must keep.
+  const CONTENT = new Uint8Array([0xef, 0xbb, 0xbf, 0x23, 0x0d, 0x0a]);
+  const OPENED = { ...FILE, mimeType: "text/x-markdown", resourceKey: "key-1" };
+
+  /** Opens the file as the editor does, then saves CONTENT over it. */
+  async function save(auth = fakeAuth()) {
+    const drive = createDrive(auth);
+    const file = await drive.getMetadata({
+      id: "file-1",
+      resourceKey: "key-1",
+    });
+    return drive.saveContent(file, CONTENT);
+  }
+
+  it("uploads the bytes as they are, with the file's own type, and reads the new revision", async () => {
+    respond(
+      Response.json({ ...OPENED, headRevisionId: "revision-1" }),
+      Response.json({ ...OPENED, headRevisionId: "revision-2" }),
+    );
+
+    await expect(save()).resolves.toMatchObject({
+      headRevisionId: "revision-2",
+    });
+    const { url, headers, init } = sent(1);
+    expect(init?.method).toBe("PATCH");
+    expect(url.origin + url.pathname).toBe(
+      "https://www.googleapis.com/upload/drive/v3/files/file-1",
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      uploadType: "media",
+      fields: FILE_FIELDS,
+      supportsAllDrives: "true",
+    });
+    expect(headers.get("Content-Type")).toBe("text/x-markdown");
+    expect(headers.get("X-Goog-Drive-Resource-Keys")).toBe("file-1/key-1");
+    expect(init?.body).toEqual(CONTENT);
+  });
+
+  it("sends the same bytes again after renewing a refused token", async () => {
+    respond(Response.json(OPENED), refusal(401), Response.json(OPENED));
+
+    await save();
+    expect(sent(2).init?.method).toBe("PATCH");
+    expect(sent(2).init?.body).toEqual(CONTENT);
+    expect(sent(2).headers.get("Content-Type")).toBe("text/x-markdown");
+  });
+
+  it("reports Drive's refusal", async () => {
+    respond(
+      Response.json(OPENED),
+      refusal(403, "The user does not have sufficient permissions for file-1."),
+    );
+
+    await expect(save()).rejects.toMatchObject({
+      name: "DriveError",
+      status: 403,
+    });
+  });
+});
+
+describe("keepRevision", () => {
+  it("keeps the revision forever, whatever Drive cleans up", async () => {
+    respond(Response.json({ id: "revision-1" }));
+
+    await createDrive(fakeAuth()).keepRevision(
+      { id: "file-1", resourceKey: "key-1" },
+      "revision-1",
+    );
+    const { url, headers, init } = sent();
+    expect(init?.method).toBe("PATCH");
+    expect(url.origin + url.pathname).toBe(
+      "https://www.googleapis.com/drive/v3/files/file-1/revisions/revision-1",
+    );
+    // The revisions calls take no supportsAllDrives: they work in every drive.
+    expect(Object.fromEntries(url.searchParams)).toEqual({ fields: "id" });
+    expect(headers.get("Content-Type")).toBe("application/json");
+    expect(headers.get("X-Goog-Drive-Resource-Keys")).toBe("file-1/key-1");
+    expect(sentJson()).toEqual({ keepForever: true });
+  });
+
+  it("refuses a revision ID that could reach another endpoint", async () => {
+    respond();
+
+    await expect(
+      createDrive(fakeAuth()).keepRevision({ id: "file-1" }, "../../about"),
+    ).rejects.toMatchObject({ name: "DriveError", status: 400 });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("reports Drive's refusal", async () => {
+    respond(refusal(400, "Too many revisions are kept forever."));
+
+    await expect(
+      createDrive(fakeAuth()).keepRevision({ id: "file-1" }, "revision-1"),
+    ).rejects.toMatchObject({ name: "DriveError", status: 400 });
+  });
+});
+
+describe("markViewed", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("marks the file as viewed now, which Recent sorts by", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-28T12:00:00.000Z"));
+    respond(Response.json({ id: "file-1" }));
+
+    await createDrive(fakeAuth()).markViewed({
+      id: "file-1",
+      resourceKey: "key-1",
+    });
+    const { url, headers, init } = sent();
+    expect(init?.method).toBe("PATCH");
+    expect(url.origin + url.pathname).toBe(
+      "https://www.googleapis.com/drive/v3/files/file-1",
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      fields: "id",
+      supportsAllDrives: "true",
+    });
+    expect(headers.get("Content-Type")).toBe("application/json");
+    expect(headers.get("X-Goog-Drive-Resource-Keys")).toBe("file-1/key-1");
+    expect(sentJson()).toEqual({
+      viewedByMeTime: "2026-09-28T12:00:00.000Z",
+    });
+  });
+
+  it("reports Drive's refusal", async () => {
+    respond(refusal(404, "File not found: file-1."));
+
+    await expect(
+      createDrive(fakeAuth()).markViewed({ id: "file-1" }),
+    ).rejects.toMatchObject({ name: "DriveError", status: 404 });
   });
 });
