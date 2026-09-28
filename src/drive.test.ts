@@ -37,7 +37,6 @@ function sent(call = 0) {
   return { url: new URL(url), headers: new Headers(init?.headers), init };
 }
 
-/** Hands out TOKEN, then NEW_TOKEN as if the user had tapped Continue. */
 /** The JSON body of a Drive call. */
 function sentJson(call = 0): unknown {
   const { body } = sent(call).init ?? {};
@@ -46,6 +45,7 @@ function sentJson(call = 0): unknown {
   return JSON.parse(body);
 }
 
+/** Hands out TOKEN, then NEW_TOKEN as if the user had tapped Continue. */
 function fakeAuth(): DriveAuth {
   return {
     token: vi
@@ -964,13 +964,24 @@ describe("saveContent", () => {
     expect(init?.body).toEqual(CONTENT);
   });
 
-  it("sends the same bytes again after renewing a refused token", async () => {
-    respond(Response.json(OPENED), refusal(401), Response.json(OPENED));
+  // Waiting for a new token can take a tap on Continue, long after the
+  // conflict check: the save must check again before it retries.
+  it("forgets a refused token without saving again", async () => {
+    respond(Response.json(OPENED), refusal(401, "Invalid Credentials"));
+    const auth = fakeAuth();
+    vi.mocked(auth.token)
+      .mockReset()
+      .mockResolvedValueOnce(TOKEN)
+      .mockResolvedValueOnce(TOKEN)
+      .mockResolvedValue(NEW_TOKEN);
 
-    await save();
-    expect(sent(2).init?.method).toBe("PATCH");
-    expect(sent(2).init?.body).toEqual(CONTENT);
-    expect(sent(2).headers.get("Content-Type")).toBe("text/x-markdown");
+    await expect(save(auth)).rejects.toMatchObject({
+      name: "DriveError",
+      status: 401,
+    });
+    expect(auth.forget).toHaveBeenCalledExactlyOnceWith(TOKEN);
+    expect(auth.token).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("reports Drive's refusal", async () => {
@@ -1052,6 +1063,17 @@ describe("markViewed", () => {
     expect(sentJson()).toEqual({
       viewedByMeTime: "2026-09-28T12:00:00.000Z",
     });
+  });
+
+  it("renews a refused token and sends the same change again", async () => {
+    respond(refusal(401), Response.json({ id: "file-1" }));
+    const auth = fakeAuth();
+
+    await createDrive(auth).markViewed({ id: "file-1" });
+    expect(auth.forget).toHaveBeenCalledExactlyOnceWith(TOKEN);
+    expect(sent(1).headers.get("Authorization")).toBe(`Bearer ${NEW_TOKEN}`);
+    expect(sent(1).init?.method).toBe("PATCH");
+    expect(sentJson(1)).toEqual(sentJson(0));
   });
 
   it("reports Drive's refusal", async () => {

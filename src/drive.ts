@@ -115,7 +115,7 @@ export interface Drive {
    * could be older than the checksum a save compares, and the save would then
    * overwrite someone else's change.
    */
-  getContent: (file: FileMetadata) => Promise<Uint8Array>;
+  getContent: (file: FileMetadata) => Promise<Uint8Array<ArrayBuffer>>;
   /** Everything in the folder that is not in the trash, from every page. */
   listChildren: (folder: FileRef) => Promise<DriveItem[]>;
   /** The shared drives the user is a member of. */
@@ -141,7 +141,9 @@ export interface Drive {
   /**
    * Replaces the file's content with `content`, uploaded with the file's own
    * MIME type, and reads the new revision's metadata. Drive cannot write on
-   * a condition: compare the checksum with fresh metadata just before.
+   * a condition: compare the checksum with fresh metadata just before. After
+   * a 401, it forgets the token and fails rather than retry: check again once
+   * a new token has come, then save.
    */
   saveContent: (
     file: FileMetadata,
@@ -155,9 +157,14 @@ export interface Drive {
 
 /** What a call writes: its method, and a body of the given type. */
 interface Change {
-  method: "PATCH" | "POST";
+  method: "PATCH";
   type: string;
   body: string | Uint8Array<ArrayBuffer>;
+  /**
+   * The write rests on a check made just before it, which a new token could
+   * outdate: it may take a tap on Continue to come, so a 401 is not retried.
+   */
+  checked?: true;
 }
 
 /** Whether a name marks a Markdown file: MIME types are unreliable. */
@@ -176,7 +183,7 @@ export async function getAccountEmail(accessToken: string): Promise<string> {
 }
 
 export function createDrive(auth: DriveAuth): Drive {
-  /** Calls Drive, and after a 401 retries once with a new token. */
+  /** Calls Drive; after a 401, retries once with a new token, if it may. */
   async function send(
     url: string,
     files: FileRef[],
@@ -199,7 +206,8 @@ export function createDrive(auth: DriveAuth): Drive {
       return response;
     };
     const response = await attempt();
-    return response.status === 401 ? attempt() : response;
+    if (response.status !== 401 || change?.checked) return response;
+    return attempt();
   }
 
   /** Follows nextPageToken until Drive has sent every page of `key`. */
@@ -269,7 +277,7 @@ export function createDrive(auth: DriveAuth): Drive {
       return new Uint8Array(content);
     },
     async listChildren(folder) {
-      const q = `'${checked(folder)}' in parents and trashed = false`;
+      const q = `'${checked(folder.id)}' in parents and trashed = false`;
       return listFiles({ q }, [folder]);
     },
     async listSharedDrives() {
@@ -337,6 +345,7 @@ export function createDrive(auth: DriveAuth): Drive {
         method: "PATCH",
         type: file.mimeType,
         body: content,
+        checked: true,
       };
       const response = await send(
         fileUrl(file, params, UPLOAD),
@@ -347,8 +356,8 @@ export function createDrive(auth: DriveAuth): Drive {
     },
     async keepRevision(file, revisionId) {
       // The revisions calls take no supportsAllDrives: they work in any drive.
-      const revision = checked({ id: revisionId });
-      const url = `${API}/files/${checked(file)}/revisions/${revision}?fields=id`;
+      const revision = checked(revisionId);
+      const url = `${API}/files/${checked(file.id)}/revisions/${revision}?fields=id`;
       const response = await send(url, [file], json({ keepForever: true }));
       await confirm(response);
     },
@@ -405,16 +414,16 @@ function fileUrl(
   base = API,
 ): string {
   const query = new URLSearchParams({ ...params, supportsAllDrives: "true" });
-  return `${base}/files/${checked(file)}?${query.toString()}`;
+  return `${base}/files/${checked(file.id)}?${query.toString()}`;
 }
 
-/** The file's ID, once it is known to be shaped like a Drive ID. */
-function checked(file: FileRef): string {
+/** The ID, once it is known to be shaped like a Drive ID. */
+function checked(id: string): string {
   // Drive IDs use letters, digits, "-" and "_": any other character could
   // reach another endpoint or change a query, and "." or ".." in a path would
   // be resolved away.
-  if (!/^[\w-]+$/.test(file.id)) throw new DriveError(400, "Not a Drive ID");
-  return file.id;
+  if (!/^[\w-]+$/.test(id)) throw new DriveError(400, "Not a Drive ID");
+  return id;
 }
 
 // The token only ever travels in the Authorization header, and no error
@@ -443,7 +452,7 @@ async function parse<T>(
   response: Response,
   read: (body: unknown) => T | undefined,
 ): Promise<T> {
-  if (!response.ok) throw await refusal(response);
+  await confirm(response);
   const body: unknown = await response.json().catch(() => undefined);
   const value = read(body);
   if (value === undefined) {
