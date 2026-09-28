@@ -103,7 +103,10 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - name: Deploy to Firebase Hosting
-        run: npm run deploy -- --project "$FIREBASE_PROJECT_ID"
+      - name: Deploy to the staging site on Firebase Hosting
+        run: |
+          npm exec --no -- firebase target:apply hosting app "$FIREBASE_HOSTING_SITE" --project "$FIREBASE_PROJECT_ID"
+          npm run deploy -- --project "$FIREBASE_PROJECT_ID"
         env:
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          FIREBASE_HOSTING_SITE: ${{ vars.FIREBASE_HOSTING_SITE }}
