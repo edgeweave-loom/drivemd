@@ -281,7 +281,7 @@ describe("getMetadata", () => {
     );
     expect(url.searchParams.get("supportsAllDrives")).toBe("true");
     expect(url.searchParams.get("fields")).toBe(
-      `${ITEM_FIELDS},trashed,modifiedTime,lastModifyingUser(displayName),` +
+      `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),` +
         "md5Checksum,headRevisionId",
     );
   });
@@ -310,7 +310,6 @@ describe("getMetadata", () => {
       capabilities: { ...NOTHING_GRANTED, canEdit: true, canRename: true },
       locked: false,
       lockReason: undefined,
-      trashed: false,
       modifiedTime: "2026-09-01T10:00:00.000Z",
       lastModifiedBy: "Ada Lovelace",
       md5Checksum: "0cc175b9c0f1b6a831c399e269772661",
@@ -343,7 +342,6 @@ describe("getMetadata", () => {
         capabilities: NOTHING_GRANTED,
         locked: false,
         lockReason: undefined,
-        trashed: false,
         modifiedTime: undefined,
         lastModifiedBy: undefined,
         md5Checksum: undefined,
@@ -867,18 +865,40 @@ describe("checkShortcut", () => {
   }
 
   it("finds nothing wrong with a target the user can open", async () => {
-    respond(Response.json({ ...FILE, id: "file-2", trashed: false }));
+    respond(Response.json({ trashed: false }));
 
     await expect(checkShortcut()).resolves.toBeUndefined();
     const { url, headers } = sent();
     expect(url.pathname).toBe("/drive/v3/files/file-2");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      fields: "trashed",
+      supportsAllDrives: "true",
+    });
     expect(headers.get("X-Goog-Drive-Resource-Keys")).toBe("file-2/key-2");
   });
 
   it("reports a target in the trash", async () => {
-    respond(Response.json({ ...FILE, id: "file-2", trashed: true }));
+    respond(Response.json({ trashed: true }));
 
     await expect(checkShortcut()).resolves.toBe("trashed");
+  });
+
+  it.each([{}, { trashed: "true" }])(
+    "counts only a real true as in the trash: %j",
+    async (body) => {
+      respond(Response.json(body));
+
+      await expect(checkShortcut()).resolves.toBeUndefined();
+    },
+  );
+
+  it("rejects a malformed answer", async () => {
+    respond(Response.json(null));
+
+    await expect(checkShortcut()).rejects.toMatchObject({
+      name: "DriveError",
+      status: 200,
+    });
   });
 
   it("reports a target that was deleted or is not shared with the user", async () => {

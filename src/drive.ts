@@ -25,7 +25,7 @@ const ITEM_FIELDS =
 
 // An opened file also needs what the viewer shows and the conflict check
 // compares.
-const FILE_FIELDS = `${ITEM_FIELDS},trashed,modifiedTime,lastModifyingUser(displayName),md5Checksum,headRevisionId`;
+const FILE_FIELDS = `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),md5Checksum,headRevisionId`;
 
 const UNREACHABLE = "Google Drive could not be reached";
 
@@ -92,7 +92,6 @@ export interface DriveItem {
 }
 
 export interface FileMetadata extends DriveItem {
-  trashed: boolean;
   modifiedTime: string | undefined;
   /** Who changed the file last, when a signed-in user did. */
   lastModifiedBy: string | undefined;
@@ -292,24 +291,34 @@ export function createDrive(auth: DriveAuth): Drive {
     },
     async checkShortcut(target) {
       try {
-        const file = await getMetadata(target);
-        return file.trashed ? "trashed" : undefined;
+        const response = await send(fileUrl(target, { fields: "trashed" }), [
+          target,
+        ]);
+        const trashed = await parse(response, (body) =>
+          isRecord(body) ? body.trashed === true : undefined,
+        );
+        return trashed ? "trashed" : undefined;
       } catch (error) {
-        if (error instanceof DriveError && error.status === 404)
-          return "missing";
+        if (notFound(error)) return "missing";
         throw error;
       }
     },
   };
 }
 
-/**
- * Leaves out a folder the user cannot open, which Drive answers with 404. Any
- * other failure stands: Drive also answers 403 when it limits the rate.
- */
+/** Leaves out a folder the user cannot open; any other failure stands. */
 function outOfReach(error: unknown): undefined {
-  if (error instanceof DriveError && error.status === 404) return;
+  if (notFound(error)) return;
   throw error;
+}
+
+/**
+ * Whether Drive answered that the item is not there: deleted, or not shared
+ * with the user. Drive also answers 403 when it limits the rate, so a 403
+ * says nothing about the item.
+ */
+function notFound(error: unknown): boolean {
+  return error instanceof DriveError && error.status === 404;
 }
 
 /** A string literal in a Drive query. */
@@ -436,7 +445,6 @@ function parseFile(value: unknown): FileMetadata | undefined {
   const user = isRecord(value.lastModifyingUser) ? value.lastModifyingUser : {};
   return {
     ...item,
-    trashed: value.trashed === true,
     modifiedTime: optionalString(value.modifiedTime),
     lastModifiedBy: optionalString(user.displayName),
     md5Checksum: optionalString(value.md5Checksum),
