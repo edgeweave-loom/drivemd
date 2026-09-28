@@ -60,7 +60,7 @@ The interface is in English and follows the system's light or dark theme.
    - The **Shortcuts** root lists the shortcuts the user owns, that is the ones they created outside shared drives, wherever they sit, for one-tap access. Shortcuts in shared drives are left out: the whole team creates them, and Drive cannot tell which ones the user made.
    - A broken shortcut (target deleted, in the trash, or no access) is shown greyed out with a short reason.
    - Breadcrumbs show the path the user took, including through a shortcut. When there is no such path (deep link, **Open with**, reloaded folder URL), they are rebuilt from the parents up to My Drive, the shared drive or Shared with me; a parent the user cannot access ends the path.
-   - A search box finds Markdown files by name across all drives. Drive matches the start of words, not any substring: "plan" finds `planning.md` but not `myplan.md`. It shows the Markdown files among the first 100 matches, the most recently modified first.
+   - A search box finds Markdown files by name across all drives. Drive matches the start of words, not any substring: "plan" finds `planning.md` but not `myplan.md`, and every word typed must match. It shows the Markdown files among the first 100 matches, the most recently modified first.
 4. **Viewer.** Files open in the viewer by default, on every screen, with an **Edit** button.
    - Renders Markdown with GitHub-style extras: tables, task lists, strikethrough, autolinks and footnotes. Code blocks are syntax-highlighted. Math and Mermaid are not rendered; they show as written.
    - Raw HTML is rendered and sanitized as GitHub does, and HTML comments are hidden. YAML front matter shows as a properties table at the top instead of rendering as a heading.

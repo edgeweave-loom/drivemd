@@ -710,12 +710,22 @@ describe("search", () => {
     });
   });
 
+  it("needs every word of the text, in any order", async () => {
+    respond(Response.json({ files: [] }));
+
+    await createDrive(fakeAuth()).search(" weekly  plan ");
+    expect(sent().url.searchParams.get("q")).toBe(
+      "name contains 'weekly' and name contains 'plan' " +
+        `and trashed = false and ${WITH_CONTENT}`,
+    );
+  });
+
   it("keeps quotes and backslashes in the text from changing the query", async () => {
     respond(Response.json({ files: [] }));
 
-    await createDrive(fakeAuth()).search("Ada's \\notes' or name contains '");
+    await createDrive(fakeAuth()).search("Ada's\\notes' or");
     expect(sent().url.searchParams.get("q")).toBe(
-      "name contains 'Ada\\'s \\\\notes\\' or name contains \\'' " +
+      "name contains 'Ada\\'s\\\\notes\\'' and name contains 'or' " +
         `and trashed = false and ${WITH_CONTENT}`,
     );
   });
@@ -774,24 +784,25 @@ describe("findVaults", () => {
     });
   });
 
-  it.each([403, 404])(
-    "leaves out a vault whose folder answers %i",
-    async (status) => {
-      answerVaults([["vault-1"], ["vault-2"]], { "vault-2": status });
+  it("leaves out a vault whose folder the user cannot open", async () => {
+    answerVaults([["vault-1"], ["vault-2"]], { "vault-2": 404 });
 
-      const vaults = await createDrive(fakeAuth()).findVaults();
-      expect(vaults.map(({ id }) => id)).toEqual(["vault-1"]);
+    const vaults = await createDrive(fakeAuth()).findVaults();
+    expect(vaults.map(({ id }) => id)).toEqual(["vault-1"]);
+  });
+
+  // Drive also answers 403 when it limits the rate of requests.
+  it.each([403, 500])(
+    "fails when a vault's folder answers %i",
+    async (status) => {
+      answerVaults([["vault-1"]], { "vault-1": status });
+
+      await expect(createDrive(fakeAuth()).findVaults()).rejects.toMatchObject({
+        name: "DriveError",
+        status,
+      });
     },
   );
-
-  it("fails when Drive fails otherwise", async () => {
-    answerVaults([["vault-1"]], { "vault-1": 500 });
-
-    await expect(createDrive(fakeAuth()).findVaults()).rejects.toMatchObject({
-      name: "DriveError",
-      status: 500,
-    });
-  });
 });
 
 describe("listSharedWithMe", () => {
