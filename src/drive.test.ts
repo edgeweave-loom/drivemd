@@ -261,6 +261,13 @@ describe("Drive calls", () => {
   );
 });
 
+const ITEM_FIELDS =
+  "id,name,mimeType,resourceKey,parents,driveId," +
+  "shortcutDetails(targetId,targetMimeType,targetResourceKey)," +
+  "capabilities(canAddChildren,canComment,canDownload,canEdit," +
+  "canModifyContent,canMoveItemOutOfDrive,canMoveItemWithinDrive," +
+  "canRename,canTrash),contentRestrictions(readOnly,reason)";
+
 describe("getMetadata", () => {
   it("asks for what the viewer shows and the conflict check compares, in any drive", async () => {
     respond(Response.json(FILE));
@@ -273,11 +280,8 @@ describe("getMetadata", () => {
     );
     expect(url.searchParams.get("supportsAllDrives")).toBe("true");
     expect(url.searchParams.get("fields")).toBe(
-      "id,name,mimeType,resourceKey,parents,driveId," +
-        "capabilities(canAddChildren,canComment,canDownload,canEdit," +
-        "canModifyContent,canMoveItemOutOfDrive,canMoveItemWithinDrive," +
-        "canRename,canTrash),contentRestrictions(readOnly,reason)," +
-        "modifiedTime,lastModifyingUser(displayName),md5Checksum,headRevisionId",
+      `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),` +
+        "md5Checksum,headRevisionId",
     );
   });
 
@@ -301,6 +305,7 @@ describe("getMetadata", () => {
       resourceKey: "key-1",
       parents: ["folder-1"],
       driveId: "drive-1",
+      target: undefined,
       capabilities: { ...NOTHING_GRANTED, canEdit: true, canRename: true },
       locked: false,
       lockReason: undefined,
@@ -332,6 +337,7 @@ describe("getMetadata", () => {
         resourceKey: undefined,
         parents: [],
         driveId: undefined,
+        target: undefined,
         capabilities: NOTHING_GRANTED,
         locked: false,
         lockReason: undefined,
@@ -343,6 +349,39 @@ describe("getMetadata", () => {
       });
     },
   );
+
+  it("reads where a shortcut points", async () => {
+    respond(
+      Response.json({
+        id: "shortcut-1",
+        name: "plans",
+        mimeType: "application/vnd.google-apps.shortcut",
+        shortcutDetails: {
+          targetId: "folder-2",
+          targetMimeType: "application/vnd.google-apps.folder",
+          targetResourceKey: "key-2",
+        },
+      }),
+    );
+
+    await expect(getMetadata({ id: "shortcut-1" })).resolves.toMatchObject({
+      target: {
+        id: "folder-2",
+        mimeType: "application/vnd.google-apps.folder",
+        resourceKey: "key-2",
+      },
+    });
+  });
+
+  it.each([
+    "unexpected",
+    { targetId: "file-2" },
+    { targetMimeType: "text/markdown" },
+  ])("leaves out a target it cannot follow: %j", async (shortcutDetails) => {
+    respond(Response.json({ ...FILE, shortcutDetails }));
+
+    await expect(getMetadata()).resolves.toMatchObject({ target: undefined });
+  });
 
   it("reads why a file is locked", async () => {
     respond(
@@ -465,5 +504,139 @@ describe("getContent", () => {
       status: 0,
       message: "Google Drive could not be reached",
     });
+  });
+});
+
+describe("listChildren", () => {
+  function listChildren(folder: FileRef = { id: "folder-1" }) {
+    return createDrive(fakeAuth()).listChildren(folder);
+  }
+
+  it("lists what the folder holds outside the trash, in any drive", async () => {
+    respond(Response.json({ files: [FILE, { ...FILE, id: "file-2" }] }));
+
+    await expect(
+      listChildren({ id: "folder-1", resourceKey: "key-1" }),
+    ).resolves.toMatchObject([{ id: "file-1" }, { id: "file-2" }]);
+    const { url, headers } = sent();
+    expect(url.origin + url.pathname).toBe(
+      "https://www.googleapis.com/drive/v3/files",
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      q: "'folder-1' in parents and trashed = false",
+      fields: `nextPageToken,files(${ITEM_FIELDS})`,
+      pageSize: "1000",
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
+    expect(headers.get("X-Goog-Drive-Resource-Keys")).toBe("folder-1/key-1");
+  });
+
+  it("follows every page of a large folder", async () => {
+    respond(
+      Response.json({ files: [FILE], nextPageToken: "page-2" }),
+      Response.json({ files: [{ ...FILE, id: "file-2" }] }),
+    );
+
+    await expect(listChildren()).resolves.toMatchObject([
+      { id: "file-1" },
+      { id: "file-2" },
+    ]);
+    expect(sent(0).url.searchParams.has("pageToken")).toBe(false);
+    expect(sent(1).url.searchParams.get("pageToken")).toBe("page-2");
+    expect(sent(1).url.searchParams.get("q")).toBe(
+      sent(0).url.searchParams.get("q"),
+    );
+  });
+
+  it.each([{}, { files: [] }])("reads an empty folder: %j", async (body) => {
+    respond(Response.json(body));
+
+    await expect(listChildren()).resolves.toEqual([]);
+  });
+
+  it("skips an entry it cannot read, and lists the others", async () => {
+    respond(
+      Response.json({
+        files: [FILE, { ...FILE, id: 7 }, null, { ...FILE, id: "file-2" }],
+      }),
+    );
+
+    await expect(listChildren()).resolves.toMatchObject([
+      { id: "file-1" },
+      { id: "file-2" },
+    ]);
+  });
+
+  it.each([{ files: "notes.md" }, { files: { 0: FILE } }, null])(
+    "rejects a malformed page: %j",
+    async (body) => {
+      respond(Response.json(body));
+
+      await expect(listChildren()).rejects.toMatchObject({
+        name: "DriveError",
+        message: "Google Drive sent an unexpected answer",
+      });
+    },
+  );
+
+  it("refuses a folder ID that could change the query", async () => {
+    respond();
+
+    await expect(
+      listChildren({ id: "x' in parents or name contains '" }),
+    ).rejects.toMatchObject({ name: "DriveError", status: 400 });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("listSharedDrives", () => {
+  it("lists the shared drives the user is a member of and has not hidden", async () => {
+    respond(
+      Response.json({
+        drives: [{ id: "drive-1", name: "Team" }],
+        nextPageToken: "page-2",
+      }),
+      Response.json({ drives: [{ id: "drive-2", name: "Operations" }] }),
+    );
+
+    await expect(createDrive(fakeAuth()).listSharedDrives()).resolves.toEqual([
+      { id: "drive-1", name: "Team" },
+      { id: "drive-2", name: "Operations" },
+    ]);
+    const { url } = sent();
+    expect(url.origin + url.pathname).toBe(
+      "https://www.googleapis.com/drive/v3/drives",
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      q: "hidden = false",
+      fields: "nextPageToken,drives(id,name)",
+      pageSize: "100",
+    });
+    expect(sent(1).url.searchParams.get("pageToken")).toBe("page-2");
+  });
+
+  it("skips a drive it cannot read", async () => {
+    respond(
+      Response.json({
+        drives: [
+          { id: "drive-1" },
+          { id: 1, name: "Team" },
+          { id: "drive-2", name: "Operations" },
+        ],
+      }),
+    );
+
+    await expect(createDrive(fakeAuth()).listSharedDrives()).resolves.toEqual([
+      { id: "drive-2", name: "Operations" },
+    ]);
+  });
+
+  it("rejects a malformed page", async () => {
+    respond(Response.json({ drives: 5 }));
+
+    await expect(
+      createDrive(fakeAuth()).listSharedDrives(),
+    ).rejects.toMatchObject({ name: "DriveError", status: 200 });
   });
 });
