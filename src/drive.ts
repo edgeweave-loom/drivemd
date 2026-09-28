@@ -20,7 +20,13 @@ const CAPABILITIES = [
 // What the navigator shows and the actions it offers.
 const ITEM_FIELDS =
   "id,name,mimeType,resourceKey,parents,driveId," +
-  `capabilities(${CAPABILITIES.join(",")})`;
+  `capabilities(${CAPABILITIES.join(",")}),contentRestrictions(readOnly,reason)`;
+
+// An opened file also needs what the viewer shows and the conflict check
+// compares.
+const FILE_FIELDS = `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),md5Checksum,headRevisionId`;
+
+const UNREACHABLE = "Google Drive could not be reached";
 
 export class DriveError extends Error {
   override readonly name = "DriveError";
@@ -65,10 +71,29 @@ export interface DriveItem {
   /** The shared drive the item is in, if any. */
   driveId: string | undefined;
   capabilities: Capabilities;
+  /** A locked item's content cannot change, whatever the capabilities say. */
+  locked: boolean;
+  lockReason: string | undefined;
+}
+
+export interface FileMetadata extends DriveItem {
+  modifiedTime: string | undefined;
+  /** Who changed the file last, when a signed-in user did. */
+  lastModifiedBy: string | undefined;
+  /** Compared before saving, to detect someone else's change. */
+  md5Checksum: string | undefined;
+  headRevisionId: string | undefined;
 }
 
 export interface Drive {
-  getMetadata: (file: FileRef) => Promise<DriveItem>;
+  getMetadata: (file: FileRef) => Promise<FileMetadata>;
+  /**
+   * The bytes of a file whose metadata was just read, exactly as stored.
+   * Taking that metadata makes callers read it first: content read before it
+   * could be older than the checksum a save compares, and the save would then
+   * overwrite someone else's change.
+   */
+  getContent: (file: FileMetadata) => Promise<Uint8Array>;
 }
 
 export async function getAccountEmail(accessToken: string): Promise<string> {
@@ -103,12 +128,18 @@ export function createDrive(auth: DriveAuth): Drive {
 
   return {
     async getMetadata(file) {
-      const response = await send(fileUrl(file, { fields: ITEM_FIELDS }), [
+      const response = await send(fileUrl(file, { fields: FILE_FIELDS }), [
         file,
       ]);
-      return parse(response, (body) =>
-        isRecord(body) ? parseItem(body) : undefined,
-      );
+      return parse(response, parseFile);
+    },
+    async getContent(file) {
+      const response = await send(fileUrl(file, { alt: "media" }), [file]);
+      if (!response.ok) throw await refusal(response);
+      const content = await response.arrayBuffer().catch(() => {
+        throw new DriveError(0, UNREACHABLE);
+      });
+      return new Uint8Array(content);
     },
   };
 }
@@ -123,24 +154,28 @@ function fileUrl(file: FileRef, params: Record<string, string>): string {
 }
 
 // The token only ever travels in the Authorization header, and no error
-// message quotes the request.
+// message quotes the request. Answers skip the HTTP cache, so that a conflict
+// check never reads a stale checksum, and no file outlives the session there.
 function reach(url: string, init: RequestInit): Promise<Response> {
-  return fetch(url, init).catch(() => {
-    throw new DriveError(0, "Google Drive could not be reached");
+  return fetch(url, { ...init, cache: "no-store" }).catch(() => {
+    throw new DriveError(0, UNREACHABLE);
   });
+}
+
+async function refusal(response: Response): Promise<DriveError> {
+  const body: unknown = await response.json().catch(() => undefined);
+  return new DriveError(
+    response.status,
+    errorMessage(body) ?? `Google Drive answered ${String(response.status)}`,
+  );
 }
 
 async function parse<T>(
   response: Response,
   read: (body: unknown) => T | undefined,
 ): Promise<T> {
+  if (!response.ok) throw await refusal(response);
   const body: unknown = await response.json().catch(() => undefined);
-  if (!response.ok) {
-    throw new DriveError(
-      response.status,
-      errorMessage(body) ?? `Google Drive answered ${String(response.status)}`,
-    );
-  }
   const value = read(body);
   if (value === undefined) {
     throw new DriveError(
@@ -166,6 +201,12 @@ function parseItem(value: Record<string, unknown>): DriveItem | undefined {
     return;
   }
   const granted = isRecord(value.capabilities) ? value.capabilities : {};
+  const locks = Array.isArray(value.contentRestrictions)
+    ? value.contentRestrictions.filter(
+        (restriction: unknown): restriction is Record<string, unknown> =>
+          isRecord(restriction) && restriction.readOnly === true,
+      )
+    : [];
   return {
     id,
     name,
@@ -184,6 +225,24 @@ function parseItem(value: Record<string, unknown>): DriveItem | undefined {
         granted[capability] === true,
       ]),
     ) as Capabilities,
+    locked: locks.length > 0,
+    lockReason: locks
+      .map((lock) => optionalString(lock.reason))
+      .find((reason) => reason !== undefined),
+  };
+}
+
+function parseFile(value: unknown): FileMetadata | undefined {
+  if (!isRecord(value)) return;
+  const item = parseItem(value);
+  if (!item) return;
+  const user = isRecord(value.lastModifyingUser) ? value.lastModifyingUser : {};
+  return {
+    ...item,
+    modifiedTime: optionalString(value.modifiedTime),
+    lastModifiedBy: optionalString(user.displayName),
+    md5Checksum: optionalString(value.md5Checksum),
+    headRevisionId: optionalString(value.headRevisionId),
   };
 }
 
