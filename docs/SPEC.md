@@ -154,6 +154,7 @@ Set the OAuth app's audience to **Internal**: apps used only inside our Workspac
 2. Enable the Google Drive API.
 3. In Google Auth Platform, set Audience to **Internal**.
 4. Create an OAuth client of type **Web application**. Add `https://md.corp.edgeweave.tech`, `https://md-staging.corp.edgeweave.tech` and `http://localhost:5173` (for development) as authorized JavaScript origins. Origins must match exactly, with no wildcards, and a phone cannot reach `localhost`: the staging domain is needed from milestone 1 to test on a real iPhone.
+5. For the live Drive checks, create a second OAuth client of type **Desktop app**. Only a test account of the organization signs in with it, never a person's account, and its Drive holds nothing but what the checks create (see the README).
 
 **Scopes**
 

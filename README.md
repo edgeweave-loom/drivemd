@@ -27,16 +27,17 @@ npm run dev
 
 Open http://localhost:5173, not `127.0.0.1`: it is the only local origin the OAuth client authorizes, so the dev server refuses to start on another port.
 
-| Command            | What it does                                                    |
-| ------------------ | --------------------------------------------------------------- |
-| `npm run dev`      | Serve the app with hot reload                                   |
-| `npm run build`    | Type-check, then build the static site into `dist/`             |
-| `npm run preview`  | Serve the `dist/` build on the same port                        |
-| `npm test`         | Run the tests in watch mode                                     |
-| `npm run coverage` | Run the tests once; fails under the coverage thresholds         |
-| `npm run lint`     | Lint with type-aware and security rules; any warning fails      |
-| `npm run format`   | Format every file with Prettier (`npm run format:check` checks) |
-| `npm run deploy`   | Deploy `dist/` to the site mapped to the `app` target           |
+| Command                    | What it does                                                    |
+| -------------------------- | --------------------------------------------------------------- |
+| `npm run dev`              | Serve the app with hot reload                                   |
+| `npm run build`            | Type-check, then build the static site into `dist/`             |
+| `npm run preview`          | Serve the `dist/` build on the same port                        |
+| `npm test`                 | Run the tests in watch mode                                     |
+| `npm run coverage`         | Run the tests once; fails under the coverage thresholds         |
+| `npm run lint`             | Lint with type-aware and security rules; any warning fails      |
+| `npm run format`           | Format every file with Prettier (`npm run format:check` checks) |
+| `npm run deploy`           | Deploy `dist/` to the site mapped to the `app` target           |
+| `npm run live-check:login` | Sign the test account in for the live Drive checks              |
 
 Write the failing test first, then the code that makes it pass. CI runs the checks above on every pull request and on every push to `dev` and `main`.
 
@@ -52,7 +53,10 @@ The app reads its settings from `VITE_*` environment variables when it is built.
 
 The unit tests replace Google Drive with mocked answers, so a few behaviors can only be checked against the real Drive. The live checks do it as a test account of our organization, never with a person's account: its Drive holds nothing but what the checks create, a file made up for them that another account shares with it as a viewer, and a shared drive named `DriveMD live check` where it is a content manager. Nothing about the account enters the repository. Its credentials stay in `~/.config/drivemd-live/`, or in the absolute path set in `DRIVEMD_LIVE_DIR`: the desktop OAuth client as `client.json` and the account's grant as `grant.json`. The scripts read them only when they are yours and nobody else can read them, and check with Drive that the grant belongs to the account it names before they act.
 
-To set up, create an OAuth client of type **Desktop app** in the Google Cloud project, download its JSON, and save it as `client.json` in that folder, then `chmod 700` the folder and `chmod 600` the file.
+To set up, once:
+
+1. Create an OAuth client of type **Desktop app** in the Google Cloud project, download its JSON, and save it as `client.json` in that folder, then `chmod 700` the folder and `chmod 600` the file.
+2. In your own terminal, since it asks you to paste an address, run `DRIVEMD_LIVE_ACCOUNT=<test account> npm run live-check:login`. Open the address it prints, sign in as the test account and allow access; the browser then fails to load `127.0.0.1`, and you paste its address back. The script keeps the grant only if the test account signed in, revoking it otherwise, and saves it as `grant.json`, readable only by you.
 
 ## Security
 

@@ -1,9 +1,20 @@
 // @vitest-environment node
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { configDir, liveSession, readClient, readGrant } from "./grant.ts";
+import {
+  codeFrom,
+  configDir,
+  finishLogin,
+  liveSession,
+  readClient,
+  readGrant,
+  REDIRECT_URI,
+  saveGrant,
+  startLogin,
+} from "./grant.ts";
 
 vi.mock("node:os", async (importOriginal) => {
   const os = await importOriginal<typeof import("node:os")>();
@@ -100,7 +111,7 @@ describe("the client and the grant", () => {
 
   it("are read from the desktop client Google gave and the saved grant", async () => {
     await placeClient();
-    await place("grant.json", GRANT);
+    await saveGrant(dir, GRANT);
 
     await expect(readClient(dir)).resolves.toEqual(CLIENT);
     await expect(readGrant(dir)).resolves.toEqual(GRANT);
@@ -151,6 +162,163 @@ describe("the client and the grant", () => {
     await place("grant.json", { account: ACCOUNT });
 
     await expect(readGrant(dir)).rejects.toThrow("grant");
+  });
+});
+
+describe("saveGrant", () => {
+  it("keeps the grant readable only by the user, replacing an older one", async () => {
+    await saveGrant(dir, { account: ACCOUNT, refreshToken: "older" });
+    await saveGrant(dir, GRANT);
+
+    await expect(readGrant(dir)).resolves.toEqual(GRANT);
+    expect((await stat(join(dir, "grant.json"))).mode & 0o777).toBe(0o600);
+  });
+});
+
+describe("startLogin", () => {
+  it("asks for lasting access to the test account's Drive, with PKCE", () => {
+    const { url, pending } = startLogin(CLIENT, ACCOUNT);
+
+    const address = new URL(url);
+    expect(address.origin + address.pathname).toBe(
+      "https://accounts.google.com/o/oauth2/v2/auth",
+    );
+    expect(Object.fromEntries(address.searchParams)).toEqual({
+      client_id: CLIENT.id,
+      redirect_uri: REDIRECT_URI,
+      response_type: "code",
+      scope: "https://www.googleapis.com/auth/drive",
+      access_type: "offline",
+      prompt: "consent select_account",
+      login_hint: ACCOUNT,
+      state: pending.state,
+      code_challenge: createHash("sha256")
+        .update(pending.verifier)
+        .digest("base64url"),
+      code_challenge_method: "S256",
+    });
+    expect(pending.verifier.length).toBeGreaterThanOrEqual(43);
+  });
+
+  it("makes new secrets for each sign-in", () => {
+    const first = startLogin(CLIENT, ACCOUNT).pending;
+    const second = startLogin(CLIENT, ACCOUNT).pending;
+
+    expect(second.state).not.toBe(first.state);
+    expect(second.verifier).not.toBe(first.verifier);
+  });
+});
+
+describe("codeFrom", () => {
+  const pending = { verifier: "example-verifier", state: "example-state" };
+
+  it("reads the code from the address the browser was sent back to", () => {
+    const address = ` ${REDIRECT_URI}?state=example-state&code=example-code `;
+
+    expect(codeFrom(address, pending)).toBe("example-code");
+  });
+
+  it.each([
+    [`${REDIRECT_URI}?state=other&code=example-code`, "another sign-in"],
+    [
+      `${REDIRECT_URI}?state=example-state&error=access_denied`,
+      "access_denied",
+    ],
+    [`${REDIRECT_URI}?state=example-state`, "no code"],
+    ["not an address", "Invalid URL"],
+  ])("refuses %s", (address, message) => {
+    expect(() => codeFrom(address, pending)).toThrow(message);
+  });
+});
+
+describe("finishLogin", () => {
+  const pending = { verifier: "example-verifier", state: "example-state" };
+
+  function tokens(refreshToken?: string): Response {
+    return Response.json({
+      access_token: "example-access-token",
+      refresh_token: refreshToken,
+      expires_in: 3599,
+    });
+  }
+
+  it("trades the code for a grant, once the test account is the one signed in", async () => {
+    respond(
+      tokens(GRANT.refreshToken),
+      Response.json({ user: { emailAddress: ACCOUNT } }),
+    );
+
+    await expect(
+      finishLogin(CLIENT, ACCOUNT, "example-code", pending),
+    ).resolves.toEqual(GRANT);
+    expect(sent(0).url).toBe("https://oauth2.googleapis.com/token");
+    expect(sent(0).init?.method).toBe("POST");
+    expect(sent(0).form).toEqual({
+      grant_type: "authorization_code",
+      code: "example-code",
+      code_verifier: "example-verifier",
+      redirect_uri: REDIRECT_URI,
+      client_id: CLIENT.id,
+      client_secret: CLIENT.secret,
+    });
+  });
+
+  it("revokes the grant when another account signed in", async () => {
+    respond(
+      tokens(GRANT.refreshToken),
+      Response.json({ user: { emailAddress: "someone@example.com" } }),
+      new Response(null, { status: 200 }),
+    );
+
+    await expect(
+      finishLogin(CLIENT, ACCOUNT, "example-code", pending),
+    ).rejects.toThrow("someone@example.com");
+    expect(sent(2).url).toBe("https://oauth2.googleapis.com/revoke");
+    expect(sent(2).form).toEqual({ token: GRANT.refreshToken });
+  });
+
+  it.each([
+    ["refuses", () => Promise.resolve(new Response(null, { status: 503 }))],
+    ["cannot be reached", () => Promise.reject(new TypeError("offline"))],
+  ])(
+    "says so when Google %s to revoke the grant of another account",
+    async (_, revoke) => {
+      respond(
+        tokens(GRANT.refreshToken),
+        Response.json({ user: { emailAddress: "someone@example.com" } }),
+      );
+      vi.mocked(fetch).mockImplementationOnce(revoke);
+
+      await expect(
+        finishLogin(CLIENT, ACCOUNT, "example-code", pending),
+      ).rejects.toThrow("could not be revoked");
+    },
+  );
+
+  it("reports Google's refusal without quoting the request", async () => {
+    respond(Response.json({ error: "invalid_grant" }, { status: 400 }));
+
+    const error = await finishLogin(CLIENT, ACCOUNT, "example-code", pending)
+      .then(() => undefined)
+      .catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe("Google refused: invalid_grant");
+  });
+
+  it("reports an answer that is not JSON by its status", async () => {
+    respond(new Response("Bad Gateway", { status: 502 }));
+
+    await expect(
+      finishLogin(CLIENT, ACCOUNT, "example-code", pending),
+    ).rejects.toThrow("Google refused: 502");
+  });
+
+  it("refuses an answer without a refresh token", async () => {
+    respond(tokens());
+
+    await expect(
+      finishLogin(CLIENT, ACCOUNT, "example-code", pending),
+    ).rejects.toThrow("no lasting grant");
   });
 });
 

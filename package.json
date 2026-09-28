@@ -15,7 +15,8 @@
     "format:check": "prettier --check .",
     "test": "vitest",
     "coverage": "vitest run --coverage",
-    "deploy": "firebase deploy --only hosting --non-interactive"
+    "deploy": "firebase deploy --only hosting --non-interactive",
+    "live-check:login": "node live/login.ts"
   },
   "dependencies": {
     "react": "19.3.0",
