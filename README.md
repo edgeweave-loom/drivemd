@@ -38,6 +38,7 @@ Open http://localhost:5173, not `127.0.0.1`: it is the only local origin the OAu
 | `npm run format`           | Format every file with Prettier (`npm run format:check` checks) |
 | `npm run deploy`           | Deploy `dist/` to the site mapped to the `app` target           |
 | `npm run live-check:login` | Sign the test account in for the live Drive checks              |
+| `npm run live-check`       | Check the Drive client against the real Drive                   |
 
 Write the failing test first, then the code that makes it pass. CI runs the checks above on every pull request and on every push to `dev` and `main`.
 
@@ -57,6 +58,8 @@ To set up, once:
 
 1. Create an OAuth client of type **Desktop app** in the Google Cloud project, download its JSON, and save it as `client.json` in that folder, then `chmod 700` the folder and `chmod 600` the file.
 2. In your own terminal, since it asks you to paste an address, run `DRIVEMD_LIVE_ACCOUNT=<test account> npm run live-check:login`. Open the address it prints, sign in as the test account and allow access; the browser then fails to load `127.0.0.1`, and you paste its address back. The script keeps the grant only if the test account signed in, revoking it otherwise, and saves it as `grant.json`, readable only by you.
+
+Then `npm run live-check` runs the checks, which CI never does. They make what they need in a folder of their own in the test account's Drive and trash it at the end, and they compare IDs rather than listings, so that no failure prints the names of other files. A check that needs the shared file or the shared drive is skipped until it exists.
 
 ## Security
 

@@ -16,7 +16,8 @@
     "test": "vitest",
     "coverage": "vitest run --coverage",
     "deploy": "firebase deploy --only hosting --non-interactive",
-    "live-check:login": "node live/login.ts"
+    "live-check:login": "node live/login.ts",
+    "live-check": "vitest run --config vitest.live.config.ts"
   },
   "dependencies": {
     "react": "19.3.0",
