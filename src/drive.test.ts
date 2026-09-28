@@ -58,6 +58,7 @@ describe("getAccountEmail", () => {
     await expect(getAccountEmail(TOKEN)).resolves.toBe("ada@example.com");
     expect(fetch).toHaveBeenCalledWith(ABOUT_URL, {
       headers: { Authorization: `Bearer ${TOKEN}` },
+      cache: "no-store",
     });
   });
 
@@ -135,6 +136,13 @@ function getMetadata(file: FileRef = { id: "file-1" }, auth = fakeAuth()) {
 }
 
 describe("Drive calls", () => {
+  it("keep Drive's answers out of the browser's cache", async () => {
+    respond(Response.json(FILE));
+
+    await getMetadata();
+    expect(sent().init?.cache).toBe("no-store");
+  });
+
   it("send the token as a bearer, and only in the Authorization header", async () => {
     respond(Response.json(FILE));
 
@@ -343,6 +351,7 @@ describe("getMetadata", () => {
         contentRestrictions: [
           "unexpected",
           { readOnly: false, reason: "Draft" },
+          { readOnly: true },
           { readOnly: true, reason: "Final version" },
         ],
       }),
@@ -387,19 +396,24 @@ describe("getMetadata", () => {
 });
 
 describe("getContent", () => {
-  function getContent(file: FileRef = { id: "file-1" }) {
-    return createDrive(fakeAuth()).getContent(file);
+  /** Opens the file as the viewer does: its metadata, then its bytes. */
+  async function open(file: FileRef = { id: "file-1" }, auth = fakeAuth()) {
+    const drive = createDrive(auth);
+    return drive.getContent(await drive.getMetadata(file));
   }
 
   it("downloads the file's bytes exactly as stored, in any drive", async () => {
     // A BOM, CRLF line endings and a byte that is not valid UTF-8.
     const bytes = [0xef, 0xbb, 0xbf, 0x23, 0x20, 0x41, 0x0d, 0x0a, 0xff];
-    respond(new Response(new Uint8Array(bytes)));
+    respond(
+      Response.json({ ...FILE, resourceKey: "key-1" }),
+      new Response(new Uint8Array(bytes)),
+    );
 
-    await expect(
-      getContent({ id: "file-1", resourceKey: "key-1" }),
-    ).resolves.toEqual(new Uint8Array(bytes));
-    const { url, headers } = sent();
+    await expect(open({ id: "file-1", resourceKey: "key-1" })).resolves.toEqual(
+      new Uint8Array(bytes),
+    );
+    const { url, headers } = sent(1);
     expect(url.origin + url.pathname).toBe(
       "https://www.googleapis.com/drive/v3/files/file-1",
     );
@@ -410,10 +424,28 @@ describe("getContent", () => {
     expect(headers.get("X-Goog-Drive-Resource-Keys")).toBe("file-1/key-1");
   });
 
-  it("reports Drive's refusal", async () => {
-    respond(refusal(403, "The user does not have sufficient permissions."));
+  it("renews a refused token for a download too", async () => {
+    respond(
+      Response.json(FILE),
+      refusal(401),
+      new Response(new Uint8Array([0x41])),
+    );
+    const auth = fakeAuth();
 
-    await expect(getContent()).rejects.toMatchObject({
+    await expect(open(undefined, auth)).resolves.toEqual(
+      new Uint8Array([0x41]),
+    );
+    expect(auth.forget).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("reports Drive's refusal", async () => {
+    respond(
+      Response.json(FILE),
+      refusal(403, "The user does not have sufficient permissions."),
+    );
+
+    await expect(open()).rejects.toMatchObject({
       name: "DriveError",
       status: 403,
       message: "The user does not have sufficient permissions.",
@@ -426,9 +458,9 @@ describe("getContent", () => {
         controller.error(new TypeError(`Failed: Bearer ${TOKEN}`));
       },
     });
-    respond(new Response(broken));
+    respond(Response.json(FILE), new Response(broken));
 
-    await expect(getContent()).rejects.toMatchObject({
+    await expect(open()).rejects.toMatchObject({
       name: "DriveError",
       status: 0,
       message: "Google Drive could not be reached",

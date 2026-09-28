@@ -94,11 +94,12 @@ export interface SharedDrive {
 export interface Drive {
   getMetadata: (file: FileRef) => Promise<FileMetadata>;
   /**
-   * The file's bytes, exactly as stored. Read the metadata first: content read
-   * before it could be older than the checksum a save compares, and the save
-   * would then overwrite someone else's change.
+   * The bytes of a file whose metadata was just read, exactly as stored.
+   * Taking that metadata makes callers read it first: content read before it
+   * could be older than the checksum a save compares, and the save would then
+   * overwrite someone else's change.
    */
-  getContent: (file: FileRef) => Promise<Uint8Array>;
+  getContent: (file: FileMetadata) => Promise<Uint8Array>;
   /** Everything in the folder that is not in the trash, from every page. */
   listChildren: (folder: FileRef) => Promise<DriveItem[]>;
   /** The shared drives the user is a member of. */
@@ -217,9 +218,10 @@ function checked(file: FileRef): string {
 }
 
 // The token only ever travels in the Authorization header, and no error
-// message quotes the request.
+// message quotes the request. Answers skip the HTTP cache, so that a conflict
+// check never reads a stale checksum, and no file outlives the session there.
 function reach(url: string, init: RequestInit): Promise<Response> {
-  return fetch(url, init).catch(() => {
+  return fetch(url, { ...init, cache: "no-store" }).catch(() => {
     throw new DriveError(0, UNREACHABLE);
   });
 }
@@ -263,12 +265,12 @@ function parseItem(value: Record<string, unknown>): DriveItem | undefined {
     return;
   }
   const granted = isRecord(value.capabilities) ? value.capabilities : {};
-  const lock = Array.isArray(value.contentRestrictions)
-    ? value.contentRestrictions.find(
+  const locks = Array.isArray(value.contentRestrictions)
+    ? value.contentRestrictions.filter(
         (restriction: unknown): restriction is Record<string, unknown> =>
           isRecord(restriction) && restriction.readOnly === true,
       )
-    : undefined;
+    : [];
   return {
     id,
     name,
@@ -287,8 +289,10 @@ function parseItem(value: Record<string, unknown>): DriveItem | undefined {
         granted[capability] === true,
       ]),
     ) as Capabilities,
-    locked: lock !== undefined,
-    lockReason: optionalString(lock?.reason),
+    locked: locks.length > 0,
+    lockReason: locks
+      .map((lock) => optionalString(lock.reason))
+      .find((reason) => reason !== undefined),
   };
 }
 
