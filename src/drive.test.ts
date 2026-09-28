@@ -254,7 +254,7 @@ describe("Drive calls", () => {
 });
 
 describe("getMetadata", () => {
-  it("asks for the item and what the user may do with it, in any drive", async () => {
+  it("asks for what the viewer shows and the conflict check compares, in any drive", async () => {
     respond(Response.json(FILE));
 
     await getMetadata();
@@ -268,11 +268,12 @@ describe("getMetadata", () => {
       "id,name,mimeType,resourceKey,parents,driveId," +
         "capabilities(canAddChildren,canComment,canDownload,canEdit," +
         "canModifyContent,canMoveItemOutOfDrive,canMoveItemWithinDrive," +
-        "canRename,canTrash)",
+        "canRename,canTrash),contentRestrictions(readOnly,reason)," +
+        "modifiedTime,lastModifyingUser(displayName),md5Checksum,headRevisionId",
     );
   });
 
-  it("reads the item", async () => {
+  it("reads the file", async () => {
     respond(
       Response.json({
         ...FILE,
@@ -280,6 +281,10 @@ describe("getMetadata", () => {
         parents: ["folder-1"],
         driveId: "drive-1",
         capabilities: { canEdit: true, canRename: true, canShare: true },
+        modifiedTime: "2026-09-01T10:00:00.000Z",
+        lastModifyingUser: { displayName: "Ada Lovelace" },
+        md5Checksum: "0cc175b9c0f1b6a831c399e269772661",
+        headRevisionId: "revision-1",
       }),
     );
 
@@ -289,6 +294,12 @@ describe("getMetadata", () => {
       parents: ["folder-1"],
       driveId: "drive-1",
       capabilities: { ...NOTHING_GRANTED, canEdit: true, canRename: true },
+      locked: false,
+      lockReason: undefined,
+      modifiedTime: "2026-09-01T10:00:00.000Z",
+      lastModifiedBy: "Ada Lovelace",
+      md5Checksum: "0cc175b9c0f1b6a831c399e269772661",
+      headRevisionId: "revision-1",
     });
   });
 
@@ -299,6 +310,7 @@ describe("getMetadata", () => {
         resourceKey: "",
         parents: ["folder-1", 7],
         capabilities: { canEdit: "yes" },
+        lastModifyingUser: {},
       },
       { parents: ["folder-1"] },
     ],
@@ -313,23 +325,113 @@ describe("getMetadata", () => {
         parents: [],
         driveId: undefined,
         capabilities: NOTHING_GRANTED,
+        locked: false,
+        lockReason: undefined,
+        modifiedTime: undefined,
+        lastModifiedBy: undefined,
+        md5Checksum: undefined,
+        headRevisionId: undefined,
         ...readFields,
       });
     },
   );
 
+  it("reads why a file is locked", async () => {
+    respond(
+      Response.json({
+        ...FILE,
+        contentRestrictions: [
+          "unexpected",
+          { readOnly: false, reason: "Draft" },
+          { readOnly: true, reason: "Final version" },
+        ],
+      }),
+    );
+
+    await expect(getMetadata()).resolves.toMatchObject({
+      locked: true,
+      lockReason: "Final version",
+    });
+  });
+
   it.each([
-    null,
-    { ...FILE, id: 1 },
-    { ...FILE, name: undefined },
-    { ...FILE, mimeType: null },
-  ])("rejects a malformed answer: %j", async (body) => {
-    respond(Response.json(body));
+    [[{ readOnly: true }], true],
+    [{ readOnly: true }, false],
+  ])(
+    "reads a lock without a reason, and only from a list: %j",
+    async (contentRestrictions, locked) => {
+      respond(Response.json({ ...FILE, contentRestrictions }));
+
+      await expect(getMetadata()).resolves.toMatchObject({
+        locked,
+        lockReason: undefined,
+      });
+    },
+  );
+
+  it.each([
+    ["null", Response.json(null)],
+    ["a numeric ID", Response.json({ ...FILE, id: 1 })],
+    ["no name", Response.json({ ...FILE, name: undefined })],
+    ["no MIME type", Response.json({ ...FILE, mimeType: null })],
+    ["a page instead of JSON", new Response("<!doctype html>")],
+  ])("rejects a malformed answer: %s", async (_, response) => {
+    respond(response);
 
     await expect(getMetadata()).rejects.toMatchObject({
       name: "DriveError",
       status: 200,
       message: "Google Drive sent an unexpected answer",
+    });
+  });
+});
+
+describe("getContent", () => {
+  function getContent(file: FileRef = { id: "file-1" }) {
+    return createDrive(fakeAuth()).getContent(file);
+  }
+
+  it("downloads the file's bytes exactly as stored, in any drive", async () => {
+    // A BOM, CRLF line endings and a byte that is not valid UTF-8.
+    const bytes = [0xef, 0xbb, 0xbf, 0x23, 0x20, 0x41, 0x0d, 0x0a, 0xff];
+    respond(new Response(new Uint8Array(bytes)));
+
+    await expect(
+      getContent({ id: "file-1", resourceKey: "key-1" }),
+    ).resolves.toEqual(new Uint8Array(bytes));
+    const { url, headers } = sent();
+    expect(url.origin + url.pathname).toBe(
+      "https://www.googleapis.com/drive/v3/files/file-1",
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      alt: "media",
+      supportsAllDrives: "true",
+    });
+    expect(headers.get("X-Goog-Drive-Resource-Keys")).toBe("file-1/key-1");
+  });
+
+  it("reports Drive's refusal", async () => {
+    respond(refusal(403, "The user does not have sufficient permissions."));
+
+    await expect(getContent()).rejects.toMatchObject({
+      name: "DriveError",
+      status: 403,
+      message: "The user does not have sufficient permissions.",
+    });
+  });
+
+  it("reports an interrupted download as a network failure", async () => {
+    const broken = new ReadableStream({
+      start(controller) {
+        controller.error(new TypeError(`Failed: Bearer ${TOKEN}`));
+      },
+    });
+    respond(new Response(broken));
+
+    await expect(getContent()).rejects.toMatchObject({
+      name: "DriveError",
+      status: 0,
+      message: "Google Drive could not be reached",
     });
   });
 });
