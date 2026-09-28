@@ -38,6 +38,7 @@ Open http://localhost:5173, not `127.0.0.1`: it is the only local origin the OAu
 | `npm run format`           | Format every file with Prettier (`npm run format:check` checks) |
 | `npm run deploy`           | Deploy `dist/` to the site mapped to the `app` target           |
 | `npm run live-check:login` | Sign the test account in for the live Drive checks              |
+| `npm run live-check`       | Check the Drive client against the real Drive                   |
 
 Write the failing test first, then the code that makes it pass. CI runs the checks above on every pull request and on every push to `dev` and `main`.
 
@@ -51,12 +52,14 @@ The app reads its settings from `VITE_*` environment variables when it is built.
 
 ## Live Drive checks
 
-The unit tests replace Google Drive with mocked answers, so a few behaviors can only be checked against the real Drive. The live checks do it as a test account of our organization, never with a person's account: its Drive holds nothing but what the checks create, a file made up for them that another account shares with it as a viewer, and a shared drive named `DriveMD live check` where it is a content manager. Nothing about the account enters the repository. Its credentials stay in `~/.config/drivemd-live/`, or in the absolute path set in `DRIVEMD_LIVE_DIR`: the desktop OAuth client as `client.json` and the account's grant as `grant.json`. The scripts read them only when they are yours and nobody else can read them, and check with Drive that the grant belongs to the account it names before they act.
+The unit tests replace Google Drive with mocked answers, so a few behaviors can only be checked against the real Drive. The live checks do it as a test account of our organization, never with a person's account: its Drive holds nothing but what the checks create, a made-up file `drivemd-live-view-only.md` that another account shares with it as a viewer, and a shared drive named `DriveMD live check` where it is a content manager, holding a made-up file `drivemd-live-from-another.md` that another member added. Nothing about the account enters the repository. Its credentials stay in `~/.config/drivemd-live/`, or in the absolute path set in `DRIVEMD_LIVE_DIR`: the desktop OAuth client as `client.json` and the account's grant as `grant.json`. The scripts read them only when they are yours and nobody else can read them, and check with Drive that the grant belongs to the account it names before they act.
 
 To set up, once:
 
 1. Create an OAuth client of type **Desktop app** in the Google Cloud project, download its JSON, and save it as `client.json` in that folder, then `chmod 700` the folder and `chmod 600` the file.
 2. In your own terminal, since it asks you to paste an address, run `DRIVEMD_LIVE_ACCOUNT=<test account> npm run live-check:login`. Open the address it prints, sign in as the test account and allow access; the browser then fails to load `127.0.0.1`, and you paste its address back. The script keeps the grant only if the test account signed in, and revokes any grant it cannot keep or that it replaces; it saves the grant as `grant.json`, readable only by you.
+
+Then `npm run live-check` runs the checks, which CI never does. They make what they need in a folder of their own in the test account's Drive and trash it at the end, and they compare IDs rather than listings, so that no failure prints the names of other files. A check that needs one of the made-up files or the shared drive is skipped until it exists.
 
 ## Security
 
