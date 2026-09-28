@@ -29,6 +29,11 @@ const FILE_FIELDS = `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),
 
 const UNREACHABLE = "Google Drive could not be reached";
 
+const FOLDER = "application/vnd.google-apps.folder";
+const SHORTCUT = "application/vnd.google-apps.shortcut";
+// Google's own types (Docs, folders, shortcuts...) have no content to edit.
+const WITH_CONTENT = "not mimeType contains 'application/vnd.google-apps.'";
+
 export class DriveError extends Error {
   override readonly name = "DriveError";
   /** The HTTP status, or 0 when Drive could not be reached. */
@@ -114,6 +119,19 @@ export interface Drive {
   listChildren: (folder: FileRef) => Promise<DriveItem[]>;
   /** The shared drives the user is a member of. */
   listSharedDrives: () => Promise<SharedDrive[]>;
+  /** What is shared with the user, but Google's own documents. */
+  listSharedWithMe: () => Promise<DriveItem[]>;
+  /** The Markdown files the user viewed last, newest first. */
+  listRecent: () => Promise<DriveItem[]>;
+  /** Markdown files with a word of their name starting with `text`. */
+  search: (text: string) => Promise<DriveItem[]>;
+  /** The folders that hold an Obsidian vault, in every drive. */
+  findVaults: () => Promise<DriveItem[]>;
+}
+
+/** Whether a name marks a Markdown file: MIME types are unreliable. */
+export function isMarkdown(name: string): boolean {
+  return /\.(md|markdown)$/i.test(name);
 }
 
 export async function getAccountEmail(accessToken: string): Promise<string> {
@@ -169,25 +187,41 @@ export function createDrive(auth: DriveAuth): Drive {
     return items;
   }
 
-  /** Every item matching the query `q`, in any drive. */
-  function listFiles(q: string, files: FileRef[]): Promise<DriveItem[]> {
-    const params = {
-      q,
-      fields: `nextPageToken,files(${ITEM_FIELDS})`,
+  /** The items matching the query in `params.q`, in any drive. */
+  function listFiles(
+    params: Record<string, string>,
+    files: FileRef[] = [],
+  ): Promise<DriveItem[]> {
+    const query = {
       pageSize: "1000",
+      fields: `nextPageToken,files(${ITEM_FIELDS})`,
+      ...params,
       supportsAllDrives: "true",
       includeItemsFromAllDrives: "true",
     };
-    return list("files", params, files, "files", parseItem);
+    return list("files", query, files, "files", parseItem);
+  }
+
+  /** The Markdown files among the first 100 matches of `q`, in every drive. */
+  async function findMarkdown(q: string, orderBy: string) {
+    const items = await listFiles({
+      q: `${q} and trashed = false and ${WITH_CONTENT}`,
+      orderBy,
+      corpora: "allDrives",
+      pageSize: "100",
+      // Without nextPageToken, Drive sends the first page only.
+      fields: `files(${ITEM_FIELDS})`,
+    });
+    return items.filter((item) => isMarkdown(item.name));
+  }
+
+  async function getMetadata(file: FileRef): Promise<FileMetadata> {
+    const response = await send(fileUrl(file, { fields: FILE_FIELDS }), [file]);
+    return parse(response, parseFile);
   }
 
   return {
-    async getMetadata(file) {
-      const response = await send(fileUrl(file, { fields: FILE_FIELDS }), [
-        file,
-      ]);
-      return parse(response, parseFile);
-    },
+    getMetadata,
     async getContent(file) {
       const response = await send(fileUrl(file, { alt: "media" }), [file]);
       if (!response.ok) throw await refusal(response);
@@ -198,7 +232,7 @@ export function createDrive(auth: DriveAuth): Drive {
     },
     async listChildren(folder) {
       const q = `'${checked(folder)}' in parents and trashed = false`;
-      return listFiles(q, [folder]);
+      return listFiles({ q }, [folder]);
     },
     async listSharedDrives() {
       // As in Drive, the drives the user hid stay out of the list.
@@ -209,7 +243,50 @@ export function createDrive(auth: DriveAuth): Drive {
       };
       return list("drives", params, [], "drives", parseSharedDrive);
     },
+    async listSharedWithMe() {
+      const types = `mimeType = '${FOLDER}' or mimeType = '${SHORTCUT}' or ${WITH_CONTENT}`;
+      return listFiles({
+        q: `sharedWithMe and trashed = false and (${types})`,
+      });
+    },
+    async listRecent() {
+      return findMarkdown(
+        "viewedByMeTime > '1970-01-01T00:00:00'",
+        "viewedByMeTime desc",
+      );
+    },
+    async search(text) {
+      const words = text.trim();
+      if (words === "") return [];
+      return findMarkdown(
+        `name contains ${quoted(words)}`,
+        "modifiedTime desc",
+      );
+    },
+    async findVaults() {
+      // A vault is a folder that holds an .obsidian folder.
+      const configs = await listFiles({
+        q: `name = '.obsidian' and mimeType = '${FOLDER}' and trashed = false`,
+        corpora: "allDrives",
+      });
+      const roots = new Set(configs.flatMap(({ parents }) => parents));
+      const vaults = await Promise.all(
+        [...roots].map((id) => getMetadata({ id }).catch(outOfReach)),
+      );
+      return vaults.filter((vault) => vault !== undefined);
+    },
   };
+}
+
+/** Leaves out a folder the user cannot open; any other failure stands. */
+function outOfReach(error: unknown): undefined {
+  if (error instanceof DriveError && [403, 404].includes(error.status)) return;
+  throw error;
+}
+
+/** A string literal in a Drive query. */
+function quoted(value: string): string {
+  return `'${value.replace(/[\\']/g, "\\$&")}'`;
 }
 
 interface Page<T> {

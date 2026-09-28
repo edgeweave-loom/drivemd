@@ -49,7 +49,7 @@ The interface is in English and follows the system's light or dark theme.
 
 1. **Sign-in.** Users sign in with their Google account. Only accounts in our Workspace organization are accepted.
 2. **Home.** After sign-in, the app opens on Home, which shows in order:
-   - **Recent:** the Markdown files the user opened most recently, newest first. The list comes from Drive's `viewedByMeTime`, which the app sets when it opens a file, so it is the same on every device. Check early that Drive accepts this for files the user can only view.
+   - **Recent:** the Markdown files the user opened most recently, newest first. The list comes from Drive's `viewedByMeTime`, which the app sets when it opens a file, so it is the same on every device. It keeps the Markdown files among the 100 files with content the user viewed last. Check early that Drive accepts this for files the user can only view.
    - **Vaults:** the Obsidian vaults found in Drive (see Obsidian vaults).
    - **Roots:** My Drive, Shortcuts, Shared drives and Shared with me.
 3. **File navigator.** Shows four roots: My Drive, Shortcuts, Shared drives and Shared with me.
@@ -60,7 +60,7 @@ The interface is in English and follows the system's light or dark theme.
    - The **Shortcuts** root lists the shortcuts the user owns, that is the ones they created outside shared drives, wherever they sit, for one-tap access. Shortcuts in shared drives are left out: the whole team creates them, and Drive cannot tell which ones the user made.
    - A broken shortcut (target deleted, in the trash, or no access) is shown greyed out with a short reason.
    - Breadcrumbs show the path the user took, including through a shortcut. When there is no such path (deep link, **Open with**, reloaded folder URL), they are rebuilt from the parents up to My Drive, the shared drive or Shared with me; a parent the user cannot access ends the path.
-   - A search box finds Markdown files by name across all drives. Drive matches the start of words, not any substring: "plan" finds `planning.md` but not `myplan.md`.
+   - A search box finds Markdown files by name across all drives. Drive matches the start of words, not any substring: "plan" finds `planning.md` but not `myplan.md`. It shows the Markdown files among the first 100 matches, the most recently modified first.
 4. **Viewer.** Files open in the viewer by default, on every screen, with an **Edit** button.
    - Renders Markdown with GitHub-style extras: tables, task lists, strikethrough, autolinks and footnotes. Code blocks are syntax-highlighted. Math and Mermaid are not rendered; they show as written.
    - Raw HTML is rendered and sanitized as GitHub does, and HTML comments are hidden. YAML front matter shows as a properties table at the top instead of rendering as a heading.
@@ -268,7 +268,7 @@ Build in eight milestones, each ending with something that runs; give Claude Cod
 
 1. **Scaffold, sign-in and iPhone test.** Vite + React + TypeScript project; client ID in `VITE_GOOGLE_CLIENT_ID`; GIS token helper in one module, requesting tokens only from user gestures; sign-in, **Continue** and sign-out screens; deployment to `md-staging.corp.edgeweave.tech` on Firebase Hosting.
    - Done when: an org account signs in and the app shows the user's email, on desktop and on a real iPhone (Safari tab and Home Screen), and the token backend decision is recorded in this spec.
-2. **Drive client.** One typed module: `listChildren`, `listSharedDrives`, `listRecent`, `markViewed`, `findVaults`, `search`, `getMetadata`, `getContent`, `saveContent`, `createFile`, `renameFile`, `moveFile`, `trashFile`, `keepRevision`. Shared-drive parameters, resource keys, pagination, 401 handling, shortcut resolution.
+2. **Drive client.** One typed module: `listChildren`, `listSharedDrives`, `listSharedWithMe`, `listRecent`, `markViewed`, `findVaults`, `search`, `getMetadata`, `getContent`, `saveContent`, `createFile`, `renameFile`, `moveFile`, `trashFile`, `keepRevision`. Shared-drive parameters, resource keys, pagination, 401 handling, shortcut resolution.
    - Done when: unit tests pass against mocked responses.
 3. **File navigator and file operations.** Home with Recent, vaults and roots; four roots including Shortcuts; shortcut following; drill-down list with breadcrumbs, rebuilt from parents when needed; hidden dot-folders; natural sort; name search; responsive layout. Create with a name prompt, rename, move and trash, with the vault warning.
    - Done when: any .md file in My Drive, a shared drive, a vault or behind a shortcut can be reached on desktop and phone, and files can be created, renamed, moved and trashed.
