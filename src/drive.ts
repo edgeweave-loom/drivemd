@@ -153,11 +153,14 @@ export interface Drive {
   keepRevision: (file: FileRef, revisionId: string) => Promise<void>;
   /** Marks the file as viewed now, which is what Recent sorts by. */
   markViewed: (file: FileRef) => Promise<void>;
-  /** Creates an empty Markdown file named `name` in the folder. */
+  /**
+   * Creates an empty Markdown file in the folder, named `name` with .md added
+   * unless it already ends in .md or .markdown.
+   */
   createFile: (folder: FileRef, name: string) => Promise<DriveItem>;
   renameFile: (file: FileRef, name: string) => Promise<DriveItem>;
-  /** Moves the file from the folder it is in to another. */
-  moveFile: (file: FileRef, from: FileRef, to: FileRef) => Promise<DriveItem>;
+  /** Moves the file out of the folders it is in, into `to`. */
+  moveFile: (file: DriveItem, to: FileRef) => Promise<DriveItem>;
   /** Moves the file to the trash, from which Drive can restore it. */
   trashFile: (file: FileRef) => Promise<void>;
 }
@@ -369,31 +372,28 @@ export function createDrive(auth: DriveAuth): Drive {
       await confirm(response);
     },
     async createFile(folder, name) {
-      const params = { fields: ITEM_FIELDS, supportsAllDrives: "true" };
+      const trimmed = named(name);
       const file = {
-        name: named(name),
+        name: isMarkdown(trimmed) ? trimmed : `${trimmed}.md`,
         parents: [checked(folder.id)],
         mimeType: "text/markdown",
       };
-      const response = await send(
-        `${API}/files?${new URLSearchParams(params).toString()}`,
-        [folder],
-        json(file, "POST"),
-      );
-      return parse(response, readItem);
+      const url = `${API}/files?${inAnyDrive({ fields: ITEM_FIELDS })}`;
+      return parse(await send(url, [folder], json(file, "POST")), readItem);
     },
     async renameFile(file, name) {
       const change = json({ name: named(name) });
       const url = fileUrl(file, { fields: ITEM_FIELDS });
       return parse(await send(url, [file], change), readItem);
     },
-    async moveFile(file, from, to) {
+    async moveFile(file, to) {
+      if (file.parents.includes(to.id)) return file;
       const url = fileUrl(file, {
         addParents: checked(to.id),
-        removeParents: checked(from.id),
+        removeParents: file.parents.map(checked).join(","),
         fields: ITEM_FIELDS,
       });
-      return parse(await send(url, [file, from, to], json({})), readItem);
+      return parse(await send(url, [file, to], json({})), readItem);
     },
     async trashFile(file) {
       const url = fileUrl(file, { fields: "id" });
@@ -451,14 +451,25 @@ function fileUrl(
   params: Record<string, string>,
   base = API,
 ): string {
-  const query = new URLSearchParams({ ...params, supportsAllDrives: "true" });
-  return `${base}/files/${checked(file.id)}?${query.toString()}`;
+  return `${base}/files/${checked(file.id)}?${inAnyDrive(params)}`;
 }
 
-/** The name, refused when blank: the app never makes a nameless file. */
+/** The query of a call on files, which works in every drive. */
+function inAnyDrive(params: Record<string, string>): string {
+  return new URLSearchParams({
+    ...params,
+    supportsAllDrives: "true",
+  }).toString();
+}
+
+/**
+ * The name without the spaces around it, which a phone keyboard often adds;
+ * refused when blank, since the app never makes a nameless file.
+ */
 function named(name: string): string {
-  if (name.trim() === "") throw new DriveError(400, "A file needs a name");
-  return name;
+  const trimmed = name.trim();
+  if (trimmed === "") throw new DriveError(400, "A file needs a name");
+  return trimmed;
 }
 
 /** The ID, once it is known to be shaped like a Drive ID. */

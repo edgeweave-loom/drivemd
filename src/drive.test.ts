@@ -1114,6 +1114,24 @@ describe("createFile", () => {
   });
 
   it.each([
+    [" Untitled ", "Untitled.md"],
+    ["plan.markdown", "plan.markdown"],
+  ])("adds .md to a name without it: %j", async (name, created) => {
+    respond(Response.json({ ...FILE, name: created }));
+
+    await createDrive(fakeAuth()).createFile({ id: "folder-1" }, name);
+    expect(sentJson()).toMatchObject({ name: created });
+  });
+
+  it("reports Drive's refusal", async () => {
+    respond(refusal(403, "The user does not have sufficient permissions."));
+
+    await expect(
+      createDrive(fakeAuth()).createFile({ id: "folder-1" }, "Untitled.md"),
+    ).rejects.toMatchObject({ name: "DriveError", status: 403 });
+  });
+
+  it.each([
     [{ id: "folder-1" }, " "],
     [{ id: "folder-1', 'folder-2" }, "Untitled.md"],
   ])(
@@ -1136,7 +1154,7 @@ describe("renameFile", () => {
     await expect(
       createDrive(fakeAuth()).renameFile(
         { id: "file-1", resourceKey: "key-1" },
-        "plan.md",
+        " plan.md ",
       ),
     ).resolves.toMatchObject({ name: "plan.md" });
     const { url, headers, init } = sent();
@@ -1174,17 +1192,26 @@ describe("renameFile", () => {
 });
 
 describe("moveFile", () => {
-  it("moves the file from one folder to another, in any drive", async () => {
-    respond(Response.json({ ...FILE, parents: ["folder-2"] }));
+  /** Reads the file as a listing would, then moves it to `to`. */
+  async function move(to: FileRef) {
+    const drive = createDrive(fakeAuth());
+    const file = await drive.getMetadata({
+      id: "file-1",
+      resourceKey: "key-1",
+    });
+    return drive.moveFile(file, to);
+  }
+
+  it("moves the file out of its folder into another, in any drive", async () => {
+    respond(
+      Response.json({ ...FILE, resourceKey: "key-1", parents: ["folder-1"] }),
+      Response.json({ ...FILE, parents: ["folder-2"] }),
+    );
 
     await expect(
-      createDrive(fakeAuth()).moveFile(
-        { id: "file-1", resourceKey: "key-1" },
-        { id: "folder-1", resourceKey: "key-2" },
-        { id: "folder-2", resourceKey: "key-3" },
-      ),
+      move({ id: "folder-2", resourceKey: "key-3" }),
     ).resolves.toMatchObject({ parents: ["folder-2"] });
-    const { url, headers, init } = sent();
+    const { url, headers, init } = sent(1);
     expect(init?.method).toBe("PATCH");
     expect(url.origin + url.pathname).toBe(
       "https://www.googleapis.com/drive/v3/files/file-1",
@@ -1196,23 +1223,34 @@ describe("moveFile", () => {
       supportsAllDrives: "true",
     });
     expect(headers.get("X-Goog-Drive-Resource-Keys")).toBe(
-      "file-1/key-1,folder-1/key-2,folder-2/key-3",
+      "file-1/key-1,folder-2/key-3",
     );
-    expect(sentJson()).toEqual({});
+    expect(sentJson(1)).toEqual({});
+  });
+
+  it("leaves a file already in the folder where it is", async () => {
+    respond(Response.json({ ...FILE, parents: ["folder-2"] }));
+
+    await expect(move({ id: "folder-2" })).resolves.toMatchObject({
+      id: "file-1",
+      parents: ["folder-2"],
+    });
+    expect(fetch).toHaveBeenCalledOnce();
   });
 
   it.each([
-    [{ id: "folder-1&addParents=folder-3" }, { id: "folder-2" }],
-    [{ id: "folder-1" }, { id: "../folder-2" }],
+    [["folder-1,folder-3"], { id: "folder-2" }],
+    [["folder-1"], { id: "../folder-2" }],
   ])(
     "refuses a folder ID that could change the move: %j, %j",
-    async (from, to) => {
-      respond();
+    async (parents, to) => {
+      respond(Response.json({ ...FILE, parents }));
 
-      await expect(
-        createDrive(fakeAuth()).moveFile({ id: "file-1" }, from, to),
-      ).rejects.toMatchObject({ name: "DriveError", status: 400 });
-      expect(fetch).not.toHaveBeenCalled();
+      await expect(move(to)).rejects.toMatchObject({
+        name: "DriveError",
+        status: 400,
+      });
+      expect(fetch).toHaveBeenCalledOnce();
     },
   );
 });
