@@ -124,7 +124,7 @@ export interface Drive {
   listSharedWithMe: () => Promise<DriveItem[]>;
   /** The Markdown files the user viewed last, newest first. */
   listRecent: () => Promise<DriveItem[]>;
-  /** Markdown files with a word of their name starting with `text`. */
+  /** Markdown files whose name has a word starting with each word of `text`. */
   search: (text: string) => Promise<DriveItem[]>;
   /** The folders that hold an Obsidian vault, in every drive. */
   findVaults: () => Promise<DriveItem[]>;
@@ -267,12 +267,10 @@ export function createDrive(auth: DriveAuth): Drive {
       );
     },
     async search(text) {
-      const words = text.trim();
-      if (words === "") return [];
-      return findMarkdown(
-        `name contains ${quoted(words)}`,
-        "modifiedTime desc",
-      );
+      const words = text.split(/\s+/).filter((word) => word !== "");
+      if (words.length === 0) return [];
+      const terms = words.map((word) => `name contains ${quoted(word)}`);
+      return findMarkdown(terms.join(" and "), "modifiedTime desc");
     },
     async findVaults() {
       // A vault is a folder that holds an .obsidian folder.
@@ -305,9 +303,12 @@ export function createDrive(auth: DriveAuth): Drive {
   };
 }
 
-/** Leaves out a folder the user cannot open; any other failure stands. */
+/**
+ * Leaves out a folder the user cannot open, which Drive answers with 404. Any
+ * other failure stands: Drive also answers 403 when it limits the rate.
+ */
 function outOfReach(error: unknown): undefined {
-  if (error instanceof DriveError && [403, 404].includes(error.status)) return;
+  if (error instanceof DriveError && error.status === 404) return;
   throw error;
 }
 
