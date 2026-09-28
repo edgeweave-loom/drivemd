@@ -17,9 +17,10 @@ const CAPABILITIES = [
   "canTrash",
 ] as const;
 
-// What the navigator shows and the actions it offers.
+// What the navigator shows, where shortcuts point, and the actions it offers.
 const ITEM_FIELDS =
   "id,name,mimeType,resourceKey,parents,driveId," +
+  "shortcutDetails(targetId,targetMimeType,targetResourceKey)," +
   `capabilities(${CAPABILITIES.join(",")}),contentRestrictions(readOnly,reason)`;
 
 // An opened file also needs what the viewer shows and the conflict check
@@ -62,6 +63,13 @@ export type Capability = (typeof CAPABILITIES)[number];
 /** What the user may do with an item: whatever Drive does not grant is denied. */
 export type Capabilities = Record<Capability, boolean>;
 
+export interface ShortcutTarget {
+  id: string;
+  /** The target's type when the shortcut was made. */
+  mimeType: string;
+  resourceKey: string | undefined;
+}
+
 export interface DriveItem {
   id: string;
   name: string;
@@ -70,6 +78,8 @@ export interface DriveItem {
   parents: string[];
   /** The shared drive the item is in, if any. */
   driveId: string | undefined;
+  /** Where a shortcut points: open and list the target, never the shortcut. */
+  target: ShortcutTarget | undefined;
   capabilities: Capabilities;
   /** A locked item's content cannot change, whatever the capabilities say. */
   locked: boolean;
@@ -136,12 +146,13 @@ export function createDrive(auth: DriveAuth): Drive {
     return response.status === 401 ? attempt() : response;
   }
 
-  /** Follows nextPageToken until Drive has sent every page. */
+  /** Follows nextPageToken until Drive has sent every page of `key`. */
   async function list<T>(
     path: string,
     params: Record<string, string>,
     files: FileRef[],
-    read: (body: unknown) => Page<T> | undefined,
+    key: string,
+    read: (entry: Record<string, unknown>) => T | undefined,
   ): Promise<T[]> {
     const items: T[] = [];
     let pageToken: string | undefined;
@@ -150,12 +161,24 @@ export function createDrive(auth: DriveAuth): Drive {
       if (pageToken !== undefined) query.set("pageToken", pageToken);
       const page = await parse(
         await send(`${API}/${path}?${query.toString()}`, files),
-        read,
+        (body) => readPage(body, key, read),
       );
       items.push(...page.items);
       pageToken = page.nextPageToken;
     } while (pageToken !== undefined);
     return items;
+  }
+
+  /** Every item matching the query `q`, in any drive. */
+  function listFiles(q: string, files: FileRef[]): Promise<DriveItem[]> {
+    const params = {
+      q,
+      fields: `nextPageToken,files(${ITEM_FIELDS})`,
+      pageSize: "1000",
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    };
+    return list("files", params, files, "files", parseItem);
   }
 
   return {
@@ -174,25 +197,17 @@ export function createDrive(auth: DriveAuth): Drive {
       return new Uint8Array(content);
     },
     async listChildren(folder) {
-      const params = {
-        q: `'${checked(folder)}' in parents and trashed = false`,
-        fields: `nextPageToken,files(${ITEM_FIELDS})`,
-        pageSize: "1000",
-        supportsAllDrives: "true",
-        includeItemsFromAllDrives: "true",
-      };
-      return list("files", params, [folder], (body) =>
-        readPage(body, "files", parseItem),
-      );
+      const q = `'${checked(folder)}' in parents and trashed = false`;
+      return listFiles(q, [folder]);
     },
     async listSharedDrives() {
+      // As in Drive, the drives the user hid stay out of the list.
       const params = {
+        q: "hidden = false",
         fields: "nextPageToken,drives(id,name)",
         pageSize: "100",
       };
-      return list("drives", params, [], (body) =>
-        readPage(body, "drives", parseSharedDrive),
-      );
+      return list("drives", params, [], "drives", parseSharedDrive);
     },
   };
 }
@@ -282,6 +297,7 @@ function parseItem(value: Record<string, unknown>): DriveItem | undefined {
         )
       : [],
     driveId: optionalString(value.driveId),
+    target: parseTarget(value.shortcutDetails),
     // Complete by construction: one entry for each capability.
     capabilities: Object.fromEntries(
       CAPABILITIES.map((capability) => [
@@ -293,6 +309,18 @@ function parseItem(value: Record<string, unknown>): DriveItem | undefined {
     lockReason: locks
       .map((lock) => optionalString(lock.reason))
       .find((reason) => reason !== undefined),
+  };
+}
+
+function parseTarget(details: unknown): ShortcutTarget | undefined {
+  if (!isRecord(details)) return;
+  const id = optionalString(details.targetId);
+  const mimeType = optionalString(details.targetMimeType);
+  if (id === undefined || mimeType === undefined) return;
+  return {
+    id,
+    mimeType,
+    resourceKey: optionalString(details.targetResourceKey),
   };
 }
 
@@ -316,14 +344,14 @@ function readPage<T>(
   read: (value: Record<string, unknown>) => T | undefined,
 ): Page<T> | undefined {
   if (!isRecord(body)) return;
-  const entries: unknown = body[key];
-  const items: T[] = [];
   // Drive may leave out an empty list.
-  for (const entry of Array.isArray(entries) ? entries : []) {
+  const entries: unknown = body[key] ?? [];
+  if (!Array.isArray(entries)) return;
+  // One entry Drive sent oddly is skipped rather than hiding all the others.
+  const items = entries.flatMap((entry: unknown) => {
     const item = isRecord(entry) ? read(entry) : undefined;
-    if (item === undefined) return;
-    items.push(item);
-  }
+    return item === undefined ? [] : [item];
+  });
   return { items, nextPageToken: optionalString(body.nextPageToken) };
 }
 

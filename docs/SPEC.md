@@ -56,6 +56,7 @@ The interface is in English and follows the system's light or dark theme.
    - Lists folders, Markdown files (.md, .markdown) and Drive shortcuts that point to a folder or a Markdown file. Folders and folder shortcuts come first, then files, each sorted by name in natural order (`file2` before `file10`).
    - Folders and files whose name starts with a dot, such as `.obsidian` and `.trash`, are hidden.
    - Shortcuts work like the real thing: tapping a folder shortcut opens the target folder, tapping a file shortcut opens the target file. A small badge marks them as shortcuts.
+   - The **Shared drives** root lists the shared drives the user is a member of, except those they hid in Drive, as Drive itself does.
    - The **Shortcuts** root lists the shortcuts the user owns, that is the ones they created outside shared drives, wherever they sit, for one-tap access. Shortcuts in shared drives are left out: the whole team creates them, and Drive cannot tell which ones the user made.
    - A broken shortcut (target deleted, in the trash, or no access) is shown greyed out with a short reason.
    - Breadcrumbs show the path the user took, including through a shortcut. When there is no such path (deep link, **Open with**, reloaded folder URL), they are rebuilt from the parents up to My Drive, the shared drive or Shared with me; a parent the user cannot access ends the path.
@@ -179,7 +180,7 @@ As Workspace admin, @gmasse checks **Security > API Controls**. Admins can block
 
 **Shared drives**
 
-Every Drive call must pass `supportsAllDrives=true`. Listings also need `includeItemsFromAllDrives=true`, and cross-drive search uses `corpora=allDrives`.
+Every call on files must pass `supportsAllDrives=true`; the calls on shared drives and revisions take no such parameter. Listings also need `includeItemsFromAllDrives=true`, and cross-drive search uses `corpora=allDrives`.
 
 ## Drive "Open with" integration via private Marketplace
 
