@@ -12,15 +12,15 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["src/test/setup.ts"],
     coverage: {
-      include: ["src/**/*.{ts,tsx}"],
+      include: ["src/**/*.{ts,tsx}", "live/grant.ts"],
       exclude: ["src/main.tsx", "src/test/**"],
       thresholds: {
         lines: 95,
         functions: 95,
         statements: 95,
         branches: 90,
-        // These modules handle the full-Drive token: every branch is tested.
-        "src/{auth,drive,session}.ts": { 100: true },
+        // These modules handle full-Drive tokens: every branch is tested.
+        "{src/{auth,drive,session},live/grant}.ts": { 100: true },
       },
     },
   },
