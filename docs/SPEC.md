@@ -8,7 +8,7 @@ This file is the source of truth for the spec. It replaces the Claude Docs versi
 
 We are building **DriveMD**, a web app to browse, view and edit Markdown (.md) files stored in our Google Drive, on desktop and on phones: iPhone first, Android too. It is for people in our Google Workspace organization only, and it must work on files created by other software. Some of these files live in Obsidian vaults stored in Drive; inside a vault, the app follows Obsidian's syntax and conventions.
 
-The recommended approach is a static single-page app (Vite + React + TypeScript). It signs in with Google Identity Services, calls the Drive REST API v3 directly, edits with CodeMirror 6 and renders with react-markdown. Milestone 1 has no backend; a sign-in test on a real iPhone at the end of that milestone decides whether v1 adds a small token backend (see Tokens). Users reach files through a built-in file navigator, and on desktop also through Drive's own **Open with** menu, via a private Google Workspace Marketplace listing.
+The recommended approach is a static single-page app (Vite + React + TypeScript). It signs in with Google Identity Services, calls the Drive REST API v3 directly, edits with CodeMirror 6 and renders with react-markdown. The app has no backend: sign-in passed the milestone 1 test on a real iPhone, so v1 needs no token backend (see Tokens). Users reach files through a built-in file navigator, and on desktop also through Drive's own **Open with** menu, via a private Google Workspace Marketplace listing.
 
 ## Users, platforms and scope
 
@@ -123,7 +123,7 @@ Home and file navigator ───────────┼──> Static app �
 Deep link or pasted Drive link ────┘    (browser)    └──> Drive REST API v3: list, read, write files
 ```
 
-All three entry points load the same app, which gets a token from Google sign-in and then reads and writes files through the Drive API. If the milestone-1 iPhone test calls for it, a small token backend on Cloud Run handles sign-in only; file content still goes straight between the browser and Drive.
+All three entry points load the same app, which gets a token from Google sign-in and then reads and writes files through the Drive API. The milestone 1 iPhone test showed that no token backend is needed; should one become necessary, it would handle sign-in only, and file content would still go straight between the browser and Drive.
 
 **Domains.** Production is `md.corp.edgeweave.tech` and staging is `md-staging.corp.edgeweave.tech`, both in a dedicated `corp.edgeweave.tech` DNS zone that must exist before milestone 1. Staging is a sibling of production, not a subdomain of it, so a cookie set by production never reaches staging. CI deploys every push to `dev` to staging, authenticated through Workload Identity Federation rather than a service account key.
 
@@ -139,7 +139,7 @@ All three entry points load the same app, which gets a token from Google sign-in
 | Local copy              | IndexedDB                                              | Unsaved text, per file                                                                                                       |
 | Navigator               | Custom drill-down list                                 | Optional `react-arborist` tree on wide screens                                                                               |
 | Data caching (optional) | TanStack Query                                         | Caches folder listings, retries, refetch on focus                                                                            |
-| Hosting                 | Firebase Hosting                                       | Production and staging domains above; Cloud Run for the token backend if needed                                              |
+| Hosting                 | Firebase Hosting                                       | Production and staging domains above                                                                                         |
 
 ## Google auth, scopes and Workspace setup
 
@@ -170,7 +170,8 @@ The app shows the signed-in account's email from Drive's `about.get` (`fields=us
 - Without a backend, the user therefore taps **Continue** in every new tab and at every app launch, and sees the popup open and close then, and again on the first tap after the token expires. On iPhone, the Home Screen app does not share Safari's Google session, and popups are less reliable there.
 - The token is kept for the tab, in memory and in `sessionStorage`: a reload keeps the session, while a new tab or an app launch asks for **Continue**. It counts as expired once 5 minutes or less remain. The account's email stays on the device (`localStorage`) to offer **Continue** and to pass as `login_hint`. **Sign out** forgets both on the device, in every open tab, and does not revoke the grant, which would sign the user out on every device.
 - On a 401, show **Continue**, then retry the call once with the new token. Never drop the user's unsaved text when a token renewal fails.
-- **Decision at the end of milestone 1.** Test sign-in and renewal on a real iPhone, in Safari and from the Home Screen. If they are unreliable or too disruptive, add a small token backend on Cloud Run before milestone 2: redirect sign-in with the authorization-code flow, the refresh token kept encrypted on the server, and short-lived access tokens handed to the app. File content still goes straight between the browser and Drive. Keep all sign-in code in one module so this change touches nothing else.
+- GIS can report its window as closed while it is still open, when the page in it cuts the window off from the app. The app therefore keeps waiting after that report and lets the next tap start a new request, instead of dropping a token that arrives later.
+- **Decided at the end of milestone 1: no token backend.** Sign-in and renewal worked on a real iPhone, in a Safari tab and from the Home Screen, so the popup token model stays. If that changes, the fallback is a small token backend on Cloud Run: redirect sign-in with the authorization-code flow, the refresh token kept encrypted on the server, and short-lived access tokens handed to the app, while file content still goes straight between the browser and Drive. All sign-in code stays in one module (`src/auth.ts`) so that change would touch nothing else.
 
 **Admin console**
 
@@ -220,7 +221,7 @@ As far as we know, **Open with** for web apps works only in Drive on the web, no
 iPhone is the priority and Android must work too. On both, the app runs in the phone's browser, can be added to the home screen, and the built-in navigator is the main way in.
 
 - **Home Screen app.** Add a web app manifest, icons, and `apple-mobile-web-app-capable`. The app's name, also shown under its icon, is **DriveMD**. Respect notch and home-bar areas with `env(safe-area-inset-*)`. Safari never offers to install a web app, so show a one-time hint on iPhone explaining **Share > Add to Home Screen**.
-- **Sign-in.** Start the GIS popup only from a tap, or Safari blocks it. The milestone-1 test in Home Screen (standalone) mode decides whether the token backend is needed (see Tokens).
+- **Sign-in.** Start the GIS popup only from a tap, or Safari blocks it. Sign-in passed the milestone 1 test in Home Screen (standalone) mode, so no token backend is needed (see Tokens).
 - **Layout.**
   - Phone layout: a drill-down folder list with breadcrumbs, and an Edit / Preview toggle. It applies under 768 px wide, and on touch screens less than 500 px tall, so an iPhone in landscape (844 px wide or more) keeps it.
   - Wide layout: tree or list on the left, then the viewer, or the editor and preview side by side. Between 768 and 1024 px wide, as on an iPad in portrait, the tree folds into a drawer so the editor and preview keep enough room.
@@ -250,7 +251,7 @@ The biggest risk is damaging files other tools depend on, so the app must never 
 | Unsaved text is lost when iOS closes the app                                                                           | Keep unsaved text in IndexedDB as the user types; offer to restore it on reopen                                                                                                                                                                                                                                                                                                                 |
 | Drive deletes old revisions (after 30 days or 100 versions for non-Google files)                                       | Mark the pre-edit revision as kept forever before the first write of a session (Drive allows 200 such revisions per file)                                                                                                                                                                                                                                                                       |
 | Access token expires during a long edit                                                                                | Renew inside a user gesture (Save, **Continue**); keep unsaved text; retry once                                                                                                                                                                                                                                                                                                                 |
-| iOS blocks the sign-in popup, or popups fail in Home Screen mode                                                       | Trigger sign-in from a tap; test at the end of milestone 1; fall back to a small token backend with redirect sign-in                                                                                                                                                                                                                                                                            |
+| iOS blocks the sign-in popup, or popups fail in Home Screen mode                                                       | Trigger sign-in from a tap; the milestone 1 test passed in Safari and from the Home Screen; a small token backend with redirect sign-in remains the fallback                                                                                                                                                                                                                                    |
 | Admin API Controls block the app                                                                                       | Ask the admin to mark it Trusted, or turn on trust for internal apps                                                                                                                                                                                                                                                                                                                            |
 | Rendered Markdown runs injected HTML or scripts                                                                        | Sanitize HTML with `rehype-sanitize` (GitHub schema) and set a strict Content Security Policy that enforces Trusted Types, locked by a test on `firebase.json`: with the full `drive` scope, an XSS exposes the user's whole Drive                                                                                                                                                              |
 | The access token leaks through injected script or browser storage                                                      | Keep the token only for the tab (memory and `sessionStorage`), send it only in the `Authorization` header, never log it or put it in a URL or an error message, and forget it on sign-out or a 401; strict CSP with Trusted Types                                                                                                                                                               |
@@ -321,7 +322,7 @@ Every stage is tested on a real iPhone first, then an Android phone, with our me
 
 ## Open questions
 
-- [ ] Token backend or not: decided at the end of milestone 1 (see Tokens).
+- [x] Token backend or not: no backend, since sign-in passed the milestone 1 test on a real iPhone (see Tokens).
 - [ ] Which icon does DriveMD get? The Drive UI integration needs it at milestone 7, and the Home Screen at milestone 8.
 - [ ] Do the Drive iOS and Android apps show web apps under Open with? To check on real phones, for example with a web app already integrated with Drive in our domain, such as diagrams.net.
 

@@ -6,7 +6,7 @@ DriveMD is a static web app for our Google Workspace organization. It signs in w
 
 ## Status
 
-Milestone 1 is in progress: the app signs in with Google and shows the signed-in account's email, and CI deploys `dev` to staging. A test on a real iPhone decides next whether sign-in needs a small token backend. The product spec, [`docs/SPEC.md`](docs/SPEC.md), is the source of truth, and its build plan drives the work one milestone at a time.
+Milestone 1 is done: the app signs in with Google and shows the signed-in account's email, CI deploys `dev` to staging, and sign-in passed the test on a real iPhone without a token backend. Milestone 2, the Drive client, comes next. The product spec, [`docs/SPEC.md`](docs/SPEC.md), is the source of truth, and its build plan drives the work one milestone at a time.
 
 ## Signing in
 
