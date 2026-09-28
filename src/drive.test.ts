@@ -3,6 +3,7 @@ import {
   createDrive,
   DriveError,
   getAccountEmail,
+  isMarkdown,
   type DriveAuth,
   type FileRef,
 } from "./drive.ts";
@@ -638,5 +639,189 @@ describe("listSharedDrives", () => {
     await expect(
       createDrive(fakeAuth()).listSharedDrives(),
     ).rejects.toMatchObject({ name: "DriveError", status: 200 });
+  });
+});
+
+// Google's own types (Docs, folders, shortcuts...) have no content to edit.
+const WITH_CONTENT = "not mimeType contains 'application/vnd.google-apps.'";
+const FOLDER = "application/vnd.google-apps.folder";
+
+describe("isMarkdown", () => {
+  it.each([
+    ["notes.md", true],
+    ["Notes.MD", true],
+    ["plan.markdown", true],
+    ["notes.md.pdf", false],
+    ["md", false],
+    ["notes.mdx", false],
+  ])("%s: %s", (name, expected) => {
+    expect(isMarkdown(name)).toBe(expected);
+  });
+});
+
+describe("listRecent", () => {
+  it("lists the Markdown files among the 100 files viewed last, in every drive", async () => {
+    respond(
+      Response.json({
+        files: [
+          { ...FILE, id: "file-1", name: "b.md" },
+          { ...FILE, id: "file-2", name: "report.pdf" },
+          { ...FILE, id: "file-3", name: "a.markdown" },
+        ],
+      }),
+    );
+
+    const recent = await createDrive(fakeAuth()).listRecent();
+    expect(recent.map(({ id }) => id)).toEqual(["file-1", "file-3"]);
+    expect(Object.fromEntries(sent().url.searchParams)).toEqual({
+      q: `viewedByMeTime > '1970-01-01T00:00:00' and trashed = false and ${WITH_CONTENT}`,
+      orderBy: "viewedByMeTime desc",
+      corpora: "allDrives",
+      pageSize: "100",
+      fields: `files(${ITEM_FIELDS})`,
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
+  });
+});
+
+describe("search", () => {
+  it("finds Markdown files with a word starting with the text, in every drive", async () => {
+    respond(
+      Response.json({
+        files: [
+          { ...FILE, name: "planning.md" },
+          { ...FILE, id: "file-2", name: "plan.docx" },
+        ],
+      }),
+    );
+
+    await expect(createDrive(fakeAuth()).search(" plan ")).resolves.toEqual([
+      expect.objectContaining({ name: "planning.md" }),
+    ]);
+    expect(Object.fromEntries(sent().url.searchParams)).toEqual({
+      q: `name contains 'plan' and trashed = false and ${WITH_CONTENT}`,
+      orderBy: "modifiedTime desc",
+      corpora: "allDrives",
+      pageSize: "100",
+      fields: `files(${ITEM_FIELDS})`,
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
+  });
+
+  it("needs every word of the text, in any order", async () => {
+    respond(Response.json({ files: [] }));
+
+    await createDrive(fakeAuth()).search(" weekly  plan ");
+    expect(sent().url.searchParams.get("q")).toBe(
+      "name contains 'weekly' and name contains 'plan' " +
+        `and trashed = false and ${WITH_CONTENT}`,
+    );
+  });
+
+  it("keeps quotes and backslashes in the text from changing the query", async () => {
+    respond(Response.json({ files: [] }));
+
+    await createDrive(fakeAuth()).search("Ada's\\notes' or");
+    expect(sent().url.searchParams.get("q")).toBe(
+      "name contains 'Ada\\'s\\\\notes\\'' and name contains 'or' " +
+        `and trashed = false and ${WITH_CONTENT}`,
+    );
+  });
+
+  it("finds nothing for blank text, without asking Drive", async () => {
+    respond();
+
+    await expect(createDrive(fakeAuth()).search("  ")).resolves.toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("findVaults", () => {
+  /** Answers the search for .obsidian folders, then each folder's metadata. */
+  function answerVaults(parents: string[][], refused: Record<string, number>) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        const { pathname } = new URL(url);
+        if (pathname.endsWith("/files")) {
+          const files = parents.map((ids, index) => ({
+            ...FILE,
+            id: `obsidian-${String(index)}`,
+            name: ".obsidian",
+            mimeType: FOLDER,
+            parents: ids,
+          }));
+          return Promise.resolve(Response.json({ files }));
+        }
+        const id = pathname.split("/").at(-1) ?? "";
+        const status = refused[id];
+        return Promise.resolve(
+          status === undefined
+            ? Response.json({ id, name: `Vault ${id}`, mimeType: FOLDER })
+            : refusal(status),
+        );
+      }),
+    );
+  }
+
+  it("finds the folders that hold an .obsidian folder, in every drive", async () => {
+    answerVaults([["vault-1"], ["vault-2"], ["vault-1"], []], {});
+
+    const vaults = await createDrive(fakeAuth()).findVaults();
+    expect(vaults.map(({ id, name }) => [id, name])).toEqual([
+      ["vault-1", "Vault vault-1"],
+      ["vault-2", "Vault vault-2"],
+    ]);
+    expect(Object.fromEntries(sent().url.searchParams)).toEqual({
+      q: `name = '.obsidian' and mimeType = '${FOLDER}' and trashed = false`,
+      corpora: "allDrives",
+      pageSize: "1000",
+      fields: `nextPageToken,files(${ITEM_FIELDS})`,
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
+  });
+
+  it("leaves out a vault whose folder the user cannot open", async () => {
+    answerVaults([["vault-1"], ["vault-2"]], { "vault-2": 404 });
+
+    const vaults = await createDrive(fakeAuth()).findVaults();
+    expect(vaults.map(({ id }) => id)).toEqual(["vault-1"]);
+  });
+
+  // Drive also answers 403 when it limits the rate of requests.
+  it.each([403, 500])(
+    "fails when a vault's folder answers %i",
+    async (status) => {
+      answerVaults([["vault-1"]], { "vault-1": status });
+
+      await expect(createDrive(fakeAuth()).findVaults()).rejects.toMatchObject({
+        name: "DriveError",
+        status,
+      });
+    },
+  );
+});
+
+describe("listSharedWithMe", () => {
+  it("lists the folders, shortcuts and files with content shared with the user", async () => {
+    respond(Response.json({ files: [FILE] }));
+
+    await expect(
+      createDrive(fakeAuth()).listSharedWithMe(),
+    ).resolves.toMatchObject([FILE]);
+    expect(Object.fromEntries(sent().url.searchParams)).toEqual({
+      q:
+        "sharedWithMe and trashed = false and " +
+        `(mimeType = '${FOLDER}' or ` +
+        "mimeType = 'application/vnd.google-apps.shortcut' or " +
+        `${WITH_CONTENT})`,
+      pageSize: "1000",
+      fields: `nextPageToken,files(${ITEM_FIELDS})`,
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
   });
 });
