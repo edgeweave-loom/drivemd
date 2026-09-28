@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { chmod, mkdir, open, rename, writeFile } from "node:fs/promises";
+import { mkdir, open, rename, rm } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { getAccountEmail, type DriveAuth } from "../src/drive.ts";
@@ -11,6 +11,9 @@ import { isRecord } from "../src/is-record.ts";
 
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const REVOKE_URL = "https://oauth2.googleapis.com/revoke";
+const UNREVOKED =
+  "remove DriveMD from that account's connected apps at https://myaccount.google.com/connections";
 /** Google sends the browser back here; nothing listens, the user copies it. */
 export const REDIRECT_URI = "http://127.0.0.1:8765/";
 const EXPIRY_MARGIN_MS = 60_000;
@@ -31,6 +34,12 @@ export interface Grant {
 export interface Pending {
   verifier: string;
   state: string;
+}
+
+/** How the sign-in talks with the user, in their own terminal. */
+export interface Prompt {
+  show: (text: string) => void;
+  ask: (question: string) => Promise<string>;
 }
 
 export interface LiveSession {
@@ -81,12 +90,61 @@ export async function readGrant(dir: string): Promise<Grant | undefined> {
   return { account: value.account, refreshToken: value.refreshToken };
 }
 
+/**
+ * Signs the test account in. It keeps the grant only if that account signed
+ * in, and revokes any grant it cannot keep or that it replaces, so that no
+ * lasting access outlives its use.
+ */
+export async function signIn(
+  dir: string,
+  account: string | undefined,
+  prompt: Prompt,
+): Promise<void> {
+  if (account === undefined || account.trim() === "") {
+    throw new Error("Set DRIVEMD_LIVE_ACCOUNT to the test account's address");
+  }
+  const client = await readClient(dir);
+  if (!client) {
+    throw new Error(
+      `Save the desktop OAuth client as ${join(dir, "client.json")}, then chmod 600 it`,
+    );
+  }
+  const older = await readGrant(dir).catch(() => undefined);
+  const { url, pending } = startLogin(client, account);
+  prompt.show(
+    `Open this address, sign in as ${account} and allow access:\n\n${url}\n\n` +
+      "The browser then fails to load 127.0.0.1: paste its address here.\n",
+  );
+  const code = codeFrom(await prompt.ask("Address: "), pending);
+  const grant = await finishLogin(client, account, code, pending);
+  await saveGrant(dir, grant).catch(async (error: unknown) => {
+    await revoke(grant.refreshToken);
+    throw error;
+  });
+  if (
+    older !== undefined &&
+    older.refreshToken !== grant.refreshToken &&
+    !(await revoke(older.refreshToken))
+  ) {
+    prompt.show(`The grant it replaces could not be revoked: ${UNREVOKED}.\n`);
+  }
+  prompt.show(`Saved the grant for ${grant.account} in ${dir}.\n`);
+}
+
 /** Saves the grant readable only by the user, replacing any older one. */
 export async function saveGrant(dir: string, grant: Grant): Promise<void> {
   await mkdir(dir, { recursive: true, mode: 0o700 });
   const draft = join(dir, "grant.json.draft");
-  await writeFile(draft, JSON.stringify(grant), { mode: 0o600 });
-  await chmod(draft, 0o600);
+  // A draft that a failed save left, or anything else there, is removed
+  // rather than written through.
+  await rm(draft, { force: true });
+  const file = await open(draft, "wx", 0o600);
+  try {
+    await file.writeFile(JSON.stringify(grant));
+    await file.sync();
+  } finally {
+    await file.close();
+  }
   await rename(draft, join(dir, "grant.json"));
 }
 
@@ -119,7 +177,11 @@ export function startLogin(
 
 /** The code in the address Google sent the browser back to. */
 export function codeFrom(address: string, pending: Pending): string {
-  const { searchParams } = new URL(address.trim());
+  const url = new URL(address.trim());
+  if (`${url.origin}${url.pathname}` !== REDIRECT_URI) {
+    throw new Error("This is not the address Google sent the browser back to");
+  }
+  const { searchParams } = url;
   if (searchParams.get("state") !== pending.state) {
     throw new Error("This address comes from another sign-in");
   }
@@ -132,7 +194,7 @@ export function codeFrom(address: string, pending: Pending): string {
 
 /**
  * Trades the code for a lasting grant, kept only if the expected account
- * signed in: a grant made by any other account is revoked at once.
+ * signed in: a grant it cannot keep is revoked at once.
  */
 export async function finishLogin(
   client: Client,
@@ -149,28 +211,27 @@ export async function finishLogin(
     client_secret: client.secret,
   });
   const { access_token: accessToken, refresh_token: refreshToken } = tokens;
-  if (typeof accessToken !== "string" || typeof refreshToken !== "string") {
+  if (typeof refreshToken !== "string") {
     throw new Error("Google sent no lasting grant");
   }
-  const email = await getAccountEmail(accessToken);
-  if (email !== account) {
-    const revoked = await fetch("https://oauth2.googleapis.com/revoke", {
-      method: "POST",
-      body: new URLSearchParams({ token: refreshToken }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    }).then(
-      (response) => response.ok,
-      () => false,
-    );
+  const refuse = async (reason: string): Promise<never> => {
+    const revoked = await revoke(refreshToken);
     throw new Error(
-      `Google signed in ${email}, not ${account}: ` +
+      `${reason}: ` +
         (revoked
           ? "the grant was revoked"
-          : `it could not be revoked, remove "DriveMD live check" from that account's third-party connections`),
+          : `it could not be revoked, so ${UNREVOKED}`),
     );
+  };
+  if (typeof accessToken !== "string") {
+    return refuse("Google sent no access token");
   }
-  return { account, refreshToken };
+  const email = await getAccountEmail(accessToken).catch(() => undefined);
+  if (email === undefined) return refuse("Drive could not tell who signed in");
+  if (!sameAccount(email, account)) {
+    return refuse(`Google signed in ${email}, not ${account.trim()}`);
+  }
+  return { account: email, refreshToken };
 }
 
 /**
@@ -202,7 +263,7 @@ export async function liveSession(
     },
   };
   const owner = await getAccountEmail(await auth.token());
-  if (owner !== grant.account) {
+  if (!sameAccount(owner, grant.account)) {
     throw new Error(
       `The grant belongs to ${owner}, not ${grant.account}: sign in again`,
     );
@@ -253,17 +314,35 @@ async function readPrivate(path: string): Promise<unknown> {
   }
 }
 
-/** Posts a form to Google's OAuth server; errors never quote the request. */
-async function post(
-  url: string,
-  fields: Record<string, string>,
-): Promise<Record<string, unknown>> {
-  const response = await fetch(url, {
+/** Whether two addresses name the same account, whatever their case. */
+function sameAccount(one: string, other: string): boolean {
+  return one.trim().toLowerCase() === other.trim().toLowerCase();
+}
+
+/** Revokes a grant, telling whether Google confirmed it. */
+function revoke(refreshToken: string): Promise<boolean> {
+  return form(REVOKE_URL, { token: refreshToken }).then(
+    (response) => response.ok,
+    () => false,
+  );
+}
+
+/** Posts a form to Google's OAuth server; errors never quote it. */
+function form(url: string, fields: Record<string, string>): Promise<Response> {
+  return fetch(url, {
     method: "POST",
     body: new URLSearchParams(fields),
     cache: "no-store",
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
+}
+
+/** Posts a form, and reads Google's JSON answer. */
+async function post(
+  url: string,
+  fields: Record<string, string>,
+): Promise<Record<string, unknown>> {
+  const response = await form(url, fields);
   const body: unknown = await response.json().catch(() => undefined);
   if (!response.ok || !isRecord(body)) {
     const reason =
