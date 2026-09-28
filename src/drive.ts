@@ -85,6 +85,12 @@ export interface FileMetadata extends DriveItem {
   headRevisionId: string | undefined;
 }
 
+export interface SharedDrive {
+  /** Also the ID of the drive's top folder. */
+  id: string;
+  name: string;
+}
+
 export interface Drive {
   getMetadata: (file: FileRef) => Promise<FileMetadata>;
   /**
@@ -93,6 +99,10 @@ export interface Drive {
    * would then overwrite someone else's change.
    */
   getContent: (file: FileRef) => Promise<Uint8Array>;
+  /** Everything in the folder that is not in the trash, from every page. */
+  listChildren: (folder: FileRef) => Promise<DriveItem[]>;
+  /** The shared drives the user is a member of. */
+  listSharedDrives: () => Promise<SharedDrive[]>;
 }
 
 export async function getAccountEmail(accessToken: string): Promise<string> {
@@ -125,6 +135,28 @@ export function createDrive(auth: DriveAuth): Drive {
     return response.status === 401 ? attempt() : response;
   }
 
+  /** Follows nextPageToken until Drive has sent every page. */
+  async function list<T>(
+    path: string,
+    params: Record<string, string>,
+    files: FileRef[],
+    read: (body: unknown) => Page<T> | undefined,
+  ): Promise<T[]> {
+    const items: T[] = [];
+    let pageToken: string | undefined;
+    do {
+      const query = new URLSearchParams(params);
+      if (pageToken !== undefined) query.set("pageToken", pageToken);
+      const page = await parse(
+        await send(`${API}/${path}?${query.toString()}`, files),
+        read,
+      );
+      items.push(...page.items);
+      pageToken = page.nextPageToken;
+    } while (pageToken !== undefined);
+    return items;
+  }
+
   return {
     async getMetadata(file) {
       const response = await send(fileUrl(file, { fields: FILE_FIELDS }), [
@@ -140,16 +172,48 @@ export function createDrive(auth: DriveAuth): Drive {
       });
       return new Uint8Array(content);
     },
+    async listChildren(folder) {
+      const params = {
+        q: `'${checked(folder)}' in parents and trashed = false`,
+        fields: `nextPageToken,files(${ITEM_FIELDS})`,
+        pageSize: "1000",
+        supportsAllDrives: "true",
+        includeItemsFromAllDrives: "true",
+      };
+      return list("files", params, [folder], (body) =>
+        readPage(body, "files", parseItem),
+      );
+    },
+    async listSharedDrives() {
+      const params = {
+        fields: "nextPageToken,drives(id,name)",
+        pageSize: "100",
+      };
+      return list("drives", params, [], (body) =>
+        readPage(body, "drives", parseSharedDrive),
+      );
+    },
   };
+}
+
+interface Page<T> {
+  items: T[];
+  nextPageToken: string | undefined;
 }
 
 /** A URL for one file, in any drive. */
 function fileUrl(file: FileRef, params: Record<string, string>): string {
-  // Drive IDs use letters, digits, "-" and "_": any other character in the
-  // path could reach another endpoint, and "." or ".." would be resolved away.
-  if (!/^[\w-]+$/.test(file.id)) throw new DriveError(400, "Not a Drive ID");
   const query = new URLSearchParams({ ...params, supportsAllDrives: "true" });
-  return `${API}/files/${file.id}?${query.toString()}`;
+  return `${API}/files/${checked(file)}?${query.toString()}`;
+}
+
+/** The file's ID, once it is known to be shaped like a Drive ID. */
+function checked(file: FileRef): string {
+  // Drive IDs use letters, digits, "-" and "_": any other character could
+  // reach another endpoint or change a query, and "." or ".." in a path would
+  // be resolved away.
+  if (!/^[\w-]+$/.test(file.id)) throw new DriveError(400, "Not a Drive ID");
+  return file.id;
 }
 
 // The token only ever travels in the Authorization header, and no error
@@ -240,6 +304,31 @@ function parseFile(value: unknown): FileMetadata | undefined {
     md5Checksum: optionalString(value.md5Checksum),
     headRevisionId: optionalString(value.headRevisionId),
   };
+}
+
+function readPage<T>(
+  body: unknown,
+  key: string,
+  read: (value: Record<string, unknown>) => T | undefined,
+): Page<T> | undefined {
+  if (!isRecord(body)) return;
+  const entries: unknown = body[key];
+  const items: T[] = [];
+  // Drive may leave out an empty list.
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const item = isRecord(entry) ? read(entry) : undefined;
+    if (item === undefined) return;
+    items.push(item);
+  }
+  return { items, nextPageToken: optionalString(body.nextPageToken) };
+}
+
+function parseSharedDrive(
+  value: Record<string, unknown>,
+): SharedDrive | undefined {
+  const { id, name } = value;
+  if (typeof id !== "string" || typeof name !== "string") return;
+  return { id, name };
 }
 
 function optionalString(value: unknown): string | undefined {

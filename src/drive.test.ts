@@ -435,3 +435,116 @@ describe("getContent", () => {
     });
   });
 });
+
+const ITEM_FIELDS =
+  "id,name,mimeType,resourceKey,parents,driveId," +
+  "capabilities(canAddChildren,canComment,canDownload,canEdit," +
+  "canModifyContent,canMoveItemOutOfDrive,canMoveItemWithinDrive," +
+  "canRename,canTrash),contentRestrictions(readOnly,reason)";
+
+describe("listChildren", () => {
+  function listChildren(folder: FileRef = { id: "folder-1" }) {
+    return createDrive(fakeAuth()).listChildren(folder);
+  }
+
+  it("lists what the folder holds outside the trash, in any drive", async () => {
+    respond(Response.json({ files: [FILE, { ...FILE, id: "file-2" }] }));
+
+    await expect(
+      listChildren({ id: "folder-1", resourceKey: "key-1" }),
+    ).resolves.toMatchObject([{ id: "file-1" }, { id: "file-2" }]);
+    const { url, headers } = sent();
+    expect(url.origin + url.pathname).toBe(
+      "https://www.googleapis.com/drive/v3/files",
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      q: "'folder-1' in parents and trashed = false",
+      fields: `nextPageToken,files(${ITEM_FIELDS})`,
+      pageSize: "1000",
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
+    expect(headers.get("X-Goog-Drive-Resource-Keys")).toBe("folder-1/key-1");
+  });
+
+  it("follows every page of a large folder", async () => {
+    respond(
+      Response.json({ files: [FILE], nextPageToken: "page-2" }),
+      Response.json({ files: [{ ...FILE, id: "file-2" }] }),
+    );
+
+    await expect(listChildren()).resolves.toMatchObject([
+      { id: "file-1" },
+      { id: "file-2" },
+    ]);
+    expect(sent(0).url.searchParams.has("pageToken")).toBe(false);
+    expect(sent(1).url.searchParams.get("pageToken")).toBe("page-2");
+    expect(sent(1).url.searchParams.get("q")).toBe(
+      sent(0).url.searchParams.get("q"),
+    );
+  });
+
+  it.each([{}, { files: [] }])("reads an empty folder: %j", async (body) => {
+    respond(Response.json(body));
+
+    await expect(listChildren()).resolves.toEqual([]);
+  });
+
+  it.each([{ files: [FILE, { ...FILE, id: 7 }] }, { files: [null] }, null])(
+    "rejects a malformed page: %j",
+    async (body) => {
+      respond(Response.json(body));
+
+      await expect(listChildren()).rejects.toMatchObject({
+        name: "DriveError",
+        message: "Google Drive sent an unexpected answer",
+      });
+    },
+  );
+
+  it("refuses a folder ID that could change the query", async () => {
+    respond();
+
+    await expect(
+      listChildren({ id: "x' in parents or name contains '" }),
+    ).rejects.toMatchObject({ name: "DriveError", status: 400 });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("listSharedDrives", () => {
+  it("lists every shared drive the user is a member of", async () => {
+    respond(
+      Response.json({
+        drives: [{ id: "drive-1", name: "Team" }],
+        nextPageToken: "page-2",
+      }),
+      Response.json({ drives: [{ id: "drive-2", name: "Operations" }] }),
+    );
+
+    await expect(createDrive(fakeAuth()).listSharedDrives()).resolves.toEqual([
+      { id: "drive-1", name: "Team" },
+      { id: "drive-2", name: "Operations" },
+    ]);
+    const { url } = sent();
+    expect(url.origin + url.pathname).toBe(
+      "https://www.googleapis.com/drive/v3/drives",
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      fields: "nextPageToken,drives(id,name)",
+      pageSize: "100",
+    });
+    expect(sent(1).url.searchParams.get("pageToken")).toBe("page-2");
+  });
+
+  it.each([
+    { drives: [{ id: "drive-1" }] },
+    { drives: [{ id: 1, name: "Team" }] },
+  ])("rejects a malformed drive: %j", async (body) => {
+    respond(Response.json(body));
+
+    await expect(
+      createDrive(fakeAuth()).listSharedDrives(),
+    ).rejects.toMatchObject({ name: "DriveError", status: 200 });
+  });
+});
