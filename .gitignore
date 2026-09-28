@@ -13,3 +13,6 @@ coverage/
 *.key
 credentials.json
 .firebaserc
+# The live checks' credentials, should DRIVEMD_LIVE_DIR ever point here
+client.json
+grant.json*

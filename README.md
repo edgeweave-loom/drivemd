@@ -48,6 +48,12 @@ The app reads its settings from `VITE_*` environment variables when it is built.
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `VITE_GOOGLE_CLIENT_ID` | ID of the OAuth client of type Web application, from the spec's [Google Cloud setup](docs/SPEC.md#google-auth-scopes-and-workspace-setup) |
 
+## Live Drive checks
+
+The unit tests replace Google Drive with mocked answers, so a few behaviors can only be checked against the real Drive. The live checks do it as a test account of our organization, never with a person's account: its Drive holds nothing but what the checks create, a file made up for them that another account shares with it as a viewer, and a shared drive named `DriveMD live check` where it is a content manager. Nothing about the account enters the repository. Its credentials stay in `~/.config/drivemd-live/`, or in the absolute path set in `DRIVEMD_LIVE_DIR`: the desktop OAuth client as `client.json` and the account's grant as `grant.json`. The scripts read them only when they are yours and nobody else can read them, and check with Drive that the grant belongs to the account it names before they act.
+
+To set up, create an OAuth client of type **Desktop app** in the Google Cloud project, download its JSON, and save it as `client.json` in that folder, then `chmod 700` the folder and `chmod 600` the file.
+
 ## Security
 
 The app's access token can read and write the user's whole Drive, so the repository guards against injected code and a compromised supply chain:
