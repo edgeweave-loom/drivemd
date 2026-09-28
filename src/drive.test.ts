@@ -1084,3 +1084,203 @@ describe("markViewed", () => {
     ).rejects.toMatchObject({ name: "DriveError", status: 404 });
   });
 });
+
+describe("createFile", () => {
+  it("creates an empty Markdown file in the folder, in any drive", async () => {
+    respond(Response.json({ ...FILE, id: "file-9", name: "Untitled.md" }));
+
+    await expect(
+      createDrive(fakeAuth()).createFile(
+        { id: "folder-1", resourceKey: "key-1" },
+        "Untitled.md",
+      ),
+    ).resolves.toMatchObject({ id: "file-9", name: "Untitled.md" });
+    const { url, headers, init } = sent();
+    expect(init?.method).toBe("POST");
+    expect(url.origin + url.pathname).toBe(
+      "https://www.googleapis.com/drive/v3/files",
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      fields: ITEM_FIELDS,
+      supportsAllDrives: "true",
+    });
+    expect(headers.get("Content-Type")).toBe("application/json");
+    expect(headers.get("X-Goog-Drive-Resource-Keys")).toBe("folder-1/key-1");
+    expect(sentJson()).toEqual({
+      name: "Untitled.md",
+      parents: ["folder-1"],
+      mimeType: "text/markdown",
+    });
+  });
+
+  it.each([
+    [" Untitled ", "Untitled.md"],
+    ["plan.markdown", "plan.markdown"],
+  ])("adds .md to a name without it: %j", async (name, created) => {
+    respond(Response.json({ ...FILE, name: created }));
+
+    await createDrive(fakeAuth()).createFile({ id: "folder-1" }, name);
+    expect(sentJson()).toMatchObject({ name: created });
+  });
+
+  it("reports Drive's refusal", async () => {
+    respond(refusal(403, "The user does not have sufficient permissions."));
+
+    await expect(
+      createDrive(fakeAuth()).createFile({ id: "folder-1" }, "Untitled.md"),
+    ).rejects.toMatchObject({ name: "DriveError", status: 403 });
+  });
+
+  it.each([
+    [{ id: "folder-1" }, " "],
+    [{ id: "folder-1', 'folder-2" }, "Untitled.md"],
+  ])(
+    "refuses a nameless file or an odd folder ID: %j, %j",
+    async (folder, name) => {
+      respond();
+
+      await expect(
+        createDrive(fakeAuth()).createFile(folder, name),
+      ).rejects.toMatchObject({ name: "DriveError", status: 400 });
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("renameFile", () => {
+  it("renames the file, in any drive", async () => {
+    respond(Response.json({ ...FILE, name: "plan.md" }));
+
+    await expect(
+      createDrive(fakeAuth()).renameFile(
+        { id: "file-1", resourceKey: "key-1" },
+        " plan.md ",
+      ),
+    ).resolves.toMatchObject({ name: "plan.md" });
+    const { url, headers, init } = sent();
+    expect(init?.method).toBe("PATCH");
+    expect(url.origin + url.pathname).toBe(
+      "https://www.googleapis.com/drive/v3/files/file-1",
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      fields: ITEM_FIELDS,
+      supportsAllDrives: "true",
+    });
+    expect(headers.get("X-Goog-Drive-Resource-Keys")).toBe("file-1/key-1");
+    expect(sentJson()).toEqual({ name: "plan.md" });
+  });
+
+  it("refuses an empty name, without asking Drive", async () => {
+    respond();
+
+    await expect(
+      createDrive(fakeAuth()).renameFile({ id: "file-1" }, ""),
+    ).rejects.toMatchObject({ name: "DriveError", status: 400 });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed answer", async () => {
+    respond(Response.json(null));
+
+    await expect(
+      createDrive(fakeAuth()).renameFile({ id: "file-1" }, "plan.md"),
+    ).rejects.toMatchObject({
+      name: "DriveError",
+      message: "Google Drive sent an unexpected answer",
+    });
+  });
+});
+
+describe("moveFile", () => {
+  /** Reads the file as a listing would, then moves it to `to`. */
+  async function move(to: FileRef) {
+    const drive = createDrive(fakeAuth());
+    const file = await drive.getMetadata({
+      id: "file-1",
+      resourceKey: "key-1",
+    });
+    return drive.moveFile(file, to);
+  }
+
+  it("moves the file out of its folder into another, in any drive", async () => {
+    respond(
+      Response.json({ ...FILE, resourceKey: "key-1", parents: ["folder-1"] }),
+      Response.json({ ...FILE, parents: ["folder-2"] }),
+    );
+
+    await expect(
+      move({ id: "folder-2", resourceKey: "key-3" }),
+    ).resolves.toMatchObject({ parents: ["folder-2"] });
+    const { url, headers, init } = sent(1);
+    expect(init?.method).toBe("PATCH");
+    expect(url.origin + url.pathname).toBe(
+      "https://www.googleapis.com/drive/v3/files/file-1",
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      addParents: "folder-2",
+      removeParents: "folder-1",
+      fields: ITEM_FIELDS,
+      supportsAllDrives: "true",
+    });
+    expect(headers.get("X-Goog-Drive-Resource-Keys")).toBe(
+      "file-1/key-1,folder-2/key-3",
+    );
+    expect(sentJson(1)).toEqual({});
+  });
+
+  it("leaves a file already in the folder where it is", async () => {
+    respond(Response.json({ ...FILE, parents: ["folder-2"] }));
+
+    await expect(move({ id: "folder-2" })).resolves.toMatchObject({
+      id: "file-1",
+      parents: ["folder-2"],
+    });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [["folder-1,folder-3"], { id: "folder-2" }],
+    [["folder-1"], { id: "../folder-2" }],
+  ])(
+    "refuses a folder ID that could change the move: %j, %j",
+    async (parents, to) => {
+      respond(Response.json({ ...FILE, parents }));
+
+      await expect(move(to)).rejects.toMatchObject({
+        name: "DriveError",
+        status: 400,
+      });
+      expect(fetch).toHaveBeenCalledOnce();
+    },
+  );
+});
+
+describe("trashFile", () => {
+  it("moves the file to the trash, where it stays restorable", async () => {
+    respond(Response.json({ id: "file-1" }));
+
+    await createDrive(fakeAuth()).trashFile({
+      id: "file-1",
+      resourceKey: "key-1",
+    });
+    const { url, headers, init } = sent();
+    expect(init?.method).toBe("PATCH");
+    expect(url.origin + url.pathname).toBe(
+      "https://www.googleapis.com/drive/v3/files/file-1",
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      fields: "id",
+      supportsAllDrives: "true",
+    });
+    expect(headers.get("X-Goog-Drive-Resource-Keys")).toBe("file-1/key-1");
+    expect(sentJson()).toEqual({ trashed: true });
+  });
+
+  it("reports Drive's refusal", async () => {
+    respond(refusal(403, "The user does not have sufficient permissions."));
+
+    await expect(
+      createDrive(fakeAuth()).trashFile({ id: "file-1" }),
+    ).rejects.toMatchObject({ name: "DriveError", status: 403 });
+  });
+});

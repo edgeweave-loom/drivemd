@@ -153,11 +153,21 @@ export interface Drive {
   keepRevision: (file: FileRef, revisionId: string) => Promise<void>;
   /** Marks the file as viewed now, which is what Recent sorts by. */
   markViewed: (file: FileRef) => Promise<void>;
+  /**
+   * Creates an empty Markdown file in the folder, named `name` with .md added
+   * unless it already ends in .md or .markdown.
+   */
+  createFile: (folder: FileRef, name: string) => Promise<DriveItem>;
+  renameFile: (file: FileRef, name: string) => Promise<DriveItem>;
+  /** Moves the file out of the folders it is in, into `to`. */
+  moveFile: (file: DriveItem, to: FileRef) => Promise<DriveItem>;
+  /** Moves the file to the trash, from which Drive can restore it. */
+  trashFile: (file: FileRef) => Promise<void>;
 }
 
 /** What a call writes: its method, and a body of the given type. */
 interface Change {
-  method: "PATCH";
+  method: "PATCH" | "POST";
   type: string;
   body: string | Uint8Array<ArrayBuffer>;
   /**
@@ -361,6 +371,34 @@ export function createDrive(auth: DriveAuth): Drive {
       const response = await send(url, [file], json({ keepForever: true }));
       await confirm(response);
     },
+    async createFile(folder, name) {
+      const trimmed = named(name);
+      const file = {
+        name: isMarkdown(trimmed) ? trimmed : `${trimmed}.md`,
+        parents: [checked(folder.id)],
+        mimeType: "text/markdown",
+      };
+      const url = `${API}/files?${inAnyDrive({ fields: ITEM_FIELDS })}`;
+      return parse(await send(url, [folder], json(file, "POST")), readItem);
+    },
+    async renameFile(file, name) {
+      const change = json({ name: named(name) });
+      const url = fileUrl(file, { fields: ITEM_FIELDS });
+      return parse(await send(url, [file], change), readItem);
+    },
+    async moveFile(file, to) {
+      if (file.parents.includes(to.id)) return file;
+      const url = fileUrl(file, {
+        addParents: checked(to.id),
+        removeParents: file.parents.map(checked).join(","),
+        fields: ITEM_FIELDS,
+      });
+      return parse(await send(url, [file, to], json({})), readItem);
+    },
+    async trashFile(file) {
+      const url = fileUrl(file, { fields: "id" });
+      await confirm(await send(url, [file], json({ trashed: true })));
+    },
     async markViewed(file) {
       const viewed = { viewedByMeTime: new Date().toISOString() };
       const response = await send(
@@ -373,10 +411,10 @@ export function createDrive(auth: DriveAuth): Drive {
   };
 }
 
-/** A change that updates the item with the fields in `value`. */
-function json(value: object): Change {
+/** A change that sends `value` as JSON: new fields for the item, by default. */
+function json(value: object, method: Change["method"] = "PATCH"): Change {
   return {
-    method: "PATCH",
+    method,
     type: "application/json",
     body: JSON.stringify(value),
   };
@@ -413,8 +451,25 @@ function fileUrl(
   params: Record<string, string>,
   base = API,
 ): string {
-  const query = new URLSearchParams({ ...params, supportsAllDrives: "true" });
-  return `${base}/files/${checked(file.id)}?${query.toString()}`;
+  return `${base}/files/${checked(file.id)}?${inAnyDrive(params)}`;
+}
+
+/** The query of a call on files, which works in every drive. */
+function inAnyDrive(params: Record<string, string>): string {
+  return new URLSearchParams({
+    ...params,
+    supportsAllDrives: "true",
+  }).toString();
+}
+
+/**
+ * The name without the spaces around it, which a phone keyboard often adds;
+ * refused when blank, since the app never makes a nameless file.
+ */
+function named(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed === "") throw new DriveError(400, "A file needs a name");
+  return trimmed;
 }
 
 /** The ID, once it is known to be shaped like a Drive ID. */
@@ -521,6 +576,10 @@ function parseTarget(details: unknown): ShortcutTarget | undefined {
     mimeType,
     resourceKey: optionalString(details.targetResourceKey),
   };
+}
+
+function readItem(body: unknown): DriveItem | undefined {
+  return isRecord(body) ? parseItem(body) : undefined;
 }
 
 function parseFile(value: unknown): FileMetadata | undefined {
