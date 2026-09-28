@@ -25,7 +25,7 @@ const ITEM_FIELDS =
 
 // An opened file also needs what the viewer shows and the conflict check
 // compares.
-const FILE_FIELDS = `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),md5Checksum,headRevisionId`;
+const FILE_FIELDS = `${ITEM_FIELDS},trashed,modifiedTime,lastModifyingUser(displayName),md5Checksum,headRevisionId`;
 
 const UNREACHABLE = "Google Drive could not be reached";
 
@@ -92,6 +92,7 @@ export interface DriveItem {
 }
 
 export interface FileMetadata extends DriveItem {
+  trashed: boolean;
   modifiedTime: string | undefined;
   /** Who changed the file last, when a signed-in user did. */
   lastModifiedBy: string | undefined;
@@ -127,6 +128,16 @@ export interface Drive {
   search: (text: string) => Promise<DriveItem[]>;
   /** The folders that hold an Obsidian vault, in every drive. */
   findVaults: () => Promise<DriveItem[]>;
+  /** The shortcuts the user made outside shared drives, wherever they are. */
+  listShortcuts: () => Promise<DriveItem[]>;
+  /**
+   * Why a shortcut cannot be followed: its target is "missing" when it was
+   * deleted or is not shared with the user, or "trashed"; undefined when the
+   * target opens.
+   */
+  checkShortcut: (
+    target: ShortcutTarget,
+  ) => Promise<"missing" | "trashed" | undefined>;
 }
 
 /** Whether a name marks a Markdown file: MIME types are unreliable. */
@@ -275,6 +286,22 @@ export function createDrive(auth: DriveAuth): Drive {
       );
       return vaults.filter((vault) => vault !== undefined);
     },
+    async listShortcuts() {
+      // Shortcuts in shared drives have no owner: the whole team makes them.
+      return listFiles({
+        q: `mimeType = '${SHORTCUT}' and 'me' in owners and trashed = false`,
+      });
+    },
+    async checkShortcut(target) {
+      try {
+        const file = await getMetadata(target);
+        return file.trashed ? "trashed" : undefined;
+      } catch (error) {
+        if (error instanceof DriveError && error.status === 404)
+          return "missing";
+        throw error;
+      }
+    },
   };
 }
 
@@ -408,6 +435,7 @@ function parseFile(value: unknown): FileMetadata | undefined {
   const user = isRecord(value.lastModifyingUser) ? value.lastModifyingUser : {};
   return {
     ...item,
+    trashed: value.trashed === true,
     modifiedTime: optionalString(value.modifiedTime),
     lastModifiedBy: optionalString(user.displayName),
     md5Checksum: optionalString(value.md5Checksum),
