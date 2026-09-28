@@ -22,13 +22,20 @@ jobs:
     env:
       VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
     steps:
-      - name: Require the OAuth client ID for staging
+      - name: Require the staging configuration
         if: github.ref == 'refs/heads/dev' && vars.FIREBASE_PROJECT_ID != ''
         run: |
-          if [ -z "$VITE_GOOGLE_CLIENT_ID" ]; then
-            echo "::error::Set the VITE_GOOGLE_CLIENT_ID repository variable."
-            exit 1
-          fi
+          for name in VITE_GOOGLE_CLIENT_ID FIREBASE_HOSTING_SITE GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Set the $name repository variable."
+              missing=1
+            fi
+          done
+          exit "${missing:-0}"
+        env:
+          FIREBASE_HOSTING_SITE: ${{ vars.FIREBASE_HOSTING_SITE }}
+          GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

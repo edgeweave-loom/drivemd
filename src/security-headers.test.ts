@@ -24,8 +24,8 @@ describe("Firebase Hosting", () => {
     expect(firstRule?.source).toBe("**");
   });
 
-  it("deploys through a target that each environment maps to its own site", () => {
-    // CI maps the target to FIREBASE_HOSTING_SITE: no site ID is committed.
+  it("names a deploy target rather than a site", () => {
+    // CI maps the target to FIREBASE_HOSTING_SITE, so no site ID is committed.
     expect(hosting.target).toBe("app");
     expect("site" in hosting).toBe(false);
   });
