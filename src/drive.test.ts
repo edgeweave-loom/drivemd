@@ -645,6 +645,7 @@ describe("listSharedDrives", () => {
 // Google's own types (Docs, folders, shortcuts...) have no content to edit.
 const WITH_CONTENT = "not mimeType contains 'application/vnd.google-apps.'";
 const FOLDER = "application/vnd.google-apps.folder";
+const SHORTCUT = "application/vnd.google-apps.shortcut";
 
 describe("isMarkdown", () => {
   it.each([
@@ -816,12 +817,102 @@ describe("listSharedWithMe", () => {
       q:
         "sharedWithMe and trashed = false and " +
         `(mimeType = '${FOLDER}' or ` +
-        "mimeType = 'application/vnd.google-apps.shortcut' or " +
+        `mimeType = '${SHORTCUT}' or ` +
         `${WITH_CONTENT})`,
       pageSize: "1000",
       fields: `nextPageToken,files(${ITEM_FIELDS})`,
       supportsAllDrives: "true",
       includeItemsFromAllDrives: "true",
+    });
+  });
+});
+
+describe("listShortcuts", () => {
+  it("lists the shortcuts the user owns, wherever they are", async () => {
+    const shortcut = {
+      id: "shortcut-1",
+      name: "plans",
+      mimeType: SHORTCUT,
+      shortcutDetails: { targetId: "folder-2", targetMimeType: FOLDER },
+    };
+    respond(Response.json({ files: [shortcut] }));
+
+    await expect(createDrive(fakeAuth()).listShortcuts()).resolves.toEqual([
+      expect.objectContaining({
+        id: "shortcut-1",
+        target: { id: "folder-2", mimeType: FOLDER, resourceKey: undefined },
+      }),
+    ]);
+    expect(Object.fromEntries(sent().url.searchParams)).toEqual({
+      q: `mimeType = '${SHORTCUT}' and 'me' in owners and trashed = false`,
+      pageSize: "1000",
+      fields: `nextPageToken,files(${ITEM_FIELDS})`,
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
+  });
+});
+
+describe("checkShortcut", () => {
+  const TARGET = {
+    id: "file-2",
+    mimeType: "text/markdown",
+    resourceKey: "key-2",
+  };
+
+  function checkShortcut() {
+    return createDrive(fakeAuth()).checkShortcut(TARGET);
+  }
+
+  it("finds nothing wrong with a target the user can open", async () => {
+    respond(Response.json({ trashed: false }));
+
+    await expect(checkShortcut()).resolves.toBeUndefined();
+    const { url, headers } = sent();
+    expect(url.pathname).toBe("/drive/v3/files/file-2");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      fields: "trashed",
+      supportsAllDrives: "true",
+    });
+    expect(headers.get("X-Goog-Drive-Resource-Keys")).toBe("file-2/key-2");
+  });
+
+  it("reports a target in the trash", async () => {
+    respond(Response.json({ trashed: true }));
+
+    await expect(checkShortcut()).resolves.toBe("trashed");
+  });
+
+  it.each([{}, { trashed: "true" }])(
+    "counts only a real true as in the trash: %j",
+    async (body) => {
+      respond(Response.json(body));
+
+      await expect(checkShortcut()).resolves.toBeUndefined();
+    },
+  );
+
+  it("rejects a malformed answer", async () => {
+    respond(Response.json(null));
+
+    await expect(checkShortcut()).rejects.toMatchObject({
+      name: "DriveError",
+      status: 200,
+    });
+  });
+
+  it("reports a target that was deleted or is not shared with the user", async () => {
+    respond(refusal(404, "File not found: file-2."));
+
+    await expect(checkShortcut()).resolves.toBe("missing");
+  });
+
+  it("fails when Drive fails otherwise, leaving the shortcut as it is", async () => {
+    respond(refusal(403, "Rate Limit Exceeded"));
+
+    await expect(checkShortcut()).rejects.toMatchObject({
+      name: "DriveError",
+      status: 403,
     });
   });
 });

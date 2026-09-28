@@ -127,6 +127,16 @@ export interface Drive {
   search: (text: string) => Promise<DriveItem[]>;
   /** The folders that hold an Obsidian vault, in every drive. */
   findVaults: () => Promise<DriveItem[]>;
+  /** The shortcuts the user made outside shared drives, wherever they are. */
+  listShortcuts: () => Promise<DriveItem[]>;
+  /**
+   * Why a shortcut cannot be followed: its target is "missing" when it was
+   * deleted or is not shared with the user, or "trashed"; undefined when the
+   * target opens.
+   */
+  checkShortcut: (
+    target: ShortcutTarget,
+  ) => Promise<"missing" | "trashed" | undefined>;
 }
 
 /** Whether a name marks a Markdown file: MIME types are unreliable. */
@@ -273,16 +283,42 @@ export function createDrive(auth: DriveAuth): Drive {
       );
       return vaults.filter((vault) => vault !== undefined);
     },
+    async listShortcuts() {
+      // Shortcuts in shared drives have no owner: the whole team makes them.
+      return listFiles({
+        q: `mimeType = '${SHORTCUT}' and 'me' in owners and trashed = false`,
+      });
+    },
+    async checkShortcut(target) {
+      try {
+        const response = await send(fileUrl(target, { fields: "trashed" }), [
+          target,
+        ]);
+        const trashed = await parse(response, (body) =>
+          isRecord(body) ? body.trashed === true : undefined,
+        );
+        return trashed ? "trashed" : undefined;
+      } catch (error) {
+        if (notFound(error)) return "missing";
+        throw error;
+      }
+    },
   };
 }
 
-/**
- * Leaves out a folder the user cannot open, which Drive answers with 404. Any
- * other failure stands: Drive also answers 403 when it limits the rate.
- */
+/** Leaves out a folder the user cannot open; any other failure stands. */
 function outOfReach(error: unknown): undefined {
-  if (error instanceof DriveError && error.status === 404) return;
+  if (notFound(error)) return;
   throw error;
+}
+
+/**
+ * Whether Drive answered that the item is not there: deleted, or not shared
+ * with the user. Drive also answers 403 when it limits the rate, so a 403
+ * says nothing about the item.
+ */
+function notFound(error: unknown): boolean {
+  return error instanceof DriveError && error.status === 404;
 }
 
 /** A string literal in a Drive query. */
