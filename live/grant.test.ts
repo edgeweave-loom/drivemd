@@ -1,9 +1,14 @@
 // @vitest-environment node
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { homedir, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { configDir, liveSession, readClient, readGrant } from "./grant.ts";
+
+vi.mock("node:os", async (importOriginal) => {
+  const os = await importOriginal<typeof import("node:os")>();
+  return { ...os, userInfo: vi.fn(os.userInfo) };
+});
 
 const CLIENT = {
   id: "example-client.apps.googleusercontent.com",
@@ -73,6 +78,18 @@ describe("configDir", () => {
 
     expect(configDir()).toBe("/elsewhere");
   });
+
+  it("ignores an empty DRIVEMD_LIVE_DIR", () => {
+    vi.stubEnv("DRIVEMD_LIVE_DIR", "");
+
+    expect(configDir()).toBe(join(homedir(), ".config", "drivemd-live"));
+  });
+
+  it("refuses a relative folder, which could lie in the repository", () => {
+    vi.stubEnv("DRIVEMD_LIVE_DIR", "live");
+
+    expect(() => configDir()).toThrow("absolute");
+  });
 });
 
 describe("the client and the grant", () => {
@@ -107,6 +124,23 @@ describe("the client and the grant", () => {
     await expect(readClient(dir)).rejects.toThrow("desktop OAuth client");
   });
 
+  it("are refused when they belong to another user", async () => {
+    await placeClient();
+    vi.mocked(userInfo).mockReturnValueOnce({ ...userInfo(), uid: 12345 });
+
+    await expect(readClient(dir)).rejects.toThrow("another user");
+  });
+
+  it("are refused without quoting them when they are not JSON", async () => {
+    const path = join(dir, "grant.json");
+    await writeFile(path, '{"refreshToken": secret-value}');
+    await chmod(path, 0o600);
+
+    await expect(readGrant(dir)).rejects.toThrow(
+      new RegExp(`^${path} is not valid JSON$`),
+    );
+  });
+
   it("report a folder they cannot be read from", async () => {
     await writeFile(join(dir, "a-file"), "");
 
@@ -125,6 +159,11 @@ describe("liveSession", () => {
     return Response.json({ access_token: accessToken, expires_in: 3600 });
   }
 
+  /** Drive's answer to who owns the token. */
+  function owner(email = ACCOUNT): Response {
+    return Response.json({ user: { emailAddress: email } });
+  }
+
   async function session() {
     await placeClient();
     await place("grant.json", GRANT);
@@ -139,63 +178,85 @@ describe("liveSession", () => {
     await expect(liveSession(dir)).resolves.toBeUndefined();
   });
 
-  it("mints a token from the grant, and reuses it while it is fresh", async () => {
-    respond(minted("token-1"));
+  it("mints a token, checks it is the account's, and reuses it while it is fresh", async () => {
+    respond(minted("token-1"), owner());
     const { account, auth } = await session();
 
     expect(account).toBe(ACCOUNT);
     await expect(auth.token()).resolves.toBe("token-1");
-    await expect(auth.token()).resolves.toBe("token-1");
-    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(sent(0).url).toBe("https://oauth2.googleapis.com/token");
     expect(sent(0).form).toEqual({
       grant_type: "refresh_token",
       refresh_token: GRANT.refreshToken,
       client_id: CLIENT.id,
       client_secret: CLIENT.secret,
     });
+    expect(sent(0).init?.signal).toBeInstanceOf(AbortSignal);
+    expect(sent(1).url).toContain("/drive/v3/about");
+    expect(new Headers(sent(1).init?.headers).get("Authorization")).toBe(
+      "Bearer token-1",
+    );
+  });
+
+  it("refuses a grant that belongs to another account", async () => {
+    respond(minted("token-1"), owner("someone@example.com"));
+
+    await expect(session()).rejects.toThrow(
+      `belongs to someone@example.com, not ${ACCOUNT}`,
+    );
   });
 
   it("mints a new token once the last one is about to expire", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    respond(minted("token-1"), minted("token-2"));
+    respond(minted("token-1"), owner(), minted("token-2"));
     const { auth } = await session();
 
-    await auth.token();
     vi.setSystemTime(Date.now() + 3570_000);
     await expect(auth.token()).resolves.toBe("token-2");
   });
 
   it("forgets only the token Drive refused", async () => {
-    respond(minted("token-1"), minted("token-2"));
+    respond(minted("token-1"), owner(), minted("token-2"));
     const { auth } = await session();
 
-    await auth.token();
     auth.forget("older-token");
     await expect(auth.token()).resolves.toBe("token-1");
     auth.forget("token-1");
     await expect(auth.token()).resolves.toBe("token-2");
   });
 
-  it("refuses a malformed token", async () => {
-    respond(Response.json({ access_token: "token-1" }));
+  it("mints one token for callers asking at once", async () => {
+    respond(minted("token-1"), owner(), minted("token-2"));
     const { auth } = await session();
 
-    await expect(auth.token()).rejects.toThrow("malformed token");
+    auth.forget("token-1");
+    await expect(Promise.all([auth.token(), auth.token()])).resolves.toEqual([
+      "token-2",
+      "token-2",
+    ]);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    { access_token: "token-1" },
+    { access_token: "token-1", expires_in: 0 },
+    { access_token: "token-1", expires_in: -1 },
+  ])("refuses a token without a lifetime ahead: %j", async (body) => {
+    respond(Response.json(body));
+
+    await expect(session()).rejects.toThrow("malformed token");
   });
 
   it("reports an answer that is not JSON by its status", async () => {
     respond(new Response("Bad Gateway", { status: 502 }));
-    const { auth } = await session();
 
-    await expect(auth.token()).rejects.toThrow("Google refused: 502");
+    await expect(session()).rejects.toThrow("Google refused: 502");
   });
 
   it("reports a grant Google no longer accepts, without quoting it", async () => {
     respond(Response.json({ error: "invalid_grant" }, { status: 400 }));
-    const { auth } = await session();
 
-    await expect(auth.token()).rejects.toThrow(
-      /^Google refused: invalid_grant$/,
-    );
+    await expect(session()).rejects.toThrow(/^Google refused: invalid_grant$/);
   });
 });

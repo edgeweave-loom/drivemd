@@ -1,7 +1,7 @@
-import { readFile, stat } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
-import type { DriveAuth } from "../src/drive.ts";
+import { open } from "node:fs/promises";
+import { homedir, userInfo } from "node:os";
+import { isAbsolute, join } from "node:path";
+import { getAccountEmail, type DriveAuth } from "../src/drive.ts";
 import { isRecord } from "../src/is-record.ts";
 
 // The OAuth grant that lets the live checks act as a test account, whose
@@ -10,6 +10,7 @@ import { isRecord } from "../src/is-record.ts";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const EXPIRY_MARGIN_MS = 60_000;
+const TIMEOUT_MS = 30_000;
 
 /** The desktop OAuth client that the live checks sign in with. */
 export interface Client {
@@ -27,10 +28,20 @@ export interface LiveSession {
   auth: DriveAuth;
 }
 
+interface Minted {
+  token: string;
+  expiresAt: number;
+}
+
 export function configDir(): string {
-  return (
-    process.env.DRIVEMD_LIVE_DIR ?? join(homedir(), ".config", "drivemd-live")
-  );
+  const chosen = process.env.DRIVEMD_LIVE_DIR;
+  if (chosen === undefined || chosen === "") {
+    return join(homedir(), ".config", "drivemd-live");
+  }
+  if (!isAbsolute(chosen)) {
+    throw new Error("DRIVEMD_LIVE_DIR must be an absolute path");
+  }
+  return chosen;
 }
 
 export async function readClient(dir: string): Promise<Client | undefined> {
@@ -60,54 +71,84 @@ export async function readGrant(dir: string): Promise<Grant | undefined> {
   return { account: value.account, refreshToken: value.refreshToken };
 }
 
-/** The test account's session, or undefined until it has signed in. */
+/**
+ * The test account's session, or undefined until it has signed in. It checks
+ * with Drive that the grant belongs to the account it names, so that the
+ * checks never act on anyone else's Drive.
+ */
 export async function liveSession(
   dir: string,
 ): Promise<LiveSession | undefined> {
   const client = await readClient(dir);
   const grant = await readGrant(dir);
   if (!client || !grant) return;
-  let current: { token: string; expiresAt: number } | undefined;
-  return {
-    account: grant.account,
-    auth: {
-      async token() {
-        if (!current || current.expiresAt - Date.now() <= EXPIRY_MARGIN_MS) {
-          const minted = await post(TOKEN_URL, {
-            grant_type: "refresh_token",
-            refresh_token: grant.refreshToken,
-            client_id: client.id,
-            client_secret: client.secret,
-          });
-          const { access_token: token, expires_in: lifetime } = minted;
-          if (typeof token !== "string" || typeof lifetime !== "number") {
-            throw new Error("Google sent a malformed token");
-          }
-          current = { token, expiresAt: Date.now() + lifetime * 1000 };
-        }
-        return current.token;
-      },
-      forget(refused) {
-        if (current?.token === refused) current = undefined;
-      },
+  let current: Minted | undefined;
+  let minting: Promise<Minted> | undefined;
+  const auth: DriveAuth = {
+    async token() {
+      if (!current || current.expiresAt - Date.now() <= EXPIRY_MARGIN_MS) {
+        // Callers asking at once share one request.
+        minting ??= mint(client, grant).finally(() => {
+          minting = undefined;
+        });
+        current = await minting;
+      }
+      return current.token;
+    },
+    forget(refused) {
+      if (current?.token === refused) current = undefined;
     },
   };
+  const owner = await getAccountEmail(await auth.token());
+  if (owner !== grant.account) {
+    throw new Error(
+      `The grant belongs to ${owner}, not ${grant.account}: sign in again`,
+    );
+  }
+  return { account: grant.account, auth };
 }
 
-/** The JSON of a file only its owner can read, or undefined if it is missing. */
-async function readPrivate(path: string): Promise<unknown> {
-  const mode = await stat(path).then(
-    (stats) => stats.mode,
-    (error: unknown) => {
-      if (isRecord(error) && error.code === "ENOENT") return undefined;
-      throw error;
-    },
-  );
-  if (mode === undefined) return;
-  if ((mode & 0o077) !== 0) {
-    throw new Error(`Others can read ${path}: chmod 600 it`);
+async function mint(client: Client, grant: Grant): Promise<Minted> {
+  const minted = await post(TOKEN_URL, {
+    grant_type: "refresh_token",
+    refresh_token: grant.refreshToken,
+    client_id: client.id,
+    client_secret: client.secret,
+  });
+  const { access_token: token, expires_in: lifetime } = minted;
+  if (typeof token !== "string" || typeof lifetime !== "number") {
+    throw new Error("Google sent a malformed token");
   }
-  return JSON.parse(await readFile(path, "utf8")) as unknown;
+  if (!(lifetime > 0)) throw new Error("Google sent a malformed token");
+  return { token, expiresAt: Date.now() + lifetime * 1000 };
+}
+
+/**
+ * The JSON of a file that is the user's own and that nobody else can read,
+ * or undefined if it is missing. Checks and reading go through one handle, so
+ * the file cannot change in between, and errors never quote its content.
+ */
+async function readPrivate(path: string): Promise<unknown> {
+  const file = await open(path, "r").catch((error: unknown) => {
+    if (isRecord(error) && error.code === "ENOENT") return undefined;
+    throw error;
+  });
+  if (!file) return;
+  try {
+    const { mode, uid } = await file.stat();
+    if ((mode & 0o077) !== 0) {
+      throw new Error(`Others can read ${path}: chmod 600 it`);
+    }
+    if (uid !== userInfo().uid) throw new Error(`${path} is another user's`);
+    const text = await file.readFile("utf8");
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      throw new Error(`${path} is not valid JSON`);
+    }
+  } finally {
+    await file.close();
+  }
 }
 
 /** Posts a form to Google's OAuth server; errors never quote the request. */
@@ -119,6 +160,7 @@ async function post(
     method: "POST",
     body: new URLSearchParams(fields),
     cache: "no-store",
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   const body: unknown = await response.json().catch(() => undefined);
   if (!response.ok || !isRecord(body)) {
