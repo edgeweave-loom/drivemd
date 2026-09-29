@@ -1,9 +1,14 @@
 import * as auth from "./auth.ts";
 import { AuthError, type AuthErrorReason } from "./auth.ts";
-import { DriveError, getAccountEmail } from "./drive.ts";
+import {
+  createDrive,
+  DriveError,
+  getAccountEmail,
+  type Drive,
+} from "./drive.ts";
 
 export type Screen =
-  | { name: "loading" }
+  | { name: "loading"; email: string }
   | { name: "sign-in" }
   | { name: "continue"; email: string }
   | { name: "home"; email: string };
@@ -31,6 +36,20 @@ export interface Session {
   continueSession: () => void;
   signOut: () => void;
   retry: () => void;
+  /** Drive, as the signed-in user: its calls wait for Continue when needed. */
+  drive: Drive;
+  /**
+   * Renews an expired token by opening Google's popup, so call it first in a
+   * tap or click handler that leads to Drive calls.
+   */
+  renew: () => void;
+}
+
+interface Waiter {
+  /** The account the call was made for. */
+  account: string;
+  resolve: (token: string) => void;
+  reject: (error: AuthError) => void;
 }
 
 const AUTH_MESSAGES: Record<AuthErrorReason, string | undefined> = {
@@ -57,6 +76,8 @@ export function createSession(): Session {
     message: undefined,
     blocked: undefined,
   };
+  // Drive calls waiting for a token that only a tap can bring.
+  const waiters = new Set<Waiter>();
 
   function update(changes: Partial<SessionState>): void {
     state = { ...state, ...changes };
@@ -70,17 +91,55 @@ export function createSession(): Session {
       : { name: "continue", email };
   }
 
+  function settleWaiters(settle: (waiter: Waiter) => void): void {
+    for (const waiter of waiters) settle(waiter);
+    waiters.clear();
+  }
+
+  function failWaiters(reason: string): void {
+    settleWaiters((waiter) => {
+      waiter.reject(new AuthError("superseded", reason));
+    });
+  }
+
+  /**
+   * The token for a Drive call, once Drive has confirmed it belongs to the
+   * account shown, and a tap has renewed it if need be.
+   */
+  function driveToken(): Promise<string> {
+    const { screen } = state;
+    if (!("email" in screen)) {
+      return Promise.reject(new AuthError("superseded", "Nobody is signed in"));
+    }
+    // Until its check is over, a new token could be another account's.
+    const checked = screen.name === "home" && !state.waiting;
+    const current = checked ? auth.getAccessToken() : undefined;
+    if (current !== undefined) return Promise.resolve(current);
+    return new Promise((resolve, reject) => {
+      waiters.add({ account: screen.email, resolve, reject });
+      // Without a renewal under way, only a tap on Continue can bring one.
+      if (checked) {
+        update({ screen: { name: "continue", email: screen.email } });
+      }
+    });
+  }
+
   async function finish(
     token: Promise<string>,
     run: number,
     expectedEmail?: string,
   ): Promise<void> {
     try {
-      const email = await getAccountEmail(await token);
+      const accessToken = await token;
+      const email = await getAccountEmail(accessToken);
       if (run !== epoch) return;
       if (expectedEmail !== undefined && email !== expectedEmail) {
         auth.clearToken();
-        update({ screen: signedOutScreen(), waiting: false });
+        update({
+          screen: signedOutScreen(),
+          waiting: false,
+          message: "Google returned another account. Continue with this one.",
+        });
         return;
       }
       auth.rememberAccount(email);
@@ -89,6 +148,16 @@ export function createSession(): Session {
         waiting: false,
         message: undefined,
         blocked: undefined,
+      });
+      // A call made for one account never goes out with another's token.
+      settleWaiters((waiter) => {
+        if (waiter.account === email) {
+          waiter.resolve(accessToken);
+        } else {
+          waiter.reject(
+            new AuthError("superseded", "Another account signed in"),
+          );
+        }
       });
     } catch (error) {
       if (run !== epoch) return;
@@ -128,6 +197,7 @@ export function createSession(): Session {
   function signedOutElsewhere(): void {
     epoch += 1;
     auth.clearToken();
+    failWaiters("The user signed out in another tab");
     update({
       screen: signedOutScreen(),
       waiting: false,
@@ -155,7 +225,7 @@ export function createSession(): Session {
   if (token === undefined || account === undefined) {
     update({ screen: signedOutScreen() });
   } else {
-    update({ screen: { name: "loading" }, waiting: true });
+    update({ screen: { name: "loading", email: account }, waiting: true });
     void finish(Promise.resolve(token), epoch, account);
   }
   document.addEventListener("visibilitychange", checkSession);
@@ -191,6 +261,7 @@ export function createSession(): Session {
     signOut() {
       epoch += 1;
       auth.signOut();
+      failWaiters("The user signed out");
       update({
         screen: { name: "sign-in" },
         waiting: false,
@@ -198,6 +269,17 @@ export function createSession(): Session {
       });
     },
     retry: loadGoogle,
+    drive: createDrive({
+      token: driveToken,
+      forget(refused) {
+        if (auth.getAccessToken() === refused) auth.clearToken();
+      },
+    }),
+    renew() {
+      const { screen } = state;
+      if (screen.name !== "home" || auth.getAccessToken() !== undefined) return;
+      start(auth.requestAccessToken(screen.email), screen.email);
+    },
   };
 }
 

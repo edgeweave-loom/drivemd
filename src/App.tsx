@@ -9,7 +9,17 @@ export function App({ session }: { session: Session }) {
       <h1>DriveMD</h1>
       <Screen session={session} state={state} />
       {state.waiting && state.screen.name !== "loading" && (
-        <p className="hint">Waiting for Google… Nothing happened? Tap again.</p>
+        <p className="hint">
+          Waiting for Google… Nothing happened?{" "}
+          {state.screen.name === "home" ? (
+            // Home has no sign-in button to tap again.
+            <button type="button" onClick={session.renew}>
+              Continue
+            </button>
+          ) : (
+            "Tap again."
+          )}
+        </p>
       )}
       {[state.message, state.blocked]
         .filter((line) => line !== undefined)

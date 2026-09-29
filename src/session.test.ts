@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as auth from "./auth.ts";
 import { AuthError, type AuthErrorReason } from "./auth.ts";
-import { DriveError, getAccountEmail } from "./drive.ts";
+import {
+  createDrive,
+  DriveError,
+  getAccountEmail,
+  type Drive,
+  type DriveAuth,
+} from "./drive.ts";
 import { createSession, type Session } from "./session.ts";
 
 vi.mock("./auth.ts", async (importOriginal) => ({
@@ -19,9 +25,11 @@ vi.mock("./auth.ts", async (importOriginal) => ({
 vi.mock("./drive.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./drive.ts")>()),
   getAccountEmail: vi.fn(),
+  createDrive: vi.fn(),
 }));
 
 const TOKEN = "example-access-token";
+const NEW_TOKEN = "example-renewed-token";
 const EMAIL = "ada@example.com";
 
 interface PendingToken {
@@ -54,6 +62,24 @@ async function signedIn() {
   const session = createSession();
   await settled(session);
   return session;
+}
+
+/** How the session's Drive client gets its tokens. */
+function driveAuth(): DriveAuth {
+  const [given] = vi.mocked(createDrive).mock.lastCall ?? [];
+  if (!given) throw new Error("The session made no Drive client");
+  return given;
+}
+
+/** Whether a promise has settled, after pending callbacks have run. */
+async function hasSettled(promise: Promise<unknown>): Promise<boolean> {
+  let done = false;
+  promise.then(
+    () => (done = true),
+    () => (done = true),
+  );
+  await new Promise((resolve) => setTimeout(resolve));
+  return done;
 }
 
 function onSignOutElsewhere() {
@@ -108,7 +134,7 @@ describe("on start", () => {
     vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
     const session = createSession();
 
-    expect(screenOf(session)).toEqual({ name: "loading" });
+    expect(screenOf(session)).toEqual({ name: "loading", email: EMAIL });
     await settled(session);
     expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
     expect(getAccountEmail).toHaveBeenCalledWith(TOKEN);
@@ -122,9 +148,9 @@ describe("on start", () => {
     await settled(session);
     expect(auth.clearToken).toHaveBeenCalled();
     expect(auth.rememberAccount).not.toHaveBeenCalled();
-    expect(screenOf(session)).toEqual({
-      name: "continue",
-      email: "grace@example.com",
+    expect(session.getSnapshot()).toMatchObject({
+      screen: { name: "continue", email: "grace@example.com" },
+      message: expect.stringMatching(/another account/) as unknown,
     });
   });
 
@@ -492,5 +518,203 @@ describe("while the app is open", () => {
     violate(violation);
 
     expect(session.getSnapshot().blocked).toBeUndefined();
+  });
+});
+
+describe("the Drive client", () => {
+  it("belongs to the session and takes the tab's token", async () => {
+    const drive = {} as Drive;
+    vi.mocked(createDrive).mockReturnValue(drive);
+    const session = await signedIn();
+
+    expect(session.drive).toBe(drive);
+    await expect(driveAuth().token()).resolves.toBe(TOKEN);
+  });
+
+  it("asks to Continue when no tap is renewing the token, then gets the new one", async () => {
+    const session = await signedIn();
+    vi.mocked(auth.getAccessToken).mockReturnValue(undefined);
+    vi.mocked(auth.requestAccessToken).mockResolvedValue(NEW_TOKEN);
+
+    const token = driveAuth().token();
+    expect(screenOf(session)).toEqual({ name: "continue", email: EMAIL });
+    session.continueSession();
+    await expect(token).resolves.toBe(NEW_TOKEN);
+    expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
+  });
+
+  it("waits on the Continue screen without asking again", async () => {
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
+    vi.mocked(auth.requestAccessToken).mockResolvedValue(NEW_TOKEN);
+    const session = createSession();
+    const listener = vi.fn();
+    session.subscribe(listener);
+
+    const token = driveAuth().token();
+    expect(listener).not.toHaveBeenCalled();
+    session.continueSession();
+    await expect(token).resolves.toBe(NEW_TOKEN);
+  });
+
+  it("renews an expired token within the tap, and Drive waits for its check", async () => {
+    const session = await signedIn();
+    vi.mocked(auth.getAccessToken).mockReturnValue(undefined);
+    const request = pendingToken();
+    vi.mocked(auth.requestAccessToken).mockReturnValue(request.promise);
+
+    session.renew();
+    expect(auth.requestAccessToken).toHaveBeenCalledWith(EMAIL);
+    // Google's answer is the tab's token before Drive says whose it is.
+    vi.mocked(auth.getAccessToken).mockReturnValue(NEW_TOKEN);
+    const token = driveAuth().token();
+    expect(session.getSnapshot()).toMatchObject({
+      screen: { name: "home", email: EMAIL },
+      waiting: true,
+    });
+    expect(await hasSettled(token)).toBe(false);
+    request.resolve(NEW_TOKEN);
+    await expect(token).resolves.toBe(NEW_TOKEN);
+    expect(getAccountEmail).toHaveBeenLastCalledWith(NEW_TOKEN);
+  });
+
+  it("waits for the reopened session's token to be checked", async () => {
+    vi.mocked(auth.getAccessToken).mockReturnValue(TOKEN);
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
+    const check = pendingToken();
+    vi.mocked(getAccountEmail).mockReturnValue(check.promise);
+    createSession();
+
+    const token = driveAuth().token();
+    expect(await hasSettled(token)).toBe(false);
+    check.resolve(EMAIL);
+    await expect(token).resolves.toBe(TOKEN);
+  });
+
+  it("renews nothing while the token is valid", async () => {
+    const session = await signedIn();
+    session.renew();
+
+    expect(auth.requestAccessToken).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["Sign in", undefined],
+    ["Continue", EMAIL],
+  ])("renews nothing on the %s screen", (_screen, remembered) => {
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(remembered);
+    createSession().renew();
+
+    expect(auth.requestAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("asks to Continue when the renewal fails, and Drive keeps waiting", async () => {
+    const session = await signedIn();
+    vi.mocked(auth.getAccessToken).mockReturnValue(undefined);
+    vi.mocked(auth.requestAccessToken)
+      .mockRejectedValueOnce(new AuthError("popup_blocked", "details"))
+      .mockResolvedValueOnce(NEW_TOKEN);
+
+    session.renew();
+    const token = driveAuth().token();
+    await settled(session);
+    expect(session.getSnapshot()).toMatchObject({
+      screen: { name: "continue", email: EMAIL },
+      message: expect.stringMatching(/blocked/) as unknown,
+    });
+    expect(await hasSettled(token)).toBe(false);
+    session.continueSession();
+    await expect(token).resolves.toBe(NEW_TOKEN);
+  });
+
+  it("keeps Drive waiting when a renewal brings another account", async () => {
+    const session = await signedIn();
+    vi.mocked(auth.getAccessToken).mockReturnValue(undefined);
+    vi.mocked(auth.requestAccessToken).mockResolvedValue(NEW_TOKEN);
+    vi.mocked(getAccountEmail).mockResolvedValueOnce("grace@example.com");
+
+    session.renew();
+    const token = driveAuth().token();
+    await settled(session);
+    expect(session.getSnapshot()).toMatchObject({
+      screen: { name: "continue", email: EMAIL },
+      message: expect.stringMatching(/another account/) as unknown,
+    });
+    expect(await hasSettled(token)).toBe(false);
+    session.continueSession();
+    await expect(token).resolves.toBe(NEW_TOKEN);
+  });
+
+  it("keeps Drive waiting through a failed check, then fails it when another account signs in", async () => {
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
+    vi.mocked(auth.requestAccessToken).mockResolvedValue(NEW_TOKEN);
+    vi.mocked(getAccountEmail)
+      .mockRejectedValueOnce(
+        new DriveError(0, "Google Drive could not be reached"),
+      )
+      .mockResolvedValueOnce("grace@example.com");
+    const session = createSession();
+    const token = driveAuth().token();
+
+    session.continueSession();
+    await settled(session);
+    expect(await hasSettled(token)).toBe(false);
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(undefined);
+    session.signIn();
+    await expect(token).rejects.toMatchObject({ reason: "superseded" });
+  });
+
+  it("fails Drive's wait when another account continues", async () => {
+    const session = await signedIn();
+    vi.mocked(auth.getAccessToken).mockReturnValue(undefined);
+    vi.mocked(auth.requestAccessToken).mockResolvedValue(NEW_TOKEN);
+    vi.mocked(getAccountEmail).mockResolvedValueOnce("grace@example.com");
+
+    const token = driveAuth().token();
+    session.continueSession();
+    await expect(token).rejects.toMatchObject({ reason: "superseded" });
+    expect(screenOf(session)).toEqual({
+      name: "home",
+      email: "grace@example.com",
+    });
+  });
+
+  it.each([
+    [
+      "here",
+      (session: Session) => {
+        session.signOut();
+      },
+    ],
+    [
+      "in another tab",
+      () => {
+        vi.mocked(auth.getRememberedAccount).mockReturnValue(undefined);
+        onSignOutElsewhere();
+      },
+    ],
+  ])("fails Drive's wait when the user signs out %s", async (_where, out) => {
+    const session = await signedIn();
+    vi.mocked(auth.getAccessToken).mockReturnValue(undefined);
+
+    const token = driveAuth().token();
+    out(session);
+    await expect(token).rejects.toMatchObject({ reason: "superseded" });
+  });
+
+  it("refuses Drive a token while signed out", async () => {
+    createSession();
+
+    await expect(driveAuth().token()).rejects.toMatchObject({
+      reason: "superseded",
+    });
+  });
+
+  it("forgets a token Drive refused, but not a newer one", async () => {
+    await signedIn();
+
+    driveAuth().forget("example-older-token");
+    expect(auth.clearToken).not.toHaveBeenCalled();
+    driveAuth().forget(TOKEN);
+    expect(auth.clearToken).toHaveBeenCalledOnce();
   });
 });
