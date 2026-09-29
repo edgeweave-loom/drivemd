@@ -15,7 +15,7 @@ export function Link({
 }: {
   to: string;
   /** The path the user takes by following the link, for the breadcrumbs. */
-  trail?: Crumb[];
+  trail?: Crumb[] | undefined;
   className?: string;
   children: ReactNode;
 }) {

@@ -2,7 +2,9 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "./App.tsx";
 import type { Session, SessionState } from "./session.ts";
+import { driveItem } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
+import { visit } from "./test/render.tsx";
 
 const EMAIL = "ada@example.com";
 
@@ -135,6 +137,27 @@ describe("App", () => {
     expect(screen.getByText(EMAIL)).toBeInTheDocument();
     fireEvent.click(button("Sign out"));
     expect(session.signOut).toHaveBeenCalledOnce();
+  });
+
+  it("shows another account nothing the first one loaded", async () => {
+    visit("/my-drive", { trail: [{ name: "My Drive", href: "/my-drive" }] });
+    const { session, change } = fakeSession({
+      screen: { name: "home", email: EMAIL },
+    });
+    session.drive.getMetadata.mockReturnValue(new Promise(() => undefined));
+    session.drive.listChildren.mockResolvedValueOnce([driveItem("ada.md")]);
+    session.drive.listChildren.mockReturnValueOnce(
+      new Promise(() => undefined),
+    );
+    render(<App session={session} />);
+    expect(await screen.findByRole("link", { name: "ada.md" })).toBeVisible();
+
+    act(() => {
+      change({ screen: { name: "home", email: "grace@example.com" } });
+    });
+    expect(screen.getByText("grace@example.com")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "ada.md" })).toBeNull();
+    visit("/");
   });
 
   it("offers no action while the session reopens", () => {

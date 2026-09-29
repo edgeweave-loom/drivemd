@@ -1,6 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { DriveContext } from "./drive-context.ts";
+import { FolderPage } from "./FolderPage.tsx";
 import { Home } from "./Home.tsx";
 import { Link } from "./Link.tsx";
 import { createQueryClient } from "./queries.ts";
@@ -48,11 +49,12 @@ export function Navigator({
 }
 
 function Page() {
-  const { route } = usePlace();
+  const { route, trail } = usePlace();
   switch (route.name) {
     case "home":
       return <Home />;
     case "folder":
+      return <FolderPage folder={route.folder} trail={trail} />;
     case "shortcuts":
     case "shared-drives":
     case "shared-with-me":

@@ -168,3 +168,26 @@ button:disabled {
   text-decoration: none;
   overflow-wrap: anywhere;
 }
+
+.entry .name {
+  min-width: 0;
+}
+
+.entry.folder::after {
+  margin-left: auto;
+  color: var(--muted);
+  content: "›" / "";
+}
+
+.badge {
+  padding: 0 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.failure {
+  color: light-dark(#d1242f, #f85149);
+}

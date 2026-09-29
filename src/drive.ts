@@ -33,10 +33,11 @@ const UNREACHABLE = "Google Drive could not be reached";
 /** The alias of My Drive's top folder in Drive's API. */
 export const MY_DRIVE = "root";
 
-const FOLDER = "application/vnd.google-apps.folder";
-const SHORTCUT = "application/vnd.google-apps.shortcut";
-// Google's own types (Docs, folders, shortcuts...) have no content to edit.
-const WITH_CONTENT = "not mimeType contains 'application/vnd.google-apps.'";
+export const FOLDER = "application/vnd.google-apps.folder";
+export const SHORTCUT = "application/vnd.google-apps.shortcut";
+/** Google's own types (Docs, folders, shortcuts...) have no content to edit. */
+export const GOOGLE_TYPES = "application/vnd.google-apps.";
+const WITH_CONTENT = `not mimeType contains '${GOOGLE_TYPES}'`;
 
 // Drive also answers 403, rather than 429, when requests come too fast.
 const RATE_LIMITS = new Set(["rateLimitExceeded", "userRateLimitExceeded"]);
