@@ -1,5 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
-import { DriveError } from "./drive.ts";
+import { DriveError, type FileRef } from "./drive.ts";
 
 // Vaults seldom come and go, and finding them takes a call per vault.
 export const VAULTS_STALE_TIME = 5 * 60_000;
@@ -15,6 +15,31 @@ export function createQueryClient(): QueryClient {
       // asking Drive again.
       queries: { retry: mayPassLater, staleTime: 30_000 },
     },
+  });
+}
+
+/**
+ * Has Drive asked again for whatever shows a file that was just created,
+ * renamed, moved or trashed: lists, searches, Recent, paths and shortcut
+ * checks. The file's own details are asked again only if its page stays.
+ */
+export function refreshAfterChange(
+  client: QueryClient,
+  file: FileRef,
+  { leaving = false } = {},
+): void {
+  for (const queryKey of [
+    ["children"],
+    ["search"],
+    ["recent"],
+    ["climb"],
+    ["shortcut"],
+  ]) {
+    void client.invalidateQueries({ queryKey });
+  }
+  void client.invalidateQueries({
+    queryKey: ["metadata", file.id],
+    refetchType: leaving ? "none" : "active",
   });
 }
 
