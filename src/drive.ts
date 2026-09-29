@@ -432,8 +432,11 @@ function json(value: object, method: Change["method"] = "PATCH"): Change {
   };
 }
 
-/** Leaves out a folder the user cannot open; any other failure stands. */
-function outOfReach(error: unknown): undefined {
+/**
+ * Leaves out an item Drive says is not there for the user; any other failure
+ * stands.
+ */
+export function outOfReach(error: unknown): undefined {
   if (notFound(error)) return;
   throw error;
 }

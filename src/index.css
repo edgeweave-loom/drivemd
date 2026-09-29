@@ -151,6 +151,28 @@ button:disabled {
   text-transform: uppercase;
 }
 
+.crumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+  margin: 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  list-style: none;
+}
+
+.crumbs li + li::before {
+  margin-right: 0.5rem;
+  content: "›" / "";
+}
+
+.crumbs a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
 .entries {
   margin: 0;
   padding: 0;

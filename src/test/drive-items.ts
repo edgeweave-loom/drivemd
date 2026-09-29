@@ -1,8 +1,11 @@
 import {
+  DriveError,
   FOLDER,
+  MY_DRIVE,
   SHORTCUT,
   type DriveItem,
   type FileMetadata,
+  type FileRef,
 } from "../drive.ts";
 
 export { FOLDER, SHORTCUT };
@@ -62,5 +65,26 @@ export function metadata(
     md5Checksum: "0123456789abcdef0123456789abcdef",
     headRevisionId: "revision-1",
     ...changes,
+  };
+}
+
+/** My Drive's top folder, which Drive also answers to as "root". */
+export const MY_DRIVE_ROOT = metadata(
+  folderItem("My Drive", { id: "my-root", parents: [] }),
+);
+
+/**
+ * Reads the metadata of made-up items, and My Drive's, by ID, as Drive's
+ * getMetadata would: an unknown ID is not found.
+ */
+export function metadataOf(...items: FileMetadata[]) {
+  const byId = new Map(
+    [MY_DRIVE_ROOT, ...items].map((item) => [item.id, item]),
+  );
+  return (ref: FileRef): Promise<FileMetadata> => {
+    const item = byId.get(ref.id === MY_DRIVE ? MY_DRIVE_ROOT.id : ref.id);
+    return item
+      ? Promise.resolve(item)
+      : Promise.reject(new DriveError(404, `File not found: ${ref.id}.`));
   };
 }

@@ -43,6 +43,16 @@ describe("Navigator", () => {
     expect(drive.listChildren).toHaveBeenCalledWith({ id: "root" });
   });
 
+  it.each([
+    ["/shortcuts", "Shortcuts"],
+    ["/shared-drives", "Shared drives"],
+    ["/shared-with-me", "Shared with me"],
+  ])("opens %s", (path, heading) => {
+    open(path);
+
+    expect(screen.getByRole("heading", { name: heading })).toBeVisible();
+  });
+
   it("says when a URL opens nothing, and leads back Home", () => {
     open("/nowhere");
 
