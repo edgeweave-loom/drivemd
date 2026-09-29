@@ -1,6 +1,9 @@
 import { QueryClient } from "@tanstack/react-query";
 import { DriveError } from "./drive.ts";
 
+// Vaults seldom come and go, and finding them takes a call per vault.
+export const VAULTS_STALE_TIME = 5 * 60_000;
+
 /**
  * A cache for Drive's answers. Create one per signed-in account, so that
  * another account never sees them.

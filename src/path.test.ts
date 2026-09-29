@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { DriveError, type FileMetadata, type FileRef } from "./drive.ts";
-import { pathTo } from "./path.ts";
+import { climb, crumbsOf } from "./path.ts";
 import {
   driveItem,
   folderItem,
@@ -13,7 +13,15 @@ function reader(...items: FileMetadata[]) {
   return vi.fn(metadataOf(...items));
 }
 
-describe("pathTo", () => {
+/** The breadcrumbs a climb from the item gives. */
+async function pathTo(
+  item: FileRef,
+  read: (item: FileRef) => Promise<FileMetadata>,
+) {
+  return crumbsOf(await climb(item, read));
+}
+
+describe("the path rebuilt from parents", () => {
   it("climbs to My Drive", async () => {
     const read = reader(
       metadata(folderItem("Work", { id: "work", parents: ["my-root"] })),

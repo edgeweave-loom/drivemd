@@ -68,12 +68,10 @@ function NewFile({
   const [asking, setAsking] = useState(false);
   const create = useMutation({
     mutationFn: (name: string) => drive.createFile(folder, name),
-    onSuccess: (file) => {
+    onSuccess: () => {
       // The new file shows in the folder's list and in searches.
       void client.invalidateQueries({ queryKey: ["children"] });
       void client.invalidateQueries({ queryKey: ["search"] });
-      const href = hrefOf({ name: "file", file });
-      navigate(href, path && [...path, { name: file.name, href }]);
     },
   });
   return (
@@ -91,13 +89,19 @@ function NewFile({
         <NameDialog
           title="New Markdown file"
           initial="Untitled"
-          hint=".md is added unless the name ends in .md or .markdown."
+          hint={() => ".md is added unless the name ends in .md or .markdown."}
           action="Create"
           pending={create.isPending}
           error={create.error}
           onSubmit={(name) => {
             renew();
-            create.mutate(name);
+            // Only while the page shows: Back takes the user elsewhere.
+            create.mutate(name, {
+              onSuccess: (file) => {
+                const href = hrefOf({ name: "file", file });
+                navigate(href, path && [...path, { name: file.name, href }]);
+              },
+            });
           }}
           onClose={() => {
             setAsking(false);

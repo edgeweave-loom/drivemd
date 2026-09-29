@@ -264,6 +264,12 @@ dialog::backdrop {
   white-space: nowrap;
 }
 
+.warning {
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid light-dark(#9a6700, #d29922);
+  background: light-dark(#fff8c5, #272115);
+}
+
 .failure {
   color: light-dark(#d1242f, #f85149);
 }
