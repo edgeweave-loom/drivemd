@@ -340,7 +340,7 @@ const ITEM_FIELDS =
   "canRename,canTrash),contentRestrictions(readOnly,reason)";
 const FILE_FIELDS =
   `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),` +
-  "md5Checksum,headRevisionId";
+  "md5Checksum,headRevisionId,trashed";
 
 describe("getMetadata", () => {
   it("asks for what the viewer shows and the conflict check compares, in any drive", async () => {
@@ -368,6 +368,7 @@ describe("getMetadata", () => {
         lastModifyingUser: { displayName: "Ada Lovelace" },
         md5Checksum: "0cc175b9c0f1b6a831c399e269772661",
         headRevisionId: "revision-1",
+        trashed: true,
       }),
     );
 
@@ -384,6 +385,7 @@ describe("getMetadata", () => {
       lastModifiedBy: "Ada Lovelace",
       md5Checksum: "0cc175b9c0f1b6a831c399e269772661",
       headRevisionId: "revision-1",
+      trashed: true,
     });
   });
 
@@ -416,6 +418,7 @@ describe("getMetadata", () => {
         lastModifiedBy: undefined,
         md5Checksum: undefined,
         headRevisionId: undefined,
+        trashed: false,
         ...readFields,
       });
     },

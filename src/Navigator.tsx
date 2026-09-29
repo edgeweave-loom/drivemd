@@ -1,6 +1,7 @@
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { DriveContext, useDrive } from "./drive-context.ts";
+import { FilePage } from "./FilePage.tsx";
 import { FolderPage } from "./FolderPage.tsx";
 import { Home } from "./Home.tsx";
 import { Link } from "./Link.tsx";
@@ -71,6 +72,7 @@ function Page() {
     case "search":
       return <SearchPage text={route.text} />;
     case "file":
+      return <FilePage file={route.file} trail={trail} />;
     case "not-found":
       return <NotFound />;
   }

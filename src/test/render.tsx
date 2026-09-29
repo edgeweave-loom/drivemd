@@ -14,12 +14,20 @@ export function renderWithDrive(ui: ReactNode, drive = fakeDrive()) {
   const client = createQueryClient();
   client.setDefaultOptions({ queries: { retry: false } });
   const renew = vi.fn();
-  render(
+  const within = (page: ReactNode) => (
     <QueryClientProvider client={client}>
-      <DriveContext value={{ drive, renew }}>{ui}</DriveContext>
-    </QueryClientProvider>,
+      <DriveContext value={{ drive, renew }}>{page}</DriveContext>
+    </QueryClientProvider>
   );
-  return { drive, renew, client };
+  const { rerender } = render(within(ui));
+  return {
+    drive,
+    renew,
+    client,
+    rerender: (page: ReactNode) => {
+      rerender(within(page));
+    },
+  };
 }
 
 /** Opens a URL of the app as a fresh page load would. */
