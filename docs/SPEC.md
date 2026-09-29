@@ -49,7 +49,7 @@ The interface is in English and follows the system's light or dark theme.
 
 1. **Sign-in.** Users sign in with their Google account. Only accounts in our Workspace organization are accepted.
 2. **Home.** After sign-in, the app opens on Home, which shows in order:
-   - **Recent:** the Markdown files the user opened most recently, newest first. The list comes from Drive's `viewedByMeTime`, which the app sets when it opens a file, so it is the same on every device. It keeps the Markdown files among the 100 files with content the user viewed last. Check early that Drive accepts this for files the user can only view.
+   - **Recent:** the Markdown files the user opened most recently, newest first. The list comes from Drive's `viewedByMeTime`, which the app sets when it opens a file, so it is the same on every device. It keeps the Markdown files among the 100 files with content the user viewed last. Drive accepts it even for files the user can only view, and shows the new time a few seconds later (checked live).
    - **Vaults:** the Obsidian vaults found in Drive (see Obsidian vaults).
    - **Roots:** My Drive, Shortcuts, Shared drives and Shared with me.
 3. **File navigator.** Shows four roots: My Drive, Shortcuts, Shared drives and Shared with me.
@@ -181,7 +181,7 @@ As Workspace admin, @gmasse checks **Security > API Controls**. Admins can block
 
 **Shared drives**
 
-Every call on files must pass `supportsAllDrives=true`; the calls on shared drives and revisions take no such parameter. Listings also need `includeItemsFromAllDrives=true`, and cross-drive search uses `corpora=allDrives`.
+Every call on files must pass `supportsAllDrives=true`; the calls on shared drives and revisions take no such parameter. Listing a folder by its parent needs no `corpora`, even in a shared drive, where it shows every member's files (checked live). Listings also need `includeItemsFromAllDrives=true`, and cross-drive search uses `corpora=allDrives`.
 
 ## Drive "Open with" integration via private Marketplace
 
