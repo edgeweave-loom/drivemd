@@ -15,12 +15,15 @@ const BROKEN = {
 export function ItemListing({
   queryKey,
   list,
+  order,
   trail,
   missing,
   empty,
 }: {
   queryKey: QueryKey;
   list: () => Promise<DriveItem[]>;
+  /** By name, unless Drive's own order says more, as in search results. */
+  order?: "by-name" | "as-listed";
   trail: Crumb[] | undefined;
   /** What to say when Drive answers that the list's source is not there. */
   missing: string;
@@ -30,7 +33,11 @@ export function ItemListing({
   return (
     <Loaded query={items} missing={missing}>
       {(found) => (
-        <EntryList entries={entriesOf(found)} trail={trail} empty={empty} />
+        <EntryList
+          entries={entriesOf(found, order)}
+          trail={trail}
+          empty={empty}
+        />
       )}
     </Loaded>
   );

@@ -26,27 +26,30 @@ const byName = new Intl.Collator(undefined, {
 });
 
 /**
- * The folders and Markdown files among the items, and the shortcuts to them,
- * in order. Names that start with a dot, such as .obsidian, are hidden.
+ * The folders and Markdown files among the items, and the shortcuts to them:
+ * folders first, then files, each by name, or else in the items' order.
+ * Names that start with a dot, such as .obsidian, are hidden.
  */
-export function entriesOf(items: DriveItem[]): Entry[] {
-  return inOrder(
-    items.flatMap((item): Entry[] => {
-      const kind = kindOf(item);
-      if (kind === undefined || item.name.startsWith(".")) return [];
-      const { id, name, target } = item;
-      const opens = target ?? item;
-      return [
-        {
-          kind,
-          id,
-          name,
-          opens: { id: opens.id, resourceKey: opens.resourceKey },
-          target,
-        },
-      ];
-    }),
-  );
+export function entriesOf(
+  items: DriveItem[],
+  order: "by-name" | "as-listed" = "by-name",
+): Entry[] {
+  const entries = items.flatMap((item): Entry[] => {
+    const kind = kindOf(item);
+    if (kind === undefined || item.name.startsWith(".")) return [];
+    const { id, name, target } = item;
+    const opens = target ?? item;
+    return [
+      {
+        kind,
+        id,
+        name,
+        opens: { id: opens.id, resourceKey: opens.resourceKey },
+        target,
+      },
+    ];
+  });
+  return order === "by-name" ? inOrder(entries) : entries;
 }
 
 /** Folders first, then files, each in natural order. */
