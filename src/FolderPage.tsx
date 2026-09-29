@@ -1,9 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useDrive } from "./drive-context.ts";
 import { FOLDER, type FileRef } from "./drive.ts";
-import { EntryList } from "./EntryList.tsx";
-import { entriesOf } from "./listing.ts";
-import { Loaded } from "./Loaded.tsx";
+import { ItemListing } from "./EntryList.tsx";
 import type { Crumb } from "./router.ts";
 
 export function FolderPage({
@@ -23,10 +21,6 @@ export function FolderPage({
     queryFn: () => drive.getMetadata(folder),
     enabled: named === undefined,
   });
-  const children = useQuery({
-    queryKey: ["children", ...key],
-    queryFn: () => drive.listChildren(folder),
-  });
   const name = named ?? details.data?.name;
 
   if (details.data && details.data.mimeType !== FOLDER) {
@@ -40,18 +34,13 @@ export function FolderPage({
   return (
     <>
       <h2>{name ?? (details.isError ? "Folder" : "…")}</h2>
-      <Loaded
-        query={children}
+      <ItemListing
+        queryKey={["children", ...key]}
+        list={() => drive.listChildren(folder)}
+        trail={trail}
         missing="This folder does not exist, or it is not shared with you."
-      >
-        {(items) => (
-          <EntryList
-            entries={entriesOf(items)}
-            trail={trail}
-            empty="No folders or Markdown files here."
-          />
-        )}
-      </Loaded>
+        empty="No folders or Markdown files here."
+      />
     </>
   );
 }

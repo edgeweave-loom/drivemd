@@ -173,7 +173,7 @@ button:disabled {
   min-width: 0;
 }
 
-.entry.folder::after {
+.entry.folder:not(.broken)::after {
   margin-left: auto;
   color: var(--muted);
   content: "›" / "";
@@ -190,4 +190,14 @@ button:disabled {
 
 .failure {
   color: light-dark(#d1242f, #f85149);
+}
+
+.entry.broken {
+  color: var(--muted);
+}
+
+.entry.broken .reason {
+  margin-left: auto;
+  font-size: 0.875rem;
+  text-align: end;
 }

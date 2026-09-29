@@ -1,6 +1,40 @@
+import { useQuery, type QueryKey } from "@tanstack/react-query";
+import { useDrive } from "./drive-context.ts";
+import type { DriveItem, ShortcutTarget } from "./drive.ts";
 import { Link } from "./Link.tsx";
-import type { Entry } from "./listing.ts";
+import { entriesOf, type Entry } from "./listing.ts";
+import { Loaded } from "./Loaded.tsx";
 import { hrefOf, type Crumb } from "./router.ts";
+
+const BROKEN = {
+  missing: "Deleted, or not shared with you",
+  trashed: "In the trash",
+};
+
+/** The entries among the items `list` finds, once Drive has answered. */
+export function ItemListing({
+  queryKey,
+  list,
+  trail,
+  missing,
+  empty,
+}: {
+  queryKey: QueryKey;
+  list: () => Promise<DriveItem[]>;
+  trail: Crumb[] | undefined;
+  /** What to say when Drive answers that the list's source is not there. */
+  missing: string;
+  empty: string;
+}) {
+  const items = useQuery({ queryKey, queryFn: list });
+  return (
+    <Loaded query={items} missing={missing}>
+      {(found) => (
+        <EntryList entries={entriesOf(found)} trail={trail} empty={empty} />
+      )}
+    </Loaded>
+  );
+}
 
 /** Folders and files to open, extending the path the user took. */
 export function EntryList({
@@ -17,8 +51,12 @@ export function EntryList({
   return (
     <ul className="entries">
       {entries.map((entry) => (
-        <li key={entry.item.id}>
-          <EntryLink entry={entry} trail={trail} />
+        <li key={entry.id}>
+          {entry.target ? (
+            <ShortcutEntry entry={entry} target={entry.target} trail={trail} />
+          ) : (
+            <EntryLink entry={entry} trail={trail} />
+          )}
         </li>
       ))}
     </ul>
@@ -26,7 +64,7 @@ export function EntryList({
 }
 
 function EntryLink({
-  entry: { kind, item, opens },
+  entry: { kind, name, opens, target },
   trail,
 }: {
   entry: Entry;
@@ -40,11 +78,46 @@ function EntryLink({
   return (
     <Link
       to={href}
-      trail={trail && [...trail, { name: item.name, href }]}
+      trail={trail && [...trail, { name, href }]}
       className={`entry ${kind}`}
     >
-      <span className="name">{item.name}</span>
-      {item.target && <span className="badge">Shortcut</span>}
+      <span className="name">{name}</span>
+      {target && <span className="badge">Shortcut</span>}
     </Link>
+  );
+}
+
+/**
+ * A shortcut shows at once, then greys out if its target turns out to be
+ * gone. A check that fails leaves it as it is.
+ */
+function ShortcutEntry({
+  entry,
+  target,
+  trail,
+}: {
+  entry: Entry;
+  target: ShortcutTarget;
+  trail: Crumb[] | undefined;
+}) {
+  const { drive } = useDrive();
+  const check = useQuery({
+    queryKey: ["shortcut", target.id, target.resourceKey],
+    // A query cannot answer undefined: null says the target opens.
+    queryFn: async () => (await drive.checkShortcut(target)) ?? null,
+  });
+  const broken = check.data;
+  if (!broken) return <EntryLink entry={entry} trail={trail} />;
+  return (
+    // A link without an address: it is there, but opens nothing.
+    <a
+      role="link"
+      aria-disabled="true"
+      className={`entry ${entry.kind} broken`}
+    >
+      <span className="name">{entry.name}</span>
+      <span className="badge">Shortcut</span>
+      <span className="reason">{BROKEN[broken]}</span>
+    </a>
   );
 }
