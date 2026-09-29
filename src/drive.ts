@@ -30,19 +30,30 @@ const FILE_FIELDS = `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),
 
 const UNREACHABLE = "Google Drive could not be reached";
 
+/** The alias of My Drive's top folder in Drive's API. */
+export const MY_DRIVE = "root";
+
 const FOLDER = "application/vnd.google-apps.folder";
 const SHORTCUT = "application/vnd.google-apps.shortcut";
 // Google's own types (Docs, folders, shortcuts...) have no content to edit.
 const WITH_CONTENT = "not mimeType contains 'application/vnd.google-apps.'";
 
+// Drive also answers 403, rather than 429, when requests come too fast.
+const RATE_LIMITS = new Set(["rateLimitExceeded", "userRateLimitExceeded"]);
+
 export class DriveError extends Error {
   override readonly name = "DriveError";
   /** The HTTP status, or 0 when Drive could not be reached. */
   readonly status: number;
+  /** Drive refused because requests came too fast: it may pass later. */
+  readonly rateLimited: boolean;
 
-  constructor(status: number, message: string) {
+  /** `reason` is the first reason Drive gave, when it gave one. */
+  constructor(status: number, message: string, reason?: string) {
     super(message);
     this.status = status;
+    this.rateLimited =
+      status === 429 || (reason !== undefined && RATE_LIMITS.has(reason));
   }
 }
 
@@ -506,6 +517,7 @@ async function refusal(response: Response): Promise<DriveError> {
   return new DriveError(
     response.status,
     errorMessage(body) ?? `Google Drive answered ${String(response.status)}`,
+    errorReason(body),
   );
 }
 
@@ -528,6 +540,13 @@ async function parse<T>(
 function errorMessage(body: unknown): string | undefined {
   const error = isRecord(body) ? body.error : undefined;
   return isRecord(error) ? optionalString(error.message) : undefined;
+}
+
+function errorReason(body: unknown): string | undefined {
+  const error = isRecord(body) ? body.error : undefined;
+  const errors = isRecord(error) ? error.errors : undefined;
+  const first: unknown = Array.isArray(errors) ? errors[0] : undefined;
+  return isRecord(first) ? optionalString(first.reason) : undefined;
 }
 
 function parseItem(value: Record<string, unknown>): DriveItem | undefined {

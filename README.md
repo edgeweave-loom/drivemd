@@ -6,15 +6,15 @@ DriveMD is a static web app for our Google Workspace organization. It signs in w
 
 ## Status
 
-Milestone 1 is done: the app signs in with Google and shows the signed-in account's email, CI deploys `dev` to staging, and sign-in passed the test on a real iPhone without a token backend. Milestone 2 is done too: `src/drive.ts` is the typed Drive client that the next milestones build on, tested against mocked Drive answers. Milestone 3, the file navigator, comes next. The product spec, [`docs/SPEC.md`](docs/SPEC.md), is the source of truth, and its build plan drives the work one milestone at a time.
+Milestone 1 is done: the app signs in with Google and shows the signed-in account's email, CI deploys `dev` to staging, and sign-in passed the test on a real iPhone without a token backend. Milestone 2 is done too: `src/drive.ts` is the typed Drive client that the next milestones build on, tested against mocked Drive answers. Milestone 3, the file navigator, is under way: once signed in, the app opens on Home, and each page has its own address (see the spec's file navigator). The product spec, [`docs/SPEC.md`](docs/SPEC.md), is the source of truth, and its build plan drives the work one milestone at a time.
 
 ## Signing in
 
-**Sign in with Google** opens Google's window, so the browser must allow pop-ups for the site. The session then lasts about an hour for the tab: a reload keeps it, while a new tab or a relaunch of the Home Screen app asks for **Continue**, which renews it for the account remembered on the device, usually with a window that closes by itself. **Sign out** forgets the session on the device, in every open tab, without revoking DriveMD's access to the Google account.
+**Sign in with Google** opens Google's window, so the browser must allow pop-ups for the site. The session then lasts about an hour for the tab: a reload keeps it, while a new tab or a relaunch of the Home Screen app asks for **Continue**, which renews it for the account remembered on the device, usually with a window that closes by itself. Once the hour is up, the next tap that opens a page renews the session in the same way, and a page that loads without a tap asks for **Continue**. **Sign out** forgets the session on the device, in every open tab, without revoking DriveMD's access to the Google account.
 
 ## Stack
 
-Vite, React and TypeScript; Google Identity Services and the Drive REST API v3; CodeMirror 6 for editing and react-markdown for rendering; Firebase Hosting. The spec explains each choice.
+Vite, React and TypeScript; Google Identity Services and the Drive REST API v3, with TanStack Query caching Drive's answers; CodeMirror 6 for editing and react-markdown for rendering; Firebase Hosting. The spec explains each choice.
 
 ## Development
 

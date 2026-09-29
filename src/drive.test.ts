@@ -220,6 +220,68 @@ describe("Drive calls", () => {
     },
   );
 
+  it.each<[string, Response, boolean]>([
+    [
+      "a 403 for too many requests",
+      Response.json(
+        {
+          error: {
+            message: "User Rate Limit Exceeded",
+            errors: [{ reason: "userRateLimitExceeded" }],
+          },
+        },
+        { status: 403 },
+      ),
+      true,
+    ],
+    [
+      "a 403 for too many requests from the project",
+      Response.json(
+        { error: { errors: [{ reason: "rateLimitExceeded" }] } },
+        { status: 403 },
+      ),
+      true,
+    ],
+    ["a 429", refusal(429, "Too Many Requests"), true],
+    [
+      "a 403 for missing rights",
+      Response.json(
+        { error: { errors: [{ reason: "insufficientFilePermissions" }] } },
+        { status: 403 },
+      ),
+      false,
+    ],
+    [
+      "a 403 for the day's quota",
+      Response.json(
+        { error: { errors: [{ reason: "dailyLimitExceeded" }] } },
+        { status: 403 },
+      ),
+      false,
+    ],
+    [
+      "a 403 with odd reasons",
+      Response.json({ error: { errors: [7, { reason: 7 }] } }, { status: 403 }),
+      false,
+    ],
+    [
+      "a 403 with no list of reasons",
+      Response.json(
+        { error: { errors: "userRateLimitExceeded" } },
+        { status: 403 },
+      ),
+      false,
+    ],
+    ["a 403 without a body", new Response(null, { status: 403 }), false],
+  ])("tell a rate limit apart: %s", async (_case, response, rateLimited) => {
+    respond(response);
+
+    await expect(getMetadata()).rejects.toMatchObject({
+      name: "DriveError",
+      rateLimited,
+    });
+  });
+
   it("report a network failure without the token", async () => {
     vi.stubGlobal(
       "fetch",
