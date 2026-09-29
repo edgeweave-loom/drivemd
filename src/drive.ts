@@ -472,12 +472,18 @@ function named(name: string): string {
   return trimmed;
 }
 
+/**
+ * Whether a value is shaped like a Drive ID or resource key: letters, digits,
+ * "-" and "_". Any other character could reach another endpoint or change a
+ * query, and "." or ".." in a path would be resolved away.
+ */
+export function isDriveId(value: string): boolean {
+  return /^[\w-]+$/.test(value);
+}
+
 /** The ID, once it is known to be shaped like a Drive ID. */
 function checked(id: string): string {
-  // Drive IDs use letters, digits, "-" and "_": any other character could
-  // reach another endpoint or change a query, and "." or ".." in a path would
-  // be resolved away.
-  if (!/^[\w-]+$/.test(id)) throw new DriveError(400, "Not a Drive ID");
+  if (!isDriveId(id)) throw new DriveError(400, "Not a Drive ID");
   return id;
 }
 
