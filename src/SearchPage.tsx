@@ -23,7 +23,6 @@ export function SearchPage({ text }: { text: string }) {
           order="as-listed"
           // Where a file sits comes from Drive, not from the search.
           trail={undefined}
-          missing="Google Drive could not search."
           empty={`Among Drive's first 100 matches, no Markdown file has a name with ${wanted}. Drive matches the start of words: “plan” finds planning.md, not myplan.md.`}
         />
       )}

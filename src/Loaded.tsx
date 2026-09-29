@@ -9,12 +9,12 @@ import { DriveError } from "./drive.ts";
  */
 export function Loaded<T>({
   query,
-  missing,
+  missing = "Google Drive could not find it.",
   children,
 }: {
   query: UseQueryResult<T>;
   /** What to say when Drive answers that the item is not there. */
-  missing: string;
+  missing?: string | undefined;
   children: (data: T) => ReactNode;
 }) {
   const { renew } = useDrive();
