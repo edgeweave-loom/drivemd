@@ -87,9 +87,14 @@ describe("App", () => {
     });
     render(<App session={session} />);
 
-    const prompt = within(screen.getByRole("dialog"));
+    const dialog = screen.getByRole("dialog", { name: "Welcome back" });
+    const prompt = within(dialog);
     expect(prompt.getByText(EMAIL)).toBeInTheDocument();
-    expect(screen.getByRole("banner").closest("[inert]")).not.toBeNull();
+    // A modal dialog keeps the navigator out of reach, and Escape leaves it.
+    expect(dialog).toHaveAttribute("open");
+    expect(fireEvent(dialog, new Event("cancel", { cancelable: true }))).toBe(
+      false,
+    );
     fireEvent.click(prompt.getByRole("button", { name: "Continue" }));
     expect(session.continueSession).toHaveBeenCalledOnce();
     fireEvent.click(prompt.getByRole("button", { name: "Sign out" }));
@@ -112,7 +117,6 @@ describe("App", () => {
     });
     expect(home).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(home.closest("[inert]")).toBeNull();
   });
 
   it("starts afresh when another account continues", () => {

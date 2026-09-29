@@ -90,13 +90,6 @@ describe("FolderPage", () => {
     ]);
   });
 
-  it("asks Drive nothing more when the path names the folder", async () => {
-    const { drive } = openWork(Promise.resolve([driveItem("a.md")]));
-
-    expect(await screen.findByRole("link", { name: "a.md" })).toBeVisible();
-    expect(drive.getMetadata).not.toHaveBeenCalled();
-  });
-
   it("calls it a folder when Drive cannot name it", async () => {
     const drive = fakeDrive();
     drive.getMetadata.mockRejectedValue(new DriveError(500, "Backend error"));

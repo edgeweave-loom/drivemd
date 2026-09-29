@@ -1,4 +1,5 @@
 import { useSyncExternalStore, type ReactNode } from "react";
+import { Dialog } from "./Dialog.tsx";
 import { Navigator } from "./Navigator.tsx";
 import type { Session, SessionState } from "./session.ts";
 
@@ -16,24 +17,15 @@ export function App({ session }: { session: Session }) {
       // cached.
       return (
         <>
-          <Navigator
-            key={screen.email}
-            session={session}
-            email={screen.email}
-            inert={renewing}
-          >
+          <Navigator key={screen.email} session={session} email={screen.email}>
             {!renewing && status}
           </Navigator>
           {renewing && (
-            <div className="overlay">
-              <section
-                role="dialog"
-                aria-modal="true"
-                aria-label="Continue"
-                className="app card"
-              >
+            // Over any other dialog; Escape does not dismiss it.
+            <Dialog title="Welcome back">
+              <div className="stack">
                 <p>
-                  Welcome back, <strong>{screen.email}</strong>.
+                  Continue as <strong>{screen.email}</strong>.
                 </p>
                 <GoogleButton
                   google={state.google}
@@ -46,8 +38,8 @@ export function App({ session }: { session: Session }) {
                   Sign out
                 </button>
                 {status}
-              </section>
-            </div>
+              </div>
+            </Dialog>
           )}
         </>
       );

@@ -1,7 +1,7 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useDrive } from "./drive-context.ts";
-import { DriveError } from "./drive.ts";
+import { describeError } from "./errors.ts";
 
 /**
  * What a Drive query answered, once it has: until then a line saying it is
@@ -9,7 +9,7 @@ import { DriveError } from "./drive.ts";
  */
 export function Loaded<T>({
   query,
-  missing = "Google Drive could not find it.",
+  missing,
   children,
 }: {
   query: UseQueryResult<T>;
@@ -24,7 +24,7 @@ export function Loaded<T>({
       <p className="hint">Trying again…</p>
     ) : (
       <p role="alert" className="failure">
-        {describe(query.error, missing)}{" "}
+        {describeError(query.error, missing)}{" "}
         <button
           type="button"
           onClick={() => {
@@ -45,11 +45,4 @@ export function Loaded<T>({
       {children(query.data)}
     </>
   );
-}
-
-function describe(error: Error, missing: string): string {
-  if (!(error instanceof DriveError)) return "Something went wrong.";
-  if (error.status === 404) return missing;
-  if (error.status === 0) return `${error.message}. Check your connection.`;
-  return `Google Drive refused the request: ${error.message}`;
 }

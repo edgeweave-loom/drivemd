@@ -7,16 +7,21 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Navigator } from "./Navigator.tsx";
-import { getPlace } from "./router.ts";
-import { driveItem } from "./test/drive-items.ts";
+import { getPlace, navigate } from "./router.ts";
+import {
+  driveItem,
+  folderItem,
+  metadata,
+  metadataOf,
+} from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 
 const EMAIL = "ada@example.com";
 
-function open(path: string) {
+function open(path: string, drive = fakeDrive()) {
   history.replaceState(null, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
-  const session = { drive: fakeDrive(), renew: vi.fn(), signOut: vi.fn() };
+  const session = { drive, renew: vi.fn(), signOut: vi.fn() };
   render(<Navigator session={session} email={EMAIL} />);
   return session;
 }
@@ -135,6 +140,22 @@ describe("Navigator", () => {
     expect(
       screen.getByRole("navigation", { name: "Breadcrumbs" }),
     ).toBeVisible();
+  });
+
+  it("leaves a folder's dialogs behind when another folder opens", async () => {
+    const drive = fakeDrive();
+    const work = folderItem("Work", { id: "work", parents: ["my-root"] });
+    work.capabilities.canAddChildren = true;
+    drive.getMetadata.mockImplementation(metadataOf(metadata(work)));
+    drive.listChildren.mockResolvedValue([]);
+    open("/folder/work", drive);
+    fireEvent.click(await screen.findByRole("button", { name: "New" }));
+    expect(screen.getByRole("dialog")).toBeVisible();
+
+    act(() => {
+      navigate("/folder/other");
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("says when a URL opens nothing, and leads back Home", () => {

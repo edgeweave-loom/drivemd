@@ -80,18 +80,7 @@ button:disabled {
   color: var(--muted);
 }
 
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 2;
-  display: grid;
-  place-items: center;
-  padding: 1rem;
-  background: rgb(0 0 0 / 40%);
-}
-
 .card {
-  width: 100%;
   border: 1px solid var(--border);
   border-radius: 0.75rem;
   background: var(--background);
@@ -127,7 +116,8 @@ button:disabled {
   flex: 1 1 12rem;
 }
 
-.search input {
+.search input,
+.stack input {
   width: 100%;
   min-height: 44px;
   padding: 0 0.75rem;
@@ -145,6 +135,45 @@ button:disabled {
     flex-basis: 100%;
     order: 1;
   }
+}
+
+dialog.card {
+  max-width: min(28rem, calc(100% - 2rem));
+  padding: 1.5rem 1rem 1rem;
+  color: inherit;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 40%);
+}
+
+.card h2 {
+  margin: 0 0 1rem;
+  font-size: 1.25rem;
+}
+
+.stack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.stack label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.heading {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .bar .account {

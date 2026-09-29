@@ -1,10 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { Breadcrumbs } from "./Breadcrumbs.tsx";
+import { NameDialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
 import { FOLDER, type FileRef } from "./drive.ts";
-import { Breadcrumbs } from "./Breadcrumbs.tsx";
 import { ItemListing } from "./EntryList.tsx";
 import { usePath } from "./path.ts";
-import type { Crumb } from "./router.ts";
+import { hrefOf, navigate, type Crumb } from "./router.ts";
 
 export function FolderPage({
   folder,
@@ -15,13 +17,11 @@ export function FolderPage({
 }) {
   const { drive } = useDrive();
   const key = [folder.id, folder.resourceKey];
-  // The path the user took names the folder as they reached it, such as by a
-  // shortcut's own name; without it, Drive names it.
-  const named = trail?.at(-1)?.name;
+  // Says whether the user may add files, and names a folder reached without
+  // a path.
   const details = useQuery({
     queryKey: ["metadata", ...key],
     queryFn: () => drive.getMetadata(folder),
-    enabled: named === undefined,
   });
   const path = usePath(folder, trail);
   const name = path?.at(-1)?.name ?? details.data?.name;
@@ -38,7 +38,12 @@ export function FolderPage({
   return (
     <>
       <Breadcrumbs path={path} />
-      <h2>{name ?? (details.isError ? "Folder" : "…")}</h2>
+      <div className="heading">
+        <h2>{name ?? (details.isError ? "Folder" : "…")}</h2>
+        {details.data?.capabilities.canAddChildren && (
+          <NewFile folder={folder} path={path} />
+        )}
+      </div>
       <ItemListing
         queryKey={["children", ...key]}
         list={() => drive.listChildren(folder)}
@@ -46,6 +51,59 @@ export function FolderPage({
         missing="This folder does not exist, or it is not shared with you."
         empty="No folders or Markdown files here."
       />
+    </>
+  );
+}
+
+/** Creates a Markdown file in the folder, named first, then opens it. */
+function NewFile({
+  folder,
+  path,
+}: {
+  folder: FileRef;
+  path: Crumb[] | undefined;
+}) {
+  const { drive, renew } = useDrive();
+  const client = useQueryClient();
+  const [asking, setAsking] = useState(false);
+  const create = useMutation({
+    mutationFn: (name: string) => drive.createFile(folder, name),
+    onSuccess: (file) => {
+      // The new file shows in the folder's list and in searches.
+      void client.invalidateQueries({ queryKey: ["children"] });
+      void client.invalidateQueries({ queryKey: ["search"] });
+      const href = hrefOf({ name: "file", file });
+      navigate(href, path && [...path, { name: file.name, href }]);
+    },
+  });
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          create.reset();
+          setAsking(true);
+        }}
+      >
+        New
+      </button>
+      {asking && (
+        <NameDialog
+          title="New Markdown file"
+          initial="Untitled"
+          hint=".md is added unless the name ends in .md or .markdown."
+          action="Create"
+          pending={create.isPending}
+          error={create.error}
+          onSubmit={(name) => {
+            renew();
+            create.mutate(name);
+          }}
+          onClose={() => {
+            setAsking(false);
+          }}
+        />
+      )}
     </>
   );
 }
