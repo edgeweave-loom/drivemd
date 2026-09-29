@@ -45,7 +45,6 @@ export function ConfirmDialog({
   title,
   action,
   pending,
-  ready = true,
   error,
   onConfirm,
   onClose,
@@ -54,10 +53,9 @@ export function ConfirmDialog({
   title: string;
   action: string;
   pending: boolean;
-  /** Whether the action may go ahead yet. */
-  ready?: boolean;
   error: Error | null;
-  onConfirm: () => void;
+  /** Does the action; undefined while it may not go ahead yet. */
+  onConfirm: (() => void) | undefined;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -67,7 +65,7 @@ export function ConfirmDialog({
         className="stack"
         onSubmit={(event) => {
           event.preventDefault();
-          onConfirm();
+          onConfirm?.();
         }}
       >
         {children}
@@ -83,7 +81,7 @@ export function ConfirmDialog({
           <button
             type="submit"
             className="primary"
-            disabled={pending || !ready}
+            disabled={pending || !onConfirm}
           >
             {action}
           </button>
@@ -133,11 +131,14 @@ export function NameDialog({
       title={title}
       action={action}
       pending={pending}
-      ready={ready && name.trim() !== ""}
       error={error}
-      onConfirm={() => {
-        onSubmit(name);
-      }}
+      onConfirm={
+        ready && name.trim() !== ""
+          ? () => {
+              onSubmit(name);
+            }
+          : undefined
+      }
       onClose={onClose}
     >
       <label>

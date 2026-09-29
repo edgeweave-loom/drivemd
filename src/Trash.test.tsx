@@ -56,10 +56,12 @@ describe("Move to trash", () => {
     expect(screen.queryByRole("button", { name: "Move to trash" })).toBeNull();
   });
 
-  it("offers nothing on a file the user may neither rename nor trash", async () => {
+  it("offers nothing on a file the user may not change", async () => {
     const file = plan();
     file.capabilities.canTrash = false;
     file.capabilities.canRename = false;
+    file.capabilities.canMoveItemWithinDrive = false;
+    file.capabilities.canMoveItemOutOfDrive = false;
     openPlan(file);
 
     await screen.findByText(/^Last modified/);
