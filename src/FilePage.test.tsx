@@ -25,6 +25,7 @@ function openFile(trail: Crumb[] | undefined, ...items: FileMetadata[]) {
   const drive = fakeDrive();
   drive.getMetadata.mockImplementation(metadataOf(WORK, ...items));
   drive.markViewed.mockResolvedValue();
+  drive.listChildren.mockResolvedValue([]);
   const rendered = renderWithDrive(
     <FilePage file={{ id: "plan" }} trail={trail} />,
     drive,
@@ -89,6 +90,7 @@ describe("FilePage", () => {
     const drive = fakeDrive();
     drive.getMetadata.mockImplementation(metadataOf(WORK, PLAN));
     drive.markViewed.mockRejectedValue(new DriveError(403, "Forbidden"));
+    drive.listChildren.mockResolvedValue([]);
     renderWithDrive(<FilePage file={{ id: "plan" }} trail={TRAIL} />, drive);
 
     expect(await screen.findByText(/^Last modified by/)).toBeVisible();

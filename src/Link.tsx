@@ -11,12 +11,15 @@ export function Link({
   to,
   trail,
   className,
+  current = false,
   children,
 }: {
   to: string;
   /** The path the user takes by following the link, for the breadcrumbs. */
   trail?: Crumb[] | undefined;
   className?: string;
+  /** Whether the link leads to the page shown. */
+  current?: boolean;
   children: ReactNode;
 }) {
   const { renew } = useDrive();
@@ -28,7 +31,12 @@ export function Link({
     navigate(to, trail);
   }
   return (
-    <a href={to} className={className} onClick={open}>
+    <a
+      href={to}
+      className={className}
+      aria-current={current ? "page" : undefined}
+      onClick={open}
+    >
       {children}
     </a>
   );

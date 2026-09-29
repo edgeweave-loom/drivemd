@@ -65,7 +65,9 @@ describe("Move to trash", () => {
     openPlan(file);
 
     await screen.findByText(/^Last modified/);
-    expect(screen.queryByRole("button")).toBeNull();
+    for (const action of ["Rename", "Move", "Move to trash"]) {
+      expect(screen.queryByRole("button", { name: action })).toBeNull();
+    }
   });
 
   it("asks first, then trashes the file and goes back to its folder", async () => {

@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getPlace,
   hrefOf,
@@ -23,6 +23,7 @@ function visit(path: string, state: unknown) {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   history.replaceState(null, "", "/");
   window.dispatchEvent(new PopStateEvent("popstate"));
 });
@@ -102,6 +103,19 @@ describe("the place shown", () => {
     await waitFor(() => {
       expect(result.current.route).toEqual({ name: "home" });
     });
+  });
+
+  it("shows a page opened by a link from its top, but not one Back returns to", async () => {
+    const scrollTo = vi.spyOn(window, "scrollTo");
+
+    navigate("/shortcuts");
+    expect(scrollTo).toHaveBeenCalledExactlyOnceWith(0, 0);
+    navigate("/shortcuts");
+    history.back();
+    await waitFor(() => {
+      expect(getPlace().href).toBe("/");
+    });
+    expect(scrollTo).toHaveBeenCalledOnce();
   });
 
   it("keeps its snapshot until the location changes", () => {
