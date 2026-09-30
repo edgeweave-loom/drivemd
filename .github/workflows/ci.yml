@@ -98,6 +98,8 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Install Chromium and WebKit, with their system libraries
+        # A stalled package mirror fails the step rather than the whole job.
+        timeout-minutes: 5
         run: npx playwright install --with-deps chromium webkit
       - name: Test the built app in both browsers, under Hosting's headers
         run: npm run e2e

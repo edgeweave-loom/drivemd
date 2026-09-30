@@ -367,7 +367,10 @@ export const test = base.extend<{ drive: FakeDrive }>({
 
 export { expect };
 
-/** Opens the app and signs in, landing on Home. */
+/**
+ * Opens the app and signs in, landing on Home once it has loaded: leaving a
+ * page while Drive answers cancels the call, which WebKit reports as an error.
+ */
 export async function signIn(page: Page): Promise<void> {
   const response = await page.goto("/");
   // The tests run under the security policy that production sends.
@@ -376,4 +379,10 @@ export async function signIn(page: Page): Promise<void> {
   );
   await page.getByRole("button", { name: "Sign in with Google" }).click();
   await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Recent" }).getByRole("link"),
+  ).toHaveText(["plan.md"]);
+  await expect(
+    page.getByRole("region", { name: "Vaults" }).getByRole("link"),
+  ).toHaveText(["Journal"]);
 }
