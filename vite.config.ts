@@ -1,13 +1,23 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
+import firebase from "./firebase.json" with { type: "json" };
 
 // The OAuth client authorizes http://localhost:5173 and no other local origin.
 const port = 5173;
 
+// The preview serves the build with the headers Hosting sends for every path,
+// the security policy included, so that the end-to-end tests run under them.
+// Hosting's first rule holds them, as src/security-headers.test.ts checks.
+const headers = Object.fromEntries(
+  firebase.hosting.headers
+    .find(({ source }) => source === "**")
+    ?.headers.map(({ key, value }) => [key, value]) ?? [],
+);
+
 export default defineConfig({
   plugins: [react()],
   server: { port, strictPort: true },
-  preview: { port, strictPort: true },
+  preview: { port, strictPort: true, headers },
   test: {
     environment: "jsdom",
     setupFiles: ["src/test/setup.ts"],

@@ -7,13 +7,22 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default defineConfig([
-  globalIgnores(["dist", "coverage"]),
+  globalIgnores([
+    "dist",
+    "dist-e2e",
+    "coverage",
+    "test-results",
+    "playwright-report",
+  ]),
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,
   tseslint.configs.stylisticTypeChecked,
   noUnsanitized.configs.recommended,
-  reactHooks.configs.flat.recommended,
-  reactRefresh.configs.vite(),
+  {
+    // React's rules are for the app, not for the Node-side tests and tools.
+    files: ["src/**/*.{ts,tsx}"],
+    extends: [reactHooks.configs.flat.recommended, reactRefresh.configs.vite()],
+  },
   {
     languageOptions: {
       globals: globals.browser,
