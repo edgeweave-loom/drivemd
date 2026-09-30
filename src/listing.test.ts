@@ -1,0 +1,79 @@
+import { describe, expect, it } from "vitest";
+import type { DriveItem } from "./drive.ts";
+import { entriesOf } from "./listing.ts";
+import {
+  driveItem as item,
+  FOLDER,
+  SHORTCUT,
+  shortcutItem as shortcut,
+} from "./test/drive-items.ts";
+
+function names(items: DriveItem[]) {
+  return entriesOf(items).map((entry) => entry.item.name);
+}
+
+describe("entriesOf", () => {
+  it("lists folders, then Markdown files, each in natural order", () => {
+    expect(
+      names([
+        item("file10.md"),
+        item("Zeta", { mimeType: FOLDER }),
+        item("file2.md"),
+        item("alpha", { mimeType: FOLDER }),
+        item("File1.markdown"),
+      ]),
+    ).toEqual(["alpha", "Zeta", "File1.markdown", "file2.md", "file10.md"]);
+  });
+
+  it("leaves out other files, whatever their MIME type says", () => {
+    expect(
+      names([
+        item("notes.txt", { mimeType: "text/markdown" }),
+        item("plain.md", { mimeType: "text/plain" }),
+        item("binary.md", { mimeType: "application/octet-stream" }),
+        item("doc.md", { mimeType: "application/vnd.google-apps.document" }),
+      ]),
+    ).toEqual(["binary.md", "plain.md"]);
+  });
+
+  it("hides names that start with a dot", () => {
+    expect(
+      names([
+        item(".obsidian", { mimeType: FOLDER }),
+        item(".hidden.md"),
+        shortcut(".trash", FOLDER),
+        item("visible.md"),
+      ]),
+    ).toEqual(["visible.md"]);
+  });
+
+  it("opens a shortcut's target, filed with folders or files by what it points to", () => {
+    const entries = entriesOf([
+      shortcut("to-note.md", "text/markdown"),
+      shortcut("to-folder", FOLDER),
+      shortcut("to-doc.md", "application/vnd.google-apps.document"),
+      shortcut("to-image", "image/png"),
+      item("broken", { mimeType: SHORTCUT }),
+    ]);
+
+    expect(entries).toEqual([
+      {
+        kind: "folder",
+        item: expect.objectContaining({ name: "to-folder" }) as unknown,
+        opens: { id: "target-to-folder", resourceKey: "key" },
+      },
+      {
+        kind: "file",
+        item: expect.objectContaining({ name: "to-note.md" }) as unknown,
+        opens: { id: "target-to-note.md", resourceKey: "key" },
+      },
+    ]);
+  });
+
+  it("opens other items themselves, with their resource key", () => {
+    expect(entriesOf([item("a.md", { resourceKey: "k" })])[0]?.opens).toEqual({
+      id: "id-a_md",
+      resourceKey: "k",
+    });
+  });
+});

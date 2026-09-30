@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Navigator } from "./Navigator.tsx";
 import { getPlace } from "./router.ts";
+import { driveItem } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 
 const EMAIL = "ada@example.com";
@@ -28,15 +29,18 @@ describe("Navigator", () => {
     expect(session.signOut).toHaveBeenCalledOnce();
   });
 
-  it("opens on Home, with a way into My Drive", () => {
-    open("/");
+  it("opens on Home, with a way into My Drive", async () => {
+    const { drive } = open("/");
+    drive.getMetadata.mockReturnValue(new Promise(() => undefined));
+    drive.listChildren.mockResolvedValue([driveItem("notes.md")]);
 
     expect(screen.getByRole("heading", { name: "Home" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("link", { name: "My Drive" }));
-    expect(getPlace()).toMatchObject({
-      href: "/my-drive",
-      trail: [{ name: "My Drive", href: "/my-drive" }],
-    });
+    expect(
+      await screen.findByRole("heading", { name: "My Drive" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "notes.md" })).toBeVisible();
+    expect(drive.listChildren).toHaveBeenCalledWith({ id: "root" });
   });
 
   it("says when a URL opens nothing, and leads back Home", () => {
