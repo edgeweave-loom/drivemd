@@ -21,13 +21,10 @@ const HOME = hrefOf({ name: "home" });
 export function Navigator({
   session,
   email,
-  inert = false,
   children,
 }: {
   session: Pick<Session, "drive" | "renew" | "signOut">;
   email: string;
-  /** Whether the navigator is out of reach, behind a prompt. */
-  inert?: boolean;
   /** What the session has to say, shown under the header. */
   children?: ReactNode;
 }) {
@@ -35,7 +32,7 @@ export function Navigator({
   return (
     <QueryClientProvider client={client}>
       <DriveContext value={session}>
-        <div className="shell" inert={inert}>
+        <div className="shell">
           <header className="bar">
             <h1>
               <Link to={HOME}>DriveMD</Link>
@@ -62,7 +59,10 @@ function Page() {
     case "home":
       return <Home />;
     case "folder":
-      return <FolderPage folder={route.folder} trail={trail} />;
+      // Each folder and file starts afresh, with no dialog left open.
+      return (
+        <FolderPage key={route.folder.id} folder={route.folder} trail={trail} />
+      );
     case "shortcuts":
       return <ShortcutsPage trail={trail} />;
     case "shared-drives":
@@ -72,7 +72,7 @@ function Page() {
     case "search":
       return <SearchPage text={route.text} />;
     case "file":
-      return <FilePage file={route.file} trail={trail} />;
+      return <FilePage key={route.file.id} file={route.file} trail={trail} />;
     case "not-found":
       return <NotFound />;
   }
