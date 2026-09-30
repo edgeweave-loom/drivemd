@@ -49,6 +49,7 @@ test("signs in, browses to a file and back, and keeps the path on reload", async
   await expect(
     page.getByRole("heading", { level: 2, name: "Work" }),
   ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Archive" })).toBeVisible();
   await page.reload();
   await expect(crumbs(page).getByRole("link")).toHaveText(["Home", "My Drive"]);
 });
