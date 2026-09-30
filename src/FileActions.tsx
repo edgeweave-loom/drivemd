@@ -2,10 +2,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ConfirmDialog, NameDialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
+import { Move } from "./Move.tsx";
 import { isMarkdown, type FileMetadata, type FileRef } from "./drive.ts";
 import { refreshAfterChange } from "./queries.ts";
 import { hrefOf, navigate, type Crumb } from "./router.ts";
-import { useVaultCheck } from "./vaults.ts";
+import { useVaultCheck, vaultNote } from "./vaults.ts";
 
 const HOME = hrefOf({ name: "home" });
 
@@ -20,24 +21,18 @@ export function FileActions({
   page: FileRef;
   path: Crumb[] | undefined;
 }) {
-  const { canRename, canTrash } = file.capabilities;
-  if (!canRename && !canTrash) return null;
+  const { canRename, canTrash, canMoveItemWithinDrive, canMoveItemOutOfDrive } =
+    file.capabilities;
+  const canMove = canMoveItemWithinDrive || canMoveItemOutOfDrive;
+  if (!canRename && !canMove && !canTrash) return null;
   return (
     <div className="actions">
       {canRename && <Rename file={file} page={page} path={path} />}
+      {canMove && <Move file={file} page={page} path={path} />}
       {canTrash && <Trash file={file} path={path} />}
     </div>
   );
 }
-
-const VAULT_NOTES = {
-  checking: "Checking whether this note is in an Obsidian vault…",
-  "in-vault":
-    "This note is in an Obsidian vault. Links to it in other notes will not be updated: Obsidian updates them only when it renames a note itself.",
-  unknown:
-    "DriveMD could not check whether this note is in an Obsidian vault. If it is, links to it in other notes will not be updated.",
-  outside: undefined,
-};
 
 /**
  * Renames the file, warning first when links in a vault point to it: the
@@ -63,7 +58,7 @@ function Rename({
       refreshAfterChange(client, file);
     },
   });
-  const note = VAULT_NOTES[vault];
+  const note = vaultNote(vault, "renames");
   return (
     <>
       <button
