@@ -60,7 +60,8 @@ export function inOrder(entries: Entry[]): Entry[] {
       byName.compare(a.name, b.name),
   );
 }
-function kindOf({
+/** What a tap on the item opens, if the navigator shows it. */
+export function kindOf({
   name,
   mimeType,
   target,

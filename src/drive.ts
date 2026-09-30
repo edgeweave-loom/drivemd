@@ -24,9 +24,9 @@ const ITEM_FIELDS =
   "shortcutDetails(targetId,targetMimeType,targetResourceKey)," +
   `capabilities(${CAPABILITIES.join(",")}),contentRestrictions(readOnly,reason)`;
 
-// An opened file also needs what the viewer shows and the conflict check
-// compares.
-const FILE_FIELDS = `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),md5Checksum,headRevisionId`;
+// An opened file also needs what the viewer shows, the conflict check
+// compares, and whether it is in the trash.
+const FILE_FIELDS = `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),md5Checksum,headRevisionId,trashed`;
 
 const UNREACHABLE = "Google Drive could not be reached";
 
@@ -111,6 +111,8 @@ export interface FileMetadata extends DriveItem {
   /** Compared before saving, to detect someone else's change. */
   md5Checksum: string | undefined;
   headRevisionId: string | undefined;
+  /** In the trash, from which Drive can restore it. */
+  trashed: boolean;
 }
 
 export interface SharedDrive {
@@ -622,6 +624,7 @@ function parseFile(value: unknown): FileMetadata | undefined {
     lastModifiedBy: optionalString(user.displayName),
     md5Checksum: optionalString(value.md5Checksum),
     headRevisionId: optionalString(value.headRevisionId),
+    trashed: value.trashed === true,
   };
 }
 

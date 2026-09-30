@@ -129,6 +129,14 @@ describe("Navigator", () => {
     expect(getPlace().href).toBe("/shortcuts");
   });
 
+  it("opens a file's page", () => {
+    open("/edit?id=plan");
+
+    expect(
+      screen.getByRole("navigation", { name: "Breadcrumbs" }),
+    ).toBeVisible();
+  });
+
   it("says when a URL opens nothing, and leads back Home", () => {
     open("/nowhere");
 
