@@ -9,7 +9,7 @@ import {
 } from "./test/drive-items.ts";
 
 function names(items: DriveItem[]) {
-  return entriesOf(items).map((entry) => entry.item.name);
+  return entriesOf(items).map((entry) => entry.name);
 }
 
 describe("entriesOf", () => {
@@ -59,13 +59,25 @@ describe("entriesOf", () => {
     expect(entries).toEqual([
       {
         kind: "folder",
-        item: expect.objectContaining({ name: "to-folder" }) as unknown,
+        id: "id-to_folder",
+        name: "to-folder",
         opens: { id: "target-to-folder", resourceKey: "key" },
+        target: {
+          id: "target-to-folder",
+          mimeType: FOLDER,
+          resourceKey: "key",
+        },
       },
       {
         kind: "file",
-        item: expect.objectContaining({ name: "to-note.md" }) as unknown,
+        id: "id-to_note_md",
+        name: "to-note.md",
         opens: { id: "target-to-note.md", resourceKey: "key" },
+        target: {
+          id: "target-to-note.md",
+          mimeType: "text/markdown",
+          resourceKey: "key",
+        },
       },
     ]);
   });

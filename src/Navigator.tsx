@@ -5,6 +5,11 @@ import { FolderPage } from "./FolderPage.tsx";
 import { Home } from "./Home.tsx";
 import { Link } from "./Link.tsx";
 import { createQueryClient } from "./queries.ts";
+import {
+  SharedDrivesPage,
+  SharedWithMePage,
+  ShortcutsPage,
+} from "./RootPages.tsx";
 import { hrefOf, usePlace } from "./router.ts";
 import type { Session } from "./session.ts";
 
@@ -56,8 +61,11 @@ function Page() {
     case "folder":
       return <FolderPage folder={route.folder} trail={trail} />;
     case "shortcuts":
+      return <ShortcutsPage trail={trail} />;
     case "shared-drives":
+      return <SharedDrivesPage trail={trail} />;
     case "shared-with-me":
+      return <SharedWithMePage trail={trail} />;
     case "search":
     case "file":
     case "not-found":
