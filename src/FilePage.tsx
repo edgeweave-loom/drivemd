@@ -1,35 +1,149 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import {
+  keepPreviousData,
+  queryOptions,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { useEffect, useState, type ReactNode } from "react";
 import { Breadcrumbs } from "./Breadcrumbs.tsx";
+import { Dialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
-import type { FileMetadata, FileRef } from "./drive.ts";
+import type { Drive, FileMetadata, FileRef } from "./drive.ts";
 import { FileActions } from "./FileActions.tsx";
+import { FolderPane } from "./FolderPane.tsx";
 import { Link } from "./Link.tsx";
 import { kindOf } from "./listing.ts";
+import { useLayout } from "./layout.ts";
 import { Loaded } from "./Loaded.tsx";
 import { usePath } from "./path.ts";
-import { hrefOf, type Crumb } from "./router.ts";
+import { hrefOf, routeOf, type Crumb } from "./router.ts";
 
 const WHEN = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
 });
 
-/** A Markdown file, as its address names it. */
-export function FilePage({
+/**
+ * A file's page, with the folder it sits in beside it on a wide screen or in
+ * a drawer on a tablet. The folder stays as another of its files opens.
+ */
+export function FileView({
   file,
   trail,
 }: {
   file: FileRef;
   trail: Crumb[] | undefined;
 }) {
+  const layout = useLayout();
+  const { drive } = useDrive();
+  // The folder stays in view while another of its files loads.
+  const details = useQuery({
+    ...metadataQuery(drive, file),
+    placeholderData: keepPreviousData,
+  });
+  const path = usePath(file, trail);
+  const folder =
+    layout !== "phone" && details.data && opensHere(details.data)
+      ? folderOf(path)
+      : undefined;
+  const pane = folder && (
+    <FolderPane
+      key={folder.ref.id}
+      folder={folder.ref}
+      path={folder.path}
+      current={file.id}
+    />
+  );
+  return (
+    <div className="split">
+      {pane && layout === "wide" && (
+        <aside className="pane" aria-label={folder.name}>
+          {pane}
+        </aside>
+      )}
+      <FilePage
+        key={file.id}
+        file={file}
+        trail={trail}
+        drawer={
+          pane &&
+          layout === "tablet" && (
+            <FolderDrawer name={folder.name}>{pane}</FolderDrawer>
+          )
+        }
+      />
+    </div>
+  );
+}
+
+function metadataQuery(drive: Drive, file: FileRef) {
+  return queryOptions({
+    queryKey: ["metadata", file.id, file.resourceKey],
+    queryFn: () => drive.getMetadata(file),
+  });
+}
+
+/** The folder the path ends in, above the file, if it is one. */
+function folderOf(path: Crumb[] | undefined) {
+  const above = path?.slice(0, -1) ?? [];
+  const parent = above.at(-1);
+  if (!parent) return;
+  const route = routeOf(new URL(parent.href, window.location.origin));
+  if (route.name !== "folder") return;
+  return { ref: route.folder, name: parent.name, path: above };
+}
+
+/** The folder's list, in a drawer the user opens and closes with a tap. */
+function FolderDrawer({
+  name,
+  children,
+}: {
+  name: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const close = () => {
+    setOpen(false);
+  };
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setOpen(true);
+        }}
+      >
+        Folder
+      </button>
+      {open && (
+        <Dialog title={name} className="drawer" onClose={close}>
+          <div className="stack">
+            {children}
+            <button type="button" onClick={close}>
+              Close
+            </button>
+          </div>
+        </Dialog>
+      )}
+    </>
+  );
+}
+
+/** A Markdown file, as its address names it. */
+export function FilePage({
+  file,
+  trail,
+  drawer,
+}: {
+  file: FileRef;
+  trail: Crumb[] | undefined;
+  /** Where to find the file's folder, when not beside it. */
+  drawer?: ReactNode;
+}) {
   const { drive } = useDrive();
   const client = useQueryClient();
   const { id, resourceKey } = file;
-  const details = useQuery({
-    queryKey: ["metadata", id, resourceKey],
-    queryFn: () => drive.getMetadata(file),
-  });
+  const details = useQuery(metadataQuery(drive, file));
   const path = usePath(file, trail);
   const opens = details.data !== undefined && opensHere(details.data);
 
@@ -44,7 +158,7 @@ export function FilePage({
   }, [drive, client, id, resourceKey, opens]);
 
   return (
-    <>
+    <div className="main">
       <Breadcrumbs path={path} />
       <div className="heading">
         <h2>
@@ -52,6 +166,7 @@ export function FilePage({
             details.data?.name ??
             (details.isError ? "File" : "…")}
         </h2>
+        {drawer}
         {opens && <FileActions file={details.data} page={file} path={path} />}
       </div>
       <Loaded
@@ -60,7 +175,7 @@ export function FilePage({
       >
         {(metadata) => <About file={metadata} path={path} />}
       </Loaded>
-    </>
+    </div>
   );
 }
 

@@ -7,10 +7,12 @@ import { describeError } from "./errors.ts";
  */
 export function Dialog({
   title,
+  className = "card",
   onClose,
   children,
 }: {
   title: string;
+  className?: string;
   onClose?: (() => void) | undefined;
   children: ReactNode;
 }) {
@@ -24,7 +26,7 @@ export function Dialog({
     <dialog
       ref={dialog}
       aria-labelledby={titleId}
-      className="card"
+      className={className}
       onCancel={(event) => {
         if (!onClose) event.preventDefault();
       }}

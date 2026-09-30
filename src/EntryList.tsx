@@ -18,6 +18,7 @@ export function ItemListing({
   staleTime,
   order,
   trail,
+  current,
   missing,
   empty,
 }: {
@@ -28,6 +29,8 @@ export function ItemListing({
   /** By name, unless Drive's own order says more, as in search results. */
   order?: "by-name" | "as-listed";
   trail: Crumb[] | undefined;
+  /** The ID of the item the page shows, if the list holds it. */
+  current?: string;
   /** What to say when Drive answers that the list's source is not there. */
   missing?: string;
   empty: string;
@@ -43,6 +46,7 @@ export function ItemListing({
         <EntryList
           entries={entriesOf(found, order)}
           trail={trail}
+          current={current}
           empty={empty}
         />
       )}
@@ -54,10 +58,12 @@ export function ItemListing({
 export function EntryList({
   entries,
   trail,
+  current,
   empty,
 }: {
   entries: Entry[];
   trail: Crumb[] | undefined;
+  current?: string | undefined;
   /** What to say when there is nothing to show. */
   empty: string;
 }) {
@@ -67,9 +73,18 @@ export function EntryList({
       {entries.map((entry) => (
         <li key={entry.id}>
           {entry.target ? (
-            <ShortcutEntry entry={entry} target={entry.target} trail={trail} />
+            <ShortcutEntry
+              entry={entry}
+              target={entry.target}
+              trail={trail}
+              current={entry.opens.id === current}
+            />
           ) : (
-            <EntryLink entry={entry} trail={trail} />
+            <EntryLink
+              entry={entry}
+              trail={trail}
+              current={entry.opens.id === current}
+            />
           )}
         </li>
       ))}
@@ -80,9 +95,12 @@ export function EntryList({
 function EntryLink({
   entry: { kind, name, opens, target },
   trail,
+  current = false,
 }: {
   entry: Entry;
   trail: Crumb[] | undefined;
+  /** Whether the page shows the entry itself. */
+  current?: boolean;
 }) {
   const href = hrefOf(
     kind === "folder"
@@ -94,6 +112,7 @@ function EntryLink({
       to={href}
       trail={trail && [...trail, { name, href }]}
       className={`entry ${kind}`}
+      current={current}
     >
       <span className="name">{name}</span>
       {target && <span className="badge">Shortcut</span>}
@@ -109,10 +128,12 @@ function ShortcutEntry({
   entry,
   target,
   trail,
+  current,
 }: {
   entry: Entry;
   target: ShortcutTarget;
   trail: Crumb[] | undefined;
+  current: boolean;
 }) {
   const { drive } = useDrive();
   const check = useQuery({
@@ -121,7 +142,9 @@ function ShortcutEntry({
     queryFn: async () => (await drive.checkShortcut(target)) ?? null,
   });
   const broken = check.data;
-  if (!broken) return <EntryLink entry={entry} trail={trail} />;
+  if (!broken) {
+    return <EntryLink entry={entry} trail={trail} current={current} />;
+  }
   return (
     // A link without an address: it is there, but opens nothing.
     <a

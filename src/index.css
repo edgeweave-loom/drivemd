@@ -201,6 +201,43 @@ button.link {
   color: var(--link);
 }
 
+.split,
+.main {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.pane {
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+}
+
+@media (width >= 1024px) {
+  .page:has(.pane) {
+    max-width: 72rem;
+  }
+
+  .split:has(.pane) {
+    grid-template-columns: minmax(14rem, 20rem) minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+}
+
+dialog.drawer {
+  width: min(22rem, 85vw);
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 1rem;
+  border: none;
+  border-right: 1px solid var(--border);
+  background: var(--background);
+  color: inherit;
+}
+
 .bar .account {
   min-width: 0;
   margin-left: auto;

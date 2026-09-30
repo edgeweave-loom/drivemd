@@ -1,7 +1,7 @@
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { DriveContext, useDrive } from "./drive-context.ts";
-import { FilePage } from "./FilePage.tsx";
+import { FileView } from "./FilePage.tsx";
 import { FolderPage } from "./FolderPage.tsx";
 import { Home } from "./Home.tsx";
 import { Link } from "./Link.tsx";
@@ -32,22 +32,20 @@ export function Navigator({
   return (
     <QueryClientProvider client={client}>
       <DriveContext value={session}>
-        <div className="shell">
-          <header className="bar">
-            <h1>
-              <Link to={HOME}>DriveMD</Link>
-            </h1>
-            <SearchBox />
-            <span className="account">{email}</span>
-            <button type="button" onClick={session.signOut}>
-              Sign out
-            </button>
-          </header>
-          <main className="page">
-            {children}
-            <Page />
-          </main>
-        </div>
+        <header className="bar">
+          <h1>
+            <Link to={HOME}>DriveMD</Link>
+          </h1>
+          <SearchBox />
+          <span className="account">{email}</span>
+          <button type="button" onClick={session.signOut}>
+            Sign out
+          </button>
+        </header>
+        <main className="page">
+          {children}
+          <Page />
+        </main>
       </DriveContext>
     </QueryClientProvider>
   );
@@ -72,7 +70,7 @@ function Page() {
     case "search":
       return <SearchPage text={route.text} />;
     case "file":
-      return <FilePage key={route.file.id} file={route.file} trail={trail} />;
+      return <FileView file={route.file} trail={trail} />;
     case "not-found":
       return <NotFound />;
   }

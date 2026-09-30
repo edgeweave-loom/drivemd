@@ -150,8 +150,8 @@ export function usePlace(): Place {
 }
 
 /**
- * Opens a page of the app, keeping the trail the user took for its
- * breadcrumbs. Opening the page already shown replaces it in the history,
+ * Opens a page of the app, from its top, keeping the trail the user took for
+ * its breadcrumbs. Opening the page already shown replaces it in the history,
  * so that Back does not show it twice, and keeps its trail unless given one.
  */
 export function navigate(href: string, trail?: Crumb[]): void {
@@ -161,6 +161,8 @@ export function navigate(href: string, trail?: Crumb[]): void {
     history.replaceState(state, "", target);
   } else {
     history.pushState(trail === undefined ? null : { trail }, "", target);
+    // Back returns to where the page was left, as the browser keeps it.
+    window.scrollTo(0, 0);
   }
   changed();
 }
