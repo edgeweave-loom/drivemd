@@ -15,6 +15,7 @@ const BROKEN = {
 export function ItemListing({
   queryKey,
   list,
+  staleTime,
   order,
   trail,
   missing,
@@ -22,14 +23,20 @@ export function ItemListing({
 }: {
   queryKey: QueryKey;
   list: () => Promise<DriveItem[]>;
+  /** How long the list stays fresh, if not the cache's own time. */
+  staleTime?: number;
   /** By name, unless Drive's own order says more, as in search results. */
   order?: "by-name" | "as-listed";
   trail: Crumb[] | undefined;
   /** What to say when Drive answers that the list's source is not there. */
-  missing: string;
+  missing?: string;
   empty: string;
 }) {
-  const items = useQuery({ queryKey, queryFn: list });
+  const items = useQuery({
+    queryKey,
+    queryFn: list,
+    ...(staleTime !== undefined && { staleTime }),
+  });
   return (
     <Loaded query={items} missing={missing}>
       {(found) => (

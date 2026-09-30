@@ -8,8 +8,6 @@ import { Loaded } from "./Loaded.tsx";
 import { ROOTS } from "./roots.ts";
 import type { Crumb } from "./router.ts";
 
-const MISSING = "Google Drive could not find this list.";
-
 /** The shortcuts the user made, wherever they are. */
 export function ShortcutsPage({ trail }: { trail: Crumb[] | undefined }) {
   const { drive } = useDrive();
@@ -59,7 +57,6 @@ function RootListing({
         queryKey={queryKey}
         list={list}
         trail={trail ?? [root]}
-        missing={MISSING}
         empty={empty}
       />
     </>
@@ -76,7 +73,7 @@ export function SharedDrivesPage({ trail }: { trail: Crumb[] | undefined }) {
     <>
       <Breadcrumbs path={[ROOTS.sharedDrives]} />
       <h2>{ROOTS.sharedDrives.name}</h2>
-      <Loaded query={drives} missing={MISSING}>
+      <Loaded query={drives}>
         {(found) => (
           <EntryList
             // A shared drive's ID is also its top folder's.
