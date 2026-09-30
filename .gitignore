@@ -16,3 +16,7 @@ credentials.json
 # The live checks' credentials, should DRIVEMD_LIVE_DIR ever point here
 client.json
 grant.json*
+# The end-to-end tests' build and results
+dist-e2e/
+test-results/
+playwright-report/

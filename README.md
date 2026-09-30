@@ -34,6 +34,7 @@ Open http://localhost:5173, not `127.0.0.1`: it is the only local origin the OAu
 | `npm run preview`          | Serve the `dist/` build on the same port                        |
 | `npm test`                 | Run the tests in watch mode                                     |
 | `npm run coverage`         | Run the tests once; fails under the coverage thresholds         |
+| `npm run e2e`              | Run the end-to-end tests in real browsers                       |
 | `npm run lint`             | Lint with type-aware and security rules; any warning fails      |
 | `npm run format`           | Format every file with Prettier (`npm run format:check` checks) |
 | `npm run deploy`           | Deploy `dist/` to the site mapped to the `app` target           |
@@ -41,6 +42,12 @@ Open http://localhost:5173, not `127.0.0.1`: it is the only local origin the OAu
 | `npm run live-check`       | Check the Drive client against the real Drive                   |
 
 Write the failing test first, then the code that makes it pass. CI runs the checks above on every pull request and on every push to `dev` and `main`.
+
+## End-to-end tests
+
+`npm run e2e` builds the app and serves it with the headers Firebase Hosting sends, its security policy included. It then drives the app with Playwright in Chromium, as a desktop, and in WebKit, as an iPad and an iPhone held upright and sideways. Google's sign-in script and the Drive API are replaced by made-up ones (`e2e/fake-google.ts`), so the tests need no account and never reach Google. A test fails on any page error and on anything the security policy blocks.
+
+Before the first run, download the browsers once with `npx playwright install chromium webkit`: they go to `~/.cache/ms-playwright`, shared by every project on the machine. WebKit also needs system libraries, which `sudo npx playwright install-deps webkit` installs. CI installs both on every run, and staging deploys only once the tests pass. The tests record no traces, screenshots or videos, which would keep the requests the app makes.
 
 ## Configuration
 

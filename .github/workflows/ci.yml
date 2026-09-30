@@ -82,11 +82,31 @@ jobs:
           advanced-security: false
           annotations: true
 
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium and WebKit, with their system libraries
+        run: npx playwright install --with-deps chromium webkit
+      - name: Test the built app in both browsers, under Hosting's headers
+        run: npm run e2e
+
   # Only this job can get Google credentials, and it runs no build tooling:
   # it deploys the dist/ that the check job built.
   deploy-staging:
     name: Deploy staging
-    needs: [check, zizmor]
+    needs: [check, e2e, zizmor]
     if: github.ref == 'refs/heads/dev' && vars.FIREBASE_PROJECT_ID != ''
     runs-on: ubuntu-latest
     timeout-minutes: 15

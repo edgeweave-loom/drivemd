@@ -1,15 +1,14 @@
 {
   "compilerOptions": {
-    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.e2e.tsbuildinfo",
     "target": "es2023",
-    "lib": ["ES2023"],
+    // The tests also run code in the page, with its DOM.
+    "lib": ["ES2023", "DOM"],
     "module": "nodenext",
     "types": ["node"],
     "skipLibCheck": true,
 
-    /* Bundler mode */
     "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
@@ -25,5 +24,5 @@
     "noFallthroughCasesInSwitch": true,
     "erasableSyntaxOnly": true
   },
-  "include": ["vite.config.ts", "vitest.live.config.ts"]
+  "include": ["e2e", "playwright.config.ts"]
 }
