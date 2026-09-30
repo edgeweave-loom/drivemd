@@ -3,6 +3,15 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { createDrive, type DriveAuth, type FileRef } from "../src/drive.ts";
 import { isRecord } from "../src/is-record.ts";
+import {
+  driveApi,
+  FOLDER,
+  FROM_ANOTHER,
+  INDEX_INTERVAL_MS,
+  INDEX_TIMEOUT_MS,
+  SHARED_DRIVE,
+  SHORTCUT,
+} from "./drive-api.ts";
 import { configDir, liveSession } from "./grant.ts";
 
 // The Drive client against the real Drive, as the test account (see "Live
@@ -10,21 +19,13 @@ import { configDir, liveSession } from "./grant.ts";
 // their own and trash it at the end. Every assertion is about one ID, so that
 // no failure prints anything else from the account.
 
-const API = "https://www.googleapis.com/drive/v3";
-const FOLDER = "application/vnd.google-apps.folder";
-const SHORTCUT = "application/vnd.google-apps.shortcut";
 /** Made up for the checks, and shared with the test account as a viewer. */
 const VIEW_ONLY = "drivemd-live-view-only.md";
-/** A shared drive where the test account is a content manager. */
-const SHARED_DRIVE = "DriveMD live check";
-/** Made up for the checks by another member of that shared drive. */
-const FROM_ANOTHER = "drivemd-live-from-another.md";
 /** A BOM, CRLF line endings and a byte that is not valid UTF-8. */
 const BYTES = new Uint8Array([0xef, 0xbb, 0xbf, 0x23, 0x0d, 0x0a, 0xff]);
 /** Starts the name of everything the run makes, and finds it by search. */
 const RUN = `dmlc${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
-/** How long to wait for Drive's search index, which can lag. */
-const INDEX = { timeout: 120_000, interval: 3_000 };
+const INDEX = { timeout: INDEX_TIMEOUT_MS, interval: INDEX_INTERVAL_MS };
 
 const session = await liveSession(configDir());
 if (session === undefined) {
@@ -37,45 +38,16 @@ function defineChecks(auth: DriveAuth): void {
   const drive = createDrive(auth);
   let run: FileRef = { id: "" };
 
-  /** Calls the API itself, to make or read what the client does not. */
-  async function call(method: string, path: string, body?: object) {
-    const response = await fetch(`${API}/${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${await auth.token()}`,
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-      },
-      body: body === undefined ? null : JSON.stringify(body),
-      cache: "no-store",
-      redirect: "manual",
-    });
-    return response;
-  }
-
-  /** Drive's JSON answer, or its error message. */
-  async function answer(response: Response): Promise<Record<string, unknown>> {
-    const body: unknown = await response.json().catch(() => undefined);
-    if (response.ok && isRecord(body)) return body;
-    const error = isRecord(body) && isRecord(body.error) ? body.error : {};
-    const message =
-      typeof error.message === "string" ? `: ${error.message}` : "";
-    throw new Error(`Drive answered ${String(response.status)}${message}`);
-  }
+  const { call, answer, make: makeItem } = driveApi(auth);
 
   /** Makes an item, in the run's folder unless `parent` says otherwise. */
-  async function make(
+  function make(
     metadata: Record<string, unknown>,
     parent: string | null = run.id,
   ): Promise<string> {
-    const parents = parent === null ? {} : { parents: [parent] };
-    const made = await answer(
-      await call("POST", "files?supportsAllDrives=true&fields=id", {
-        ...metadata,
-        ...parents,
-      }),
+    return makeItem(
+      parent === null ? metadata : { ...metadata, parents: [parent] },
     );
-    if (typeof made.id !== "string") throw new Error("Drive made no item");
-    return made.id;
   }
 
   function markdown(name: string, mimeType = "text/markdown") {

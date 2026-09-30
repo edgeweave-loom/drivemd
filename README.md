@@ -40,6 +40,7 @@ Open http://localhost:5173, not `127.0.0.1`: it is the only local origin the OAu
 | `npm run deploy`           | Deploy `dist/` to the site mapped to the `app` target           |
 | `npm run live-check:login` | Sign the test account in for the live Drive checks              |
 | `npm run live-check`       | Check the Drive client against the real Drive                   |
+| `npm run live-check:ui`    | Check the deployed app on the real Drive, in real browsers      |
 
 Write the failing test first, then the code that makes it pass. CI runs the checks above on every pull request and on every push to `dev` and `main`.
 
@@ -67,6 +68,8 @@ To set up, once:
 2. In your own terminal, since it asks you to paste an address, run `DRIVEMD_LIVE_ACCOUNT=<test account> npm run live-check:login`. Open the address it prints, sign in as the test account and allow access; the browser then fails to load `127.0.0.1`, and you paste its address back. The script keeps the grant only if the test account signed in, and revokes any grant it cannot keep or that it replaces; it saves the grant as `grant.json`, readable only by you.
 
 Then `npm run live-check` runs the checks, which CI never does. They make what they need in a folder of their own in the test account's Drive and trash it at the end, and they compare IDs rather than listings, so that no failure prints the names of other files. A check that needs one of the made-up files or the shared drive is skipped until it exists.
+
+`npm run live-check:ui` checks the deployed app the same way, in Chromium as a desktop and WebKit as an iPhone: staging by default, or the address in `DRIVEMD_LIVE_URL`. It hands the page the test account's session as a sign-in would leave it, so Google's window never opens; it then reaches notes in My Drive, a shared drive, a vault and behind a shortcut, finds one on Home and by search, and creates, renames, moves and trashes one, in a folder of its own that it trashes at the end. It fails on any page error and on anything the security policy blocks that the app depends on. It records no traces, screenshots or videos, which would keep the token.
 
 ## Security
 

@@ -19,7 +19,8 @@
     "e2e": "playwright test",
     "deploy": "firebase deploy --only hosting --non-interactive",
     "live-check:login": "node live/login.ts",
-    "live-check": "vitest run --config vitest.live.config.ts"
+    "live-check": "vitest run --config vitest.live.config.ts",
+    "live-check:ui": "playwright test --config playwright.live.config.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "5.103.2",
