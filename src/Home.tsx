@@ -2,10 +2,8 @@ import { useId, type ReactNode } from "react";
 import { useDrive } from "./drive-context.ts";
 import { ItemListing } from "./EntryList.tsx";
 import { Link } from "./Link.tsx";
+import { VAULTS_STALE_TIME } from "./queries.ts";
 import { ROOTS } from "./roots.ts";
-
-// Vaults seldom come and go, and finding them takes a call per vault.
-const VAULTS_STALE_TIME = 5 * 60_000;
 
 export function Home() {
   const { drive } = useDrive();

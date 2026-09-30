@@ -46,21 +46,28 @@ export function NameDialog({
   hint,
   action,
   pending,
+  ready = true,
   error,
   onSubmit,
   onClose,
+  children,
 }: {
   title: string;
   initial: string;
-  /** What to know about the name. */
-  hint: string;
+  /** What to know about the name typed, if anything. */
+  hint: (name: string) => string | undefined;
   action: string;
   pending: boolean;
+  /** Whether the action may go ahead yet. */
+  ready?: boolean;
   error: Error | null;
   onSubmit: (name: string) => void;
   onClose: () => void;
+  /** Anything else to know before going ahead. */
+  children?: ReactNode;
 }) {
   const [name, setName] = useState(initial);
+  const note = hint(name);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
     // Typing replaces the name, but not its Markdown ending.
@@ -89,7 +96,8 @@ export function NameDialog({
             spellCheck={false}
           />
         </label>
-        <p className="hint">{hint}</p>
+        {note && <p className="hint">{note}</p>}
+        {children}
         {error && (
           <p role="alert" className="failure">
             {describeError(error)}
@@ -102,7 +110,7 @@ export function NameDialog({
           <button
             type="submit"
             className="primary"
-            disabled={pending || name.trim() === ""}
+            disabled={pending || !ready || name.trim() === ""}
           >
             {action}
           </button>
