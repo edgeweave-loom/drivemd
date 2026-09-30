@@ -82,6 +82,15 @@ describe("entriesOf", () => {
     ]);
   });
 
+  it("keeps the items' order when asked", () => {
+    expect(
+      entriesOf(
+        [item("b.md"), item("A", { mimeType: FOLDER })],
+        "as-listed",
+      ).map((entry) => entry.name),
+    ).toEqual(["b.md", "A"]);
+  });
+
   it("opens other items themselves, with their resource key", () => {
     expect(entriesOf([item("a.md", { resourceKey: "k" })])[0]?.opens).toEqual({
       id: "id-a_md",

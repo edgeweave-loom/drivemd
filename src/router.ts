@@ -48,8 +48,11 @@ export function routeOf(url: URL): Route {
       return { name: "shared-drives" };
     case "/shared-with-me":
       return { name: "shared-with-me" };
-    case "/search":
-      return { name: "search", text: searchParams.get("q") ?? "" };
+    case "/search": {
+      // Drive searches word by word: the spaces between words say nothing.
+      const text = (searchParams.get("q") ?? "").replace(/\s+/g, " ").trim();
+      return { name: "search", text };
+    }
     case "/edit": {
       const file = fileRef(searchParams.get("id"), searchParams);
       return file ? { name: "file", file } : NOT_FOUND;

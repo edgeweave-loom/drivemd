@@ -1,6 +1,6 @@
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
-import { DriveContext } from "./drive-context.ts";
+import { DriveContext, useDrive } from "./drive-context.ts";
 import { FolderPage } from "./FolderPage.tsx";
 import { Home } from "./Home.tsx";
 import { Link } from "./Link.tsx";
@@ -10,7 +10,8 @@ import {
   SharedWithMePage,
   ShortcutsPage,
 } from "./RootPages.tsx";
-import { hrefOf, usePlace } from "./router.ts";
+import { hrefOf, navigate, usePlace } from "./router.ts";
+import { SearchPage } from "./SearchPage.tsx";
 import type { Session } from "./session.ts";
 
 const HOME = hrefOf({ name: "home" });
@@ -38,6 +39,7 @@ export function Navigator({
             <h1>
               <Link to={HOME}>DriveMD</Link>
             </h1>
+            <SearchBox />
             <span className="account">{email}</span>
             <button type="button" onClick={session.signOut}>
               Sign out
@@ -67,10 +69,52 @@ function Page() {
     case "shared-with-me":
       return <SharedWithMePage trail={trail} />;
     case "search":
+      return <SearchPage text={route.text} />;
     case "file":
     case "not-found":
       return <NotFound />;
   }
+}
+
+/** Searches Markdown files by name, from every page. */
+function SearchBox() {
+  const { renew } = useDrive();
+  const client = useQueryClient();
+  const { route } = usePlace();
+  const searched = route.name === "search" ? route.text : "";
+  const [typed, setTyped] = useState(searched);
+  // Another search, from Back or a link, shows its own words.
+  const [shown, setShown] = useState(searched);
+  if (shown !== searched) {
+    setShown(searched);
+    setTyped(searched);
+  }
+  return (
+    <form
+      role="search"
+      className="search"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (typed.trim() === "") return;
+        renew();
+        navigate(hrefOf({ name: "search", text: typed }));
+        // The same search again asks Drive again.
+        void client.invalidateQueries({ queryKey: ["search"] });
+      }}
+    >
+      <input
+        type="search"
+        value={typed}
+        onChange={(event) => {
+          setTyped(event.target.value);
+        }}
+        aria-label="Search Markdown files by name"
+        placeholder="Search"
+        enterKeyHint="search"
+        autoComplete="off"
+      />
+    </form>
+  );
 }
 
 function NotFound() {

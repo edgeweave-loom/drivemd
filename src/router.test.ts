@@ -52,6 +52,7 @@ describe("routes", () => {
 
   it.each<[string, Route]>([
     ["/search", { name: "search", text: "" }],
+    ["/search?q=+weekly%09+plan+", { name: "search", text: "weekly plan" }],
     ["/folder/root", { name: "folder", folder: { id: "root" } }],
     ["/shortcuts/", { name: "shortcuts" }],
     [`/folder/${ID}/`, { name: "folder", folder: { id: ID } }],
