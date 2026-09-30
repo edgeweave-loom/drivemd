@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { getPlace } from "./router.ts";
 import {
@@ -16,7 +16,10 @@ import { fakeDrive } from "./test/fake-drive.ts";
 import { renderWithDrive, visit } from "./test/render.tsx";
 
 function links() {
-  return screen.getAllByRole("link").map((link) => link.textContent);
+  return screen
+    .getAllByRole("link")
+    .filter((link) => !link.closest("nav"))
+    .map((link) => link.textContent);
 }
 
 afterEach(() => {
@@ -35,6 +38,12 @@ describe("ShortcutsPage", () => {
     renderWithDrive(<ShortcutsPage trail={undefined} />, drive);
 
     expect(screen.getByRole("heading", { name: "Shortcuts" })).toBeVisible();
+    expect(
+      within(screen.getByRole("navigation", { name: "Breadcrumbs" })).getByRole(
+        "link",
+        { name: "Home" },
+      ),
+    ).toHaveAttribute("href", "/");
     await screen.findByRole("link", { name: /Notes/ });
     expect(links()).toEqual(["NotesShortcut", "plan.mdShortcut"]);
     fireEvent.click(screen.getByRole("link", { name: /Notes/ }));

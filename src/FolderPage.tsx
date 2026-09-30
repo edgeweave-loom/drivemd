@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useDrive } from "./drive-context.ts";
 import { FOLDER, type FileRef } from "./drive.ts";
+import { Breadcrumbs } from "./Breadcrumbs.tsx";
 import { ItemListing } from "./EntryList.tsx";
+import { usePath } from "./path.ts";
 import type { Crumb } from "./router.ts";
 
 export function FolderPage({
@@ -21,11 +23,13 @@ export function FolderPage({
     queryFn: () => drive.getMetadata(folder),
     enabled: named === undefined,
   });
-  const name = named ?? details.data?.name;
+  const path = usePath(folder, trail);
+  const name = path?.at(-1)?.name ?? details.data?.name;
 
   if (details.data && details.data.mimeType !== FOLDER) {
     return (
       <>
+        <Breadcrumbs path={path} />
         <h2>{name}</h2>
         <p>This is not a folder.</p>
       </>
@@ -33,11 +37,12 @@ export function FolderPage({
   }
   return (
     <>
+      <Breadcrumbs path={path} />
       <h2>{name ?? (details.isError ? "Folder" : "…")}</h2>
       <ItemListing
         queryKey={["children", ...key]}
         list={() => drive.listChildren(folder)}
-        trail={trail}
+        trail={path}
         missing="This folder does not exist, or it is not shared with you."
         empty="No folders or Markdown files here."
       />

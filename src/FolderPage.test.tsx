@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { DriveError } from "./drive.ts";
 import { FolderPage } from "./FolderPage.tsx";
@@ -8,12 +8,13 @@ import {
   FOLDER,
   folderItem,
   metadata,
+  metadataOf,
   shortcutItem,
 } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 import { renderWithDrive, visit } from "./test/render.tsx";
 
-const WORK = folderItem("Work", { id: "work" });
+const WORK = folderItem("Work", { id: "work", parents: ["my-root"] });
 const TRAIL = [
   { name: "My Drive", href: "/my-drive" },
   { name: "Work", href: "/folder/work" },
@@ -21,7 +22,7 @@ const TRAIL = [
 
 function openWork(children: Promise<unknown>, trail = TRAIL) {
   const drive = fakeDrive();
-  drive.getMetadata.mockResolvedValue(metadata(WORK));
+  drive.getMetadata.mockImplementation(metadataOf(metadata(WORK)));
   drive.listChildren.mockReturnValue(children as never);
   visit("/folder/work", { trail });
   return renderWithDrive(
@@ -30,8 +31,19 @@ function openWork(children: Promise<unknown>, trail = TRAIL) {
   );
 }
 
+/** The folder's entries, apart from the breadcrumbs. */
+function listed() {
+  const [list] = screen
+    .getAllByRole("list")
+    .filter((found) => !found.closest("nav"));
+  if (!list) throw new Error("No list of entries");
+  return within(list);
+}
+
 function links() {
-  return screen.getAllByRole("link").map((link) => link.textContent);
+  return listed()
+    .getAllByRole("link")
+    .map((link) => link.textContent);
 }
 
 afterEach(() => {
@@ -57,16 +69,25 @@ describe("FolderPage", () => {
     expect(
       screen.getByRole("heading", { name: "Work (via shortcut)" }),
     ).toBeInTheDocument();
-    expect(await screen.findAllByRole("link")).toHaveLength(3);
+    await screen.findByRole("link", { name: "a.md" });
     expect(links()).toEqual(["Notes", "a.md", "b.md"]);
   });
 
-  it("names the folder from Drive when the path is unknown", async () => {
-    const { drive } = openWork(Promise.resolve([]), []);
+  it("rebuilds the path from Drive when it is unknown, and carries it on", async () => {
+    const { drive } = openWork(Promise.resolve([folderItem("Notes")]), []);
 
     expect(await screen.findByRole("heading", { name: "Work" })).toBeVisible();
-    expect(drive.getMetadata).toHaveBeenCalledWith({ id: "work" });
+    const crumbs = screen.getByRole("navigation", { name: "Breadcrumbs" });
+    expect(
+      await within(crumbs).findByRole("link", { name: "My Drive" }),
+    ).toBeVisible();
     expect(drive.listChildren).toHaveBeenCalledWith({ id: "work" });
+    fireEvent.click(screen.getByRole("link", { name: "Notes" }));
+    expect(getPlace().trail).toEqual([
+      { name: "My Drive", href: "/my-drive" },
+      { name: "Work", href: "/folder/work" },
+      { name: "Notes", href: "/folder/id-Notes" },
+    ]);
   });
 
   it("asks Drive nothing more when the path names the folder", async () => {
@@ -93,7 +114,9 @@ describe("FolderPage", () => {
 
   it("says when the address names something other than a folder", async () => {
     const drive = fakeDrive();
-    drive.getMetadata.mockResolvedValue(metadata(driveItem("notes.md")));
+    drive.getMetadata.mockImplementation(
+      metadataOf(metadata(driveItem("notes.md", { parents: ["my-root"] }))),
+    );
     drive.listChildren.mockResolvedValue([]);
     visit("/folder/id-notes_md");
     renderWithDrive(
