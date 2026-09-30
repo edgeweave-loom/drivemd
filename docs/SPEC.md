@@ -129,19 +129,19 @@ All three entry points load the same app, which gets a token from Google sign-in
 
 **Domains.** Production is `md.corp.edgeweave.tech` and staging is `md-staging.corp.edgeweave.tech`, both in a dedicated `corp.edgeweave.tech` DNS zone that must exist before milestone 1. Staging is a sibling of production, not a subdomain of it, so a cookie set by production never reaches staging. CI deploys every push to `dev` to staging, authenticated through Workload Identity Federation rather than a service account key.
 
-| Concern                 | Choice                                                 | Notes                                                                                                                        |
-| ----------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| Build and UI            | Vite + React + TypeScript                              | Static build, deployable to any HTTPS host                                                                                   |
-| Sign-in                 | Google Identity Services (token model)                 | `google.accounts.oauth2.initTokenClient`                                                                                     |
-| Drive access            | Drive REST API v3 with plain `fetch`                   | Small typed wrapper; no `gapi` client needed                                                                                 |
-| Editor                  | CodeMirror 6 + `@codemirror/lang-markdown`             | Add `@codemirror/language-data` to highlight fenced code                                                                     |
-| Preview                 | `react-markdown` + `remark-gfm` + `remark-frontmatter` | `rehype-raw` + `rehype-sanitize` for HTML; `rehype-highlight` or Shiki for code                                              |
-| Obsidian syntax         | remark plugins                                         | Maintained plugins where one fits, such as `remark-breaks`; our own for link resolution and embeds, which need Drive lookups |
-| Conflict view           | `@codemirror/merge`                                    | Shows the Drive version against the user's                                                                                   |
-| Local copy              | IndexedDB                                              | Unsaved text, per file                                                                                                       |
-| Navigator               | Custom drill-down list                                 | Optional `react-arborist` tree on wide screens                                                                               |
-| Data caching (optional) | TanStack Query                                         | Caches folder listings, retries, refetch on focus                                                                            |
-| Hosting                 | Firebase Hosting                                       | Production and staging domains above                                                                                         |
+| Concern         | Choice                                                 | Notes                                                                                                                        |
+| --------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| Build and UI    | Vite + React + TypeScript                              | Static build, deployable to any HTTPS host                                                                                   |
+| Sign-in         | Google Identity Services (token model)                 | `google.accounts.oauth2.initTokenClient`                                                                                     |
+| Drive access    | Drive REST API v3 with plain `fetch`                   | Small typed wrapper; no `gapi` client needed                                                                                 |
+| Editor          | CodeMirror 6 + `@codemirror/lang-markdown`             | Add `@codemirror/language-data` to highlight fenced code                                                                     |
+| Preview         | `react-markdown` + `remark-gfm` + `remark-frontmatter` | `rehype-raw` + `rehype-sanitize` for HTML; `rehype-highlight` or Shiki for code                                              |
+| Obsidian syntax | remark plugins                                         | Maintained plugins where one fits, such as `remark-breaks`; our own for link resolution and embeds, which need Drive lookups |
+| Conflict view   | `@codemirror/merge`                                    | Shows the Drive version against the user's                                                                                   |
+| Local copy      | IndexedDB                                              | Unsaved text, per file                                                                                                       |
+| Navigator       | Custom drill-down list                                 | Optional `react-arborist` tree on wide screens                                                                               |
+| Data caching    | TanStack Query                                         | Caches Drive's answers, one cache per account; retries only what may pass later                                              |
+| Hosting         | Firebase Hosting                                       | Production and staging domains above                                                                                         |
 
 ## Google auth, scopes and Workspace setup
 

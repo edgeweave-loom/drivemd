@@ -1,7 +1,15 @@
 :root {
+  --text: light-dark(#1f2328, #f0f6fc);
+  --muted: light-dark(#59636e, #9198a1);
+  --background: light-dark(#ffffff, #0d1117);
+  --surface: light-dark(#f6f8fa, #212830);
+  --border: light-dark(#d1d9e0, #3d444d);
+  --accent: light-dark(#0969da, #1f6feb);
+  --link: light-dark(#0969da, #4493f8);
+
   color-scheme: light dark;
-  color: light-dark(#1f2328, #f0f6fc);
-  background: light-dark(#ffffff, #0d1117);
+  color: var(--text);
+  background: var(--background);
   font-family:
     system-ui,
     -apple-system,
@@ -23,6 +31,10 @@ body {
   margin: 0;
 }
 
+a {
+  color: var(--link);
+}
+
 .app {
   display: grid;
   gap: 1rem;
@@ -35,7 +47,8 @@ body {
   margin: 0;
 }
 
-.app p {
+.app p,
+.page p {
   margin: 0;
   overflow-wrap: anywhere;
 }
@@ -43,9 +56,9 @@ body {
 button {
   min-height: 44px;
   padding: 0 1.25rem;
-  border: 1px solid light-dark(#d1d9e0, #3d444d);
+  border: 1px solid var(--border);
   border-radius: 0.5rem;
-  background: light-dark(#f6f8fa, #212830);
+  background: var(--surface);
   color: inherit;
   font: inherit;
   cursor: pointer;
@@ -53,7 +66,7 @@ button {
 
 button.primary {
   border-color: transparent;
-  background: light-dark(#0969da, #1f6feb);
+  background: var(--accent);
   color: #ffffff;
 }
 
@@ -64,5 +77,94 @@ button:disabled {
 
 .hint,
 .message {
-  color: light-dark(#59636e, #9198a1);
+  color: var(--muted);
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(0 0 0 / 40%);
+}
+
+.card {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--background);
+}
+
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+}
+
+.bar h1 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.bar h1 a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.bar .account {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page {
+  display: grid;
+  gap: 1rem;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.page h2,
+.page h3 {
+  margin: 0;
+}
+
+.page h3 {
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.entries {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.5rem 0.25rem;
+  border-bottom: 1px solid var(--border);
+  color: inherit;
+  text-decoration: none;
+  overflow-wrap: anywhere;
 }

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { isDriveId, type FileRef } from "./drive.ts";
+import { isDriveId, MY_DRIVE, type FileRef } from "./drive.ts";
 import { isRecord } from "./is-record.ts";
 
 /** A page of the app, which its URL names. */
@@ -30,9 +30,6 @@ export interface Place {
    */
   trail: Crumb[] | undefined;
 }
-
-// My Drive's top folder answers to this alias in the Drive API.
-const MY_DRIVE = "root";
 
 const NOT_FOUND: Route = { name: "not-found" };
 

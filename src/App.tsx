@@ -1,13 +1,86 @@
 import { useSyncExternalStore, type ReactNode } from "react";
+import { Navigator } from "./Navigator.tsx";
 import type { Session, SessionState } from "./session.ts";
 
 export function App({ session }: { session: Session }) {
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const { screen } = state;
+  const status = <Status session={session} state={state} />;
 
+  switch (screen.name) {
+    case "home":
+    case "continue": {
+      const renewing = screen.name === "continue";
+      // Continue shows over the navigator, which keeps its pages and what they
+      // loaded; another account gets a navigator of its own, with nothing
+      // cached.
+      return (
+        <>
+          <Navigator
+            key={screen.email}
+            session={session}
+            email={screen.email}
+            inert={renewing}
+          >
+            {!renewing && status}
+          </Navigator>
+          {renewing && (
+            <div className="overlay">
+              <section
+                role="dialog"
+                aria-modal="true"
+                aria-label="Continue"
+                className="app card"
+              >
+                <p>
+                  Welcome back, <strong>{screen.email}</strong>.
+                </p>
+                <GoogleButton
+                  google={state.google}
+                  onClick={session.continueSession}
+                  onRetry={session.retry}
+                >
+                  Continue
+                </GoogleButton>
+                <button type="button" onClick={session.signOut}>
+                  Sign out
+                </button>
+                {status}
+              </section>
+            </div>
+          )}
+        </>
+      );
+    }
+    case "loading":
+    case "sign-in":
+      return (
+        <main className="app">
+          <h1>DriveMD</h1>
+          {screen.name === "loading" ? (
+            <p>Opening your session…</p>
+          ) : (
+            <>
+              <p>Browse and edit the Markdown files in your Google Drive.</p>
+              <GoogleButton
+                google={state.google}
+                onClick={session.signIn}
+                onRetry={session.retry}
+              >
+                Sign in with Google
+              </GoogleButton>
+            </>
+          )}
+          {status}
+        </main>
+      );
+  }
+}
+
+/** What the session has to say: a sign-in under way, messages. */
+function Status({ session, state }: { session: Session; state: SessionState }) {
   return (
-    <main className="app">
-      <h1>DriveMD</h1>
-      <Screen session={session} state={state} />
+    <>
       {state.waiting && state.screen.name !== "loading" && (
         <p className="hint">
           Waiting for Google… Nothing happened?{" "}
@@ -28,58 +101,8 @@ export function App({ session }: { session: Session }) {
             {line}
           </p>
         ))}
-    </main>
+    </>
   );
-}
-
-function Screen({ session, state }: { session: Session; state: SessionState }) {
-  const { screen } = state;
-  switch (screen.name) {
-    case "loading":
-      return <p>Opening your session…</p>;
-    case "sign-in":
-      return (
-        <>
-          <p>Browse and edit the Markdown files in your Google Drive.</p>
-          <GoogleButton
-            google={state.google}
-            onClick={session.signIn}
-            onRetry={session.retry}
-          >
-            Sign in with Google
-          </GoogleButton>
-        </>
-      );
-    case "continue":
-      return (
-        <>
-          <p>
-            Welcome back, <strong>{screen.email}</strong>.
-          </p>
-          <GoogleButton
-            google={state.google}
-            onClick={session.continueSession}
-            onRetry={session.retry}
-          >
-            Continue
-          </GoogleButton>
-          <button type="button" onClick={session.signOut}>
-            Sign out
-          </button>
-        </>
-      );
-    case "home":
-      return (
-        <>
-          <p>
-            Signed in as <strong>{screen.email}</strong>
-          </p>
-          <button type="button" onClick={session.signOut}>
-            Sign out
-          </button>
-        </>
-      );
-  }
 }
 
 /** A button that opens Google's popup, usable once Google's script is ready. */

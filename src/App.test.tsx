@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "./App.tsx";
 import type { Session, SessionState } from "./session.ts";
@@ -79,26 +79,60 @@ describe("App", () => {
     expect(session.retry).toHaveBeenCalledOnce();
   });
 
-  it("continues or signs out for the remembered account", () => {
+  it("continues or signs out for the remembered account, over the navigator", () => {
     const { session } = fakeSession({
       screen: { name: "continue", email: EMAIL },
     });
     render(<App session={session} />);
 
-    expect(screen.getByText(EMAIL)).toBeInTheDocument();
-    fireEvent.click(button("Continue"));
+    const prompt = within(screen.getByRole("dialog"));
+    expect(prompt.getByText(EMAIL)).toBeInTheDocument();
+    expect(screen.getByRole("banner").closest("[inert]")).not.toBeNull();
+    fireEvent.click(prompt.getByRole("button", { name: "Continue" }));
     expect(session.continueSession).toHaveBeenCalledOnce();
-    fireEvent.click(button("Sign out"));
+    fireEvent.click(prompt.getByRole("button", { name: "Sign out" }));
     expect(session.signOut).toHaveBeenCalledOnce();
   });
 
-  it("shows the signed-in account and signs out", () => {
+  it("keeps the navigator while the session asks to Continue", () => {
+    const { session, change } = fakeSession({
+      screen: { name: "home", email: EMAIL },
+    });
+    render(<App session={session} />);
+    const home = screen.getByRole("heading", { name: "Home" });
+
+    act(() => {
+      change({ screen: { name: "continue", email: EMAIL } });
+    });
+    expect(home).toBeInTheDocument();
+    act(() => {
+      change({ screen: { name: "home", email: EMAIL } });
+    });
+    expect(home).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(home.closest("[inert]")).toBeNull();
+  });
+
+  it("starts afresh when another account continues", () => {
+    const { session, change } = fakeSession({
+      screen: { name: "continue", email: EMAIL },
+    });
+    render(<App session={session} />);
+    const home = screen.getByRole("heading", { name: "Home" });
+
+    act(() => {
+      change({ screen: { name: "home", email: "grace@example.com" } });
+    });
+    expect(home).not.toBeInTheDocument();
+    expect(screen.getByText("grace@example.com")).toBeInTheDocument();
+  });
+
+  it("opens the navigator for the signed-in account, which can sign out", () => {
     const { session } = fakeSession({ screen: { name: "home", email: EMAIL } });
     render(<App session={session} />);
 
-    expect(screen.getByText(/Signed in as/)).toHaveTextContent(
-      `Signed in as ${EMAIL}`,
-    );
+    expect(screen.getByRole("heading", { name: "Home" })).toBeInTheDocument();
+    expect(screen.getByText(EMAIL)).toBeInTheDocument();
     fireEvent.click(button("Sign out"));
     expect(session.signOut).toHaveBeenCalledOnce();
   });
@@ -180,6 +214,6 @@ describe("App", () => {
     act(() => {
       change({ screen: { name: "home", email: EMAIL } });
     });
-    expect(screen.getByText(/Signed in as/)).toHaveTextContent(EMAIL);
+    expect(screen.getByText(EMAIL)).toBeInTheDocument();
   });
 });
