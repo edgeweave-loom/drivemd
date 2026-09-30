@@ -6,6 +6,7 @@ import { useDrive } from "./drive-context.ts";
 import { FOLDER, type FileRef } from "./drive.ts";
 import { ItemListing } from "./EntryList.tsx";
 import { usePath } from "./path.ts";
+import { refreshAfterChange } from "./queries.ts";
 import { hrefOf, navigate, type Crumb } from "./router.ts";
 
 export function FolderPage({
@@ -68,10 +69,8 @@ function NewFile({
   const [asking, setAsking] = useState(false);
   const create = useMutation({
     mutationFn: (name: string) => drive.createFile(folder, name),
-    onSuccess: () => {
-      // The new file shows in the folder's list and in searches.
-      void client.invalidateQueries({ queryKey: ["children"] });
-      void client.invalidateQueries({ queryKey: ["search"] });
+    onSuccess: (file) => {
+      refreshAfterChange(client, file);
     },
   });
   return (

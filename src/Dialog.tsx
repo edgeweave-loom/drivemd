@@ -37,9 +37,63 @@ export function Dialog({
 }
 
 /**
- * Asks for a file's name, then does what `action` names with it. Once asked,
- * Drive does it whatever happens here, so the dialog waits for its answer.
+ * Asks before doing what `action` names. Once asked, Drive does it whatever
+ * happens here, so the dialog waits for its answer, and says why when Drive
+ * refuses.
  */
+export function ConfirmDialog({
+  title,
+  action,
+  pending,
+  ready = true,
+  error,
+  onConfirm,
+  onClose,
+  children,
+}: {
+  title: string;
+  action: string;
+  pending: boolean;
+  /** Whether the action may go ahead yet. */
+  ready?: boolean;
+  error: Error | null;
+  onConfirm: () => void;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Dialog title={title} onClose={pending ? undefined : onClose}>
+      <form
+        className="stack"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onConfirm();
+        }}
+      >
+        {children}
+        {error && (
+          <p role="alert" className="failure">
+            {describeError(error)}
+          </p>
+        )}
+        <div className="actions">
+          <button type="button" disabled={pending} onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="primary"
+            disabled={pending || !ready}
+          >
+            {action}
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+/** Asks for a file's name, then does what `action` names with it. */
 export function NameDialog({
   title,
   initial,
@@ -75,47 +129,32 @@ export function NameDialog({
     input.current?.setSelectionRange(0, end);
   }, [initial]);
   return (
-    <Dialog title={title} onClose={pending ? undefined : onClose}>
-      <form
-        className="stack"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSubmit(name);
-        }}
-      >
-        <label>
-          Name
-          <input
-            ref={input}
-            value={name}
-            onChange={(event) => {
-              setName(event.target.value);
-            }}
-            autoComplete="off"
-            autoCapitalize="none"
-            spellCheck={false}
-          />
-        </label>
-        {note && <p className="hint">{note}</p>}
-        {children}
-        {error && (
-          <p role="alert" className="failure">
-            {describeError(error)}
-          </p>
-        )}
-        <div className="actions">
-          <button type="button" disabled={pending} onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="primary"
-            disabled={pending || !ready || name.trim() === ""}
-          >
-            {action}
-          </button>
-        </div>
-      </form>
-    </Dialog>
+    <ConfirmDialog
+      title={title}
+      action={action}
+      pending={pending}
+      ready={ready && name.trim() !== ""}
+      error={error}
+      onConfirm={() => {
+        onSubmit(name);
+      }}
+      onClose={onClose}
+    >
+      <label>
+        Name
+        <input
+          ref={input}
+          value={name}
+          onChange={(event) => {
+            setName(event.target.value);
+          }}
+          autoComplete="off"
+          autoCapitalize="none"
+          spellCheck={false}
+        />
+      </label>
+      {note && <p className="hint">{note}</p>}
+      {children}
+    </ConfirmDialog>
   );
 }
