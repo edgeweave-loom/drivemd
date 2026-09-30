@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "./App.tsx";
 import type { Session, SessionState } from "./session.ts";
+import { fakeDrive } from "./test/fake-drive.ts";
 
 const EMAIL = "ada@example.com";
 
@@ -27,6 +28,8 @@ function fakeSession(initial: Partial<SessionState> = {}) {
     continueSession: vi.fn(),
     signOut: vi.fn(),
     retry: vi.fn(),
+    drive: fakeDrive(),
+    renew: vi.fn(),
   } satisfies Session;
   const change = (changes: Partial<SessionState>) => {
     state = { ...state, ...changes };
@@ -104,7 +107,10 @@ describe("App", () => {
     render(
       <App
         session={
-          fakeSession({ screen: { name: "loading" }, waiting: true }).session
+          fakeSession({
+            screen: { name: "loading", email: EMAIL },
+            waiting: true,
+          }).session
         }
       />,
     );
@@ -136,6 +142,18 @@ describe("App", () => {
 
     expect(screen.getByText(/Waiting for Google/)).toBeInTheDocument();
     expect(button("Sign in with Google")).toBeEnabled();
+  });
+
+  it("offers to renew again from Home when Google's window seems stuck", () => {
+    const { session } = fakeSession({
+      screen: { name: "home", email: EMAIL },
+      waiting: true,
+    });
+    render(<App session={session} />);
+
+    expect(screen.getByText(/Waiting for Google/)).toBeInTheDocument();
+    fireEvent.click(button("Continue"));
+    expect(session.renew).toHaveBeenCalledOnce();
   });
 
   it("shows what the security policy blocked next to the message", () => {
