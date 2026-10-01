@@ -276,14 +276,18 @@ Build in eight milestones, each ending with something that runs; give Claude Cod
    - Done when: any .md file in My Drive, a shared drive, a vault or behind a shortcut can be reached on desktop and phone, and files can be created, renamed, moved and trashed.
 4. **Viewer and editor.** Viewer by default: GitHub-style rendering, sanitized HTML, front matter, relative links and images, tappable checkboxes, read-only states, last-modified line. CodeMirror 6 editor with light live styling, Cmd/Ctrl+click on links, list continuation and search; side by side or toggle. Dirty state, Save and Cmd/Ctrl+S, local copy and restore, conflict view, kept pre-edit revision, leave-page warning.
    - Done when: editing a file made by another tool and saving changes only the edited lines; CRLF and BOM files round-trip byte for byte; a file that is not valid UTF-8 opens read-only.
+   - Carried over from milestones 2 and 3: one module holds the Drive queries' keys and fetchers, shared by the pages, the folder picker and the viewer; a size limit, set then, is checked before a file's content is read; and a new empty file, which may have no head revision yet, skips keeping one.
 5. **Obsidian vaults.** Vault detection and settings, line breaks, properties, callouts, highlights, comments, tags, block IDs, inline footnotes, internal links, image and note embeds.
    - Done when: a set of real notes from our vault renders like Obsidian's reading view, and every link and embed in them opens or shows the right file.
+   - Carried over from milestone 3: link resolution and search say when Drive answers that its search was incomplete (`incompleteSearch`), rather than calling a link broken; and a note's vault is found even when a folder between the note and the vault is out of the user's reach.
 6. **Routing and links.** `/edit?id=` with resource keys, paste a Drive link, `/open?state=` and `/new?state=` handlers.
    - Done when: each URL opens the right file after sign-in.
+   - Carried over from milestone 3: breadcrumbs rebuilt from parents read each parent without its resource key, which the app does not know; check how Drive answers for a parent shared by link, and end the path cleanly there.
 7. **Drive integration and Marketplace.** Manual console steps from the Open with section; deploy to `md.corp.edgeweave.tech` once the domain is verified.
    - Done when: right-click > Open with in Drive on the web opens the file in the app.
 8. **Mobile polish.** Manifest and icons, safe areas, 16 px editor font, keyboard toolbar, Add to Home Screen hint, Android share target, smart punctuation check.
    - Done when: tested on a real iPhone (Safari and Home Screen) first, then on an Android phone (Chrome tab and installed app).
+   - Carried over from milestone 3: the move picker opens at the folder the file really sits in, rather than along the path the user took.
 
 ## v2: Obsidian-style live preview
 
