@@ -1,10 +1,18 @@
 import type { ComponentProps, MouseEvent } from "react";
 import Markdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
+import rehypeSlug from "rehype-slug";
+import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
+import { remarkProperties } from "./properties.ts";
 
-const REMARK = [remarkGfm];
-const REHYPE = [rehypeHighlight];
+const REMARK = [remarkGfm, remarkFrontmatter, remarkProperties];
+// Raw HTML is parsed, headings get ids, then GitHub's rules sanitize it all,
+// prefixing ids so that none can stand for one of the app's own. Code is
+// highlighted last, with classes the sanitizer would drop.
+const REHYPE = [rehypeRaw, rehypeSlug, rehypeSanitize, rehypeHighlight];
 const COMPONENTS: Components = { a: Anchor, img: Image };
 
 /** Whether an address leads to a web page outside the app. */
@@ -14,7 +22,8 @@ function onTheWeb(href: string): boolean {
 
 /**
  * A Markdown file rendered as GitHub renders it: with tables, task lists,
- * strikethrough, autolinks, footnotes and highlighted code.
+ * strikethrough, autolinks, footnotes, highlighted code, sanitized HTML and
+ * front matter as a table of properties.
  */
 export function Rendered({ text }: { text: string }) {
   return (
@@ -56,8 +65,11 @@ function Anchor({
     const scroll = (event: MouseEvent) => {
       // The address stays the page's own, with the path taken in history.
       event.preventDefault();
-      // Ids keep the encoding links have, as GitHub's do.
-      document.getElementById(href.slice(1))?.scrollIntoView();
+      // Ids keep the encoding links have, and get the prefix the sanitizer
+      // gives them all, as on GitHub.
+      document
+        .getElementById(`user-content-${href.slice(1)}`)
+        ?.scrollIntoView();
     };
     return <a {...attributes} href={href} onClick={scroll} />;
   }

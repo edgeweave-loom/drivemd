@@ -10,7 +10,8 @@ test("renders a note as GitHub does, under the security policy", async ({
   await expect(
     note.getByRole("heading", { level: 1, name: "The plan" }),
   ).toBeVisible();
-  await expect(note.getByRole("table")).toContainText("Ada");
+  await expect(note.getByRole("table").first()).toContainText("tea, cups");
+  await expect(note.getByRole("table").last()).toContainText("Ada");
   await expect(note.getByRole("checkbox")).toHaveCount(2);
   await expect(note.locator("pre code .hljs-keyword")).toHaveText("const");
   const docs = note.getByRole("link", { name: "the docs" });
@@ -21,4 +22,9 @@ test("renders a note as GitHub does, under the security policy", async ({
     note.getByRole("link", { name: "Image: a chart" }),
   ).toHaveAttribute("href", "https://example.com/chart.png");
   await expect(note.locator("img")).toHaveCount(0);
+  // Raw HTML, sanitized as on GitHub.
+  await note.getByText("More").click();
+  await expect(note.locator("details b")).toHaveText("Bold");
+  await expect(note.locator("script, [onclick]")).toHaveCount(0);
+  await expect(note).not.toContainText("hidden");
 });
