@@ -116,11 +116,18 @@ function ListItem({ node, ...props }: ComponentProps<"li"> & ExtraProps) {
  * the user may edit it. One that no Markdown task marker stands for, as in
  * a task list written in HTML, stays as it is.
  */
-function Checkbox({ checked = false }: ComponentProps<"input">) {
+function Checkbox({
+  node,
+  checked = false,
+}: ComponentProps<"input"> & ExtraProps) {
   const tasks = useContext(Tasks);
   const offset = useContext(TaskAt);
+  // A task's own checkbox comes from its marker, so it has no place of its
+  // own in the text, where one written in HTML does.
   const toggled =
-    tasks && offset !== undefined ? toggleTask(tasks.text, offset) : undefined;
+    tasks && offset !== undefined && !node?.position
+      ? toggleTask(tasks.text, offset)
+      : undefined;
   return (
     <input
       type="checkbox"

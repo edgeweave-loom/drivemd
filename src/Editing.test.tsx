@@ -178,6 +178,99 @@ describe("editing a note in the viewer", () => {
     for (const box of await boxes()) expect(box).toBeDisabled();
   });
 
+  it.each([
+    ["not UTF-8", new Uint8Array([0x63, 0x61, 0x66, 0xe9, 0x0a])],
+    ["UTF-16 without its mark", new Uint8Array([0x61, 0x00, 0x0a, 0x00])],
+  ])("never offers to save a file it only shows, %s", async (_, bytes) => {
+    const drive = fakeDrive();
+    drive.getContent.mockResolvedValue(bytes);
+    renderWithDrive(<FileContent file={PLAN} />, drive);
+
+    expect(await screen.findByText(/DriveMD only shows it/)).toBeVisible();
+    expect(screen.queryByText("Unsaved changes")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  it("offers no Save once the user may no longer edit the file", async () => {
+    const { rerender } = open();
+    fireEvent.click(await box(0));
+
+    rerender(<FileContent file={metadata(PLAN, { locked: true })} />);
+
+    expect(await screen.findByText("Locked")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  it("leaves alone a checkbox written in HTML within a task", async () => {
+    open('- [ ] Buy <input type="checkbox"> milk\n');
+
+    expect(await box(0)).toBeEnabled();
+    expect(await box(1)).toBeDisabled();
+  });
+
+  it("keeps a task ticked while a save runs", async () => {
+    const { drive } = open();
+    let answer: (saved: typeof SAVED) => void = () => undefined;
+    drive.saveContent.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    fireEvent.click(await box(0));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByRole("button", { name: "Saving…" });
+
+    fireEvent.click(await box(1));
+    answer(SAVED);
+
+    await screen.findByRole("button", { name: "Save" });
+    expect((await boxes()).map((one) => one.checked)).toEqual([true, false]);
+    expect(screen.getByText("Unsaved changes")).toBeVisible();
+    expect(drive.saveContent).toHaveBeenCalledExactlyOnceWith(
+      PLAN,
+      utf8("- [x] Boil\n- [x] Pour\n"),
+    );
+  });
+
+  it("follows Drive again once the edits are undone by hand", async () => {
+    const { drive, rerender } = open();
+    fireEvent.click(await box(0));
+    fireEvent.click(await box(0));
+
+    drive.getContent.mockResolvedValue(utf8("- [ ] Serve\n"));
+    rerender(<FileContent file={SAVED} />);
+
+    expect(await screen.findByText("Serve")).toBeVisible();
+  });
+
+  it("keeps the revision someone else made since the last save, before writing over it", async () => {
+    const { drive, rerender } = open();
+    fireEvent.click(await box(0));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      expect(screen.queryByText("Unsaved changes")).toBeNull();
+    });
+    rerender(<FileContent file={SAVED} />);
+
+    const theirs = metadata(SAVED, {
+      md5Checksum: "cccc",
+      headRevisionId: "revision-3",
+    });
+    drive.getContent.mockResolvedValue(utf8("- [ ] Serve\n"));
+    drive.getMetadata.mockResolvedValue(theirs);
+    rerender(<FileContent file={theirs} />);
+    await screen.findByText("Serve");
+    fireEvent.click(await box(0));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(drive.saveContent).toHaveBeenCalledTimes(2);
+    });
+    expect(drive.keepRevision).toHaveBeenLastCalledWith(theirs, "revision-3");
+    expect(drive.keepRevision).toHaveBeenCalledTimes(2);
+  });
+
   it("leaves alone a task list written in HTML", async () => {
     open(
       '<ul><li class="task-list-item"><input type="checkbox"> Boil</li></ul>',

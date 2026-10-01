@@ -54,21 +54,36 @@ function Content({ file }: { file: FileMetadata }) {
   if (held && held.text === undefined && sameRevision(held.opened, file)) {
     setHeld(undefined);
   }
-  // The revision from before the edits is kept at the first save only.
-  const [kept, setKept] = useState(false);
+  // The revisions saved from this page, which the next save need not keep:
+  // the one from before the first edit is kept, as is one someone else made.
+  const [written, setWritten] = useState<ReadonlySet<string>>(new Set());
   const opened = held?.opened ?? file;
   const content = useQuery({ ...contentQuery(drive, opened), select: read });
   const save = useMutation({
-    mutationFn: (bytes: Uint8Array<ArrayBuffer>) =>
-      saveText(drive, opened, bytes, { keep: !kept }),
-    onSuccess: (result, bytes) => {
+    mutationFn: ({ bytes }: { bytes: Uint8Array<ArrayBuffer>; text: string }) =>
+      saveText(drive, opened, bytes, {
+        keep: !(
+          opened.headRevisionId !== undefined &&
+          written.has(opened.headRevisionId)
+        ),
+      }),
+    onSuccess: (result, { bytes, text }) => {
       if ("conflict" in result) return;
       const { saved } = result;
-      setKept(true);
-      // The page shows the saved revision at once, without reading it back.
+      if (saved.headRevisionId !== undefined) {
+        setWritten(
+          (before) => new Set([...before, saved.headRevisionId ?? ""]),
+        );
+      }
+      // The page shows the saved revision at once, without reading it back,
+      // with any edit made while it was saving.
       client.setQueryData(contentQuery(drive, saved).queryKey, bytes);
       setDetails(client, saved);
-      setHeld({ opened: saved });
+      setHeld((now) =>
+        now?.text !== undefined && now.text !== text
+          ? { opened: saved, text: now.text }
+          : { opened: saved },
+      );
     },
   });
   // The file grew since Drive gave its size.
@@ -86,8 +101,9 @@ function Content({ file }: { file: FileMetadata }) {
         const reason = readOnly(file, note);
         const text = held?.text ?? note.text;
         const bytes = encode(text, note);
-        // Only bytes that changed are written.
-        const unsaved = !sameBytes(bytes, note.bytes);
+        // Only bytes that changed are written, and never those of a file
+        // DriveMD only shows: its text may not be its bytes.
+        const unsaved = reason === undefined && !sameBytes(bytes, note.bytes);
         return (
           <>
             {reason && <p className="badge read-only">{reason}</p>}
@@ -100,7 +116,7 @@ function Content({ file }: { file: FileMetadata }) {
                   disabled={save.isPending}
                   onClick={() => {
                     renew();
-                    save.mutate(bytes);
+                    save.mutate({ bytes, text });
                   }}
                 >
                   {save.isPending ? "Saving…" : "Save"}
@@ -124,7 +140,12 @@ function Content({ file }: { file: FileMetadata }) {
               onEdit={
                 reason === undefined
                   ? (edited) => {
-                      setHeld({ opened, text: edited });
+                      // Edits undone by hand leave Drive's revisions to show.
+                      setHeld(
+                        edited === note.text
+                          ? undefined
+                          : { opened, text: edited },
+                      );
                     }
                   : undefined
               }
