@@ -282,6 +282,16 @@ describe("Rendered", () => {
     ]);
   });
 
+  it("shows an alias that refers to itself, and a key given twice, as written", () => {
+    const page = show("---\nloop: &a [*a]\ntea: green\ntea: black\n---\nBody");
+
+    expect(rows(page).slice(1)).toEqual([
+      ["loop", "*a"],
+      ["tea", "green"],
+      ["tea", "black"],
+    ]);
+  });
+
   it.each([
     ["a list", "---\n- tea\n- cups\n---\nBody", "- tea"],
     ["broken YAML", "---\ntitle: [unclosed\n---\nBody", "title: [unclosed"],

@@ -10,7 +10,9 @@ export function remarkProperties() {
   return (tree: Root) => {
     const [first] = tree.children;
     if (first?.type !== "yaml") return;
-    const document = parseDocument(first.value);
+    // A key given twice shows twice, as written. Checking keys for that
+    // takes time that grows with the square of their number.
+    const document = parseDocument(first.value, { uniqueKeys: false });
     const { contents } = document;
     if (document.errors.length === 0 && contents === null) {
       tree.children.shift();
