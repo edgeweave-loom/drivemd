@@ -1,5 +1,5 @@
 import type { Code, Root, Table, TableRow } from "mdast";
-import { parse } from "yaml";
+import { isAlias, isMap, isScalar, isSeq, parseDocument } from "yaml";
 
 /**
  * Shows a note's front matter, which remark-frontmatter finds, as a table of
@@ -10,29 +10,26 @@ export function remarkProperties() {
   return (tree: Root) => {
     const [first] = tree.children;
     if (first?.type !== "yaml") return;
-    const properties = parsed(first.value);
-    if (properties === null) tree.children.shift();
-    else if (properties instanceof Map) tree.children[0] = table(properties);
-    else tree.children[0] = written(first.value);
+    const document = parseDocument(first.value);
+    const { contents } = document;
+    if (document.errors.length === 0 && contents === null) {
+      tree.children.shift();
+    } else if (document.errors.length === 0 && isMap(contents)) {
+      tree.children[0] = table(
+        contents.items.map(({ key, value }) => [shown(key), shown(value)]),
+      );
+    } else {
+      tree.children[0] = written(first.value);
+    }
   };
 }
 
-/** The front matter's value, or undefined when it is not YAML. */
-function parsed(yaml: string): unknown {
-  try {
-    // Maps keep the properties' order, and no key can reach a prototype.
-    return parse(yaml, { mapAsMap: true, logLevel: "error" });
-  } catch {
-    return undefined;
-  }
-}
-
-function table(properties: Map<unknown, unknown>): Table {
+function table(properties: [string, string][]): Table {
   return {
     type: "table",
     children: [
       row("Property", "Value"),
-      ...[...properties].map(([name, value]) => row(shown(name), shown(value))),
+      ...properties.map(([name, value]) => row(name, value)),
     ],
   };
 }
@@ -51,21 +48,20 @@ function written(yaml: string): Code {
   return { type: "code", lang: "yaml", value: yaml };
 }
 
-/** A property's value as text: lists and maps on one line. */
-function shown(value: unknown): string {
-  if (Array.isArray(value)) return value.map(shown).join(", ");
-  if (value instanceof Map) {
-    return [...value]
-      .map(([name, inner]) => `${shown(name)}: ${shown(inner)}`)
+/**
+ * A YAML node as the note writes it, lists and maps on one line: `1.10`
+ * stays 1.10, where YAML would read 1.1. An alias shows as written too,
+ * which also keeps aliases from multiplying into a huge table.
+ */
+function shown(node: unknown): string {
+  if (isScalar(node)) return node.source ?? "";
+  if (isSeq(node)) return node.items.map(shown).join(", ");
+  if (isMap(node)) {
+    return node.items
+      .map(({ key, value }) => `${shown(key)}: ${shown(value)}`)
       .join(", ");
   }
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
-    return String(value);
-  }
-  // A property left empty.
+  if (isAlias(node)) return `*${node.source}`;
+  // A property left without a value.
   return "";
 }

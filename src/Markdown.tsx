@@ -42,17 +42,22 @@ export function Rendered({ text }: { text: string }) {
 /**
  * A link: web pages open in a new tab, and links within the page scroll to
  * their target. An address the renderer emptied, such as a script, is no
- * link at all. Only the attributes Markdown and footnotes give a link pass.
+ * link at all, and neither is an anchor that marks a target for those links.
+ * Only the attributes Markdown, HTML anchors and footnotes give a link pass.
  */
 function Anchor({
   href = "",
   id,
+  name,
   title,
   className,
   "aria-label": label,
   "aria-describedby": describedBy,
   children,
-}: ComponentProps<"a">) {
+}: ComponentProps<"a"> & {
+  /** The older way HTML marks a target, which React does not type. */
+  name?: string;
+}) {
   const attributes = {
     id,
     title,
@@ -77,7 +82,8 @@ function Anchor({
     return <a {...attributes} href={href} target="_blank" rel="noreferrer" />;
   }
   if (href.startsWith("mailto:")) return <a {...attributes} href={href} />;
-  return <span>{children}</span>;
+  // A target for links within the page, which HTML may mark by name.
+  return <a {...attributes} id={id ?? name} />;
 }
 
 /**

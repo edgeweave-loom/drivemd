@@ -6,6 +6,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** The text of each cell, row by row. */
+function rows(page: HTMLElement) {
+  return [...page.querySelectorAll("tr")].map((row) =>
+    [...row.cells].map((cell) => cell.textContent),
+  );
+}
+
 function show(text: string) {
   return render(<Rendered text={text} />).container;
 }
@@ -167,6 +174,22 @@ describe("Rendered", () => {
     expect(page.innerHTML).not.toMatch(/inline|block/);
   });
 
+  it("scrolls to the anchors a note's HTML marks, by id or by name", () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    const page = show(
+      '<a id="setup"></a>Setup\n\n<a name="usage"></a>Usage\n\n[One](#setup) [Two](#usage)',
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "One" }));
+    fireEvent.click(screen.getByRole("link", { name: "Two" }));
+
+    expect(scrolled.mock.contexts).toEqual([
+      page.querySelector("#user-content-setup"),
+      page.querySelector("#user-content-usage"),
+    ]);
+    expect(scrolled.mock.contexts).not.toContain(null);
+  });
+
   it("keeps the ids a note gives apart from the app's own", () => {
     const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
     const page = show(
@@ -201,10 +224,7 @@ describe("Rendered", () => {
       ].join("\n"),
     );
 
-    const rows = [...page.querySelectorAll("tr")].map((row) =>
-      [...row.cells].map((cell) => cell.textContent),
-    );
-    expect(rows).toEqual([
+    expect(rows(page)).toEqual([
       ["Property", "Value"],
       ["title", "Plan"],
       ["tags", "tea, cups"],
@@ -214,6 +234,34 @@ describe("Rendered", () => {
     ]);
     expect(screen.getByRole("heading", { name: "Body" })).toBeVisible();
     expect(page.querySelector("hr")).toBeNull();
+  });
+
+  it("shows property values as written, never as YAML reads them", () => {
+    const page = show(
+      [
+        "---",
+        "version: 1.10",
+        "id: 12345678901234567890",
+        "color: 0x1F",
+        "flag: True",
+        'title: "Plan \\"B\\""',
+        "tags: [1.0, 'tea']",
+        "base: &cups 2.50",
+        "again: *cups",
+        "---",
+      ].join("\n"),
+    );
+
+    expect(rows(page).slice(1)).toEqual([
+      ["version", "1.10"],
+      ["id", "12345678901234567890"],
+      ["color", "0x1F"],
+      ["flag", "True"],
+      ["title", 'Plan "B"'],
+      ["tags", "1.0, tea"],
+      ["base", "2.50"],
+      ["again", "*cups"],
+    ]);
   });
 
   it.each([
