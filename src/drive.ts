@@ -25,8 +25,9 @@ const ITEM_FIELDS =
   `capabilities(${CAPABILITIES.join(",")}),contentRestrictions(readOnly,reason)`;
 
 // An opened file also needs what the viewer shows, the conflict check
-// compares, and whether it is in the trash.
-const FILE_FIELDS = `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),md5Checksum,headRevisionId,trashed`;
+// compares, its size before its content is read, and whether it is in the
+// trash.
+const FILE_FIELDS = `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),md5Checksum,headRevisionId,size,trashed`;
 
 const UNREACHABLE = "Google Drive could not be reached";
 
@@ -56,6 +57,11 @@ export class DriveError extends Error {
     this.rateLimited =
       status === 429 || (reason !== undefined && RATE_LIMITS.has(reason));
   }
+}
+
+/** A file holds more bytes than the caller would read. */
+export class TooLargeError extends Error {
+  override readonly name = "TooLargeError";
 }
 
 /** Where Drive calls get their access token. */
@@ -111,6 +117,8 @@ export interface FileMetadata extends DriveItem {
   /** Compared before saving, to detect someone else's change. */
   md5Checksum: string | undefined;
   headRevisionId: string | undefined;
+  /** The content's size in bytes, which Google's own types do not have. */
+  size: number | undefined;
   /** In the trash, from which Drive can restore it. */
   trashed: boolean;
 }
@@ -127,9 +135,14 @@ export interface Drive {
    * The bytes of a file whose metadata was just read, exactly as stored.
    * Taking that metadata makes callers read it first: content read before it
    * could be older than the checksum a save compares, and the save would then
-   * overwrite someone else's change.
+   * overwrite someone else's change. Rejects with a TooLargeError, without
+   * reading further, once the bytes pass `limit`: the file may have grown
+   * since its metadata gave its size.
    */
-  getContent: (file: FileMetadata) => Promise<Uint8Array<ArrayBuffer>>;
+  getContent: (
+    file: FileMetadata,
+    limit: number,
+  ) => Promise<Uint8Array<ArrayBuffer>>;
   /** Everything in the folder that is not in the trash, from every page. */
   listChildren: (folder: FileRef) => Promise<DriveItem[]>;
   /** The shared drives the user is a member of. */
@@ -292,13 +305,10 @@ export function createDrive(auth: DriveAuth): Drive {
 
   return {
     getMetadata,
-    async getContent(file) {
+    async getContent(file, limit) {
       const response = await send(fileUrl(file, { alt: "media" }), [file]);
       await confirm(response);
-      const content = await response.arrayBuffer().catch(() => {
-        throw new DriveError(0, UNREACHABLE);
-      });
-      return new Uint8Array(content);
+      return readUpTo(response, limit);
     },
     async listChildren(folder) {
       const q = `'${checked(folder.id)}' in parents and trashed = false`;
@@ -513,6 +523,38 @@ function reach(url: string, init: RequestInit): Promise<Response> {
   });
 }
 
+/** A response's bytes, read no further than `limit`. */
+async function readUpTo(
+  response: Response,
+  limit: number,
+): Promise<Uint8Array<ArrayBuffer>> {
+  const reader = response.body?.getReader();
+  if (!reader) return new Uint8Array();
+  const next = () =>
+    reader.read().catch(() => {
+      throw new DriveError(0, UNREACHABLE);
+    });
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (let chunk = await next(); !chunk.done; chunk = await next()) {
+    size += chunk.value.length;
+    if (size > limit) {
+      await reader.cancel();
+      throw new TooLargeError(
+        `The file holds more than ${String(limit)} bytes`,
+      );
+    }
+    chunks.push(chunk.value);
+  }
+  const content = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    content.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return content;
+}
+
 /** Rejects unless Drive accepted the call. */
 async function confirm(response: Response): Promise<void> {
   if (!response.ok) throw await refusal(response);
@@ -624,6 +666,7 @@ function parseFile(value: unknown): FileMetadata | undefined {
     lastModifiedBy: optionalString(user.displayName),
     md5Checksum: optionalString(value.md5Checksum),
     headRevisionId: optionalString(value.headRevisionId),
+    size: parseSize(value.size),
     trashed: value.trashed === true,
   };
 }
@@ -651,6 +694,13 @@ function parseSharedDrive(
   const { id, name } = value;
   if (typeof id !== "string" || typeof name !== "string") return;
   return { id, name };
+}
+
+/** Drive sends 64-bit numbers as strings. */
+function parseSize(value: unknown): number | undefined {
+  return typeof value === "string" && /^\d+$/.test(value)
+    ? Number(value)
+    : undefined;
 }
 
 function optionalString(value: unknown): string | undefined {

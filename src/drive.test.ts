@@ -340,7 +340,7 @@ const ITEM_FIELDS =
   "canRename,canTrash),contentRestrictions(readOnly,reason)";
 const FILE_FIELDS =
   `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),` +
-  "md5Checksum,headRevisionId,trashed";
+  "md5Checksum,headRevisionId,size,trashed";
 
 describe("getMetadata", () => {
   it("asks for what the viewer shows and the conflict check compares, in any drive", async () => {
@@ -368,6 +368,7 @@ describe("getMetadata", () => {
         lastModifyingUser: { displayName: "Ada Lovelace" },
         md5Checksum: "0cc175b9c0f1b6a831c399e269772661",
         headRevisionId: "revision-1",
+        size: "1234",
         trashed: true,
       }),
     );
@@ -385,6 +386,7 @@ describe("getMetadata", () => {
       lastModifiedBy: "Ada Lovelace",
       md5Checksum: "0cc175b9c0f1b6a831c399e269772661",
       headRevisionId: "revision-1",
+      size: 1234,
       trashed: true,
     });
   });
@@ -397,9 +399,13 @@ describe("getMetadata", () => {
         parents: ["folder-1", 7],
         capabilities: { canEdit: "yes" },
         lastModifyingUser: {},
+        size: "big",
       },
       { parents: ["folder-1"] },
     ],
+    [{ size: 1234 }, {}],
+    [{ size: "" }, {}],
+    [{ size: "0" }, { size: 0 }],
   ])(
     "denies what Drive does not grant, and leaves out what it does not send: %j",
     async (sentFields, readFields) => {
@@ -418,6 +424,7 @@ describe("getMetadata", () => {
         lastModifiedBy: undefined,
         md5Checksum: undefined,
         headRevisionId: undefined,
+        size: undefined,
         trashed: false,
         ...readFields,
       });
@@ -510,9 +517,13 @@ describe("getMetadata", () => {
 
 describe("getContent", () => {
   /** Opens the file as the viewer does: its metadata, then its bytes. */
-  async function open(file: FileRef = { id: "file-1" }, auth = fakeAuth()) {
+  async function open(
+    file: FileRef = { id: "file-1" },
+    auth = fakeAuth(),
+    limit = 100,
+  ) {
     const drive = createDrive(auth);
-    return drive.getContent(await drive.getMetadata(file));
+    return drive.getContent(await drive.getMetadata(file), limit);
   }
 
   it("downloads the file's bytes exactly as stored, in any drive", async () => {
@@ -563,6 +574,46 @@ describe("getContent", () => {
       status: 403,
       message: "The user does not have sufficient permissions.",
     });
+  });
+
+  it("reads a file as large as the limit", async () => {
+    respond(Response.json(FILE), new Response(new Uint8Array([1, 2, 3])));
+
+    await expect(open(undefined, undefined, 3)).resolves.toEqual(
+      new Uint8Array([1, 2, 3]),
+    );
+  });
+
+  it("stops reading a file once it passes the limit", async () => {
+    const cancel = vi.fn();
+    const chunks = [
+      new Uint8Array([1, 2]),
+      new Uint8Array([3, 4]),
+      new Uint8Array([5]),
+    ];
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const chunk = chunks.shift();
+        if (chunk) controller.enqueue(chunk);
+        else controller.close();
+      },
+      cancel,
+    });
+    respond(Response.json(FILE), new Response(body));
+
+    await expect(open(undefined, undefined, 3)).rejects.toMatchObject({
+      name: "TooLargeError",
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["no body", null],
+    ["an empty body", new Uint8Array()],
+  ])("reads an empty file, sent with %s", async (_, body) => {
+    respond(Response.json(FILE), new Response(body));
+
+    await expect(open()).resolves.toEqual(new Uint8Array());
   });
 
   it("reports an interrupted download as a network failure", async () => {

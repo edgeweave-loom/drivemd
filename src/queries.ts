@@ -88,6 +88,32 @@ export function searchQuery(drive: Drive, text: string) {
   });
 }
 
+/**
+ * Larger files are not read: rendering them would stall a phone. 1 MB is far
+ * more than a note holds.
+ */
+export const MAX_CONTENT = 1_000_000;
+
+/**
+ * A file's bytes, from the revision its details name on. Drive sends the
+ * bytes it holds when asked, which may be newer than those details but never
+ * older: a save that compares them then sees a change that is not one, and
+ * never overwrites someone else's.
+ */
+export function contentQuery(drive: Drive, file: FileMetadata) {
+  return queryOptions({
+    queryKey: key(
+      "content",
+      file.id,
+      file.resourceKey,
+      file.headRevisionId,
+      file.md5Checksum,
+    ),
+    queryFn: () => drive.getContent(file, MAX_CONTENT),
+    staleTime: Infinity,
+  });
+}
+
 /** Why a shortcut cannot be followed, or null when its target opens. */
 export function shortcutQuery(drive: Drive, target: ShortcutTarget) {
   return queryOptions({

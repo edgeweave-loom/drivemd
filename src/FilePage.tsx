@@ -9,6 +9,7 @@ import { Dialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
 import type { FileMetadata, FileRef } from "./drive.ts";
 import { FileActions } from "./FileActions.tsx";
+import { FileContent } from "./FileContent.tsx";
 import { FolderPane } from "./FolderPane.tsx";
 import { Link } from "./Link.tsx";
 import { kindOf } from "./listing.ts";
@@ -215,7 +216,12 @@ function About({
       </p>
     );
   }
-  return <Changed file={file} />;
+  return (
+    <>
+      <Changed file={file} />
+      <FileContent file={file} />
+    </>
+  );
 }
 
 /** Who changed the file last, and when, as far as Drive says. */

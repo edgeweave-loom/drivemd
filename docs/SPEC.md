@@ -70,6 +70,7 @@ The interface is in English and follows the system's light or dark theme.
    - Task checkboxes are tappable. Toggling one changes only `[ ]` to `[x]` (or back) in the source and marks the file as unsaved, like any other edit.
    - The header shows who last modified the file and when.
    - Files the user cannot edit (view or comment access, locked file) open read-only with a badge giving the reason, and **Edit** is hidden. Files the user cannot download show that reason instead of their content.
+   - Files over 1 MB are not read, so that rendering never stalls a phone: the page gives their size and a link to open them in Google Drive.
 5. **Editor.** Edits the raw Markdown source with CodeMirror 6 and Markdown syntax highlighting.
    - Wide screens show the editor and preview side by side. Phones use an Edit / Preview toggle.
    - **Light live styling (v1).** Headings shown larger, bold and italic styled, inline code and code blocks in monospace. Markdown symbols (`**`, `#`, `[]()`) are dimmed, never hidden, so cursor and selection behave normally on phones.
@@ -276,7 +277,7 @@ Build in eight milestones, each ending with something that runs; give Claude Cod
    - Done when: any .md file in My Drive, a shared drive, a vault or behind a shortcut can be reached on desktop and phone, and files can be created, renamed, moved and trashed.
 4. **Viewer and editor.** Viewer by default: GitHub-style rendering, sanitized HTML, front matter, relative links and images, tappable checkboxes, read-only states, last-modified line. CodeMirror 6 editor with light live styling, Cmd/Ctrl+click on links, list continuation and search; side by side or toggle. Dirty state, Save and Cmd/Ctrl+S, local copy and restore, conflict view, kept pre-edit revision, leave-page warning.
    - Done when: editing a file made by another tool and saving changes only the edited lines; CRLF and BOM files round-trip byte for byte; a file that is not valid UTF-8 opens read-only.
-   - Carried over from milestones 2 and 3: one module holds the Drive queries' keys and fetchers, shared by the pages, the folder picker and the viewer; a size limit, set then, is checked before a file's content is read; and a new empty file, which may have no head revision yet, skips keeping one.
+   - Carried over from milestones 2 and 3: one module holds the Drive queries' keys and fetchers, shared by the pages, the folder picker and the viewer; a size limit, 1 MB, is checked before a file's content is read; and a new empty file, which may have no head revision yet, skips keeping one.
 5. **Obsidian vaults.** Vault detection and settings, line breaks, properties, callouts, highlights, comments, tags, block IDs, inline footnotes, internal links, image and note embeds.
    - Done when: a set of real notes from our vault renders like Obsidian's reading view, and every link and embed in them opens or shows the right file.
    - Carried over from milestone 3: link resolution and search say when Drive answers that its search was incomplete (`incompleteSearch`), rather than calling a link broken; and a note's vault is found even when a folder between the note and the vault is out of the user's reach.

@@ -141,7 +141,10 @@ function defineChecks(auth: DriveAuth): void {
       expect(saved.md5Checksum).toBe(
         createHash("md5").update(BYTES).digest("hex"),
       );
-      await expect(drive.getContent(saved)).resolves.toEqual(BYTES);
+      expect(saved.size).toBe(BYTES.length);
+      await expect(drive.getContent(saved, BYTES.length)).resolves.toEqual(
+        BYTES,
+      );
     },
   );
 

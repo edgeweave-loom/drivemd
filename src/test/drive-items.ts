@@ -64,6 +64,7 @@ export function metadata(
     lastModifiedBy: "Ada Lovelace",
     md5Checksum: "0123456789abcdef0123456789abcdef",
     headRevisionId: "revision-1",
+    size: 100,
     trashed: false,
     ...changes,
   };

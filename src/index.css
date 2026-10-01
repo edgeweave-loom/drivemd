@@ -345,3 +345,14 @@ dialog.drawer {
   font-size: 0.875rem;
   text-align: end;
 }
+
+.read-only {
+  justify-self: start;
+  white-space: normal;
+}
+
+.source {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

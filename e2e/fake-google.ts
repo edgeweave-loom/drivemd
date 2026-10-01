@@ -44,6 +44,8 @@ interface FakeFile {
   ownedByMe?: boolean;
   viewedByMeTime?: string;
   canAddChildren?: boolean;
+  /** What a file holds, empty unless set. */
+  content?: string;
 }
 
 /** A small Drive: My Drive, a vault, shortcuts, a shared drive, a share. */
@@ -59,6 +61,23 @@ function seed(): FakeFile[] {
       mimeType: markdown,
       parents: ["work"],
       viewedByMeTime: "2026-09-20T10:00:00.000Z",
+      content: [
+        "# The plan",
+        "",
+        "| Step | Owner |",
+        "| ---- | ----- |",
+        "| Tea  | Ada   |",
+        "",
+        "- [ ] Boil water",
+        "- [x] Find cups",
+        "",
+        "```ts",
+        "const cups = 2;",
+        "```",
+        "",
+        "See [the docs](https://example.com/docs) and ![a chart](https://example.com/chart.png).",
+        "",
+      ].join("\n"),
     },
     { id: "notes", name: "notes.md", mimeType: markdown, parents: ["work"] },
     {
@@ -153,6 +172,10 @@ export class FakeDrive {
       return;
     }
     const url = new URL(request.url());
+    if (url.searchParams.get("alt") === "media") {
+      await this.send(route, url.pathname);
+      return;
+    }
     const answer =
       url.pathname.startsWith("/drive/v3/") && !url.searchParams.has("alt")
         ? this.answer(
@@ -168,6 +191,23 @@ export class FakeDrive {
       return;
     }
     await reply(route, ...answer);
+  }
+
+  /** A file's bytes, as Drive sends them. */
+  private async send(route: Route, path: string): Promise<void> {
+    const id = /^\/drive\/v3\/files\/([\w-]+)$/.exec(path)?.[1];
+    const file = id === undefined ? undefined : this.files.get(id);
+    if (!file) {
+      await reply(route, 404, {
+        error: { message: `File not found: ${path}.` },
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      headers: { ...CORS, "content-type": file.mimeType },
+      body: file.content ?? "",
+    });
   }
 
   private answer(
@@ -311,6 +351,7 @@ function asJson(file: FakeFile) {
     lastModifyingUser: { displayName: "Ada Lovelace" },
     md5Checksum: "0123456789abcdef0123456789abcdef",
     headRevisionId: "revision-1",
+    size: String(new TextEncoder().encode(file.content ?? "").length),
   };
 }
 
