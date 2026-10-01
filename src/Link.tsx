@@ -1,4 +1,4 @@
-import type { MouseEvent, ReactNode } from "react";
+import type { ComponentProps, MouseEvent, ReactNode } from "react";
 import { useDrive } from "./drive-context.ts";
 import { navigate, type Crumb } from "./router.ts";
 
@@ -13,11 +13,12 @@ export function Link({
   className,
   current = false,
   children,
-}: {
+  ...attributes
+}: Omit<ComponentProps<"a">, "href" | "onClick"> & {
   to: string;
   /** The path the user takes by following the link, for the breadcrumbs. */
   trail?: Crumb[] | undefined;
-  className?: string;
+  className?: string | undefined;
   /** Whether the link leads to the page shown. */
   current?: boolean;
   children: ReactNode;
@@ -32,6 +33,7 @@ export function Link({
   }
   return (
     <a
+      {...attributes}
       href={to}
       className={className}
       aria-current={current ? "page" : undefined}

@@ -74,6 +74,30 @@ describe("relative links in a note", () => {
     );
   });
 
+  it("keep their title and their id", async () => {
+    open('[Plan](plan.md "The plan") <a id="top" href="plan.md">Top</a>');
+
+    const plan = await screen.findByRole("link", { name: "Plan" });
+    expect(plan).toHaveAttribute("title", "The plan");
+    expect(await screen.findByRole("link", { name: "Top" })).toHaveAttribute(
+      "id",
+      "user-content-top",
+    );
+  });
+
+  it("stay as they are when Drive cannot say where they lead", async () => {
+    // Drive refuses to list the note's folder.
+    open("[Plan](plan.md)", { id: "elsewhere" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Plan")).toHaveAttribute(
+        "title",
+        "Google Drive could not say where this link leads",
+      );
+    });
+    expect(screen.getByText("Plan")).not.toHaveClass("unresolved");
+  });
+
   it("open another file in Google Drive, in a new tab", async () => {
     open("[Data](data.csv)");
 
@@ -89,7 +113,6 @@ describe("relative links in a note", () => {
   it.each([
     ["nothing at its path", "[Gone](gone.md)", { id: "notes" }],
     ["a file taken for a folder", "[Gone](plan.md/x.md)", { id: "notes" }],
-    ["a folder Drive refuses", "[Gone](plan.md)", { id: "elsewhere" }],
   ])("show faded when they lead to %s", async (_, text, folder) => {
     open(text, folder);
 

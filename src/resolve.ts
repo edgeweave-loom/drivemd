@@ -37,7 +37,8 @@ export function relativePath(href: string): string[] | undefined {
 
 /**
  * What a relative path leads to from a folder, as Obsidian and GitHub read
- * it: `..` climbs to the parent, `.` and empty steps stay, and a name must
+ * it: the path is read as written first, so `a/../b` is `b` even when `a` is
+ * a shortcut, then each leading `..` climbs to the parent, and a name must
  * match exactly. Shortcuts lead to their target. Undefined when nothing is
  * there; fails as Drive does for a folder it cannot list.
  */
@@ -47,8 +48,7 @@ export async function resolve(
   read: FolderReader,
 ): Promise<Found | undefined> {
   let here: Found = { ref: folder, name: "", mimeType: FOLDER };
-  for (const step of path) {
-    if (step === "" || step === ".") continue;
+  for (const step of normalized(path)) {
     if (here.mimeType !== FOLDER) return;
     if (step === "..") {
       const parent = await read.parent(here.ref);
@@ -68,4 +68,15 @@ export async function resolve(
     };
   }
   return here;
+}
+
+/** The path without `.`, empty steps, and `..` after a name, which it undoes. */
+function normalized(path: string[]): string[] {
+  const steps: string[] = [];
+  for (const step of path) {
+    if (step === "" || step === ".") continue;
+    if (step === ".." && steps.length > 0 && steps.at(-1) !== "..") steps.pop();
+    else steps.push(step);
+  }
+  return steps;
 }

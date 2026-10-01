@@ -81,7 +81,7 @@ describe("Rendered", () => {
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
     // Each level of nesting takes a level of the stack.
-    const deep = `${">".repeat(5_000)} Tea`;
+    const deep = `${"<b>".repeat(4_000)} Tea`;
     const { container, rerender } = render(<Rendered text={deep} />);
 
     expect(screen.getByRole("alert")).toHaveTextContent(

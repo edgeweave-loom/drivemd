@@ -103,6 +103,19 @@ describe("resolve", () => {
     ).resolves.toMatchObject({ ref: { id: "img" }, name: "img" });
   });
 
+  it("reads a path as written, so that .. after a shortcut comes back past it", async () => {
+    const read = reader();
+
+    await expect(
+      resolve(
+        { id: "notes" },
+        ["To todo.md", "..", "img", "x", "..", "a.png"],
+        read,
+      ),
+    ).resolves.toMatchObject({ ref: { id: "photo" } });
+    expect(read.parent).not.toHaveBeenCalled();
+  });
+
   it("follows a shortcut to its target, keeping the shortcut's name", async () => {
     await expect(
       resolve({ id: "notes" }, ["To todo.md"], reader()),

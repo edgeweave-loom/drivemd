@@ -147,10 +147,16 @@ function Anchor({
   }
   if (href.startsWith("mailto:")) return <a {...attributes} href={href} />;
   const path = relativePath(href);
-  if (path) return <DriveLink path={path}>{children}</DriveLink>;
+  if (path) return <DriveLink {...attributes} path={path} />;
   // A target for links within the page, which HTML may mark by name.
   return <a {...attributes} id={id ?? name} />;
 }
+
+/** The attributes a link keeps, whatever it leads to. */
+type LinkAttributes = Pick<
+  ComponentProps<"a">,
+  "id" | "title" | "className" | "aria-label" | "aria-describedby"
+> & { children: ReactNode };
 
 /**
  * A relative link, which leads where its path does in Drive from the note's
@@ -159,53 +165,52 @@ function Anchor({
  */
 function DriveLink({
   path,
-  children,
-}: {
-  path: string[];
-  children: ReactNode;
-}) {
+  ...attributes
+}: LinkAttributes & { path: string[] }) {
   const folder = useContext(NoteFolder);
-  if (!folder) return <Unresolved>{children}</Unresolved>;
-  return (
-    <Resolved folder={folder} path={path}>
-      {children}
-    </Resolved>
-  );
+  if (!folder) return <Unresolved {...attributes} />;
+  return <Resolved {...attributes} folder={folder} path={path} />;
 }
 
 function Resolved({
   folder,
   path,
-  children,
-}: {
-  folder: FileRef;
-  path: string[];
-  children: ReactNode;
-}) {
+  ...attributes
+}: LinkAttributes & { folder: FileRef; path: string[] }) {
   const { drive } = useDrive();
   const client = useQueryClient();
   const found = useQuery(resolveQuery(drive, client, folder, path));
-  if (found.isPending) return <span>{children}</span>;
-  if (!found.data) return <Unresolved>{children}</Unresolved>;
+  if (found.isError) {
+    return (
+      <span
+        {...attributes}
+        title="Google Drive could not say where this link leads"
+      />
+    );
+  }
+  if (found.isPending) return <span {...attributes} />;
+  if (!found.data) return <Unresolved {...attributes} />;
   const { ref, name, mimeType } = found.data;
   if (mimeType === FOLDER) {
-    return <Link to={hrefOf({ name: "folder", folder: ref })}>{children}</Link>;
+    return (
+      <Link {...attributes} to={hrefOf({ name: "folder", folder: ref })} />
+    );
   }
   if (!mimeType.startsWith(GOOGLE_TYPES) && isMarkdown(name)) {
-    return <Link to={hrefOf({ name: "file", file: ref })}>{children}</Link>;
+    return <Link {...attributes} to={hrefOf({ name: "file", file: ref })} />;
   }
   return (
-    <a href={inDrive(ref)} target="_blank" rel="noreferrer">
-      {children}
-    </a>
+    <a {...attributes} href={inDrive(ref)} target="_blank" rel="noreferrer" />
   );
 }
 
-function Unresolved({ children }: { children: ReactNode }) {
+function Unresolved(attributes: LinkAttributes) {
   return (
-    <span className="unresolved" title="Not found in Google Drive">
-      {children}
-    </span>
+    <span
+      {...attributes}
+      className="unresolved"
+      title="Not found in Google Drive"
+    />
   );
 }
 
