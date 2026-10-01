@@ -65,7 +65,7 @@ The interface is in English and follows the system's light or dark theme.
 4. **Viewer.** Files open in the viewer by default, on every screen, with an **Edit** button.
    - Renders Markdown with GitHub-style extras: tables, task lists, strikethrough, autolinks and footnotes. Code blocks are syntax-highlighted. Math and Mermaid are not rendered; they show as written.
    - Raw HTML is rendered and sanitized as GitHub does, and HTML comments are hidden. YAML front matter shows as a properties table at the top instead of rendering as a heading.
-   - Relative links and images (`../other.md`, `img/a.png`) resolve against the file's folder in Drive. Links to Markdown files open in the app; other links open in a new tab. Images stored in Drive are fetched with the user's token.
+   - Relative links and images (`../other.md`, `img/a.png`) resolve against the file's folder in Drive. Links to Markdown files open in the app; other links open in a new tab. Images stored in Drive are fetched with the user's token. Images on other sites are not loaded: each shows as a link that opens it in a new tab, so that a note cannot make the app call another server.
    - Inside a vault, Obsidian syntax renders as described in Obsidian vaults.
    - Task checkboxes are tappable. Toggling one changes only `[ ]` to `[x]` (or back) in the source and marks the file as unsaved, like any other edit.
    - The header shows who last modified the file and when.

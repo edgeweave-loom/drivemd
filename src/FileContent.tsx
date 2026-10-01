@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useDrive } from "./drive-context.ts";
 import { TooLargeError, type FileMetadata } from "./drive.ts";
 import { Loaded } from "./Loaded.tsx";
+import { Rendered } from "./Markdown.tsx";
 import { contentQuery, MAX_CONTENT } from "./queries.ts";
 import { decode, type FileText } from "./text.ts";
 
@@ -11,7 +12,7 @@ const MEGABYTES = new Intl.NumberFormat("en", {
   maximumFractionDigits: 1,
 });
 
-/** A Markdown file's content, once Drive has sent it. */
+/** A Markdown file's content, rendered, once Drive has sent it. */
 export function FileContent({ file }: { file: FileMetadata }) {
   if (!file.capabilities.canDownload) {
     return (
@@ -46,7 +47,7 @@ function Content({ file }: { file: FileMetadata }) {
         return (
           <>
             {reason && <p className="badge read-only">{reason}</p>}
-            <pre className="source">{text.text}</pre>
+            <Rendered text={text.text} />
           </>
         );
       }}

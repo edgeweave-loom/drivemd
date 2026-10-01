@@ -51,7 +51,9 @@ describe("FilePage", () => {
     expect(
       await screen.findByText(/^Last modified by Ada Lovelace on .*2026/),
     ).toBeVisible();
-    expect(await screen.findByText("# The plan")).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { name: "The plan" }),
+    ).toBeVisible();
     expect(drive.markViewed).toHaveBeenCalledExactlyOnceWith({ id: "plan" });
   });
 
@@ -96,7 +98,9 @@ describe("FilePage", () => {
     drive.getContent.mockResolvedValue(new TextEncoder().encode("# The plan"));
     renderWithDrive(<FilePage file={{ id: "plan" }} trail={TRAIL} />, drive);
 
-    expect(await screen.findByText("# The plan")).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { name: "The plan" }),
+    ).toBeVisible();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
