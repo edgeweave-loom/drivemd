@@ -2,6 +2,13 @@ const BOM = [0xef, 0xbb, 0xbf];
 
 export type LineBreak = "\n" | "\r\n" | "\r";
 
+// Each kind of line break, found without listing every line of the file.
+const LINE_BREAKS: { lineBreak: LineBreak; pattern: RegExp }[] = [
+  { lineBreak: "\r\n", pattern: /\r\n/ },
+  { lineBreak: "\r", pattern: /\r(?!\n)/ },
+  { lineBreak: "\n", pattern: /(?<!\r)\n/ },
+];
+
 /** A file's content as text, and what it takes to write it back unchanged. */
 export interface FileText {
   /** The text, with the file's own line breaks, after any byte order mark. */
@@ -24,23 +31,36 @@ export interface FileText {
 export function decode(content: Uint8Array): FileText {
   const bom = BOM.every((byte, index) => content[index] === byte);
   const body = bom ? content.subarray(BOM.length) : content;
+  const text = strictUtf8(body);
+  // UTF-16 without its mark can also pass for UTF-8, with a NUL in every
+  // other byte: a line break typed there would shift every character after.
+  if (text === undefined || text.includes("\0")) {
+    return {
+      text: text ?? new TextDecoder("utf-8", { ignoreBOM: true }).decode(body),
+      bom,
+      lineBreak: "\n",
+      readOnly: "not-utf8",
+    };
+  }
+  const breaks = LINE_BREAKS.filter(({ pattern }) => pattern.test(text));
+  const [{ lineBreak } = { lineBreak: "\n" as const }] = breaks;
+  return {
+    text,
+    bom,
+    lineBreak,
+    readOnly: breaks.length > 1 ? "mixed-line-breaks" : undefined,
+  };
+}
+
+/** The text of bytes that are UTF-8 throughout, or undefined. */
+function strictUtf8(bytes: Uint8Array): string | undefined {
   try {
     // Without ignoreBOM, a second byte order mark would vanish from the text.
-    const text = new TextDecoder("utf-8", {
-      fatal: true,
-      ignoreBOM: true,
-    }).decode(body);
-    const breaks = new Set(text.match(/\r\n|\r|\n/g));
-    const [lineBreak = "\n"] = breaks as Set<LineBreak>;
-    return {
-      text,
-      bom,
-      lineBreak,
-      readOnly: breaks.size > 1 ? "mixed-line-breaks" : undefined,
-    };
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+      bytes,
+    );
   } catch {
-    const text = new TextDecoder("utf-8", { ignoreBOM: true }).decode(body);
-    return { text, bom, lineBreak: "\n", readOnly: "not-utf8" };
+    return undefined;
   }
 }
 

@@ -49,7 +49,7 @@ describe("decode", () => {
 
   it("keeps a second byte order mark, which is part of the text", () => {
     expect(decode(bytes(...BOM, ...BOM, 0x61))).toMatchObject({
-      text: "﻿a",
+      text: "\uFEFFa",
       bom: true,
     });
   });
@@ -76,7 +76,15 @@ describe("decode", () => {
     const decoded = decode(content);
 
     expect(decoded.readOnly).toBe("not-utf8");
-    expect(decoded.text).toContain("�");
+    expect(decoded.text).toContain("\uFFFD");
+  });
+
+  it("leaves read-only a file with a NUL, such as UTF-16 without its mark", () => {
+    // "a", a line break, "b" in UTF-16: each byte is also UTF-8.
+    expect(decode(bytes(0x61, 0x00, 0x0a, 0x00, 0x62, 0x00))).toMatchObject({
+      text: "a\0\n\0b\0",
+      readOnly: "not-utf8",
+    });
   });
 
   it("decodes an empty file", () => {
@@ -98,7 +106,7 @@ describe("encode", () => {
     ["a byte order mark", bytes(...BOM, ...utf8("a\r\nb\r\n"))],
     ["a byte order mark only", bytes(...BOM)],
     ["two byte order marks", bytes(...BOM, ...BOM, 0x61)],
-    ["a noncharacter", utf8("a￾b")],
+    ["a noncharacter", utf8("a\uFFFEb")],
     ["an empty file", bytes()],
   ])("gives back the bytes it decoded, with %s", (_, content) => {
     const { text, bom } = decode(content);
