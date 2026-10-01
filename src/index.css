@@ -506,3 +506,9 @@ dialog.drawer {
   color: var(--muted);
   font-size: 0.875em;
 }
+
+.source {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

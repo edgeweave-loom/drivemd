@@ -12,6 +12,9 @@ test("renders a note as GitHub does, under the security policy", async ({
   ).toBeVisible();
   await expect(note.getByRole("table").first()).toContainText("tea, cups");
   await expect(note.getByRole("table").last()).toContainText("Ada");
+  // Named character references decode without an HTML sink, which Trusted
+  // Types would refuse.
+  await expect(note).toContainText("Tea & cups © Ada\u00a0Lovelace.");
   await expect(note.getByRole("checkbox")).toHaveCount(2);
   await expect(note.locator("pre code .hljs-keyword")).toHaveText("const");
   const docs = note.getByRole("link", { name: "the docs" });

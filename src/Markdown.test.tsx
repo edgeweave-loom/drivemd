@@ -76,6 +76,24 @@ describe("Rendered", () => {
     expect(scrolled).not.toHaveBeenCalled();
   });
 
+  it("shows a note it cannot render as written, and renders it again once it changes", () => {
+    const error = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    // Each level of nesting takes a level of the stack.
+    const deep = `${">".repeat(5_000)} Tea`;
+    const { container, rerender } = render(<Rendered text={deep} />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "DriveMD could not render this note, so it shows as written.",
+    );
+    expect(container.querySelector("pre")).toHaveTextContent(deep);
+    expect(error).toHaveBeenCalled();
+    rerender(<Rendered text="# Tea" />);
+    expect(screen.getByRole("heading", { name: "Tea" })).toBeVisible();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("highlights code in the language it names, and shows other code as written", () => {
     const page = show(
       "```js\nconst tea = 1;\n```\n\n```nope\nconst tea = 1;\n```\n\n```mermaid\ngraph TD\n```",

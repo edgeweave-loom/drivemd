@@ -81,6 +81,8 @@ function seed(): FakeFile[] {
         "",
         "See [the docs](https://example.com/docs) and ![a chart](https://example.com/chart.png).",
         "",
+        "Tea &amp; cups &copy; Ada&nbsp;Lovelace.",
+        "",
         "<details><summary>More</summary>",
         "",
         '<b onclick="alert(1)">Bold</b> <script>alert(1)</script> <!-- hidden -->',
