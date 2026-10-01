@@ -90,27 +90,36 @@ export function searchQuery(drive: Drive, text: string) {
 }
 
 /**
- * Larger files are not read: rendering them would stall a phone. 1 MB is far
+ * Larger notes are not read: rendering them would stall a phone. 1 MB is far
  * more than a note holds.
  */
 export const MAX_CONTENT = 1_000_000;
 
+/** Larger images are not read: a photo from a phone holds a few MB. */
+export const MAX_IMAGE = 10_000_000;
+
 /**
- * A file's bytes, from the revision its details name on. Drive sends the
- * bytes it holds when asked, which may be newer than those details but never
- * older: a save that compares them then sees a change that is not one, and
- * never overwrites someone else's.
+ * A file's bytes, up to `limit`, from the revision its details name on; none
+ * while there is no file to read. Drive sends the bytes it holds when asked,
+ * which may be newer than those details but never older: a save that
+ * compares them then sees a change that is not one, and never overwrites
+ * someone else's.
  */
-export function contentQuery(drive: Drive, file: FileMetadata) {
+export function contentQuery(
+  drive: Drive,
+  file: FileMetadata | undefined,
+  limit = MAX_CONTENT,
+) {
   return queryOptions({
     queryKey: key(
       "content",
-      file.id,
-      file.resourceKey,
-      file.headRevisionId,
-      file.md5Checksum,
+      file?.id,
+      file?.resourceKey,
+      file?.headRevisionId,
+      file?.md5Checksum,
+      String(limit),
     ),
-    queryFn: () => drive.getContent(file, MAX_CONTENT),
+    queryFn: file ? () => drive.getContent(file, limit) : skipToken,
     staleTime: Infinity,
   });
 }

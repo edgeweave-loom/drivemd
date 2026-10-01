@@ -45,7 +45,7 @@ interface FakeFile {
   viewedByMeTime?: string;
   canAddChildren?: boolean;
   /** What a file holds, empty unless set. */
-  content?: string;
+  content?: string | Buffer;
 }
 
 /** A small Drive: My Drive, a vault, shortcuts, a shared drive, a share. */
@@ -85,6 +85,8 @@ function seed(): FakeFile[] {
         "",
         "Next: [the notes](notes.md), [the archive](Archive/), [a photo](photo.png) and [nothing](gone.md).",
         "",
+        "![The photo](photo.png)",
+        "",
         "<details><summary>More</summary>",
         "",
         '<b onclick="alert(1)">Bold</b> <script>alert(1)</script> <!-- hidden -->',
@@ -99,6 +101,11 @@ function seed(): FakeFile[] {
       name: "photo.png",
       mimeType: "image/png",
       parents: ["work"],
+      // A made-up picture of one pixel.
+      content: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+        "base64",
+      ),
     },
     { id: "journal", name: "Journal", mimeType: FOLDER, parents: ["my-root"] },
     {
@@ -365,7 +372,7 @@ function asJson(file: FakeFile) {
     lastModifyingUser: { displayName: "Ada Lovelace" },
     md5Checksum: "0123456789abcdef0123456789abcdef",
     headRevisionId: "revision-1",
-    size: String(new TextEncoder().encode(file.content ?? "").length),
+    size: String(Buffer.from(file.content ?? "").length),
   };
 }
 
@@ -389,7 +396,14 @@ export const test = base.extend<{ drive: FakeDrive }>({
       // Routes added later come first: this one catches what the others don't.
       await page.route("**", (route) => {
         const url = route.request().url();
-        if (baseURL && url.startsWith(baseURL)) return route.fallback();
+        // WebKit routes the object URLs the app makes for Drive's images too.
+        const app = baseURL && new URL(baseURL).origin;
+        if (
+          app &&
+          (url.startsWith(`${app}/`) || url.startsWith(`blob:${app}/`))
+        ) {
+          return route.fallback();
+        }
         problems.push(`request to ${url}`);
         return route.abort();
       });

@@ -18,10 +18,22 @@ import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import { useDrive } from "./drive-context.ts";
 import { inDrive } from "./drive-web.ts";
-import { FOLDER, GOOGLE_TYPES, isMarkdown, type FileRef } from "./drive.ts";
+import {
+  FOLDER,
+  GOOGLE_TYPES,
+  isMarkdown,
+  TooLargeError,
+  type FileMetadata,
+  type FileRef,
+} from "./drive.ts";
 import { Link } from "./Link.tsx";
 import { remarkProperties } from "./properties.ts";
-import { resolveQuery } from "./queries.ts";
+import {
+  contentQuery,
+  MAX_IMAGE,
+  metadataQuery,
+  resolveQuery,
+} from "./queries.ts";
 import { relativePath } from "./resolve.ts";
 import { hrefOf } from "./router.ts";
 
@@ -251,15 +263,102 @@ function Unresolved(attributes: LinkAttributes) {
 
 /**
  * An image. One on another site is not loaded, so that a note cannot make
- * the app call that site: it is a link to open in a new tab.
+ * the app call that site: it is a link to open in a new tab. A relative one
+ * is read from Drive.
  */
-function Image({ src, alt }: ComponentProps<"img">) {
-  if (typeof src === "string" && onTheWeb(src)) {
-    return (
-      <a href={src} target="_blank" rel="noreferrer" className="image-link">
-        Image: {alt === undefined || alt === "" ? src : alt}
-      </a>
-    );
+function Image({ src, alt = "" }: ComponentProps<"img">) {
+  if (typeof src !== "string") return <span>{alt}</span>;
+  if (onTheWeb(src)) return <ImageLink href={src} label={alt || src} />;
+  const path = relativePath(src);
+  if (!path) return <span>{alt}</span>;
+  return <DriveImage path={path} alt={alt} />;
+}
+
+function ImageLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="image-link">
+      Image: {label}
+    </a>
+  );
+}
+
+function DriveImage({ path, alt }: { path: string[]; alt: string }) {
+  const folder = useContext(NoteFolder);
+  if (!folder) return <Unresolved>{alt}</Unresolved>;
+  return <ImageInDrive folder={folder} path={path} alt={alt} />;
+}
+
+/**
+ * An image where its path leads in Drive, read with the user's token once it
+ * comes near the screen. One that is not an image, that the user may not
+ * download, or that holds over 10 MB is a link to Google Drive.
+ */
+function ImageInDrive({
+  folder,
+  path,
+  alt,
+}: {
+  folder: FileRef;
+  path: string[];
+  alt: string;
+}) {
+  const { drive } = useDrive();
+  const client = useQueryClient();
+  const [seen, near] = useSeen();
+  const found = useQuery({
+    ...resolveQuery(drive, client, folder, path),
+    enabled: seen,
+  });
+  const details = useQuery(metadataQuery(drive, found.data?.ref));
+  const file = details.data;
+  const shown = file !== undefined && showsHere(file);
+  const bytes = useQuery(
+    contentQuery(drive, shown ? file : undefined, MAX_IMAGE),
+  );
+  if (!seen) return <span ref={near}>{alt}</span>;
+  if (found.data === null) return <Unresolved>{alt}</Unresolved>;
+  if (file && (!shown || bytes.error instanceof TooLargeError)) {
+    return <ImageLink href={inDrive(file)} label={alt || file.name} />;
   }
-  return <span>{alt}</span>;
+  if (found.isError || details.isError || bytes.isError) {
+    return <span title="Google Drive could not send this image">{alt}</span>;
+  }
+  if (!file || !bytes.data) return <span>{alt}</span>;
+  return <BlobImage bytes={bytes.data} type={file.mimeType} alt={alt} />;
+}
+
+/** Whether the viewer shows the file as an image, rather than a link. */
+function showsHere(file: FileMetadata): boolean {
+  return (
+    file.mimeType.startsWith("image/") &&
+    file.capabilities.canDownload &&
+    (file.size === undefined || file.size <= MAX_IMAGE)
+  );
+}
+
+/**
+ * An image of the bytes, through an object URL that lives as long as the
+ * image shows.
+ */
+function BlobImage({
+  bytes,
+  type,
+  alt,
+}: {
+  bytes: Uint8Array<ArrayBuffer>;
+  type: string;
+  alt: string;
+}) {
+  const show = useCallback(
+    (image: HTMLImageElement | null) => {
+      if (!image) return;
+      const url = URL.createObjectURL(new Blob([bytes], { type }));
+      image.src = url;
+      return () => {
+        URL.revokeObjectURL(url);
+      };
+    },
+    [bytes, type],
+  );
+  return <img alt={alt} ref={show} />;
 }

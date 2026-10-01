@@ -46,11 +46,13 @@ describe("Firebase Hosting", () => {
       expect(csp.get("default-src")).toEqual(["'self'"]);
     });
 
-    it("never allows inline code, eval, wildcards or whole schemes", () => {
-      const unsafe = [...csp.values()]
-        .flat()
-        .filter((source) => /unsafe|^\*$|^[a-z-]+:$/.test(source));
-      expect(unsafe).toEqual([]);
+    it("never allows inline code, eval, wildcards or whole schemes, but blob: images", () => {
+      const unsafe = [...csp]
+        .flatMap(([name, sources]) =>
+          sources.map((source) => `${name} ${source}`),
+        )
+        .filter((source) => /unsafe|\s\*$|\s[a-z-]+:$/.test(source));
+      expect(unsafe).toEqual(["img-src blob:"]);
     });
 
     it("sets exactly the reviewed directives", () => {
@@ -60,6 +62,7 @@ describe("Firebase Hosting", () => {
         "default-src",
         "script-src",
         "connect-src",
+        "img-src",
         "frame-src",
         "object-src",
         "base-uri",
@@ -88,6 +91,13 @@ describe("Firebase Hosting", () => {
       expect(csp.get("frame-src")).toEqual([
         "https://accounts.google.com/gsi/",
       ]);
+    });
+
+    it("shows only the app's images and those it reads from Drive", () => {
+      // The viewer reads a note's images from Drive with the user's token,
+      // and shows them through object URLs, which only the page can make.
+      // Images from any other site would let a note make the app call it.
+      expect(csp.get("img-src")).toEqual(["'self'", "blob:"]);
     });
 
     it("blocks plugins, base URL hijacking, form posts and framing", () => {

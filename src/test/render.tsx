@@ -19,11 +19,12 @@ export function renderWithDrive(ui: ReactNode, drive = fakeDrive()) {
       <DriveContext value={{ drive, renew }}>{page}</DriveContext>
     </QueryClientProvider>
   );
-  const { rerender } = render(within(ui));
+  const { rerender, unmount } = render(within(ui));
   return {
     drive,
     renew,
     client,
+    unmount,
     rerender: (page: ReactNode) => {
       rerender(within(page));
     },

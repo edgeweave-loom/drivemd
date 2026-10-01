@@ -517,3 +517,7 @@ dialog.drawer {
   color: var(--muted);
   text-decoration: underline dotted;
 }
+
+.markdown img {
+  max-width: 100%;
+}
