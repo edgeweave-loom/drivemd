@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DriveError,
@@ -46,6 +46,7 @@ function open(text: string, ...files: FileMetadata[]) {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("relative images in a note", () => {
@@ -78,6 +79,14 @@ describe("relative images in a note", () => {
       "a file that is not an image",
       metadata(PHOTO, { mimeType: "application/pdf" }),
     ],
+    [
+      "an image most browsers cannot show",
+      metadata(PHOTO, { mimeType: "image/heic" }),
+    ],
+    [
+      "an SVG image, which can hold script",
+      metadata(PHOTO, { mimeType: "image/svg+xml" }),
+    ],
   ])("link to Google Drive for %s", async (_, file) => {
     const { drive } = open("![A photo](img/photo.png)", file);
 
@@ -88,6 +97,41 @@ describe("relative images in a note", () => {
     );
     expect(link).toHaveAttribute("target", "_blank");
     expect(screen.queryByRole("img")).toBeNull();
+    expect(drive.getContent).not.toHaveBeenCalled();
+  });
+
+  it("link to Google Drive for an image the browser cannot decode", async () => {
+    open("![A photo](img/photo.png)", PHOTO);
+
+    const image = await screen.findByRole("img", { name: "A photo" });
+    fireEvent.error(image);
+
+    expect(
+      await screen.findByRole("link", { name: "Image: A photo" }),
+    ).toBeVisible();
+  });
+
+  it("wait until they come near the screen, even when already found", async () => {
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {
+          return undefined;
+        }
+        disconnect() {
+          return undefined;
+        }
+      },
+    );
+    const { drive, client } = open("![A photo](img/photo.png)", PHOTO);
+    client.setQueryData(["resolve", "notes", undefined, "img", "photo.png"], {
+      ref: { id: "photo" },
+      name: "photo.png",
+      mimeType: "image/png",
+    });
+
+    await new Promise((settle) => setTimeout(settle, 50));
+    expect(drive.getMetadata).not.toHaveBeenCalled();
     expect(drive.getContent).not.toHaveBeenCalled();
   });
 

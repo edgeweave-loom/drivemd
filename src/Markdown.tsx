@@ -309,7 +309,10 @@ function ImageInDrive({
     ...resolveQuery(drive, client, folder, path),
     enabled: seen,
   });
-  const details = useQuery(metadataQuery(drive, found.data?.ref));
+  // A path found already, by a link to it say, waits for the screen too.
+  const details = useQuery(
+    metadataQuery(drive, seen ? found.data?.ref : undefined),
+  );
   const file = details.data;
   const shown = file !== undefined && showsHere(file);
   const bytes = useQuery(
@@ -324,13 +327,24 @@ function ImageInDrive({
     return <span title="Google Drive could not send this image">{alt}</span>;
   }
   if (!file || !bytes.data) return <span>{alt}</span>;
-  return <BlobImage bytes={bytes.data} type={file.mimeType} alt={alt} />;
+  return <BlobImage bytes={bytes.data} file={file} alt={alt} />;
 }
+
+// The images every browser shows. SVG is left out: it can hold script, which
+// an image does not run, but a tab opened on it might.
+const IMAGES = new Set([
+  "image/avif",
+  "image/bmp",
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
 
 /** Whether the viewer shows the file as an image, rather than a link. */
 function showsHere(file: FileMetadata): boolean {
   return (
-    file.mimeType.startsWith("image/") &&
+    IMAGES.has(file.mimeType) &&
     file.capabilities.canDownload &&
     (file.size === undefined || file.size <= MAX_IMAGE)
   );
@@ -338,17 +352,19 @@ function showsHere(file: FileMetadata): boolean {
 
 /**
  * An image of the bytes, through an object URL that lives as long as the
- * image shows.
+ * image shows; a link to Google Drive when the browser cannot decode them.
  */
 function BlobImage({
   bytes,
-  type,
+  file,
   alt,
 }: {
   bytes: Uint8Array<ArrayBuffer>;
-  type: string;
+  file: FileMetadata;
   alt: string;
 }) {
+  const [broken, setBroken] = useState(false);
+  const { mimeType: type } = file;
   const show = useCallback(
     (image: HTMLImageElement | null) => {
       if (!image) return;
@@ -360,5 +376,15 @@ function BlobImage({
     },
     [bytes, type],
   );
-  return <img alt={alt} ref={show} />;
+  if (broken)
+    return <ImageLink href={inDrive(file)} label={alt || file.name} />;
+  return (
+    <img
+      alt={alt}
+      ref={show}
+      onError={() => {
+        setBroken(true);
+      }}
+    />
+  );
 }
