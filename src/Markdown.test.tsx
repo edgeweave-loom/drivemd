@@ -42,7 +42,7 @@ describe("Rendered", () => {
 
   it("renders footnotes, whose links scroll within the page", () => {
     const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
-    const page = show("Tea[^1].\n\n[^1]: Green.");
+    const page = show("Tea[^thé].\n\n[^thé]: Green.");
 
     expect(page.querySelector("section[data-footnotes]")).toHaveTextContent(
       "Green.",
@@ -53,10 +53,20 @@ describe("Rendered", () => {
 
     expect(window.location.href).toBe(before);
     expect(scrolled.mock.contexts).toEqual([
-      page.querySelector("#user-content-fn-1"),
-      page.querySelector("#user-content-fnref-1"),
+      page.querySelector("section[data-footnotes] li"),
+      page.querySelector("sup a"),
     ]);
     expect(scrolled.mock.contexts).not.toContain(null);
+  });
+
+  it("leaves the page where it is for a link to nothing in it", () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    show("[Up](#nowhere) [Odd](#%E0)");
+
+    fireEvent.click(screen.getByRole("link", { name: "Up" }));
+    fireEvent.click(screen.getByRole("link", { name: "Odd" }));
+
+    expect(scrolled).not.toHaveBeenCalled();
   });
 
   it("highlights code in the language it names, and shows other code as written", () => {

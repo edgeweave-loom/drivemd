@@ -18,10 +18,31 @@ import { usePath } from "./path.ts";
 import { metadataQuery, refreshRecent } from "./queries.ts";
 import { hrefOf, routeOf, type Crumb } from "./router.ts";
 
-// The viewer loads with the first file opened, not with the navigator.
-const FileContent = lazy(async () => ({
-  default: (await import("./FileContent.tsx")).FileContent,
-}));
+// The viewer loads with the first file opened, not with the navigator. When
+// it cannot, as when the connection dropped or a new release replaced it,
+// the page says so rather than the app failing as a whole.
+const FileContent = lazy(() =>
+  import("./FileContent.tsx").then(
+    ({ FileContent }) => ({ default: FileContent }),
+    () => ({ default: ViewerMissing }),
+  ),
+);
+
+function ViewerMissing() {
+  return (
+    <p role="alert" className="failure">
+      DriveMD could not load its viewer. Check your connection, then reload it.{" "}
+      <button
+        type="button"
+        onClick={() => {
+          window.location.reload();
+        }}
+      >
+        Reload
+      </button>
+    </p>
+  );
+}
 
 const WHEN = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",

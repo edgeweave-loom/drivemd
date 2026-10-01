@@ -56,9 +56,8 @@ function Anchor({
     const scroll = (event: MouseEvent) => {
       // The address stays the page's own, with the path taken in history.
       event.preventDefault();
-      document
-        .getElementById(decodeURIComponent(href.slice(1)))
-        ?.scrollIntoView();
+      // Ids keep the encoding links have, as GitHub's do.
+      document.getElementById(href.slice(1))?.scrollIntoView();
     };
     return <a {...attributes} href={href} onClick={scroll} />;
   }
