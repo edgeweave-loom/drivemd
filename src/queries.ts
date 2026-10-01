@@ -1,5 +1,6 @@
 import { QueryClient, queryOptions, skipToken } from "@tanstack/react-query";
 import { climb } from "./climb.ts";
+import { pool } from "./pool.ts";
 import { resolve } from "./resolve.ts";
 import {
   DriveError,
@@ -98,29 +99,48 @@ export const MAX_CONTENT = 1_000_000;
 /** Larger images are not read: a photo from a phone holds a few MB. */
 export const MAX_IMAGE = 10_000_000;
 
+// The links and images of a note ask Drive a few at a time, however many of
+// them come near the screen together.
+const lookups = pool(4);
+
 /**
- * A file's bytes, up to `limit`, from the revision its details name on; none
- * while there is no file to read. Drive sends the bytes it holds when asked,
- * which may be newer than those details but never older: a save that
- * compares them then sees a change that is not one, and never overwrites
- * someone else's.
+ * A file's bytes, from the revision its details name on. Drive sends the
+ * bytes it holds when asked, which may be newer than those details but never
+ * older: a save that compares them then sees a change that is not one, and
+ * never overwrites someone else's.
  */
-export function contentQuery(
-  drive: Drive,
-  file: FileMetadata | undefined,
-  limit = MAX_CONTENT,
-) {
+export function contentQuery(drive: Drive, file: FileMetadata) {
   return queryOptions({
     queryKey: key(
       "content",
+      file.id,
+      file.resourceKey,
+      file.headRevisionId,
+      file.md5Checksum,
+    ),
+    queryFn: () => drive.getContent(file, MAX_CONTENT),
+    staleTime: Infinity,
+  });
+}
+
+/**
+ * An image's bytes, as for a note's content; none while there is no image to
+ * read. Images leave the cache soon after their note, as they can be large.
+ */
+export function imageQuery(drive: Drive, file: FileMetadata | undefined) {
+  return queryOptions({
+    queryKey: key(
+      "image",
       file?.id,
       file?.resourceKey,
       file?.headRevisionId,
       file?.md5Checksum,
-      String(limit),
     ),
-    queryFn: file ? () => drive.getContent(file, limit) : skipToken,
+    queryFn: file
+      ? ({ signal }) => lookups(() => drive.getContent(file, MAX_IMAGE), signal)
+      : skipToken,
     staleTime: Infinity,
+    gcTime: 30_000,
   });
 }
 
@@ -136,19 +156,25 @@ export function resolveQuery(
 ) {
   return queryOptions({
     queryKey: key("resolve", folder.id, folder.resourceKey, ...path),
-    queryFn: async () =>
-      (await resolve(folder, path, {
-        // The resolution as a whole is tried again.
-        children: (inner) =>
-          client.query({ ...childrenQuery(drive, inner), retry: false }),
-        parent: async (inner) => {
-          const details = await client.query({
-            ...metadataQuery(drive, inner),
-            retry: false,
-          });
-          return details.parents[0];
-        },
-      })) ?? null,
+    queryFn: async ({ signal }) => {
+      const found = await lookups(
+        () =>
+          resolve(folder, path, {
+            // The resolution as a whole is tried again.
+            children: (inner) =>
+              client.query({ ...childrenQuery(drive, inner), retry: false }),
+            parent: async (inner) => {
+              const details = await client.query({
+                ...metadataQuery(drive, inner),
+                retry: false,
+              });
+              return details.parents[0];
+            },
+          }),
+        signal,
+      );
+      return found ?? null;
+    },
   });
 }
 

@@ -87,6 +87,10 @@ describe("relative images in a note", () => {
       "an SVG image, which can hold script",
       metadata(PHOTO, { mimeType: "image/svg+xml" }),
     ],
+    [
+      "a file of a type that only starts as an image's",
+      metadata(PHOTO, { mimeType: "image/png,text/html" }),
+    ],
   ])("link to Google Drive for %s", async (_, file) => {
     const { drive } = open("![A photo](img/photo.png)", file);
 

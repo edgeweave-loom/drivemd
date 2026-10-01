@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Children,
   Component,
   createContext,
   useCallback,
@@ -29,7 +30,7 @@ import {
 import { Link } from "./Link.tsx";
 import { remarkProperties } from "./properties.ts";
 import {
-  contentQuery,
+  imageQuery,
   MAX_IMAGE,
   metadataQuery,
   resolveQuery,
@@ -161,7 +162,10 @@ function Anchor({
   }
   if (href.startsWith("mailto:")) return <a {...attributes} href={href} />;
   const path = relativePath(href);
-  if (path) return <DriveLink {...attributes} path={path} />;
+  // A link without text cannot be tapped, so it asks Drive nothing.
+  if (path && Children.count(children) > 0) {
+    return <DriveLink {...attributes} path={path} />;
+  }
   // A target for links within the page, which HTML may mark by name.
   return <a {...attributes} id={id ?? name} />;
 }
@@ -315,10 +319,16 @@ function ImageInDrive({
   );
   const file = details.data;
   const shown = file !== undefined && showsHere(file);
-  const bytes = useQuery(
-    contentQuery(drive, shown ? file : undefined, MAX_IMAGE),
-  );
-  if (!seen) return <span ref={near}>{alt}</span>;
+  const bytes = useQuery(imageQuery(drive, shown ? file : undefined));
+  // An image waiting for the screen takes room, so that only the few the
+  // screen holds come near it together.
+  if (!seen) {
+    return (
+      <span className="image-pending" ref={near}>
+        {alt}
+      </span>
+    );
+  }
   if (found.data === null) return <Unresolved>{alt}</Unresolved>;
   if (file && (!shown || bytes.error instanceof TooLargeError)) {
     return <ImageLink href={inDrive(file)} label={alt || file.name} />;
