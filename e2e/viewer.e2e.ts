@@ -66,3 +66,22 @@ test("opens a note a relative link leads to", async ({ page }) => {
   // Its content has come too, before the test leaves the page.
   await expect(page.locator(".markdown")).toBeAttached();
 });
+
+test("checks a task and saves that change only", async ({ page, drive }) => {
+  const before = String(drive.files.get("plan")?.content);
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+
+  await page.locator(".markdown").getByRole("checkbox").first().check();
+  await expect(page.getByText("Unsaved changes")).toBeVisible();
+  await page.getByRole("button", { name: "Save" }).click();
+
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await expect(
+    page.locator(".markdown").getByRole("checkbox").first(),
+  ).toBeChecked();
+  expect(drive.writes).toEqual(["keep plan revision-1", "save plan"]);
+  expect(String(drive.files.get("plan")?.content)).toBe(
+    before.replace("- [ ] Boil water", "- [x] Boil water"),
+  );
+});

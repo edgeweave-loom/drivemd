@@ -10,7 +10,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import Markdown, { type Components } from "react-markdown";
+import Markdown, { type Components, type ExtraProps } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
@@ -36,6 +36,7 @@ import {
   resolveQuery,
 } from "./queries.ts";
 import { relativePath } from "./resolve.ts";
+import { toggleTask } from "./tasks.ts";
 import { hrefOf } from "./router.ts";
 
 const REMARK = [remarkGfm, remarkFrontmatter, remarkProperties];
@@ -43,10 +44,23 @@ const REMARK = [remarkGfm, remarkFrontmatter, remarkProperties];
 // prefixing ids so that none can stand for one of the app's own. Code is
 // highlighted last, with classes the sanitizer would drop.
 const REHYPE = [rehypeRaw, rehypeSlug, rehypeSanitize, rehypeHighlight];
-const COMPONENTS: Components = { a: Anchor, img: Image };
+const COMPONENTS: Components = {
+  a: Anchor,
+  img: Image,
+  li: ListItem,
+  input: Checkbox,
+};
 
 /** The folder the note sits in, where its relative links start. */
 const NoteFolder = createContext<FileRef | undefined>(undefined);
+
+/** The note's text, and what changes it when a task's checkbox is tapped. */
+const Tasks = createContext<
+  { text: string; edit: (text: string) => void } | undefined
+>(undefined);
+
+/** Where the list item around a checkbox starts in the note's text. */
+const TaskAt = createContext<number | undefined>(undefined);
 
 /** Whether an address leads to a web page outside the app. */
 function onTheWeb(href: string): boolean {
@@ -61,25 +75,61 @@ function onTheWeb(href: string): boolean {
 export function Rendered({
   text,
   folder,
+  onEdit,
 }: {
   text: string;
   /** The folder the note sits in, if known: relative links start there. */
   folder?: FileRef | undefined;
+  /** Takes the text with a task checked or unchecked, if the user may edit. */
+  onEdit?: ((text: string) => void) | undefined;
 }) {
   return (
     <NoteFolder value={folder}>
-      <Fallible text={text}>
-        <div className="markdown">
-          <Markdown
-            remarkPlugins={REMARK}
-            rehypePlugins={REHYPE}
-            components={COMPONENTS}
-          >
-            {text}
-          </Markdown>
-        </div>
-      </Fallible>
+      <Tasks value={onEdit && { text, edit: onEdit }}>
+        <Fallible text={text}>
+          <div className="markdown">
+            <Markdown
+              remarkPlugins={REMARK}
+              rehypePlugins={REHYPE}
+              components={COMPONENTS}
+            >
+              {text}
+            </Markdown>
+          </div>
+        </Fallible>
+      </Tasks>
     </NoteFolder>
+  );
+}
+
+/** A list item, which tells a task's checkbox where its text starts. */
+function ListItem({ node, ...props }: ComponentProps<"li"> & ExtraProps) {
+  return (
+    <TaskAt value={node?.position?.start.offset}>
+      <li {...props} />
+    </TaskAt>
+  );
+}
+
+/**
+ * A task's checkbox, which a tap checks or unchecks in the note's text when
+ * the user may edit it. One that no Markdown task marker stands for, as in
+ * a task list written in HTML, stays as it is.
+ */
+function Checkbox({ checked = false }: ComponentProps<"input">) {
+  const tasks = useContext(Tasks);
+  const offset = useContext(TaskAt);
+  const toggled =
+    tasks && offset !== undefined ? toggleTask(tasks.text, offset) : undefined;
+  return (
+    <input
+      type="checkbox"
+      checked={checked}
+      disabled={toggled === undefined}
+      onChange={() => {
+        if (toggled !== undefined) tasks?.edit(toggled);
+      }}
+    />
   );
 }
 
