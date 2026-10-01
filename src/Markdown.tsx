@@ -1,4 +1,9 @@
-import type { ComponentProps, MouseEvent } from "react";
+import {
+  Component,
+  type ComponentProps,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import Markdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -18,16 +23,53 @@ function onTheWeb(href: string): boolean {
  */
 export function Rendered({ text }: { text: string }) {
   return (
-    <div className="markdown">
-      <Markdown
-        remarkPlugins={REMARK}
-        rehypePlugins={REHYPE}
-        components={COMPONENTS}
-      >
-        {text}
-      </Markdown>
-    </div>
+    <Fallible text={text}>
+      <div className="markdown">
+        <Markdown
+          remarkPlugins={REMARK}
+          rehypePlugins={REHYPE}
+          components={COMPONENTS}
+        >
+          {text}
+        </Markdown>
+      </div>
+    </Fallible>
   );
+}
+
+/**
+ * Shows the text as written when rendering it fails, as notes nested deeper
+ * than the renderer's stack make it, rather than the app failing as a whole.
+ * A new text is rendered again.
+ */
+class Fallible extends Component<
+  { text: string; children: ReactNode },
+  { text: string; failed: boolean }
+> {
+  override state = { text: this.props.text, failed: false };
+
+  static getDerivedStateFromProps(
+    { text }: { text: string },
+    state: { text: string },
+  ) {
+    return text === state.text ? null : { text, failed: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  override render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <>
+        <p role="alert" className="failure">
+          DriveMD could not render this note, so it shows as written.
+        </p>
+        <pre className="source">{this.props.text}</pre>
+      </>
+    );
+  }
 }
 
 /**

@@ -1,4 +1,5 @@
 import react from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import firebase from "./firebase.json" with { type: "json" };
 
@@ -14,8 +15,23 @@ const headers = Object.fromEntries(
     ?.headers.map(({ key, value }) => [key, value]) ?? [],
 );
 
+// The browser build of this entity decoder, which the Markdown parser uses,
+// decodes through innerHTML: Trusted Types refuse that, and every note with
+// "&amp;" would fail to render. Its other build looks entities up in a table.
+const entities = fileURLToPath(
+  new URL(
+    "node_modules/decode-named-character-reference/index.js",
+    import.meta.url,
+  ),
+);
+
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: [
+      { find: /^decode-named-character-reference$/, replacement: entities },
+    ],
+  },
   server: { port, strictPort: true },
   preview: { port, strictPort: true, headers },
   test: {
