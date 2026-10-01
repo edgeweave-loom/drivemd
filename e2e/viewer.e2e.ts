@@ -25,7 +25,9 @@ test("renders a note as GitHub does, under the security policy", async ({
     note.getByRole("link", { name: "Image: a chart" }),
   ).toHaveAttribute("href", "https://example.com/chart.png");
   await expect(note.locator("img")).toHaveCount(0);
-  // Relative links lead where their path does in Drive.
+  // Relative links lead where their path does in Drive, once they come near
+  // the screen.
+  await note.getByText(/^Next:/).scrollIntoViewIfNeeded();
   await expect(note.getByText("nothing")).toHaveClass("unresolved");
   await expect(note.getByRole("link", { name: "a photo" })).toHaveAttribute(
     "href",
@@ -46,10 +48,9 @@ test("opens a note a relative link leads to", async ({ page }) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
 
-  await page
-    .locator(".markdown")
-    .getByRole("link", { name: "the notes" })
-    .click();
+  const note = page.locator(".markdown");
+  await note.getByText(/^Next:/).scrollIntoViewIfNeeded();
+  await note.getByRole("link", { name: "the notes" }).click();
   await expect(
     page.getByRole("heading", { level: 2, name: "notes.md" }),
   ).toBeVisible();

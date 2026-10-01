@@ -1,5 +1,8 @@
 import { FOLDER, type DriveItem, type FileRef } from "./drive.ts";
 
+// Drive nests folders 100 deep; a path of many more steps leads nowhere.
+const MAX_STEPS = 257;
+
 /** What a relative link or image in a note leads to in Drive. */
 export interface Found {
   /** What opens: a shortcut's target, or the item itself. */
@@ -28,8 +31,10 @@ export function relativePath(href: string): string[] | undefined {
     return;
   }
   const [path = ""] = href.split(/[?#]/);
+  const steps = path.split("/");
+  if (steps.length > MAX_STEPS) return;
   try {
-    return path.split("/").map(decodeURIComponent);
+    return steps.map(decodeURIComponent);
   } catch {
     return;
   }
@@ -56,9 +61,11 @@ export async function resolve(
       here = { ref: { id: parent }, name: "..", mimeType: FOLDER };
       continue;
     }
-    const item = (await read.children(here.ref)).find(
+    const named = (await read.children(here.ref)).filter(
       ({ name }) => name === step,
     );
+    // A shortcut never hides the item whose name it takes.
+    const item = named.find(({ target }) => !target) ?? named[0];
     if (!item) return;
     const opens = item.target ?? item;
     here = {

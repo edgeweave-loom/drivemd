@@ -1,5 +1,5 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DriveError, type DriveItem, type FileRef } from "./drive.ts";
 import { Rendered } from "./Markdown.tsx";
 import { getPlace } from "./router.ts";
@@ -40,6 +40,7 @@ function open(text: string, folder: FileRef | undefined = { id: "notes" }) {
 
 afterEach(() => {
   visit("/");
+  vi.unstubAllGlobals();
 });
 
 describe("relative links in a note", () => {
@@ -124,6 +125,42 @@ describe("relative links in a note", () => {
       "Not found in Google Drive",
     );
     expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("wait until they come near the screen to ask Drive", async () => {
+    const observers: IntersectionObserverCallback[] = [];
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(report: IntersectionObserverCallback) {
+          observers.push(report);
+        }
+        observe() {
+          return undefined;
+        }
+        disconnect() {
+          return undefined;
+        }
+      },
+    );
+    const { drive } = open("[Plan](plan.md)");
+
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(drive.listChildren).not.toHaveBeenCalled();
+    act(() => {
+      for (const report of observers) {
+        report(
+          [
+            { isIntersecting: false },
+            { isIntersecting: true },
+          ] as IntersectionObserverEntry[],
+          {} as IntersectionObserver,
+        );
+      }
+    });
+
+    expect(await screen.findByRole("link", { name: "Plan" })).toBeVisible();
+    expect(drive.listChildren).toHaveBeenCalledOnce();
   });
 
   it("show faded, without asking Drive, in a note whose folder is unknown", () => {

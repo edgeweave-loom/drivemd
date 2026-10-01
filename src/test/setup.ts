@@ -16,6 +16,22 @@ if ("window" in globalThis) {
   // jsdom does not lay pages out, so it cannot scroll them.
   window.scrollTo = () => undefined;
   Element.prototype.scrollIntoView = () => undefined;
+  // Nor does it know what is on screen: everything is.
+  window.IntersectionObserver = class {
+    readonly report: IntersectionObserverCallback;
+    constructor(report: IntersectionObserverCallback) {
+      this.report = report;
+    }
+    observe(target: Element) {
+      this.report(
+        [{ target, isIntersecting: true } as IntersectionObserverEntry],
+        this as unknown as IntersectionObserver,
+      );
+    }
+    disconnect() {
+      return undefined;
+    }
+  } as unknown as typeof IntersectionObserver;
   installScreen();
 }
 

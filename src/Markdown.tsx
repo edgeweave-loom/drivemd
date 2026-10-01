@@ -2,7 +2,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Component,
   createContext,
+  useCallback,
   useContext,
+  useState,
   type ComponentProps,
   type MouseEvent,
   type ReactNode,
@@ -152,6 +154,34 @@ function Anchor({
   return <a {...attributes} id={id ?? name} />;
 }
 
+/**
+ * Whether the element came near the screen, and the ref that watches it.
+ * Links and images wait for it before they ask Drive anything, so that a
+ * note with thousands of them asks only for those the user scrolls to.
+ */
+function useSeen(): [
+  boolean,
+  (element: Element | null) => (() => void) | undefined,
+] {
+  const [seen, setSeen] = useState(false);
+  const near = useCallback((element: Element | null) => {
+    if (!element) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some(({ isIntersecting }) => isIntersecting)) return;
+        observer.disconnect();
+        setSeen(true);
+      },
+      { rootMargin: "50%" },
+    );
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+  return [seen, near];
+}
+
 /** The attributes a link keeps, whatever it leads to. */
 type LinkAttributes = Pick<
   ComponentProps<"a">,
@@ -179,7 +209,12 @@ function Resolved({
 }: LinkAttributes & { folder: FileRef; path: string[] }) {
   const { drive } = useDrive();
   const client = useQueryClient();
-  const found = useQuery(resolveQuery(drive, client, folder, path));
+  const [seen, near] = useSeen();
+  const found = useQuery({
+    ...resolveQuery(drive, client, folder, path),
+    enabled: seen,
+  });
+  if (!seen) return <span {...attributes} ref={near} />;
   if (found.isError) {
     return (
       <span

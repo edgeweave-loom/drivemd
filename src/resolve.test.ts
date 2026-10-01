@@ -17,6 +17,11 @@ describe("relativePath", () => {
     expect(relativePath(href)).toEqual(steps);
   });
 
+  it("leaves out a path of more steps than Drive nests folders", () => {
+    expect(relativePath("a/".repeat(256))).toHaveLength(257);
+    expect(relativePath("a/".repeat(257))).toBeUndefined();
+  });
+
   it.each([
     [""],
     ["#heading"],
@@ -114,6 +119,18 @@ describe("resolve", () => {
       ),
     ).resolves.toMatchObject({ ref: { id: "photo" } });
     expect(read.parent).not.toHaveBeenCalled();
+  });
+
+  it("prefers an item to a shortcut of the same name", async () => {
+    const read = reader();
+    read.children.mockResolvedValueOnce([
+      { ...shortcutItem("plan.md", "text/markdown"), id: "to-plan" },
+      driveItem("plan.md", { id: "plan" }),
+    ]);
+
+    await expect(
+      resolve({ id: "notes" }, ["plan.md"], read),
+    ).resolves.toMatchObject({ ref: { id: "plan" } });
   });
 
   it("follows a shortcut to its target, keeping the shortcut's name", async () => {
