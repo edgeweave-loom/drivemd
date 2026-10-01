@@ -83,6 +83,8 @@ function seed(): FakeFile[] {
         "",
         "Tea &amp; cups &copy; Ada&nbsp;Lovelace.",
         "",
+        "Next: [the notes](notes.md), [the archive](Archive/), [a photo](photo.png) and [nothing](gone.md).",
+        "",
         "<details><summary>More</summary>",
         "",
         '<b onclick="alert(1)">Bold</b> <script>alert(1)</script> <!-- hidden -->',

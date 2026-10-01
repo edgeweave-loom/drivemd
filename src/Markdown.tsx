@@ -1,5 +1,8 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Component,
+  createContext,
+  useContext,
   type ComponentProps,
   type MouseEvent,
   type ReactNode,
@@ -11,7 +14,14 @@ import rehypeSanitize from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
+import { useDrive } from "./drive-context.ts";
+import { inDrive } from "./drive-web.ts";
+import { FOLDER, GOOGLE_TYPES, isMarkdown, type FileRef } from "./drive.ts";
+import { Link } from "./Link.tsx";
 import { remarkProperties } from "./properties.ts";
+import { resolveQuery } from "./queries.ts";
+import { relativePath } from "./resolve.ts";
+import { hrefOf } from "./router.ts";
 
 const REMARK = [remarkGfm, remarkFrontmatter, remarkProperties];
 // Raw HTML is parsed, headings get ids, then GitHub's rules sanitize it all,
@@ -19,6 +29,9 @@ const REMARK = [remarkGfm, remarkFrontmatter, remarkProperties];
 // highlighted last, with classes the sanitizer would drop.
 const REHYPE = [rehypeRaw, rehypeSlug, rehypeSanitize, rehypeHighlight];
 const COMPONENTS: Components = { a: Anchor, img: Image };
+
+/** The folder the note sits in, where its relative links start. */
+const NoteFolder = createContext<FileRef | undefined>(undefined);
 
 /** Whether an address leads to a web page outside the app. */
 function onTheWeb(href: string): boolean {
@@ -30,19 +43,28 @@ function onTheWeb(href: string): boolean {
  * strikethrough, autolinks, footnotes, highlighted code, sanitized HTML and
  * front matter as a table of properties.
  */
-export function Rendered({ text }: { text: string }) {
+export function Rendered({
+  text,
+  folder,
+}: {
+  text: string;
+  /** The folder the note sits in, if known: relative links start there. */
+  folder?: FileRef | undefined;
+}) {
   return (
-    <Fallible text={text}>
-      <div className="markdown">
-        <Markdown
-          remarkPlugins={REMARK}
-          rehypePlugins={REHYPE}
-          components={COMPONENTS}
-        >
-          {text}
-        </Markdown>
-      </div>
-    </Fallible>
+    <NoteFolder value={folder}>
+      <Fallible text={text}>
+        <div className="markdown">
+          <Markdown
+            remarkPlugins={REMARK}
+            rehypePlugins={REHYPE}
+            components={COMPONENTS}
+          >
+            {text}
+          </Markdown>
+        </div>
+      </Fallible>
+    </NoteFolder>
   );
 }
 
@@ -124,8 +146,67 @@ function Anchor({
     return <a {...attributes} href={href} target="_blank" rel="noreferrer" />;
   }
   if (href.startsWith("mailto:")) return <a {...attributes} href={href} />;
+  const path = relativePath(href);
+  if (path) return <DriveLink path={path}>{children}</DriveLink>;
   // A target for links within the page, which HTML may mark by name.
   return <a {...attributes} id={id ?? name} />;
+}
+
+/**
+ * A relative link, which leads where its path does in Drive from the note's
+ * folder: a Markdown file or a folder opens in the app, another file opens in
+ * Google Drive, and a link to nothing is faded.
+ */
+function DriveLink({
+  path,
+  children,
+}: {
+  path: string[];
+  children: ReactNode;
+}) {
+  const folder = useContext(NoteFolder);
+  if (!folder) return <Unresolved>{children}</Unresolved>;
+  return (
+    <Resolved folder={folder} path={path}>
+      {children}
+    </Resolved>
+  );
+}
+
+function Resolved({
+  folder,
+  path,
+  children,
+}: {
+  folder: FileRef;
+  path: string[];
+  children: ReactNode;
+}) {
+  const { drive } = useDrive();
+  const client = useQueryClient();
+  const found = useQuery(resolveQuery(drive, client, folder, path));
+  if (found.isPending) return <span>{children}</span>;
+  if (!found.data) return <Unresolved>{children}</Unresolved>;
+  const { ref, name, mimeType } = found.data;
+  if (mimeType === FOLDER) {
+    return <Link to={hrefOf({ name: "folder", folder: ref })}>{children}</Link>;
+  }
+  if (!mimeType.startsWith(GOOGLE_TYPES) && isMarkdown(name)) {
+    return <Link to={hrefOf({ name: "file", file: ref })}>{children}</Link>;
+  }
+  return (
+    <a href={inDrive(ref)} target="_blank" rel="noreferrer">
+      {children}
+    </a>
+  );
+}
+
+function Unresolved({ children }: { children: ReactNode }) {
+  return (
+    <span className="unresolved" title="Not found in Google Drive">
+      {children}
+    </span>
+  );
 }
 
 /**

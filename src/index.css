@@ -512,3 +512,8 @@ dialog.drawer {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+
+.markdown .unresolved {
+  color: var(--muted);
+  text-decoration: underline dotted;
+}

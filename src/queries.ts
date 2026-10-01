@@ -1,5 +1,6 @@
 import { QueryClient, queryOptions, skipToken } from "@tanstack/react-query";
 import { climb } from "./climb.ts";
+import { resolve } from "./resolve.ts";
 import {
   DriveError,
   type Drive,
@@ -114,6 +115,34 @@ export function contentQuery(drive: Drive, file: FileMetadata) {
   });
 }
 
+/**
+ * What a relative path in a note leads to from the note's folder, or null,
+ * reading folders through the cache that the pages share.
+ */
+export function resolveQuery(
+  drive: Drive,
+  client: QueryClient,
+  folder: FileRef,
+  path: string[],
+) {
+  return queryOptions({
+    queryKey: key("resolve", folder.id, folder.resourceKey, ...path),
+    queryFn: async () =>
+      (await resolve(folder, path, {
+        // The resolution as a whole is tried again.
+        children: (inner) =>
+          client.query({ ...childrenQuery(drive, inner), retry: false }),
+        parent: async (inner) => {
+          const details = await client.query({
+            ...metadataQuery(drive, inner),
+            retry: false,
+          });
+          return details.parents[0];
+        },
+      })) ?? null,
+  });
+}
+
 /** Why a shortcut cannot be followed, or null when its target opens. */
 export function shortcutQuery(drive: Drive, target: ShortcutTarget) {
   return queryOptions({
@@ -141,15 +170,23 @@ export function climbQuery(drive: Drive, client: QueryClient, item: FileRef) {
 
 /**
  * Has Drive asked again for whatever shows a file that was just created,
- * renamed, moved or trashed: lists, searches, Recent, paths and shortcut
- * checks. The file's own details are asked again only if its page stays.
+ * renamed, moved or trashed: lists, searches, Recent, paths, shortcut checks
+ * and the links in notes. The file's own details are asked again only if its
+ * page stays.
  */
 export function refreshAfterChange(
   client: QueryClient,
   file: FileRef,
   { leaving = false } = {},
 ): void {
-  for (const call of ["children", "search", "recent", "climb", "shortcut"]) {
+  for (const call of [
+    "children",
+    "search",
+    "recent",
+    "climb",
+    "shortcut",
+    "resolve",
+  ]) {
     void client.invalidateQueries({ queryKey: key(call) });
   }
   void client.invalidateQueries({
