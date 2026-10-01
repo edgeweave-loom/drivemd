@@ -1,8 +1,15 @@
-import { QueryClient } from "@tanstack/react-query";
-import { DriveError, type FileRef } from "./drive.ts";
+import { QueryClient, queryOptions, skipToken } from "@tanstack/react-query";
+import { climb } from "./climb.ts";
+import {
+  DriveError,
+  type Drive,
+  type FileMetadata,
+  type FileRef,
+  type ShortcutTarget,
+} from "./drive.ts";
 
 // Vaults seldom come and go, and finding them takes a call per vault.
-export const VAULTS_STALE_TIME = 5 * 60_000;
+const VAULTS_STALE_TIME = 5 * 60_000;
 
 /**
  * A cache for Drive's answers. Create one per signed-in account, so that
@@ -18,6 +25,94 @@ export function createQueryClient(): QueryClient {
   });
 }
 
+// Each Drive call has its key here, so that every page, the folder picker
+// and the viewer share Drive's answers.
+
+/** A key for Drive's answers: the call, then what it is about. */
+function key(...parts: (string | undefined)[]) {
+  return parts;
+}
+
+/** An item's details; none while there is no item to ask about. */
+export function metadataQuery(drive: Drive, item: FileRef | undefined) {
+  return queryOptions({
+    queryKey: key("metadata", item?.id, item?.resourceKey),
+    queryFn: item ? () => drive.getMetadata(item) : skipToken,
+  });
+}
+
+export function childrenQuery(drive: Drive, folder: FileRef) {
+  return queryOptions({
+    queryKey: key("children", folder.id, folder.resourceKey),
+    queryFn: () => drive.listChildren(folder),
+  });
+}
+
+export function shortcutsQuery(drive: Drive) {
+  return queryOptions({
+    queryKey: key("shortcuts"),
+    queryFn: drive.listShortcuts,
+  });
+}
+
+export function sharedWithMeQuery(drive: Drive) {
+  return queryOptions({
+    queryKey: key("shared-with-me"),
+    queryFn: drive.listSharedWithMe,
+  });
+}
+
+export function sharedDrivesQuery(drive: Drive) {
+  return queryOptions({
+    queryKey: key("shared-drives"),
+    queryFn: drive.listSharedDrives,
+  });
+}
+
+export function recentQuery(drive: Drive) {
+  return queryOptions({ queryKey: key("recent"), queryFn: drive.listRecent });
+}
+
+export function vaultsQuery(drive: Drive) {
+  return queryOptions({
+    queryKey: key("vaults"),
+    queryFn: drive.findVaults,
+    staleTime: VAULTS_STALE_TIME,
+  });
+}
+
+export function searchQuery(drive: Drive, text: string) {
+  return queryOptions({
+    queryKey: key("search", text),
+    queryFn: () => drive.search(text),
+  });
+}
+
+/** Why a shortcut cannot be followed, or null when its target opens. */
+export function shortcutQuery(drive: Drive, target: ShortcutTarget) {
+  return queryOptions({
+    queryKey: key("shortcut", target.id, target.resourceKey),
+    // A query cannot answer undefined.
+    queryFn: async () => (await drive.checkShortcut(target)) ?? null,
+  });
+}
+
+/** An item and the folders above it, each read once through the cache. */
+export function climbQuery(drive: Drive, client: QueryClient, item: FileRef) {
+  return queryOptions({
+    queryKey: key("climb", item.id, item.resourceKey),
+    queryFn: () =>
+      climb(item, (ref) =>
+        client.query({
+          ...metadataQuery(drive, ref),
+          // The climb as a whole is tried again, reading what came already
+          // from the cache.
+          retry: false,
+        }),
+      ),
+  });
+}
+
 /**
  * Has Drive asked again for whatever shows a file that was just created,
  * renamed, moved or trashed: lists, searches, Recent, paths and shortcut
@@ -28,18 +123,40 @@ export function refreshAfterChange(
   file: FileRef,
   { leaving = false } = {},
 ): void {
-  for (const queryKey of [
-    ["children"],
-    ["search"],
-    ["recent"],
-    ["climb"],
-    ["shortcut"],
-  ]) {
-    void client.invalidateQueries({ queryKey });
+  for (const call of ["children", "search", "recent", "climb", "shortcut"]) {
+    void client.invalidateQueries({ queryKey: key(call) });
   }
   void client.invalidateQueries({
-    queryKey: ["metadata", file.id],
+    queryKey: key("metadata", file.id),
     refetchType: leaving ? "none" : "active",
+  });
+}
+
+/** Puts the file in its new folders, before Drive's details say so. */
+export function setParents(
+  client: QueryClient,
+  file: FileRef,
+  parents: string[],
+): void {
+  client.setQueriesData<FileMetadata>(
+    { queryKey: key("metadata", file.id) },
+    (before) => before && { ...before, parents },
+  );
+}
+
+/** Has the next search ask Drive again, even for the same words. */
+export function refreshSearches(client: QueryClient): void {
+  void client.invalidateQueries({ queryKey: key("search") });
+}
+
+/**
+ * Has Recent ask Drive again the next time it shows, once a file was marked
+ * viewed.
+ */
+export function refreshRecent(client: QueryClient): Promise<void> {
+  return client.invalidateQueries({
+    queryKey: key("recent"),
+    refetchType: "none",
   });
 }
 

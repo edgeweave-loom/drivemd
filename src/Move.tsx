@@ -1,9 +1,4 @@
-import {
-  skipToken,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ConfirmDialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
@@ -16,7 +11,15 @@ import {
 import { describeError } from "./errors.ts";
 import { entriesOf } from "./listing.ts";
 import { Loaded } from "./Loaded.tsx";
-import { refreshAfterChange } from "./queries.ts";
+import {
+  childrenQuery,
+  metadataQuery,
+  refreshAfterChange,
+  setParents,
+  sharedDrivesQuery,
+  sharedWithMeQuery,
+  shortcutsQuery,
+} from "./queries.ts";
 import { ROOTS } from "./roots.ts";
 import { hrefOf, navigate, routeOf, type Crumb } from "./router.ts";
 import { useVaultCheck, vaultNote } from "./vaults.ts";
@@ -115,19 +118,13 @@ function MoveDialog({
   });
   const vault = useVaultCheck(page, true);
   const folder = here.kind === "folder" ? here.folder : undefined;
-  const target = useQuery({
-    queryKey: ["metadata", folder?.id, folder?.resourceKey],
-    queryFn: folder ? () => drive.getMetadata(folder) : skipToken,
-  });
+  const target = useQuery(metadataQuery(drive, folder));
   const move = useMutation({
     mutationFn: (to: FileRef) => drive.moveFile(file, to),
     onSuccess: (moved) => {
       // Another move must start from the file's new folder, even before
       // Drive's details come back.
-      client.setQueriesData<FileMetadata>(
-        { queryKey: ["metadata", file.id] },
-        (before) => before && { ...before, parents: moved.parents },
-      );
+      setParents(client, file, moved.parents);
       refreshAfterChange(client, file);
     },
   });
@@ -254,10 +251,7 @@ function SpotList({
 
 function SharedDriveSpots({ onOpen }: { onOpen: (spot: Spot) => void }) {
   const { drive } = useDrive();
-  const drives = useQuery({
-    queryKey: ["shared-drives"],
-    queryFn: drive.listSharedDrives,
-  });
+  const drives = useQuery(sharedDrivesQuery(drive));
   return (
     <Loaded query={drives}>
       {(found) => (
@@ -286,17 +280,13 @@ function FolderSpots({
 }) {
   const { drive } = useDrive();
   // The same lists as the navigator's pages, so they share Drive's answers.
-  const items = useQuery({
-    ...(spot.kind === "folder"
-      ? {
-          queryKey: ["children", spot.folder.id, spot.folder.resourceKey],
-          queryFn: () => drive.listChildren(spot.folder),
-        }
+  const listing =
+    spot.kind === "folder"
+      ? childrenQuery(drive, spot.folder)
       : spot.kind === "shortcuts"
-        ? { queryKey: ["shortcuts"], queryFn: drive.listShortcuts }
-        : { queryKey: ["shared-with-me"], queryFn: drive.listSharedWithMe }),
-    select: foldersOf,
-  });
+        ? shortcutsQuery(drive)
+        : sharedWithMeQuery(drive);
+  const items = useQuery({ ...listing, select: foldersOf });
   return (
     <Loaded query={items}>
       {(found) => <Spots spots={found} onOpen={onOpen} />}

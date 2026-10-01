@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useDrive } from "./drive-context.ts";
 import type { FileRef } from "./drive.ts";
 import { useClimb } from "./path.ts";
-import { VAULTS_STALE_TIME } from "./queries.ts";
+import { vaultsQuery } from "./queries.ts";
 
 export type VaultCheck = "in-vault" | "outside" | "checking" | "unknown";
 
@@ -32,12 +32,7 @@ export function vaultNote(
  */
 export function useVaultCheck(item: FileRef, enabled: boolean): VaultCheck {
   const { drive } = useDrive();
-  const vaults = useQuery({
-    queryKey: ["vaults"],
-    queryFn: drive.findVaults,
-    staleTime: VAULTS_STALE_TIME,
-    enabled,
-  });
+  const vaults = useQuery({ ...vaultsQuery(drive), enabled });
   // Where the item really is, whatever path the user took to it.
   const climb = useClimb(item, enabled);
   if (vaults.isError || climb.isError) return "unknown";

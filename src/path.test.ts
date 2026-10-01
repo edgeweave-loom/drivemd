@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { DriveError, type FileMetadata, type FileRef } from "./drive.ts";
-import { climb, crumbsOf } from "./path.ts";
+import { climb } from "./climb.ts";
+import { crumbsOf } from "./path.ts";
 import {
   driveItem,
   folderItem,

@@ -2,6 +2,7 @@ import { useDrive } from "./drive-context.ts";
 import type { FileRef } from "./drive.ts";
 import { ItemListing } from "./EntryList.tsx";
 import { Link } from "./Link.tsx";
+import { childrenQuery } from "./queries.ts";
 import type { Crumb } from "./router.ts";
 
 /**
@@ -29,8 +30,7 @@ export function FolderPane({
         </Link>
       )}
       <ItemListing
-        queryKey={["children", folder.id, folder.resourceKey]}
-        list={() => drive.listChildren(folder)}
+        query={childrenQuery(drive, folder)}
         trail={path}
         current={current}
         empty="No folders or Markdown files here."
