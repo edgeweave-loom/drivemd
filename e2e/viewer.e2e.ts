@@ -168,3 +168,35 @@ test("saves with Ctrl+S, and follows a link with Ctrl+click in the source", asyn
   await expect(page.getByText(/^Last modified by/)).toBeVisible();
   await expect(page.locator(".markdown")).toBeAttached();
 });
+
+test("shows someone else's change at save, and overwrites it when asked", async ({
+  page,
+  drive,
+}) => {
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  await page.locator(".markdown").getByRole("checkbox").first().check();
+  // Someone else saves the note meanwhile.
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content = `${String(plan.content)}\nTheir line.\n`;
+  plan.revision = 2;
+
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Someone changed this file in Google Drive",
+    }),
+  ).toBeVisible();
+  await expect(page.locator(".differences .cm-content")).toBeVisible();
+  await expect(page.locator(".differences")).toContainText("Their line.");
+  expect(drive.writes).toEqual([]);
+
+  await page.getByRole("button", { name: "Overwrite with mine" }).click();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  expect(drive.writes).toEqual(["keep plan revision-2", "save plan"]);
+  expect(String(drive.files.get("plan")?.content)).not.toContain("Their line.");
+  expect(String(drive.files.get("plan")?.content)).toContain(
+    "- [x] Boil water",
+  );
+});
