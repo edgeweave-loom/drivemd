@@ -242,6 +242,14 @@ export function setParents(
   );
 }
 
+/** Shows the file's new details at once, as a save answered them. */
+export function setDetails(client: QueryClient, file: FileMetadata): void {
+  client.setQueriesData<FileMetadata>(
+    { queryKey: key("metadata", file.id) },
+    file,
+  );
+}
+
 /** Has the next search ask Drive again, even for the same words. */
 export function refreshSearches(client: QueryClient): void {
   void client.invalidateQueries({ queryKey: key("search") });

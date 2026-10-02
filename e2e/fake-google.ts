@@ -1,4 +1,5 @@
 import { test as base, expect, type Page, type Route } from "@playwright/test";
+import { createHash } from "node:crypto";
 
 // Made-up data only: no real account, Drive ID or note.
 export const EMAIL = "ada@example.com";
@@ -46,6 +47,8 @@ interface FakeFile {
   canAddChildren?: boolean;
   /** What a file holds, empty unless set. */
   content?: string | Buffer;
+  /** How many times it was saved, from 1. */
+  revision?: number;
 }
 
 /** A small Drive: My Drive, a vault, shortcuts, a shared drive, a share. */
@@ -197,6 +200,14 @@ export class FakeDrive {
       await this.send(route, url.pathname);
       return;
     }
+    const upload = /^\/upload\/drive\/v3\/files\/([\w-]+)$/.exec(url.pathname);
+    if (upload && request.method() === "PATCH") {
+      await reply(
+        route,
+        ...this.save(upload[1] ?? "", request.postDataBuffer()),
+      );
+      return;
+    }
     const answer =
       url.pathname.startsWith("/drive/v3/") && !url.searchParams.has("alt")
         ? this.answer(
@@ -231,6 +242,16 @@ export class FakeDrive {
     });
   }
 
+  /** Replaces a file's bytes, as an upload of type media does. */
+  private save(id: string, bytes: Buffer | null): [number, unknown] {
+    const file = this.files.get(id);
+    if (!file) return [404, { error: { message: `File not found: ${id}.` } }];
+    file.content = bytes ?? Buffer.alloc(0);
+    file.revision = (file.revision ?? 1) + 1;
+    this.writes.push(`save ${id}`);
+    return [200, asJson(file)];
+  }
+
   private answer(
     method: string,
     path: string,
@@ -256,6 +277,11 @@ export class FakeDrive {
       this.files.set(file.id, file);
       this.writes.push(`create ${name}`);
       return [200, asJson(file)];
+    }
+    const kept = /^\/files\/([\w-]+)\/revisions\/([\w-]+)$/.exec(path);
+    if (kept && method === "PATCH") {
+      this.writes.push(`keep ${kept[1] ?? ""} ${kept[2] ?? ""}`);
+      return [200, { id: kept[2] }];
     }
     const id = /^\/files\/([\w-]+)$/.exec(path)?.[1];
     if (id === undefined) return;
@@ -370,8 +396,10 @@ function asJson(file: FakeFile) {
     },
     modifiedTime: "2026-09-01T10:00:00.000Z",
     lastModifyingUser: { displayName: "Ada Lovelace" },
-    md5Checksum: "0123456789abcdef0123456789abcdef",
-    headRevisionId: "revision-1",
+    md5Checksum: createHash("md5")
+      .update(file.content ?? "")
+      .digest("hex"),
+    headRevisionId: `revision-${String(file.revision ?? 1)}`,
     size: String(Buffer.from(file.content ?? "").length),
   };
 }

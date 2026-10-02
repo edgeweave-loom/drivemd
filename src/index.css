@@ -527,3 +527,11 @@ dialog.drawer {
   min-width: 3rem;
   min-height: 3rem;
 }
+
+.unsaved {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  justify-content: flex-end;
+}
