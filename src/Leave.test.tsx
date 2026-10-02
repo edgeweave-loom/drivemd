@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FileContent } from "./FileContent.tsx";
+import { Link } from "./Link.tsx";
 import { getPlace, navigate } from "./router.ts";
 import { driveItem, metadata } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
@@ -53,6 +54,22 @@ describe("leaving a note with unsaved changes", () => {
     asked.mockReturnValue(true);
     navigate("/shortcuts");
     expect(getPlace().route).toEqual({ name: "shortcuts" });
+  });
+
+  it("asks before a link renews the token, so that a refusal opens no Google window", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { renew, rerender } = await edited();
+    rerender(
+      <>
+        <FileContent file={PLAN} />
+        <Link to="/shortcuts">Shortcuts</Link>
+      </>,
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "Shortcuts" }));
+
+    expect(renew).not.toHaveBeenCalled();
+    expect(getPlace().route).toEqual({ name: "file", file: { id: "plan" } });
   });
 
   it("does not ask when the note's own address changes, as on a rename", async () => {

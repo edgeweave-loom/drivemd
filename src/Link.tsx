@@ -1,6 +1,6 @@
 import type { ComponentProps, MouseEvent, ReactNode } from "react";
 import { useDrive } from "./drive-context.ts";
-import { navigate, type Crumb } from "./router.ts";
+import { mayLeave, navigate, type Crumb } from "./router.ts";
 
 /**
  * A link to a page of the app. A plain tap renews an expired token before
@@ -28,8 +28,10 @@ export function Link({
     const { button, metaKey, ctrlKey, shiftKey, altKey } = event;
     if (button !== 0 || metaKey || ctrlKey || shiftKey || altKey) return;
     event.preventDefault();
+    // Asked first, so that a refusal opens no Google window.
+    if (!mayLeave(to)) return;
     renew();
-    navigate(to, trail);
+    navigate(to, trail, { asked: true });
   }
   return (
     <a

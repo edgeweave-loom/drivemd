@@ -149,11 +149,6 @@ export function usePlace(): Place {
   return useSyncExternalStore(subscribe, getPlace);
 }
 
-/**
- * Opens a page of the app, from its top, keeping the trail the user took for
- * its breadcrumbs. Opening the page already shown replaces it in the history,
- * so that Back does not show it twice, and keeps its trail unless given one.
- */
 // What the page shown asks before the app leaves it, if anything.
 let guard: ((to: Route) => boolean) | undefined;
 
@@ -166,15 +161,27 @@ export function guardLeaving(ask: ((to: Route) => boolean) | undefined): void {
   guard = ask;
 }
 
+/**
+ * Whether the user agrees to leave the page for `href`, which a tap asks
+ * before it renews the token, so that a refusal opens no Google window.
+ */
+export function mayLeave(href: string): boolean {
+  return !guard || guard(routeOf(new URL(href, window.location.origin)));
+}
+
+/**
+ * Opens a page of the app, from its top, keeping the trail the user took for
+ * its breadcrumbs. Opening the page already shown replaces it in the history,
+ * so that Back does not show it twice, and keeps its trail unless given one.
+ */
 export function navigate(
   href: string,
   trail?: Crumb[],
   /** The user already chose to leave, as when they trash the file shown. */
   { asked = false } = {},
 ): void {
-  const url = new URL(href, window.location.origin);
-  if (!asked && guard && !guard(routeOf(url))) return;
-  const target = canonical(url);
+  if (!asked && !mayLeave(href)) return;
+  const target = canonical(new URL(href, window.location.origin));
   if (target === getPlace().href) {
     const state: unknown = trail === undefined ? history.state : { trail };
     history.replaceState(state, "", target);

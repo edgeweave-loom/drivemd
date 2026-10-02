@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { rememberAccount } from "./auth.ts";
 import { countDrafts, deleteDrafts, readDraft, writeDraft } from "./drafts.ts";
 import { keepPendingDrafts, useKeptDraft } from "./keep-draft.ts";
+import { guardLeaving } from "./router.ts";
 import { SignOut } from "./SignOut.tsx";
 
 const ADA = "ada@example.com";
@@ -202,6 +203,20 @@ describe("SignOut", () => {
     });
     vi.restoreAllMocks();
     await expect(countDrafts(ADA)).resolves.toBe(0);
+  });
+
+  it("asks before leaving a note's unsaved changes that the device did not keep", async () => {
+    guardLeaving(() => false);
+    vi.stubGlobal("indexedDB", {
+      open: () => {
+        throw new DOMException("Blocked", "SecurityError");
+      },
+    });
+    const signOut = show();
+
+    await new Promise((settle) => setTimeout(settle, 20));
+    expect(signOut).not.toHaveBeenCalled();
+    guardLeaving(undefined);
   });
 
   it("signs out on a device that keeps nothing", async () => {
