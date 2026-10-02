@@ -85,3 +85,55 @@ test("checks a task and saves that change only", async ({ page, drive }) => {
     before.replace("- [ ] Boil water", "- [x] Boil water"),
   );
 });
+
+test("edits the source and saves it", async ({ page, drive }, info) => {
+  const before = String(drive.files.get("plan")?.content);
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+
+  await page.getByRole("button", { name: "Edit" }).click();
+  const source = page.getByRole("textbox", { name: "Markdown source" });
+  await source.click();
+  await page.keyboard.press("ControlOrMeta+End");
+  // On iOS, CodeMirror waits for the keyboard's own Enter to reach the page
+  // before it continues the line: the next key waits for the new line.
+  const lines = source.locator(".cm-line");
+  const count = await lines.count();
+  await page.keyboard.press("Enter");
+  await expect(lines).toHaveCount(count + 1);
+  await page.keyboard.type("Green tea.");
+  if (info.project.name.startsWith("iphone")) {
+    await page.getByRole("button", { name: "Preview" }).click();
+  }
+  await expect(
+    page.locator(".markdown p").filter({ hasText: "Green tea." }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Save" }).click();
+
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  expect(String(drive.files.get("plan")?.content)).toBe(
+    `${before}\nGreen tea.`,
+  );
+});
+
+test("keeps one kind of line break whatever an input method types", async ({
+  page,
+  drive,
+}) => {
+  const notes = drive.files.get("notes");
+  if (notes) notes.content = "one\ntwo\n";
+  await signIn(page);
+  await page.goto("/edit?id=notes");
+
+  await page.getByRole("button", { name: "Edit" }).click();
+  const source = page.getByRole("textbox", { name: "Markdown source" });
+  await source.locator(".cm-line").first().click();
+  await page.keyboard.press("End");
+  // As an input method, or a phone keyboard typing copied text, inserts it.
+  await page.keyboard.insertText("A\r\nB\rC\u0000");
+  await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
+  await page.getByRole("button", { name: "Save" }).click();
+
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  expect(String(drive.files.get("notes")?.content)).toBe("oneA\nB\nC\ntwo\n");
+});

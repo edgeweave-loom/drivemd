@@ -14,6 +14,7 @@ import { Link } from "./Link.tsx";
 import { kindOf } from "./listing.ts";
 import { useLayout } from "./layout.ts";
 import { Loaded } from "./Loaded.tsx";
+import { Missing } from "./Missing.tsx";
 import { usePath } from "./path.ts";
 import { metadataQuery, refreshRecent } from "./queries.ts";
 import { hrefOf, routeOf, type Crumb } from "./router.ts";
@@ -29,19 +30,7 @@ const FileContent = lazy(() =>
 );
 
 function ViewerMissing() {
-  return (
-    <p role="alert" className="failure">
-      DriveMD could not load its viewer. Check your connection, then reload it.{" "}
-      <button
-        type="button"
-        onClick={() => {
-          window.location.reload();
-        }}
-      >
-        Reload
-      </button>
-    </p>
-  );
+  return <Missing part="viewer" />;
 }
 
 const WHEN = new Intl.DateTimeFormat(undefined, {

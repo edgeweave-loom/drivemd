@@ -72,7 +72,10 @@ The interface is in English and follows the system's light or dark theme.
    - Files the user cannot edit (view or comment access, locked file) open read-only with a badge giving the reason, and **Edit** is hidden. Files the user cannot download show that reason instead of their content.
    - Files over 1 MB are not read, so that rendering never stalls a phone: the page gives their size and a link to open them in Google Drive.
 5. **Editor.** Edits the raw Markdown source with CodeMirror 6 and Markdown syntax highlighting.
-   - Wide screens show the editor and preview side by side. Phones use an Edit / Preview toggle.
+   - **Edit** opens the editor and **Done** closes it, keeping any unsaved edits. Wide screens and tablets show the editor and preview side by side. Phones switch between the source and the preview.
+   - The editor holds the text while it shows: a task tapped in the preview reaches it as one edit, which undo reverts. The page holds to the revision the editor opened with, across the user's own saves, and shows a newer one from Drive only after **Done** with nothing unsaved.
+   - Whatever an edit inserts, typed, pasted, dropped, typed by an input method or put by a replacement, takes the file's own line break, and NUL characters and half characters are kept out, so that the saved bytes are the text shown.
+   - The editor runs in a shadow root, where CodeMirror styles itself through constructed style sheets: elsewhere it adds `<style>` elements, which the security policy blocks, and the policy needs no `'unsafe-inline'` for styles.
    - **Light live styling (v1).** Headings shown larger, bold and italic styled, inline code and code blocks in monospace. Markdown symbols (`**`, `#`, `[]()`) are dimmed, never hidden, so cursor and selection behave normally on phones.
    - A tap or click in the editor only places the cursor; checkboxes and links react in the viewer and the preview. On desktop, Cmd/Ctrl+click opens a link from the editor, as in Obsidian.
    - Enter continues lists and task lists.
