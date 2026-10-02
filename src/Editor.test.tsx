@@ -82,6 +82,16 @@ describe("Editor", () => {
     },
   );
 
+  it("keeps out what UTF-8 could not write back as shown: NUL, and half a character", () => {
+    const { view, onChange } = open("x");
+
+    view.dispatch({
+      changes: { from: 1, insert: "a\u0000b\uD800c\uDC00d\uD83D\uDE00" },
+    });
+
+    expect(onChange).toHaveBeenLastCalledWith("xab\uFFFDc\uFFFDd\uD83D\uDE00");
+  });
+
   it("continues a list, and a task list, on Enter", () => {
     const { view, onChange } = open("- [ ] Boil");
     view.dispatch({ selection: { anchor: view.state.doc.length } });
