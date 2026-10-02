@@ -1,5 +1,5 @@
 import { EditorView } from "@codemirror/view";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { DriveError } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
@@ -62,6 +62,32 @@ afterEach(() => {
 });
 
 describe("a save that finds someone else's change", () => {
+  it("updates the differences as the user types, keeping the same view", async () => {
+    holdScreen("wide");
+    await conflict();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const view = await differences();
+    const source = await waitFor(() => {
+      const content = document
+        .querySelector(".editor")
+        ?.shadowRoot?.querySelector<HTMLElement>(".cm-content");
+      const found = content && EditorView.findFromDOM(content);
+      if (!found) throw new Error("No editor yet");
+      return found;
+    });
+
+    act(() => {
+      source.dispatch({
+        changes: { from: source.state.doc.length, insert: "Tea\n" },
+      });
+    });
+
+    await waitFor(() => {
+      expect(view.state.sliceDoc()).toBe("- [x] Boil\nTea\n");
+    });
+    expect(await differences()).toBe(view);
+  });
+
   it("shows Drive's version against the user's, with nothing written", async () => {
     const { drive } = await conflict();
 
@@ -85,6 +111,20 @@ describe("a save that finds someone else's change", () => {
     expect(
       screen.queryByRole("heading", { name: /Someone changed/ }),
     ).toBeNull();
+  });
+
+  it("keeps Drive's version after the editor closes, and tells the page of it", async () => {
+    holdScreen("wide");
+    await conflict();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Keep the Drive version" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Done" }));
+
+    await new Promise((settle) => setTimeout(settle, 50));
+    expect(screen.getByText("Serve")).toBeVisible();
   });
 
   it("overwrites Drive's version with the user's, keeping Drive's in the history", async () => {
@@ -140,6 +180,34 @@ describe("a save that finds someone else's change", () => {
     );
   });
 
+  it("writes into the copy it made already when the user tries again", async () => {
+    const { drive } = await conflict();
+    const copy = driveItem("plan (conflict).md", {
+      id: "copy",
+      parents: ["work"],
+    });
+    drive.createFile.mockResolvedValue(copy);
+    drive.getMetadata.mockImplementation((file) =>
+      Promise.resolve(file.id === "copy" ? metadata(copy) : THEIRS),
+    );
+    drive.saveContent.mockRejectedValueOnce(
+      new DriveError(503, "Backend error"),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save mine as a copy" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("Backend error");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save mine as a copy" }),
+    );
+
+    await waitFor(() => {
+      expect(getPlace().route).toEqual({ name: "file", file: { id: "copy" } });
+    });
+    expect(drive.createFile).toHaveBeenCalledOnce();
+  });
+
   it("says why Drive refused a choice, and leaves the choice open", async () => {
     const { drive } = await conflict();
     drive.createFile.mockRejectedValue(
@@ -156,6 +224,20 @@ describe("a save that finds someone else's change", () => {
     expect(
       screen.getByRole("button", { name: "Overwrite with mine" }),
     ).toBeEnabled();
+
+    // The next conflict starts afresh.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Keep the Drive version" }),
+    );
+    drive.getMetadata.mockResolvedValue(
+      metadata(PLAN, { md5Checksum: "eeee", headRevisionId: "revision-5" }),
+    );
+    fireEvent.click(
+      (await screen.findAllByRole("checkbox"))[1] ?? document.body,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByRole("heading", { name: /Someone changed/ });
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("offers no copy for a file whose folder is out of reach", async () => {

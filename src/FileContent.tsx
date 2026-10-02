@@ -18,7 +18,12 @@ import { useDrive } from "./drive-context.ts";
 import { inDrive } from "./drive-web.ts";
 import { describeError } from "./errors.ts";
 import type { EditorHandle } from "./Editor.tsx";
-import { TooLargeError, type FileMetadata, type FileRef } from "./drive.ts";
+import {
+  TooLargeError,
+  type DriveItem,
+  type FileMetadata,
+  type FileRef,
+} from "./drive.ts";
 import { commandKey } from "./keys.ts";
 import { useLayout } from "./layout.ts";
 import { Loaded } from "./Loaded.tsx";
@@ -82,13 +87,14 @@ export function FileContent({ file }: { file: FileMetadata }) {
 }
 
 /**
- * A revision the page holds to: with the user's edits, or just saved here,
- * or else opened in the editor.
+ * A revision the page holds to: with the user's edits, or one the page has
+ * not heard of yet, or else one opened in the editor.
  */
 interface Held {
   opened: FileMetadata;
   text?: string;
-  saved?: true;
+  /** Newer than the page's details: just saved, or kept after a conflict. */
+  newer?: true;
 }
 
 /**
@@ -97,12 +103,12 @@ interface Held {
  * or it held one only for the editor.
  */
 function released(
-  { opened, text, saved }: Held,
+  { opened, text, newer }: Held,
   file: FileMetadata,
   note: Note | undefined,
 ): boolean {
   if (text !== undefined) return text === note?.text;
-  return !saved || sameRevision(opened, file);
+  return !newer || sameRevision(opened, file);
 }
 
 /** A save: the bytes and their text, over another revision if chosen. */
@@ -238,7 +244,11 @@ function Content({ file }: { file: FileMetadata }) {
           ),
       }),
     onSuccess: (result, { bytes, text }) => {
-      if ("conflict" in result) return;
+      // Drive said which revision it holds: the page's details follow.
+      if ("conflict" in result) {
+        setDetails(client, result.conflict);
+        return;
+      }
       const { saved } = result;
       const revision = saved.headRevisionId;
       if (revision !== undefined) {
@@ -251,10 +261,11 @@ function Content({ file }: { file: FileMetadata }) {
       setHeld((now) =>
         now?.text !== undefined && now.text !== text
           ? { opened: saved, text: now.text }
-          : { opened: saved, saved: true },
+          : { opened: saved, newer: true },
       );
     },
   });
+  const madeCopy = useRef<DriveItem | undefined>(undefined);
   // The user's version, saved as a copy beside the file after a conflict,
   // which then opens.
   const copy = useMutation({
@@ -265,10 +276,11 @@ function Content({ file }: { file: FileMetadata }) {
       bytes: Uint8Array<ArrayBuffer>;
       folder: string;
     }) => {
-      const made = await drive.createFile(
+      // A copy made by an attempt whose write failed takes the next one.
+      const made = (madeCopy.current ??= await drive.createFile(
         { id: folder },
         conflictName(opened.name),
-      );
+      ));
       const result = await saveText(
         drive,
         await drive.getMetadata(made),
@@ -314,8 +326,10 @@ function Content({ file }: { file: FileMetadata }) {
           copy={copy}
           onKeepTheirs={(theirs) => {
             // Their revision shows, in the editor too, without the edits.
-            setHeld({ opened: theirs });
+            setHeld({ opened: theirs, newer: true });
             save.reset();
+            copy.reset();
+            madeCopy.current = undefined;
           }}
         />
       )}
