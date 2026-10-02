@@ -77,6 +77,8 @@ function seed(): FakeFile[] {
         "",
         "See [the docs](https://example.com/docs) and ![a chart](https://example.com/chart.png).",
         "",
+        "Tea &amp; cups &copy; Ada&nbsp;Lovelace.",
+        "",
       ].join("\n"),
     },
     { id: "notes", name: "notes.md", mimeType: markdown, parents: ["work"] },

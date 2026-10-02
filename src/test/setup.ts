@@ -15,6 +15,7 @@ if ("window" in globalThis) {
   };
   // jsdom does not lay pages out, so it cannot scroll them.
   window.scrollTo = () => undefined;
+  Element.prototype.scrollIntoView = () => undefined;
   installScreen();
 }
 

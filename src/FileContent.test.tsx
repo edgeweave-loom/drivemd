@@ -20,10 +20,10 @@ function open(file: FileMetadata, content = utf8("# Plan\n\nTea.\n")) {
 }
 
 describe("FileContent", () => {
-  it("reads the content of the file Drive described, and shows it", async () => {
+  it("reads the content of the file Drive described, and renders it", async () => {
     const { drive } = open(PLAN);
 
-    expect(await screen.findByText(/^# Plan/)).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Plan" })).toBeVisible();
     expect(drive.getContent).toHaveBeenCalledExactlyOnceWith(PLAN, MB);
     expect(screen.queryByText(/only|Locked/)).toBeNull();
   });
@@ -46,7 +46,7 @@ describe("FileContent", () => {
       expect(
         await screen.findByText(reason, { selector: ".read-only" }),
       ).toBeVisible();
-      expect(screen.getByText(/^# Plan/)).toBeVisible();
+      expect(screen.getByRole("heading", { name: "Plan" })).toBeVisible();
     },
   );
 
@@ -105,7 +105,7 @@ describe("FileContent", () => {
   it("reads a file of 1 MB exactly", async () => {
     const { drive } = open(metadata(PLAN, { size: MB }));
 
-    expect(await screen.findByText(/Tea\./)).toBeVisible();
+    expect(await screen.findByText("Tea.")).toBeVisible();
     expect(drive.getContent).toHaveBeenCalledOnce();
   });
 

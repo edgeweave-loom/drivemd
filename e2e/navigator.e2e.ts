@@ -39,7 +39,9 @@ test("signs in, browses to a file and back, and keeps the path on reload", async
     page.getByRole("heading", { level: 2, name: "plan.md" }),
   ).toBeVisible();
   await expect(page.getByText(/^Last modified by Ada Lovelace/)).toBeVisible();
-  await expect(page.getByText(/^# The plan/)).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "The plan" }),
+  ).toBeVisible();
   await expect(crumbs(page).getByRole("link")).toHaveText([
     "Home",
     "My Drive",

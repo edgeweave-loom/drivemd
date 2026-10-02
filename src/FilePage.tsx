@@ -3,13 +3,12 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { Breadcrumbs } from "./Breadcrumbs.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
 import type { FileMetadata, FileRef } from "./drive.ts";
 import { FileActions } from "./FileActions.tsx";
-import { FileContent } from "./FileContent.tsx";
 import { FolderPane } from "./FolderPane.tsx";
 import { Link } from "./Link.tsx";
 import { kindOf } from "./listing.ts";
@@ -18,6 +17,32 @@ import { Loaded } from "./Loaded.tsx";
 import { usePath } from "./path.ts";
 import { metadataQuery, refreshRecent } from "./queries.ts";
 import { hrefOf, routeOf, type Crumb } from "./router.ts";
+
+// The viewer loads with the first file opened, not with the navigator. When
+// it cannot, as when the connection dropped or a new release replaced it,
+// the page says so rather than the app failing as a whole.
+const FileContent = lazy(() =>
+  import("./FileContent.tsx").then(
+    ({ FileContent }) => ({ default: FileContent }),
+    () => ({ default: ViewerMissing }),
+  ),
+);
+
+function ViewerMissing() {
+  return (
+    <p role="alert" className="failure">
+      DriveMD could not load its viewer. Check your connection, then reload it.{" "}
+      <button
+        type="button"
+        onClick={() => {
+          window.location.reload();
+        }}
+      >
+        Reload
+      </button>
+    </p>
+  );
+}
 
 const WHEN = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -219,7 +244,9 @@ function About({
   return (
     <>
       <Changed file={file} />
-      <FileContent file={file} />
+      <Suspense fallback={<p className="hint">Loading…</p>}>
+        <FileContent file={file} />
+      </Suspense>
     </>
   );
 }
