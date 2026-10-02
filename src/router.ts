@@ -154,8 +154,27 @@ export function usePlace(): Place {
  * its breadcrumbs. Opening the page already shown replaces it in the history,
  * so that Back does not show it twice, and keeps its trail unless given one.
  */
-export function navigate(href: string, trail?: Crumb[]): void {
-  const target = canonical(new URL(href, window.location.origin));
+// What the page shown asks before the app leaves it, if anything.
+let guard: ((to: Route) => boolean) | undefined;
+
+/**
+ * Has the app ask `ask` before it leaves the page, as one with unsaved
+ * changes does; `ask` says whether to go. Undefined lifts the guard. The
+ * browser's own Back is not asked.
+ */
+export function guardLeaving(ask: ((to: Route) => boolean) | undefined): void {
+  guard = ask;
+}
+
+export function navigate(
+  href: string,
+  trail?: Crumb[],
+  /** The user already chose to leave, as when they trash the file shown. */
+  { asked = false } = {},
+): void {
+  const url = new URL(href, window.location.origin);
+  if (!asked && guard && !guard(routeOf(url))) return;
+  const target = canonical(url);
   if (target === getPlace().href) {
     const state: unknown = trail === undefined ? history.state : { trail };
     history.replaceState(state, "", target);

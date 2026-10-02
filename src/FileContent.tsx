@@ -41,7 +41,7 @@ import {
   refreshAfterChange,
   setDetails,
 } from "./queries.ts";
-import { hrefOf, navigate } from "./router.ts";
+import { guardLeaving, hrefOf, navigate } from "./router.ts";
 import { saveText, type SaveResult } from "./save.ts";
 import { decode, encode, sameBytes, type FileText } from "./text.ts";
 
@@ -363,7 +363,10 @@ function Content({ file }: { file: FileMetadata }) {
     onSuccess: (made) => {
       dropDraft();
       refreshAfterChange(client, made);
-      navigate(hrefOf({ name: "file", file: made }));
+      // The edits are in the copy: the note may go without asking.
+      navigate(hrefOf({ name: "file", file: made }), undefined, {
+        asked: true,
+      });
     },
   });
   // The file grew since Drive gave its size.
@@ -531,6 +534,25 @@ function NoteView({
   // Only bytes that changed are written, and never those of a file DriveMD
   // only shows: its text may not be its bytes.
   const unsaved = editable && !sameBytes(bytes, note.bytes);
+  // Leaving the note with unsaved changes asks first: the browser does, for
+  // a reload or another site, and the app does, for its own pages. Its own
+  // address may change, as on a rename.
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    guardLeaving(
+      (to) =>
+        (to.name === "file" && to.file.id === file.id) ||
+        window.confirm("This note has unsaved changes. Leave it anyway?"),
+    );
+    return () => {
+      window.removeEventListener("beforeunload", warn);
+      guardLeaving(undefined);
+    };
+  }, [unsaved, file.id]);
   const conflict =
     save.data && "conflict" in save.data ? save.data.conflict : undefined;
   const [folder] = file.parents;

@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getPlace,
+  guardLeaving,
   hrefOf,
   navigate,
   routeOf,
@@ -23,6 +24,7 @@ function visit(path: string, state: unknown) {
 }
 
 afterEach(() => {
+  guardLeaving(undefined);
   vi.restoreAllMocks();
   history.replaceState(null, "", "/");
   window.dispatchEvent(new PopStateEvent("popstate"));
@@ -209,5 +211,39 @@ describe("the place shown", () => {
     visit("/shortcuts", state);
 
     expect(getPlace().trail).toBeUndefined();
+  });
+});
+
+describe("leaving a page", () => {
+  it("asks the guard where the user goes, and stays when it says no", () => {
+    const guard = vi.fn<(to: Route) => boolean>().mockReturnValue(false);
+    guardLeaving(guard);
+
+    navigate("/shortcuts");
+
+    expect(guard).toHaveBeenCalledExactlyOnceWith({ name: "shortcuts" });
+    expect(getPlace().route).toEqual({ name: "home" });
+    guard.mockReturnValue(true);
+    navigate("/shortcuts");
+    expect(getPlace().route).toEqual({ name: "shortcuts" });
+  });
+
+  it("leaves without asking once the user already chose to", () => {
+    const guard = vi.fn<(to: Route) => boolean>().mockReturnValue(false);
+    guardLeaving(guard);
+
+    navigate("/shortcuts", undefined, { asked: true });
+
+    expect(guard).not.toHaveBeenCalled();
+    expect(getPlace().route).toEqual({ name: "shortcuts" });
+  });
+
+  it("asks nothing once the guard is gone", () => {
+    guardLeaving(() => false);
+    guardLeaving(undefined);
+
+    navigate("/shortcuts");
+
+    expect(getPlace().route).toEqual({ name: "shortcuts" });
   });
 });
