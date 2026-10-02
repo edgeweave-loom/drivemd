@@ -115,3 +115,25 @@ test("edits the source and saves it", async ({ page, drive }, info) => {
     `${before}\nGreen tea.`,
   );
 });
+
+test("keeps one kind of line break whatever an input method types", async ({
+  page,
+  drive,
+}) => {
+  const notes = drive.files.get("notes");
+  if (notes) notes.content = "one\ntwo\n";
+  await signIn(page);
+  await page.goto("/edit?id=notes");
+
+  await page.getByRole("button", { name: "Edit" }).click();
+  const source = page.getByRole("textbox", { name: "Markdown source" });
+  await source.locator(".cm-line").first().click();
+  await page.keyboard.press("End");
+  // As an input method, or a phone keyboard typing copied text, inserts it.
+  await page.keyboard.insertText("A\r\nB\rC\u0000");
+  await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
+  await page.getByRole("button", { name: "Save" }).click();
+
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  expect(String(drive.files.get("notes")?.content)).toBe("oneA\nB\nC\ntwo\n");
+});
