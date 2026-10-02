@@ -248,7 +248,7 @@ function read(bytes: Uint8Array<ArrayBuffer>): Note {
  * since, and a save checks that nobody else changed it.
  */
 function Content({ file }: { file: FileMetadata }) {
-  const { drive, renew, account } = useDrive();
+  const { drive, account } = useDrive();
   const client = useQueryClient();
   // The revision the page holds to, with the edits made to it, rather than
   // Drive's latest: one the user edited, one open in the editor, or one just
@@ -274,9 +274,10 @@ function Content({ file }: { file: FileMetadata }) {
   const content = useQuery({ ...contentQuery(drive, opened), select: read });
   // The edits stay on the device until saved or dropped, and a note opened
   // again offers them back.
+  const unsaved = held?.text !== undefined && held.text !== content.data?.text;
   const edits = useMemo(
     () =>
-      held?.text === undefined
+      held?.text === undefined || !unsaved
         ? undefined
         : {
             fileId: file.id,
@@ -284,14 +285,12 @@ function Content({ file }: { file: FileMetadata }) {
             md5Checksum: held.opened.md5Checksum,
             text: held.text,
           },
-    [held, file.id],
+    [held, unsaved, file.id],
   );
-  const forget = useKeptDraft(account, edits);
   const kept = useQuery(draftQuery(account, file.id));
-  function dropDraft() {
-    forget(file.id);
+  const dropDraft = useKeptDraft(account, file.id, edits, () => {
     client.setQueryData(draftQuery(account, file.id).queryKey, null);
-  }
+  });
   // Out of the editor, the page shows Drive's latest again once it holds no
   // edits, or once it heard of the revision just saved; in the editor, Drive
   // never changes the text being typed.
@@ -325,8 +324,6 @@ function Content({ file }: { file: FileMetadata }) {
       // with any edit made while it was saving.
       client.setQueryData(contentQuery(drive, saved).queryKey, bytes);
       setDetails(client, saved);
-      // Edits made while it was saving are kept again as they change.
-      dropDraft();
       setHeld((now) =>
         now?.text !== undefined && now.text !== text
           ? { opened: saved, text: now.text }
@@ -382,35 +379,28 @@ function Content({ file }: { file: FileMetadata }) {
     <Loaded query={content}>
       {(note) => (
         <>
-          {kept.data &&
-            held?.text === undefined &&
-            kept.data.text !== note.text && (
-              <Restore
-                draft={kept.data}
-                onRestore={(draft) => {
-                  // A draft of an older revision keeps that one, so that
-                  // its save shows what Drive holds since.
-                  const base = {
+          {offered(kept.data, held, note) && (
+            <Restore
+              draft={kept.data}
+              onRestore={(draft) => {
+                // A draft of an older revision keeps that one, so that its
+                // save shows what Drive holds since.
+                setHeld({
+                  opened: {
                     ...opened,
                     headRevisionId: draft.headRevisionId,
                     md5Checksum: draft.md5Checksum,
-                  };
-                  setHeld({ opened: base, text: draft.text });
-                  if (!sameRevision(base, opened)) {
-                    renew();
-                    save.mutate({
-                      bytes: encode(draft.text, note),
-                      text: draft.text,
-                      over: base,
-                    });
-                  }
-                }}
-                onDiscard={dropDraft}
-              />
-            )}
+                  },
+                  text: draft.text,
+                });
+              }}
+              onDiscard={dropDraft}
+            />
+          )}
           <NoteView
             file={file}
             note={note}
+            waiting={offered(kept.data, held, note)}
             session={shown.session}
             editing={editing}
             onEditing={(open) => {
@@ -429,7 +419,6 @@ function Content({ file }: { file: FileMetadata }) {
             onKeepTheirs={(theirs) => {
               // Their revision shows, in the editor too, without the edits.
               setHeld({ opened: theirs, newer: true });
-              dropDraft();
               save.reset();
               copy.reset();
               madeCopy.current = undefined;
@@ -438,6 +427,20 @@ function Content({ file }: { file: FileMetadata }) {
         </>
       )}
     </Loaded>
+  );
+}
+
+/**
+ * Whether unsaved changes kept on the device are offered: the page holds no
+ * edits, and the device's text is not the note's.
+ */
+function offered(
+  draft: Draft | null | undefined,
+  held: Held | undefined,
+  note: Note,
+): draft is Draft {
+  return (
+    Boolean(draft) && held?.text === undefined && draft?.text !== note.text
   );
 }
 
@@ -482,6 +485,7 @@ function Restore({
 function NoteView({
   file,
   note,
+  waiting,
   session,
   editing,
   onEditing,
@@ -495,6 +499,8 @@ function NoteView({
 }: {
   file: FileMetadata;
   note: Note;
+  /** Unsaved changes on the device wait for the user's answer first. */
+  waiting: boolean;
   /** Changes when the editor must start again from the note's text. */
   session: number;
   editing: boolean;
@@ -520,7 +526,7 @@ function NoteView({
   // Beside the editor, the preview catches up with typing when it can.
   const deferred = useDeferredValue(text);
   const reason = readOnly(file, note);
-  const editable = reason === undefined;
+  const editable = reason === undefined && !waiting;
   const bytes = encode(text, note);
   // Only bytes that changed are written, and never those of a file DriveMD
   // only shows: its text may not be its bytes.

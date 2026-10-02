@@ -1,4 +1,5 @@
 import "fake-indexeddb/auto";
+import { EditorView } from "@codemirror/view";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteDrafts, readDraft, writeDraft } from "./drafts.ts";
@@ -7,6 +8,7 @@ import { FileContent } from "./FileContent.tsx";
 import { driveItem, metadata } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 import { ACCOUNT, renderWithDrive } from "./test/render.tsx";
+import { holdScreen } from "./test/screen.ts";
 
 const PLAN = metadata(driveItem("plan.md", { id: "plan", parents: ["work"] }), {
   md5Checksum: "aaaa",
@@ -66,6 +68,51 @@ describe("unsaved text kept on the device", () => {
     });
   });
 
+  it.each([
+    ["once kept", 700],
+    ["while waiting to be kept", 50],
+  ])("is forgotten when the edits are undone by hand, %s", async (_, wait) => {
+    const { unmount } = open();
+    fireEvent.click(await screen.findByRole("checkbox"));
+    await new Promise((settle) => setTimeout(settle, wait));
+    fireEvent.click(screen.getByRole("checkbox"));
+
+    unmount();
+
+    await new Promise((settle) => setTimeout(settle, 700));
+    await expect(readDraft(ACCOUNT, "plan")).resolves.toBeUndefined();
+  });
+
+  it("keeps edits made during a save that ends once the page has gone", async () => {
+    const drive = fakeDrive();
+    drive.getContent.mockResolvedValue(utf8("- [ ] Boil\n- [ ] Pour\n"));
+    drive.getMetadata.mockResolvedValue(PLAN);
+    drive.keepRevision.mockResolvedValue();
+    let answer: (saved: FileMetadata) => void = () => undefined;
+    drive.saveContent.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const { unmount } = renderWithDrive(<FileContent file={PLAN} />, drive);
+    const [boil] = await screen.findAllByRole("checkbox");
+    if (boil) fireEvent.click(boil);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByRole("button", { name: "Saving…" });
+    const [, pour] = screen.getAllByRole("checkbox");
+    if (pour) fireEvent.click(pour);
+
+    unmount();
+    answer(
+      metadata(PLAN, { md5Checksum: "bbbb", headRevisionId: "revision-2" }),
+    );
+
+    await new Promise((settle) => setTimeout(settle, 700));
+    await expect(readDraft(ACCOUNT, "plan")).resolves.toMatchObject({
+      text: "- [x] Boil\n- [x] Pour\n",
+    });
+  });
+
   it("is offered back when the note opens again, and restored on a tap", async () => {
     await kept("- [x] Boil\n");
     open();
@@ -97,16 +144,56 @@ describe("unsaved text kept on the device", () => {
 
   it("leads to the choice of a conflict when Drive changed the note since", async () => {
     await kept("- [x] Boil\n", "revision-0", "0000");
-    const { renew } = open();
+    const { drive } = open();
 
     fireEvent.click(await screen.findByRole("button", { name: "Restore" }));
+    // Restoring writes nothing: the user saves, and sees what Drive holds.
+    await new Promise((settle) => setTimeout(settle, 50));
+    expect(drive.getMetadata).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
 
     expect(
       await screen.findByRole("heading", {
         name: "Someone changed this file in Google Drive",
       }),
     ).toBeVisible();
-    expect(renew).toHaveBeenCalledOnce();
+    expect(drive.saveContent).not.toHaveBeenCalled();
+  });
+
+  it("waits for the user's answer before any edit, and restores into the editor", async () => {
+    holdScreen("wide");
+    await kept("- [x] Boil\n");
+    open();
+
+    await screen.findByRole("button", { name: "Restore" });
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.getByRole("checkbox")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+
+    await waitFor(() => {
+      const content = document
+        .querySelector(".editor")
+        ?.shadowRoot?.querySelector<HTMLElement>(".cm-content");
+      const view = content && EditorView.findFromDOM(content);
+      expect(view?.state.sliceDoc()).toBe("- [x] Boil\n");
+    });
+  });
+
+  it("is offered again on coming back to the note soon after", async () => {
+    const { rerender } = open();
+    fireEvent.click(await screen.findByRole("checkbox"));
+    // Elsewhere in the app, with the same cache.
+    rerender(<p>Elsewhere</p>);
+    await waitFor(async () => {
+      expect(await readDraft(ACCOUNT, "plan")).toBeDefined();
+    });
+
+    rerender(<FileContent file={PLAN} />);
+
+    expect(
+      await screen.findByRole("button", { name: "Restore" }),
+    ).toBeVisible();
   });
 
   it("is forgotten once the note is saved", async () => {

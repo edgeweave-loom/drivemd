@@ -209,7 +209,9 @@ export function draftQuery(account: string, fileId: string) {
   return queryOptions({
     queryKey: key("draft", account, fileId),
     queryFn: async () => (await readDraft(account, fileId)) ?? null,
-    staleTime: Infinity,
+    // Read afresh each time the note opens: the page wrote it as it went.
+    staleTime: 0,
+    gcTime: 0,
     // A device that keeps nothing has nothing to offer.
     retry: false,
   });
