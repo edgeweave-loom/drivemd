@@ -35,7 +35,7 @@ import {
   metadataQuery,
   resolveQuery,
 } from "./queries.ts";
-import { relativePath } from "./resolve.ts";
+import { onTheWeb, relativePath } from "./resolve.ts";
 import { toggleTask } from "./tasks.ts";
 import { hrefOf } from "./router.ts";
 
@@ -61,11 +61,6 @@ const Tasks = createContext<
 
 /** Where the list item around a checkbox starts in the note's text. */
 const TaskAt = createContext<number | undefined>(undefined);
-
-/** Whether an address leads to a web page outside the app. */
-function onTheWeb(href: string): boolean {
-  return /^https?:/i.test(href);
-}
 
 /**
  * A Markdown file rendered as GitHub renders it: with tables, task lists,

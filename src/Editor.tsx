@@ -34,6 +34,7 @@ import {
   useRef,
   type Ref,
 } from "react";
+import { linkAt } from "./source-links.ts";
 import type { LineBreak } from "./text.ts";
 
 /**
@@ -154,9 +155,28 @@ function writable(lineBreak: LineBreak): Extension {
   });
 }
 
+/**
+ * Cmd or Ctrl+click on a link follows it, as in Obsidian; any other click
+ * places the cursor. CodeMirror would add a cursor there instead.
+ */
+function followLinks(follow: (href: string) => void): Extension {
+  return EditorView.domEventHandlers({
+    mousedown(event, view) {
+      if (event.button !== 0 || !(event.metaKey || event.ctrlKey)) return false;
+      const at = view.posAtCoords(event);
+      const href = at === null ? undefined : linkAt(view.state, at);
+      if (href === undefined) return false;
+      event.preventDefault();
+      follow(href);
+      return true;
+    },
+  });
+}
+
 function extensions(
   lineBreak: LineBreak,
   changed: (update: ViewUpdate) => void,
+  follow: (href: string) => void,
 ): Extension[] {
   return [
     // Lines join with the file's own break, whatever the browser sends.
@@ -177,6 +197,7 @@ function extensions(
     EditorView.lineWrapping,
     EditorView.contentAttributes.of({ "aria-label": "Markdown source" }),
     EditorView.updateListener.of(changed),
+    followLinks(follow),
   ];
 }
 
@@ -199,11 +220,14 @@ export function Editor({
   initial,
   lineBreak,
   onChange,
+  onFollow,
   ref,
 }: {
   initial: string;
   lineBreak: LineBreak;
   onChange: (text: string) => void;
+  /** Follows a link the user Cmd or Ctrl+clicks. */
+  onFollow: (href: string) => void;
   ref?: Ref<EditorHandle>;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -211,6 +235,9 @@ export function Editor({
   const opening = useEffectEvent(() => initial);
   const edited = useEffectEvent((update: ViewUpdate) => {
     if (update.docChanged) onChange(update.state.sliceDoc());
+  });
+  const followed = useEffectEvent((href: string) => {
+    onFollow(href);
   });
 
   useEffect(() => {
@@ -225,7 +252,7 @@ export function Editor({
       root,
       state: EditorState.create({
         doc: opening(),
-        extensions: extensions(lineBreak, edited),
+        extensions: extensions(lineBreak, edited, followed),
       }),
     });
     editor.current = view;
