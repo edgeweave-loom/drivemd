@@ -1,5 +1,10 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Component,
+  createContext,
+  useCallback,
+  useContext,
+  useState,
   type ComponentProps,
   type MouseEvent,
   type ReactNode,
@@ -11,7 +16,14 @@ import rehypeSanitize from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
+import { useDrive } from "./drive-context.ts";
+import { inDrive } from "./drive-web.ts";
+import { FOLDER, GOOGLE_TYPES, isMarkdown, type FileRef } from "./drive.ts";
+import { Link } from "./Link.tsx";
 import { remarkProperties } from "./properties.ts";
+import { resolveQuery } from "./queries.ts";
+import { relativePath } from "./resolve.ts";
+import { hrefOf } from "./router.ts";
 
 const REMARK = [remarkGfm, remarkFrontmatter, remarkProperties];
 // Raw HTML is parsed, headings get ids, then GitHub's rules sanitize it all,
@@ -19,6 +31,9 @@ const REMARK = [remarkGfm, remarkFrontmatter, remarkProperties];
 // highlighted last, with classes the sanitizer would drop.
 const REHYPE = [rehypeRaw, rehypeSlug, rehypeSanitize, rehypeHighlight];
 const COMPONENTS: Components = { a: Anchor, img: Image };
+
+/** The folder the note sits in, where its relative links start. */
+const NoteFolder = createContext<FileRef | undefined>(undefined);
 
 /** Whether an address leads to a web page outside the app. */
 function onTheWeb(href: string): boolean {
@@ -30,19 +45,28 @@ function onTheWeb(href: string): boolean {
  * strikethrough, autolinks, footnotes, highlighted code, sanitized HTML and
  * front matter as a table of properties.
  */
-export function Rendered({ text }: { text: string }) {
+export function Rendered({
+  text,
+  folder,
+}: {
+  text: string;
+  /** The folder the note sits in, if known: relative links start there. */
+  folder?: FileRef | undefined;
+}) {
   return (
-    <Fallible text={text}>
-      <div className="markdown">
-        <Markdown
-          remarkPlugins={REMARK}
-          rehypePlugins={REHYPE}
-          components={COMPONENTS}
-        >
-          {text}
-        </Markdown>
-      </div>
-    </Fallible>
+    <NoteFolder value={folder}>
+      <Fallible text={text}>
+        <div className="markdown">
+          <Markdown
+            remarkPlugins={REMARK}
+            rehypePlugins={REHYPE}
+            components={COMPONENTS}
+          >
+            {text}
+          </Markdown>
+        </div>
+      </Fallible>
+    </NoteFolder>
   );
 }
 
@@ -124,8 +148,105 @@ function Anchor({
     return <a {...attributes} href={href} target="_blank" rel="noreferrer" />;
   }
   if (href.startsWith("mailto:")) return <a {...attributes} href={href} />;
+  const path = relativePath(href);
+  if (path) return <DriveLink {...attributes} path={path} />;
   // A target for links within the page, which HTML may mark by name.
   return <a {...attributes} id={id ?? name} />;
+}
+
+/**
+ * Whether the element came near the screen, and the ref that watches it.
+ * Links and images wait for it before they ask Drive anything, so that a
+ * note with thousands of them asks only for those the user scrolls to.
+ */
+function useSeen(): [
+  boolean,
+  (element: Element | null) => (() => void) | undefined,
+] {
+  const [seen, setSeen] = useState(false);
+  const near = useCallback((element: Element | null) => {
+    if (!element) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some(({ isIntersecting }) => isIntersecting)) return;
+        observer.disconnect();
+        setSeen(true);
+      },
+      { rootMargin: "50%" },
+    );
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+  return [seen, near];
+}
+
+/** The attributes a link keeps, whatever it leads to. */
+type LinkAttributes = Pick<
+  ComponentProps<"a">,
+  "id" | "title" | "className" | "aria-label" | "aria-describedby"
+> & { children: ReactNode };
+
+/**
+ * A relative link, which leads where its path does in Drive from the note's
+ * folder: a Markdown file or a folder opens in the app, another file opens in
+ * Google Drive, and a link to nothing is faded.
+ */
+function DriveLink({
+  path,
+  ...attributes
+}: LinkAttributes & { path: string[] }) {
+  const folder = useContext(NoteFolder);
+  if (!folder) return <Unresolved {...attributes} />;
+  return <Resolved {...attributes} folder={folder} path={path} />;
+}
+
+function Resolved({
+  folder,
+  path,
+  ...attributes
+}: LinkAttributes & { folder: FileRef; path: string[] }) {
+  const { drive } = useDrive();
+  const client = useQueryClient();
+  const [seen, near] = useSeen();
+  const found = useQuery({
+    ...resolveQuery(drive, client, folder, path),
+    enabled: seen,
+  });
+  if (!seen) return <span {...attributes} ref={near} />;
+  if (found.isError) {
+    return (
+      <span
+        {...attributes}
+        title="Google Drive could not say where this link leads"
+      />
+    );
+  }
+  if (found.isPending) return <span {...attributes} />;
+  if (!found.data) return <Unresolved {...attributes} />;
+  const { ref, name, mimeType } = found.data;
+  if (mimeType === FOLDER) {
+    return (
+      <Link {...attributes} to={hrefOf({ name: "folder", folder: ref })} />
+    );
+  }
+  if (!mimeType.startsWith(GOOGLE_TYPES) && isMarkdown(name)) {
+    return <Link {...attributes} to={hrefOf({ name: "file", file: ref })} />;
+  }
+  return (
+    <a {...attributes} href={inDrive(ref)} target="_blank" rel="noreferrer" />
+  );
+}
+
+function Unresolved(attributes: LinkAttributes) {
+  return (
+    <span
+      {...attributes}
+      className="unresolved"
+      title="Not found in Google Drive"
+    />
+  );
 }
 
 /**

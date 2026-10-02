@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AuthError } from "./auth.ts";
 import { DriveError } from "./drive.ts";
-import { createQueryClient } from "./queries.ts";
+import { createQueryClient, refreshAfterChange } from "./queries.ts";
 
 function retries(failures: number, error: Error): boolean {
   const { retry } = createQueryClient().getDefaultOptions().queries ?? {};
@@ -28,5 +28,17 @@ describe("createQueryClient", () => {
     [new AuthError("superseded", "The user signed out")],
   ])("gives up at once after %s", (error) => {
     expect(retries(0, error)).toBe(false);
+  });
+});
+
+describe("refreshAfterChange", () => {
+  it("has the links in notes found again, as a rename or a move changes where they lead", () => {
+    const client = createQueryClient();
+    const resolved = ["resolve", "notes", undefined, "plan.md"];
+    client.setQueryData(resolved, null);
+
+    refreshAfterChange(client, { id: "plan" });
+
+    expect(client.getQueryState(resolved)?.isInvalidated).toBe(true);
   });
 });

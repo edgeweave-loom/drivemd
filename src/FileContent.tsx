@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useDrive } from "./drive-context.ts";
-import { TooLargeError, type FileMetadata } from "./drive.ts";
+import { inDrive } from "./drive-web.ts";
+import { TooLargeError, type FileMetadata, type FileRef } from "./drive.ts";
 import { Loaded } from "./Loaded.tsx";
 import { Rendered } from "./Markdown.tsx";
 import { contentQuery, MAX_CONTENT } from "./queries.ts";
@@ -47,7 +48,7 @@ function Content({ file }: { file: FileMetadata }) {
         return (
           <>
             {reason && <p className="badge read-only">{reason}</p>}
-            <Rendered text={text.text} />
+            <Rendered text={text.text} folder={folderOf(file)} />
           </>
         );
       }}
@@ -62,6 +63,14 @@ function TooLarge({ file, size }: { file: FileMetadata; size: string }) {
       {MEGABYTES.format(MAX_CONTENT / 1e6)}. <InDrive file={file} />
     </p>
   );
+}
+
+/**
+ * The folder the file sits in, where its relative links start; Drive gives
+ * none for a file whose folder the user cannot reach.
+ */
+function folderOf({ parents: [parent] }: FileMetadata): FileRef | undefined {
+  return parent === undefined ? undefined : { id: parent };
 }
 
 /** Why the user cannot edit the file, if they cannot. */
@@ -83,12 +92,8 @@ function readOnly(file: FileMetadata, text: FileText): string | undefined {
 
 /** A link to the file in Google Drive, which opens what DriveMD cannot. */
 function InDrive({ file }: { file: FileMetadata }) {
-  const url = new URL(
-    `https://drive.google.com/file/d/${encodeURIComponent(file.id)}/view`,
-  );
-  if (file.resourceKey) url.searchParams.set("resourcekey", file.resourceKey);
   return (
-    <a href={url.href} target="_blank" rel="noreferrer">
+    <a href={inDrive(file)} target="_blank" rel="noreferrer">
       Open it in Google Drive
     </a>
   );
