@@ -63,6 +63,25 @@ describe("Editor", () => {
     expect(onChange).toHaveBeenLastCalledWith("Tea\r\ngreen\r\nblack\r\n");
   });
 
+  it.each([
+    ["CRLF", "\r\n" as const, "a\nb\rc\r\nd"],
+    ["LF", "\n" as const, "a\r\nb\rc"],
+    ["CR", "\r" as const, "a\nb\r\nc"],
+  ])(
+    "gives any line break inserted, as a replacement does, the file's own: %s",
+    (_, lineBreak, inserted) => {
+      const { view, onChange } = open(`x${lineBreak}y`, lineBreak);
+
+      view.dispatch({ changes: { from: 1, insert: inserted } });
+
+      const text = onChange.mock.lastCall?.[0] ?? "";
+      expect(text.replaceAll(lineBreak, "|")).toBe(
+        `x${inserted.replace(/\r\n|\r|\n/g, "|")}|y`,
+      );
+      expect(view.state.sliceDoc()).toBe(text);
+    },
+  );
+
   it("continues a list, and a task list, on Enter", () => {
     const { view, onChange } = open("- [ ] Boil");
     view.dispatch({ selection: { anchor: view.state.doc.length } });
