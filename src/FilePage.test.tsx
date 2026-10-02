@@ -26,6 +26,7 @@ function openFile(trail: Crumb[] | undefined, ...items: FileMetadata[]) {
   drive.getMetadata.mockImplementation(metadataOf(WORK, ...items));
   drive.markViewed.mockResolvedValue();
   drive.listChildren.mockResolvedValue([]);
+  drive.getContent.mockResolvedValue(new TextEncoder().encode("# The plan"));
   const rendered = renderWithDrive(
     <FilePage file={{ id: "plan" }} trail={trail} />,
     drive,
@@ -42,7 +43,7 @@ afterEach(() => {
 });
 
 describe("FilePage", () => {
-  it("names the file, says who changed it last, and marks it viewed", async () => {
+  it("names the file, says who changed it last, shows it, and marks it viewed", async () => {
     const { drive } = openFile(TRAIL, PLAN);
 
     expect(screen.getByRole("heading", { name: "plan.md" })).toBeVisible();
@@ -50,6 +51,7 @@ describe("FilePage", () => {
     expect(
       await screen.findByText(/^Last modified by Ada Lovelace on .*2026/),
     ).toBeVisible();
+    expect(await screen.findByText("# The plan")).toBeVisible();
     expect(drive.markViewed).toHaveBeenCalledExactlyOnceWith({ id: "plan" });
   });
 
@@ -91,9 +93,10 @@ describe("FilePage", () => {
     drive.getMetadata.mockImplementation(metadataOf(WORK, PLAN));
     drive.markViewed.mockRejectedValue(new DriveError(403, "Forbidden"));
     drive.listChildren.mockResolvedValue([]);
+    drive.getContent.mockResolvedValue(new TextEncoder().encode("# The plan"));
     renderWithDrive(<FilePage file={{ id: "plan" }} trail={TRAIL} />, drive);
 
-    expect(await screen.findByText(/^Last modified by/)).toBeVisible();
+    expect(await screen.findByText("# The plan")).toBeVisible();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
