@@ -81,6 +81,49 @@ describe("useFollow", () => {
     });
   });
 
+  it("follows a link it found already, within the click", () => {
+    const drive = fakeDrive();
+    const { client } = renderWithDrive(<Follower href="plan.md" />, drive);
+    client.setQueryData(["resolve", "notes", undefined, "plan.md"], {
+      ref: { id: "plan" },
+      name: "plan.md",
+      mimeType: "text/markdown",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Follow" }));
+
+    expect(getPlace().route).toEqual({ name: "file", file: { id: "plan" } });
+    expect(drive.listChildren).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["Drive answers a second after the click", "late"],
+    ["the page is gone", "gone"],
+  ])("follows nothing when %s", async (_, how) => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const drive = fakeDrive();
+    let answer: (items: DriveItem[]) => void = () => undefined;
+    drive.listChildren.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const { unmount } = renderWithDrive(<Follower href="plan.md" />, drive);
+    fireEvent.click(screen.getByRole("button", { name: "Follow" }));
+
+    if (how === "late")
+      vi.spyOn(Date, "now").mockReturnValue(Date.now() + 1_100);
+    else unmount();
+    answer(NOTES);
+
+    await waitFor(() => {
+      expect(drive.listChildren).toHaveBeenCalledOnce();
+    });
+    await new Promise((settle) => setTimeout(settle, 20));
+    expect(getPlace().route).toEqual({ name: "home" });
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it("scrolls to a heading of the note", () => {
     const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
     follow("#set-up");

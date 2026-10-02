@@ -123,8 +123,14 @@ describe("editing a note in the viewer", () => {
     });
 
     // Nothing left to save: the shortcut does nothing, but the browser's.
-    expect(fireEvent.keyDown(window, { key: "S", metaKey: true })).toBe(false);
+    expect(fireEvent.keyDown(window, { key: "S", ctrlKey: true })).toBe(false);
     expect(fireEvent.keyDown(window, { key: "s" })).toBe(true);
+    // A layout that is not Latin: the key is the one where S is.
+    expect(
+      fireEvent.keyDown(window, { key: "ы", code: "KeyS", ctrlKey: true }),
+    ).toBe(false);
+    // Autofill sends keydown events without a key.
+    expect(fireEvent.keyDown(window, { ctrlKey: true })).toBe(true);
     expect(
       fireEvent.keyDown(window, { key: "s", ctrlKey: true, altKey: true }),
     ).toBe(true);

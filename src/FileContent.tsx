@@ -18,6 +18,7 @@ import { inDrive } from "./drive-web.ts";
 import { describeError } from "./errors.ts";
 import type { EditorHandle } from "./Editor.tsx";
 import { TooLargeError, type FileMetadata, type FileRef } from "./drive.ts";
+import { commandKey } from "./keys.ts";
 import { useLayout } from "./layout.ts";
 import { Loaded } from "./Loaded.tsx";
 import { Missing } from "./Missing.tsx";
@@ -245,14 +246,11 @@ function NoteView({
   // Cmd or Ctrl+S saves the note, where the editor or the viewer is, and
   // never the page itself, which would hold none of the note's bytes.
   const shortcut = useEffectEvent((event: KeyboardEvent) => {
-    const { key, metaKey, ctrlKey, altKey, shiftKey } = event;
-    if (
-      key.toLowerCase() !== "s" ||
-      !(metaKey || ctrlKey) ||
-      altKey ||
-      shiftKey
-    )
-      return;
+    if (!commandKey(event) || event.altKey || event.shiftKey) return;
+    // The key labelled S, or where S is on a layout that is not Latin.
+    const { key = "", code } = event as Partial<KeyboardEvent>;
+    const latin = /^[a-z]$/i.test(key);
+    if (latin ? key.toLowerCase() !== "s" : code !== "KeyS") return;
     event.preventDefault();
     saveNow();
   });

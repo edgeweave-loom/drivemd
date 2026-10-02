@@ -199,6 +199,42 @@ describe("linkAt", () => {
       "https://example.com",
     ],
     ["an image", "![A chart](img/chart.png)", "chart", "img/chart.png"],
+    [
+      "an image in a link, as the link",
+      "[![badge](b.png)](target.md)",
+      "badge",
+      "target.md",
+    ],
+    [
+      "a bare www address, on the web",
+      "Go to www.example.com today",
+      "example",
+      "http://www.example.com",
+    ],
+    [
+      "a bare email address",
+      "Write to ada@example.com today",
+      "example",
+      "mailto:ada@example.com",
+    ],
+    [
+      "an email autolink",
+      "<ada@example.com>",
+      "example",
+      "mailto:ada@example.com",
+    ],
+    [
+      "a link with escapes and entities",
+      "[x](my\\_note&amp;tea.md)",
+      "my",
+      "my_note&tea.md",
+    ],
+    [
+      "a link with numeric character references",
+      "[x](a&#38;b&#x26;c&nope;d&#0;e.md)",
+      "x",
+      "a&b&c&nope;d&#0;e.md",
+    ],
   ])("finds the address of %s", (_, text, near, href) => {
     const made = state(text);
     expect(linkAt(made, text.indexOf(near) + 1)).toBe(href);

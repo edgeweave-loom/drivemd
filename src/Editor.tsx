@@ -34,6 +34,7 @@ import {
   useRef,
   type Ref,
 } from "react";
+import { commandKey } from "./keys.ts";
 import { linkAt } from "./source-links.ts";
 import type { LineBreak } from "./text.ts";
 
@@ -162,7 +163,7 @@ function writable(lineBreak: LineBreak): Extension {
 function followLinks(follow: (href: string) => void): Extension {
   return EditorView.domEventHandlers({
     mousedown(event, view) {
-      if (event.button !== 0 || !(event.metaKey || event.ctrlKey)) return false;
+      if (event.button !== 0 || !commandKey(event)) return false;
       const at = view.posAtCoords(event);
       const href = at === null ? undefined : linkAt(view.state, at);
       if (href === undefined) return false;
