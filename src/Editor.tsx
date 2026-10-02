@@ -126,18 +126,26 @@ function codeLines(view: EditorView): DecorationSet {
   return builder.finish();
 }
 
+// Half of a character that takes two UTF-16 units, without its other half.
+const LONE_SURROGATE =
+  /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
 /**
- * Gives any line break an edit inserts the file's own, however it comes:
- * pasted, dropped, typed by an input method, or put by a replacement. A
- * break of another kind would stay inside its line as a character, and the
- * file would no longer have one kind of line break.
+ * Keeps what an edit inserts writable as shown, however it comes: pasted,
+ * dropped, typed by an input method, or put by a replacement. A line break
+ * of another kind than the file's would stay inside its line as a character,
+ * and the file would no longer have one kind of line break; a NUL would make
+ * it read as UTF-16; and half a character would be written as another.
  */
-function ownLineBreaks(lineBreak: LineBreak): Extension {
+function writable(lineBreak: LineBreak): Extension {
   return EditorState.transactionFilter.of((transaction) => {
     const fixes: ChangeSpec[] = [];
     transaction.changes.iterChanges((_fromA, _toA, from, to) => {
       const written = transaction.newDoc.sliceString(from, to, lineBreak);
-      const fixed = written.replace(/\r\n|\r|\n/g, lineBreak);
+      const fixed = written
+        .replace(/\r\n|\r|\n/g, lineBreak)
+        .replaceAll("\0", "")
+        .replace(LONE_SURROGATE, "\uFFFD");
       if (fixed !== written) fixes.push({ from, to, insert: fixed });
     }, true);
     return fixes.length === 0
@@ -153,7 +161,7 @@ function extensions(
   return [
     // Lines join with the file's own break, whatever the browser sends.
     EditorState.lineSeparator.of(lineBreak),
-    ownLineBreaks(lineBreak),
+    writable(lineBreak),
     history(),
     // GitHub's Markdown, its fences highlighted in their language; Enter
     // continues lists and task lists.
