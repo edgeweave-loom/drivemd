@@ -10,21 +10,34 @@ import {
   useDeferredValue,
   useEffect,
   useEffectEvent,
+  useId,
   useRef,
   useState,
 } from "react";
 import { useDrive } from "./drive-context.ts";
 import { inDrive } from "./drive-web.ts";
+import { ConfirmDialog } from "./Dialog.tsx";
 import { describeError } from "./errors.ts";
 import type { EditorHandle } from "./Editor.tsx";
-import { TooLargeError, type FileMetadata, type FileRef } from "./drive.ts";
+import {
+  TooLargeError,
+  type DriveItem,
+  type FileMetadata,
+  type FileRef,
+} from "./drive.ts";
 import { commandKey } from "./keys.ts";
 import { useLayout } from "./layout.ts";
 import { Loaded } from "./Loaded.tsx";
 import { Missing } from "./Missing.tsx";
 import { useFollow } from "./follow.ts";
 import { Rendered } from "./Markdown.tsx";
-import { contentQuery, MAX_CONTENT, setDetails } from "./queries.ts";
+import {
+  contentQuery,
+  MAX_CONTENT,
+  refreshAfterChange,
+  setDetails,
+} from "./queries.ts";
+import { hrefOf, navigate } from "./router.ts";
 import { saveText, type SaveResult } from "./save.ts";
 import { decode, encode, sameBytes, type FileText } from "./text.ts";
 
@@ -35,6 +48,18 @@ const Editor = lazy(() =>
     () => ({ default: EditorMissing }),
   ),
 );
+
+// The differences load with the first conflict, with the editor's code.
+const Differences = lazy(() =>
+  import("./Differences.tsx").then(
+    ({ Differences }) => ({ default: Differences }),
+    () => ({ default: DifferencesMissing }),
+  ),
+);
+
+function DifferencesMissing() {
+  return <Missing part="view of the differences" />;
+}
 
 function EditorMissing() {
   return <Missing part="editor" />;
@@ -63,13 +88,14 @@ export function FileContent({ file }: { file: FileMetadata }) {
 }
 
 /**
- * A revision the page holds to: with the user's edits, or just saved here,
- * or else opened in the editor.
+ * A revision the page holds to: with the user's edits, or one the page has
+ * not heard of yet, or else one opened in the editor.
  */
 interface Held {
   opened: FileMetadata;
   text?: string;
-  saved?: true;
+  /** Newer than the page's details: just saved, or kept after a conflict. */
+  newer?: true;
 }
 
 /**
@@ -78,12 +104,123 @@ interface Held {
  * or it held one only for the editor.
  */
 function released(
-  { opened, text, saved }: Held,
+  { opened, text, newer }: Held,
   file: FileMetadata,
   note: Note | undefined,
 ): boolean {
   if (text !== undefined) return text === note?.text;
-  return !saved || sameRevision(opened, file);
+  return !newer || sameRevision(opened, file);
+}
+
+/** Someone wrote to the copy between its making and its filling. */
+class CopyTakenError extends Error {
+  override readonly name = "CopyTakenError";
+  constructor() {
+    super(
+      "Someone wrote to the copy before DriveMD could. Your changes are still here: try again for a new copy.",
+    );
+  }
+}
+
+/** A save: the bytes and their text, over another revision if chosen. */
+interface Saving {
+  bytes: Uint8Array<ArrayBuffer>;
+  text: string;
+  over?: FileMetadata;
+}
+
+/** The name of a copy saved after a conflict: "plan.md" gives "plan (conflict).md". */
+function conflictName(name: string): string {
+  return name.replace(/(\.(md|markdown))?$/i, " (conflict)$1");
+}
+
+/**
+ * Someone else saved the file since the user opened it: their version
+ * against the user's, and the user's choice of which to keep.
+ */
+function Conflict({
+  theirs,
+  mine,
+  busy,
+  error,
+  onKeep,
+  onOverwrite,
+  onCopy,
+}: {
+  theirs: FileMetadata;
+  mine: string;
+  busy: boolean;
+  error: Error | null;
+  onKeep: () => void;
+  onOverwrite: () => void;
+  /** Saves the user's version beside the file, when its folder is known. */
+  onCopy: (() => void) | undefined;
+}) {
+  const { drive } = useDrive();
+  const content = useQuery({ ...contentQuery(drive, theirs), select: read });
+  const id = useId();
+  // Dropping the user's changes cannot be undone: it is confirmed first.
+  const [dropping, setDropping] = useState(false);
+  return (
+    <section className="conflict" aria-labelledby={id}>
+      <h3 id={id}>Someone changed this file in Google Drive</h3>
+      <p>
+        They saved a version since you opened yours, so DriveMD saved nothing.
+        Below, what yours removes from theirs is struck through, and what it
+        adds is highlighted.
+      </p>
+      <div className="actions">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            setDropping(true);
+          }}
+        >
+          Keep the Drive version
+        </button>
+        <button type="button" disabled={busy} onClick={onOverwrite}>
+          Overwrite with mine
+        </button>
+        {onCopy && (
+          <button type="button" disabled={busy} onClick={onCopy}>
+            Save mine as a copy
+          </button>
+        )}
+      </div>
+      {error && (
+        <p role="alert" className="failure">
+          {error instanceof CopyTakenError
+            ? error.message
+            : describeError(error)}
+        </p>
+      )}
+      {dropping && (
+        <ConfirmDialog
+          title="Drop your changes?"
+          action="Drop my changes"
+          pending={false}
+          error={null}
+          onConfirm={onKeep}
+          onClose={() => {
+            setDropping(false);
+          }}
+        >
+          <p>
+            Your version of the note goes, and Google Drive's stays. This cannot
+            be undone.
+          </p>
+        </ConfirmDialog>
+      )}
+      <Loaded query={content}>
+        {(note) => (
+          <Suspense fallback={<p className="hint">Loading the differences…</p>}>
+            <Differences theirs={note.text} mine={mine} />
+          </Suspense>
+        )}
+      </Loaded>
+    </section>
+  );
 }
 
 /** What a phone shows while editing: the source, or the preview. */
@@ -133,15 +270,23 @@ function Content({ file }: { file: FileMetadata }) {
     setHeld(undefined);
   }
   const save = useMutation({
-    mutationFn: ({ bytes }: { bytes: Uint8Array<ArrayBuffer>; text: string }) =>
-      saveText(drive, opened, bytes, {
-        keep: !(
-          opened.headRevisionId !== undefined &&
-          written.has(opened.headRevisionId)
-        ),
+    // Over the revision opened, or over someone else's, which the user chose
+    // to overwrite after a conflict: theirs is kept in the history.
+    mutationFn: ({ bytes, over }: Saving) =>
+      saveText(drive, over ?? opened, bytes, {
+        keep:
+          over !== undefined ||
+          !(
+            opened.headRevisionId !== undefined &&
+            written.has(opened.headRevisionId)
+          ),
       }),
     onSuccess: (result, { bytes, text }) => {
-      if ("conflict" in result) return;
+      // Drive said which revision it holds: the page's details follow.
+      if ("conflict" in result) {
+        setDetails(client, result.conflict);
+        return;
+      }
       const { saved } = result;
       const revision = saved.headRevisionId;
       if (revision !== undefined) {
@@ -154,8 +299,42 @@ function Content({ file }: { file: FileMetadata }) {
       setHeld((now) =>
         now?.text !== undefined && now.text !== text
           ? { opened: saved, text: now.text }
-          : { opened: saved, saved: true },
+          : { opened: saved, newer: true },
       );
+    },
+  });
+  const madeCopy = useRef<DriveItem | undefined>(undefined);
+  // The user's version, saved as a copy beside the file after a conflict,
+  // which then opens.
+  const copy = useMutation({
+    mutationFn: async ({
+      bytes,
+      folder,
+    }: {
+      bytes: Uint8Array<ArrayBuffer>;
+      folder: string;
+    }) => {
+      // A copy made by an attempt whose write failed takes the next one.
+      const made = (madeCopy.current ??= await drive.createFile(
+        { id: folder },
+        conflictName(opened.name),
+      ));
+      const result = await saveText(
+        drive,
+        await drive.getMetadata(made),
+        bytes,
+        { keep: false },
+      );
+      if ("conflict" in result) {
+        // The page keeps the edits, and the next attempt makes a new copy.
+        madeCopy.current = undefined;
+        throw new CopyTakenError();
+      }
+      return result.saved;
+    },
+    onSuccess: (made) => {
+      refreshAfterChange(client, made);
+      navigate(hrefOf({ name: "file", file: made }));
     },
   });
   // The file grew since Drive gave its size.
@@ -187,6 +366,14 @@ function Content({ file }: { file: FileMetadata }) {
             setHeld({ opened, text: edited });
           }}
           save={save}
+          copy={copy}
+          onKeepTheirs={(theirs) => {
+            // Their revision shows, in the editor too, without the edits.
+            setHeld({ opened: theirs, newer: true });
+            save.reset();
+            copy.reset();
+            madeCopy.current = undefined;
+          }}
         />
       )}
     </Loaded>
@@ -208,6 +395,8 @@ function NoteView({
   text,
   onEdit,
   save,
+  copy,
+  onKeepTheirs,
 }: {
   file: FileMetadata;
   note: Note;
@@ -220,11 +409,14 @@ function NoteView({
   /** The text with the user's edits. */
   text: string;
   onEdit: (text: string) => void;
-  save: UseMutationResult<
-    SaveResult,
+  save: UseMutationResult<SaveResult, Error, Saving>;
+  copy: UseMutationResult<
+    FileMetadata,
     Error,
-    { bytes: Uint8Array<ArrayBuffer>; text: string }
+    { bytes: Uint8Array<ArrayBuffer>; folder: string }
   >;
+  /** Drops the edits for the revision someone else saved. */
+  onKeepTheirs: (theirs: FileMetadata) => void;
 }) {
   const { renew } = useDrive();
   const layout = useLayout();
@@ -238,6 +430,9 @@ function NoteView({
   // Only bytes that changed are written, and never those of a file DriveMD
   // only shows: its text may not be its bytes.
   const unsaved = editable && !sameBytes(bytes, note.bytes);
+  const conflict =
+    save.data && "conflict" in save.data ? save.data.conflict : undefined;
+  const [folder] = file.parents;
   function saveNow() {
     if (!unsaved || save.isPending) return;
     renew();
@@ -289,7 +484,7 @@ function NoteView({
             {editing ? "Done" : "Edit"}
           </button>
         )}
-        {unsaved && (
+        {unsaved && !conflict && (
           <>
             <span className="hint">Unsaved changes</span>
             <button
@@ -303,11 +498,28 @@ function NoteView({
           </>
         )}
       </div>
-      {save.data && "conflict" in save.data && (
-        <p role="alert" className="failure">
-          Someone changed this file in Google Drive since you opened it, so
-          DriveMD saved nothing. Your changes are still here.
-        </p>
+      {conflict && (
+        <Conflict
+          theirs={conflict}
+          mine={text}
+          busy={save.isPending || copy.isPending}
+          error={copy.error}
+          onKeep={() => {
+            onKeepTheirs(conflict);
+          }}
+          onOverwrite={() => {
+            renew();
+            save.mutate({ bytes, text, over: conflict });
+          }}
+          onCopy={
+            folder === undefined
+              ? undefined
+              : () => {
+                  renew();
+                  copy.mutate({ bytes, folder });
+                }
+          }
+        />
       )}
       {save.error && (
         <p role="alert" className="failure">

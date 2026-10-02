@@ -168,11 +168,13 @@ describe("editing a note in the viewer", () => {
     fireEvent.click(await box(0));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Someone changed this file in Google Drive since you opened it, so DriveMD saved nothing. Your changes are still here.",
-    );
+    expect(
+      await screen.findByRole("heading", {
+        name: "Someone changed this file in Google Drive",
+      }),
+    ).toBeVisible();
     expect(drive.saveContent).not.toHaveBeenCalled();
-    expect(screen.getByText("Unsaved changes")).toBeVisible();
+    expect(await box(0)).toBeChecked();
   });
 
   it("says why Drive refused, keeping the edits", async () => {

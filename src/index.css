@@ -547,3 +547,22 @@ dialog.drawer {
   gap: 1.5rem;
   align-items: start;
 }
+
+.conflict {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid light-dark(#9a6700, #d29922);
+  border-radius: 0.5rem;
+  background: light-dark(#fff8c5, #272115);
+}
+
+.page .conflict h3 {
+  color: inherit;
+  font-size: 1.125rem;
+  text-transform: none;
+}
+
+.conflict .actions {
+  justify-content: flex-start;
+}
