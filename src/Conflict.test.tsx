@@ -45,6 +45,14 @@ async function conflict() {
   return { ...rendered, drive };
 }
 
+/** Keeps Drive's version, confirming that the user's changes go. */
+function keepTheirs() {
+  fireEvent.click(
+    screen.getByRole("button", { name: "Keep the Drive version" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Drop my changes" }));
+}
+
 /** The text the view of the differences shows. */
 async function differences() {
   return waitFor(() => {
@@ -102,9 +110,7 @@ describe("a save that finds someone else's change", () => {
   it("keeps Drive's version, dropping the user's", async () => {
     await conflict();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Keep the Drive version" }),
-    );
+    keepTheirs();
 
     expect(await screen.findByText("Serve")).toBeVisible();
     expect(screen.queryByText("Unsaved changes")).toBeNull();
@@ -118,13 +124,64 @@ describe("a save that finds someone else's change", () => {
     await conflict();
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Keep the Drive version" }),
-    );
+    keepTheirs();
     fireEvent.click(await screen.findByRole("button", { name: "Done" }));
 
     await new Promise((settle) => setTimeout(settle, 50));
     expect(screen.getByText("Serve")).toBeVisible();
+  });
+
+  it("asks before dropping the user's changes, and keeps them on Cancel", async () => {
+    await conflict();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Keep the Drive version" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Drop your changes?" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      screen.getByRole("heading", { name: /Someone changed/ }),
+    ).toBeVisible();
+    expect(screen.getByRole("checkbox")).toBeChecked();
+  });
+
+  it("keeps the edits when someone wrote to the copy before it was filled", async () => {
+    const { drive } = await conflict();
+    const copy = driveItem("plan (conflict).md", {
+      id: "copy",
+      parents: ["work"],
+    });
+    drive.createFile.mockResolvedValue(copy);
+    const empty = metadata(copy, { md5Checksum: "d41d", headRevisionId: "r1" });
+    const theirs = metadata(copy, {
+      md5Checksum: "ffff",
+      headRevisionId: "r2",
+    });
+    drive.getMetadata.mockImplementation((file) =>
+      Promise.resolve(file.id === "copy" ? empty : THEIRS),
+    );
+    drive.getMetadata.mockImplementationOnce(() => Promise.resolve(empty));
+    drive.getMetadata.mockImplementationOnce(() => Promise.resolve(theirs));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save mine as a copy" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Someone wrote to the copy before DriveMD could. Your changes are still here: try again for a new copy.",
+    );
+    expect(getPlace().route).toEqual({ name: "home" });
+    expect(drive.saveContent).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save mine as a copy" }),
+    );
+    await waitFor(() => {
+      expect(drive.createFile).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("overwrites Drive's version with the user's, keeping Drive's in the history", async () => {
@@ -226,9 +283,7 @@ describe("a save that finds someone else's change", () => {
     ).toBeEnabled();
 
     // The next conflict starts afresh.
-    fireEvent.click(
-      screen.getByRole("button", { name: "Keep the Drive version" }),
-    );
+    keepTheirs();
     drive.getMetadata.mockResolvedValue(
       metadata(PLAN, { md5Checksum: "eeee", headRevisionId: "revision-5" }),
     );

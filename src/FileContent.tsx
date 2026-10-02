@@ -16,6 +16,7 @@ import {
 } from "react";
 import { useDrive } from "./drive-context.ts";
 import { inDrive } from "./drive-web.ts";
+import { ConfirmDialog } from "./Dialog.tsx";
 import { describeError } from "./errors.ts";
 import type { EditorHandle } from "./Editor.tsx";
 import {
@@ -111,6 +112,16 @@ function released(
   return !newer || sameRevision(opened, file);
 }
 
+/** Someone wrote to the copy between its making and its filling. */
+class CopyTakenError extends Error {
+  override readonly name = "CopyTakenError";
+  constructor() {
+    super(
+      "Someone wrote to the copy before DriveMD could. Your changes are still here: try again for a new copy.",
+    );
+  }
+}
+
 /** A save: the bytes and their text, over another revision if chosen. */
 interface Saving {
   bytes: Uint8Array<ArrayBuffer>;
@@ -148,6 +159,8 @@ function Conflict({
   const { drive } = useDrive();
   const content = useQuery({ ...contentQuery(drive, theirs), select: read });
   const id = useId();
+  // Dropping the user's changes cannot be undone: it is confirmed first.
+  const [dropping, setDropping] = useState(false);
   return (
     <section className="conflict" aria-labelledby={id}>
       <h3 id={id}>Someone changed this file in Google Drive</h3>
@@ -157,7 +170,13 @@ function Conflict({
         adds is highlighted.
       </p>
       <div className="actions">
-        <button type="button" disabled={busy} onClick={onKeep}>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            setDropping(true);
+          }}
+        >
           Keep the Drive version
         </button>
         <button type="button" disabled={busy} onClick={onOverwrite}>
@@ -171,8 +190,27 @@ function Conflict({
       </div>
       {error && (
         <p role="alert" className="failure">
-          {describeError(error)}
+          {error instanceof CopyTakenError
+            ? error.message
+            : describeError(error)}
         </p>
+      )}
+      {dropping && (
+        <ConfirmDialog
+          title="Drop your changes?"
+          action="Drop my changes"
+          pending={false}
+          error={null}
+          onConfirm={onKeep}
+          onClose={() => {
+            setDropping(false);
+          }}
+        >
+          <p>
+            Your version of the note goes, and Google Drive's stays. This cannot
+            be undone.
+          </p>
+        </ConfirmDialog>
       )}
       <Loaded query={content}>
         {(note) => (
@@ -287,7 +325,12 @@ function Content({ file }: { file: FileMetadata }) {
         bytes,
         { keep: false },
       );
-      return "saved" in result ? result.saved : result.conflict;
+      if ("conflict" in result) {
+        // The page keeps the edits, and the next attempt makes a new copy.
+        madeCopy.current = undefined;
+        throw new CopyTakenError();
+      }
+      return result.saved;
     },
     onSuccess: (made) => {
       refreshAfterChange(client, made);
