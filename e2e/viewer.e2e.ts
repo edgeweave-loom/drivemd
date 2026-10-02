@@ -193,8 +193,11 @@ test("shows someone else's change at save, and overwrites it when asked", async 
   expect(drive.writes).toEqual([]);
 
   await page.getByRole("button", { name: "Overwrite with mine" }).click();
+  // The panel goes at once; the writes follow.
+  await expect
+    .poll(() => drive.writes)
+    .toEqual(["keep plan revision-2", "save plan"]);
   await expect(page.getByText("Unsaved changes")).toHaveCount(0);
-  expect(drive.writes).toEqual(["keep plan revision-2", "save plan"]);
   expect(String(drive.files.get("plan")?.content)).not.toContain("Their line.");
   expect(String(drive.files.get("plan")?.content)).toContain(
     "- [x] Boil water",
