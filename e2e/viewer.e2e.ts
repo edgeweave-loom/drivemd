@@ -273,3 +273,29 @@ test("signs out once the user agrees to discard unsaved changes", async ({
   ).toBeVisible();
   expect(await draftsKept(page)).toBe(0);
 });
+
+test("asks before leaving a note with unsaved changes for another page", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  await page.locator(".markdown").getByRole("checkbox").first().check();
+  const crumbs = page.getByRole("navigation", { name: "Breadcrumbs" });
+
+  const refused = page.waitForEvent("dialog");
+  void crumbs.getByRole("link", { name: "Work" }).click();
+  const asked = await refused;
+  expect(asked.message()).toBe(
+    "This note has unsaved changes. Leave it anyway?",
+  );
+  await asked.dismiss();
+  await expect(page).toHaveURL(/\/edit\?id=plan$/);
+  await expect(page.getByText("Unsaved changes")).toBeVisible();
+
+  page.once("dialog", (dialog) => void dialog.accept());
+  await crumbs.getByRole("link", { name: "Work" }).click();
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Work" }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Archive" })).toBeVisible();
+});

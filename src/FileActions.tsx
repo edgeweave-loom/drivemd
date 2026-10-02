@@ -175,7 +175,14 @@ function Trash({
 function leave(file: FileMetadata, path: Crumb[] | undefined): void {
   const folder = path?.at(-2);
   const [parent] = file.parents;
-  if (folder) navigate(folder.href, path?.slice(0, -1));
-  else if (parent) navigate(hrefOf({ name: "folder", folder: { id: parent } }));
-  else navigate(HOME);
+  // The user trashed the note: its unsaved changes go with it.
+  const asked = { asked: true };
+  if (folder) navigate(folder.href, path?.slice(0, -1), asked);
+  else if (parent) {
+    navigate(
+      hrefOf({ name: "folder", folder: { id: parent } }),
+      undefined,
+      asked,
+    );
+  } else navigate(HOME, undefined, asked);
 }
