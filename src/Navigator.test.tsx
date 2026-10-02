@@ -32,12 +32,14 @@ afterEach(() => {
 });
 
 describe("Navigator", () => {
-  it("shows the account and signs out", () => {
+  it("shows the account and signs out", async () => {
     const session = open("/");
 
     expect(screen.getByText(EMAIL)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
-    expect(session.signOut).toHaveBeenCalledOnce();
+    await waitFor(() => {
+      expect(session.signOut).toHaveBeenCalledOnce();
+    });
   });
 
   it("opens on Home, with a way into My Drive", async () => {

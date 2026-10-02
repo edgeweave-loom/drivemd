@@ -1,4 +1,29 @@
+import type { Page } from "@playwright/test";
 import { expect, signIn, test } from "./fake-google.ts";
+
+/** How many notes have unsaved changes kept on the device. */
+function draftsKept(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const opening = indexedDB.open("drivemd");
+        opening.onsuccess = () => {
+          const database = opening.result;
+          if (!database.objectStoreNames.contains("drafts")) {
+            resolve(0);
+            return;
+          }
+          const counting = database
+            .transaction("drafts")
+            .objectStore("drafts")
+            .count();
+          counting.onsuccess = () => {
+            resolve(counting.result);
+          };
+        };
+      }),
+  );
+}
 
 test("renders a note as GitHub does, under the security policy", async ({
   page,
@@ -213,30 +238,7 @@ test("keeps unsaved changes on the device across a reload", async ({
   await page.locator(".markdown").getByRole("checkbox").first().check();
   await expect(page.getByText("Unsaved changes")).toBeVisible();
   // Kept on the device half a second after the last change.
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          new Promise<number>((resolve) => {
-            const opening = indexedDB.open("drivemd");
-            opening.onsuccess = () => {
-              const database = opening.result;
-              if (!database.objectStoreNames.contains("drafts")) {
-                resolve(0);
-                return;
-              }
-              const counting = database
-                .transaction("drafts")
-                .objectStore("drafts")
-                .count();
-              counting.onsuccess = () => {
-                resolve(counting.result);
-              };
-            };
-          }),
-      ),
-    )
-    .toBe(1);
+  await expect.poll(() => draftsKept(page)).toBe(1);
 
   await page.reload();
   await expect(
@@ -250,4 +252,24 @@ test("keeps unsaved changes on the device across a reload", async ({
 
   await expect(page.getByText("Unsaved changes")).toHaveCount(0);
   expect(drive.writes).toEqual(["keep plan revision-1", "save plan"]);
+});
+
+test("signs out once the user agrees to discard unsaved changes", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  await page.locator(".markdown").getByRole("checkbox").first().check();
+  await expect.poll(() => draftsKept(page)).toBe(1);
+
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Discard unsaved changes?" }),
+  ).toContainText("1 note has unsaved changes on this device.");
+  await page.getByRole("button", { name: "Discard and sign out" }).click();
+
+  await expect(
+    page.getByRole("button", { name: "Sign in with Google" }),
+  ).toBeVisible();
+  expect(await draftsKept(page)).toBe(0);
 });

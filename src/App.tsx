@@ -2,6 +2,7 @@ import { useSyncExternalStore, type ReactNode } from "react";
 import { Dialog } from "./Dialog.tsx";
 import { Navigator } from "./Navigator.tsx";
 import type { Session, SessionState } from "./session.ts";
+import { SignOut } from "./SignOut.tsx";
 
 export function App({ session }: { session: Session }) {
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
@@ -34,9 +35,7 @@ export function App({ session }: { session: Session }) {
                 >
                   Continue
                 </GoogleButton>
-                <button type="button" onClick={session.signOut}>
-                  Sign out
-                </button>
+                <SignOut account={screen.email} onSignOut={session.signOut} />
                 {status}
               </div>
             </Dialog>

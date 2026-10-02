@@ -2,6 +2,7 @@ import "fake-indexeddb/auto";
 import { EditorView } from "@codemirror/view";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { rememberAccount, signOut } from "./auth.ts";
 import { deleteDrafts, readDraft, writeDraft } from "./drafts.ts";
 import type { FileMetadata } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
@@ -38,6 +39,7 @@ function kept(text: string, revision = "revision-1", md5 = "aaaa") {
 }
 
 beforeEach(async () => {
+  rememberAccount(ACCOUNT);
   await deleteDrafts(ACCOUNT);
 });
 
@@ -111,6 +113,17 @@ describe("unsaved text kept on the device", () => {
     await expect(readDraft(ACCOUNT, "plan")).resolves.toMatchObject({
       text: "- [x] Boil\n- [x] Pour\n",
     });
+  });
+
+  it("is not kept once the account signed out, as another tab may have", async () => {
+    const { unmount } = open();
+    fireEvent.click(await screen.findByRole("checkbox"));
+
+    signOut();
+    unmount();
+
+    await new Promise((settle) => setTimeout(settle, 700));
+    await expect(readDraft(ACCOUNT, "plan")).resolves.toBeUndefined();
   });
 
   it("is offered back when the note opens again, and restored on a tap", async () => {

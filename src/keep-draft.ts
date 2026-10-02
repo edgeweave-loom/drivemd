@@ -1,4 +1,5 @@
 import { useEffect, useEffectEvent, useRef } from "react";
+import { getRememberedAccount } from "./auth.ts";
 import { deleteDraft, writeDraft, type Draft } from "./drafts.ts";
 
 /** The edits to keep: everything a draft holds but when. */
@@ -24,7 +25,8 @@ export function useKeptDraft(
   const flush = useEffectEvent(() => {
     const due = pending.current;
     pending.current = undefined;
-    if (!due) return;
+    // Signed out, in this tab or another, the account keeps nothing here.
+    if (!due || getRememberedAccount() !== account) return;
     writeDraft(account, { ...due, keptAt: new Date().toISOString() }).catch(
       () => undefined,
     );
