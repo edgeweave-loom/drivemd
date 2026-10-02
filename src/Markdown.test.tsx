@@ -6,6 +6,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** The text of each cell, row by row. */
+function rows(page: HTMLElement) {
+  return [...page.querySelectorAll("tr")].map((row) =>
+    [...row.cells].map((cell) => cell.textContent),
+  );
+}
+
 function show(text: string) {
   return render(<Rendered text={text} />).container;
 }
@@ -155,10 +162,161 @@ describe("Rendered", () => {
     expect(screen.getByText("Photo")).toBeVisible();
   });
 
-  it("shows raw HTML as written, never running it", () => {
-    const page = show("<b>bold</b> <script>alert(1)</script>");
+  it("renders raw HTML as GitHub does, without scripts, handlers or styles", () => {
+    const page = show(
+      [
+        '<b>bold</b> <script>alert(1)</script> <img src="x" onerror="alert(1)">',
+        "",
+        '<span style="color: red" onclick="alert(1)">red</span>',
+        "",
+        '<a href="javascript:alert(1)">run</a> <iframe src="https://example.com"></iframe>',
+        "",
+        "<details><summary>More</summary>",
+        "",
+        "Hidden *text*.",
+        "",
+        "</details>",
+      ].join("\n"),
+    );
 
-    expect(page.querySelector("b, script")).toBeNull();
-    expect(screen.getByText(/<b>bold<\/b>/)).toBeVisible();
+    expect(page.querySelector("b")).toHaveTextContent("bold");
+    expect(
+      page.querySelector("script, iframe, img, [onerror], [onclick]"),
+    ).toBeNull();
+    expect(page.innerHTML).not.toMatch(/alert|style=/);
+    expect(screen.getByText("red")).not.toHaveAttribute("style");
+    expect(screen.queryByRole("link", { name: "run" })).toBeNull();
+    expect(page.querySelector("details summary")).toHaveTextContent("More");
+    expect(page.querySelector("details em")).toHaveTextContent("text");
+  });
+
+  it("hides HTML comments", () => {
+    const page = show(
+      "Tea <!-- inline --> time.\n\n<!--\nA block\n-->\n\nCups.",
+    );
+
+    expect(page).toHaveTextContent("Tea time. Cups.");
+    expect(page.innerHTML).not.toMatch(/inline|block/);
+  });
+
+  it("scrolls to the anchors a note's HTML marks, by id or by name", () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    const page = show(
+      '<a id="setup"></a>Setup\n\n<a name="usage"></a>Usage\n\n[One](#setup) [Two](#usage)',
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "One" }));
+    fireEvent.click(screen.getByRole("link", { name: "Two" }));
+
+    expect(scrolled.mock.contexts).toEqual([
+      page.querySelector("#user-content-setup"),
+      page.querySelector("#user-content-usage"),
+    ]);
+    expect(scrolled.mock.contexts).not.toContain(null);
+  });
+
+  it("keeps the ids a note gives apart from the app's own", () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    const page = show(
+      '<h2 id="google">Raw</h2>\n\n## Set up\n\n[Up](#google) [Setup](#set-up)',
+    );
+
+    expect(page.querySelector("#google")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Raw" })).toHaveAttribute(
+      "id",
+      "user-content-google",
+    );
+    fireEvent.click(screen.getByRole("link", { name: "Up" }));
+    fireEvent.click(screen.getByRole("link", { name: "Setup" }));
+
+    expect(scrolled.mock.contexts).toEqual([
+      screen.getByRole("heading", { name: "Raw" }),
+      screen.getByRole("heading", { name: "Set up" }),
+    ]);
+  });
+
+  it("shows front matter as a table of properties", () => {
+    const page = show(
+      [
+        "---",
+        "title: Plan",
+        "tags: [tea, cups]",
+        "draft: false",
+        "empty:",
+        "owner: { name: Ada, team: Tea }",
+        "---",
+        "# Body",
+      ].join("\n"),
+    );
+
+    expect(rows(page)).toEqual([
+      ["Property", "Value"],
+      ["title", "Plan"],
+      ["tags", "tea, cups"],
+      ["draft", "false"],
+      ["empty", ""],
+      ["owner", "name: Ada, team: Tea"],
+    ]);
+    expect(screen.getByRole("heading", { name: "Body" })).toBeVisible();
+    expect(page.querySelector("hr")).toBeNull();
+  });
+
+  it("shows property values as written, never as YAML reads them", () => {
+    const page = show(
+      [
+        "---",
+        "version: 1.10",
+        "id: 12345678901234567890",
+        "color: 0x1F",
+        "flag: True",
+        'title: "Plan \\"B\\""',
+        "tags: [1.0, 'tea']",
+        "base: &cups 2.50",
+        "again: *cups",
+        "---",
+      ].join("\n"),
+    );
+
+    expect(rows(page).slice(1)).toEqual([
+      ["version", "1.10"],
+      ["id", "12345678901234567890"],
+      ["color", "0x1F"],
+      ["flag", "True"],
+      ["title", 'Plan "B"'],
+      ["tags", "1.0, tea"],
+      ["base", "2.50"],
+      ["again", "*cups"],
+    ]);
+  });
+
+  it("shows an alias that refers to itself, and a key given twice, as written", () => {
+    const page = show("---\nloop: &a [*a]\ntea: green\ntea: black\n---\nBody");
+
+    expect(rows(page).slice(1)).toEqual([
+      ["loop", "*a"],
+      ["tea", "green"],
+      ["tea", "black"],
+    ]);
+  });
+
+  it.each([
+    ["a list", "---\n- tea\n- cups\n---\nBody", "- tea"],
+    ["broken YAML", "---\ntitle: [unclosed\n---\nBody", "title: [unclosed"],
+  ])(
+    "shows front matter that holds no properties as written: %s",
+    (_, text, written) => {
+      const page = show(text);
+
+      expect(page.querySelector("table")).toBeNull();
+      expect(page.querySelector("pre code")).toHaveTextContent(written);
+      expect(screen.getByText("Body")).toBeVisible();
+    },
+  );
+
+  it("shows nothing for empty front matter", () => {
+    const page = show("---\n---\nBody");
+
+    expect(page.querySelector("table, pre, hr")).toBeNull();
+    expect(page).toHaveTextContent(/^Body$/);
   });
 });

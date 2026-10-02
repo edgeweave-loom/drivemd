@@ -10,7 +10,8 @@ test("renders a note as GitHub does, under the security policy", async ({
   await expect(
     note.getByRole("heading", { level: 1, name: "The plan" }),
   ).toBeVisible();
-  await expect(note.getByRole("table")).toContainText("Ada");
+  await expect(note.getByRole("table").first()).toContainText("tea, cups");
+  await expect(note.getByRole("table").last()).toContainText("Ada");
   // Named character references decode without an HTML sink, which Trusted
   // Types would refuse.
   await expect(note).toContainText("Tea & cups © Ada\u00a0Lovelace.");
@@ -24,4 +25,9 @@ test("renders a note as GitHub does, under the security policy", async ({
     note.getByRole("link", { name: "Image: a chart" }),
   ).toHaveAttribute("href", "https://example.com/chart.png");
   await expect(note.locator("img")).toHaveCount(0);
+  // Raw HTML, sanitized as on GitHub.
+  await note.getByText("More").click();
+  await expect(note.locator("details b")).toHaveText("Bold");
+  await expect(note.locator("script, [onclick]")).toHaveCount(0);
+  await expect(note).not.toContainText("hidden");
 });
