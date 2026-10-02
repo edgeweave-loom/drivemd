@@ -4,15 +4,25 @@ import {
   useQueryClient,
   type UseMutationResult,
 } from "@tanstack/react-query";
-import { lazy, Suspense, useDeferredValue, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useDeferredValue,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react";
 import { useDrive } from "./drive-context.ts";
 import { inDrive } from "./drive-web.ts";
 import { describeError } from "./errors.ts";
 import type { EditorHandle } from "./Editor.tsx";
 import { TooLargeError, type FileMetadata, type FileRef } from "./drive.ts";
+import { commandKey } from "./keys.ts";
 import { useLayout } from "./layout.ts";
 import { Loaded } from "./Loaded.tsx";
 import { Missing } from "./Missing.tsx";
+import { useFollow } from "./follow.ts";
 import { Rendered } from "./Markdown.tsx";
 import { contentQuery, MAX_CONTENT, setDetails } from "./queries.ts";
 import { saveText, type SaveResult } from "./save.ts";
@@ -219,6 +229,7 @@ function NoteView({
   const { renew } = useDrive();
   const layout = useLayout();
   const editor = useRef<EditorHandle>(null);
+  const follow = useFollow(folderOf(file));
   // Beside the editor, the preview catches up with typing when it can.
   const deferred = useDeferredValue(text);
   const reason = readOnly(file, note);
@@ -227,6 +238,28 @@ function NoteView({
   // Only bytes that changed are written, and never those of a file DriveMD
   // only shows: its text may not be its bytes.
   const unsaved = editable && !sameBytes(bytes, note.bytes);
+  function saveNow() {
+    if (!unsaved || save.isPending) return;
+    renew();
+    save.mutate({ bytes, text });
+  }
+  // Cmd or Ctrl+S saves the note, where the editor or the viewer is, and
+  // never the page itself, which would hold none of the note's bytes.
+  const shortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (!commandKey(event) || event.altKey || event.shiftKey) return;
+    // The key labelled S, or where S is on a layout that is not Latin.
+    const { key = "", code } = event as Partial<KeyboardEvent>;
+    const latin = /^[a-z]$/i.test(key);
+    if (latin ? key.toLowerCase() !== "s" : code !== "KeyS") return;
+    event.preventDefault();
+    saveNow();
+  });
+  useEffect(() => {
+    window.addEventListener("keydown", shortcut);
+    return () => {
+      window.removeEventListener("keydown", shortcut);
+    };
+  }, []);
   const source =
     editing && editable && (layout !== "phone" || pane === "source");
   const rendered =
@@ -263,10 +296,7 @@ function NoteView({
               type="button"
               className="primary"
               disabled={save.isPending}
-              onClick={() => {
-                renew();
-                save.mutate({ bytes, text });
-              }}
+              onClick={saveNow}
             >
               {save.isPending ? "Saving…" : "Save"}
             </button>
@@ -293,6 +323,7 @@ function NoteView({
               initial={text}
               lineBreak={note.lineBreak}
               onChange={onEdit}
+              onFollow={follow}
             />
           </Suspense>
         )}

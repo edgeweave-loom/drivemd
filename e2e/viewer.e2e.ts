@@ -137,3 +137,34 @@ test("keeps one kind of line break whatever an input method types", async ({
   await expect(page.getByText("Unsaved changes")).toHaveCount(0);
   expect(String(drive.files.get("notes")?.content)).toBe("oneA\nB\nC\ntwo\n");
 });
+
+test("saves with Ctrl+S, and follows a link with Ctrl+click in the source", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.name !== "desktop-chromium",
+    "Keyboard and mouse shortcuts are for desktops",
+  );
+  const before = String(drive.files.get("plan")?.content);
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  await page.getByRole("button", { name: "Edit" }).click();
+  const source = page.getByRole("textbox", { name: "Markdown source" });
+  await source.click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type("Tea.");
+
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  expect(String(drive.files.get("plan")?.content)).toBe(`${before}Tea.`);
+
+  await source.getByText("the notes", { exact: true }).click({
+    modifiers: ["ControlOrMeta"],
+  });
+  await expect(
+    page.getByRole("heading", { level: 2, name: "notes.md" }),
+  ).toBeVisible();
+  await expect(page.getByText(/^Last modified by/)).toBeVisible();
+  await expect(page.locator(".markdown")).toBeAttached();
+});

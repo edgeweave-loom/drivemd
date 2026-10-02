@@ -21,6 +21,11 @@ export interface FolderReader {
   parent: (folder: FileRef) => Promise<string | undefined>;
 }
 
+/** Whether an address leads to a web page outside the app. */
+export function onTheWeb(href: string): boolean {
+  return /^https?:/i.test(href);
+}
+
 /**
  * The steps of a relative path in a link or an image, decoded, without its
  * query or fragment; undefined for any other address: one with a scheme, one

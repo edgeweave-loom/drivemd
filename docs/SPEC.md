@@ -77,12 +77,12 @@ The interface is in English and follows the system's light or dark theme.
    - Whatever an edit inserts, typed, pasted, dropped, typed by an input method or put by a replacement, takes the file's own line break, and NUL characters and half characters are kept out, so that the saved bytes are the text shown.
    - The editor runs in a shadow root, where CodeMirror styles itself through constructed style sheets: elsewhere it adds `<style>` elements, which the security policy blocks, and the policy needs no `'unsafe-inline'` for styles.
    - **Light live styling (v1).** Headings shown larger, bold and italic styled, inline code and code blocks in monospace. Markdown symbols (`**`, `#`, `[]()`) are dimmed, never hidden, so cursor and selection behave normally on phones.
-   - A tap or click in the editor only places the cursor; checkboxes and links react in the viewer and the preview. On desktop, Cmd/Ctrl+click opens a link from the editor, as in Obsidian.
+   - A tap or click in the editor only places the cursor; checkboxes and links react in the viewer and the preview. On desktop, Cmd/Ctrl+click opens a link from the editor, as in Obsidian: an inline link, an autolink or a bare web address, where a tap in the preview would lead.
    - Enter continues lists and task lists.
    - A search panel finds text in the file. The browser's own find misses text that CodeMirror has not drawn, since it renders only the visible part of the file.
    - **Full Obsidian-style live preview (v2).** Symbols hidden except on the line being edited, and images and tables rendered in the editor. A setting switches between full live preview, light styling and plain source. Details in the v2 live preview section.
    - All modes are CodeMirror 6 decorations over the same source text, so files stay byte-identical and v2 builds on v1 without rework.
-6. **Save.** Explicit Save button plus Cmd/Ctrl+S; there is no autosave. The Save button shows whenever the file has unsaved changes, in the viewer too.
+6. **Save.** Explicit Save button plus Cmd/Ctrl+S, from the editor or the viewer; there is no autosave, and Cmd/Ctrl+S never saves the page itself. The Save button shows whenever the file has unsaved changes, in the viewer too.
    - Unsaved text is kept on the device (IndexedDB) as the user types, so it survives a reload, a crash or iOS closing the app. Reopening the file offers to restore it.
    - The app writes only when the bytes actually changed.
    - Before writing, it checks that nobody else changed the file since it was opened (conflict check). If someone did, it shows the differences between the Drive version and the user's version, and the user chooses: keep the Drive version, overwrite it with their version, or save their version as a copy named `<name> (conflict).md` in the same folder. Restoring a local copy of a file that changed in Drive leads to the same choice.

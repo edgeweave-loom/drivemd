@@ -1,8 +1,12 @@
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { ensureSyntaxTree } from "@codemirror/language";
+import { EditorState } from "@codemirror/state";
 import { runScopeHandlers, EditorView } from "@codemirror/view";
 import { render } from "@testing-library/react";
 import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { Editor, type EditorHandle } from "./Editor.tsx";
+import { linkAt } from "./source-links.ts";
 import type { LineBreak } from "./text.ts";
 
 function open(text: string, lineBreak: LineBreak = "\n") {
@@ -14,6 +18,7 @@ function open(text: string, lineBreak: LineBreak = "\n") {
       initial={text}
       lineBreak={lineBreak}
       onChange={onChange}
+      onFollow={() => undefined}
     />,
   );
   const element = container
@@ -148,5 +153,97 @@ describe("Editor", () => {
       (line) => line.textContent,
     );
     expect(marked).toEqual(["```js", "const a = 1;", "```"]);
+  });
+});
+
+describe("linkAt", () => {
+  function state(text: string) {
+    const made = EditorState.create({
+      doc: text,
+      extensions: markdown({ base: markdownLanguage }),
+    });
+    ensureSyntaxTree(made, made.doc.length, 5_000);
+    return made;
+  }
+
+  it.each([
+    [
+      "an inline link, on its text",
+      "See [the plan](plan.md) now",
+      "the",
+      "plan.md",
+    ],
+    [
+      "an inline link, on its address",
+      "See [the plan](plan.md) now",
+      "an.md",
+      "plan.md",
+    ],
+    [
+      "a link with a title",
+      '[Plan](../plan.md "The plan")',
+      "Plan",
+      "../plan.md",
+    ],
+    ["a link in angle brackets", "[Mine](<My note.md>)", "Mine", "My note.md"],
+    [
+      "an autolink",
+      "<https://example.com/docs>",
+      "example",
+      "https://example.com/docs",
+    ],
+    [
+      "a bare web address",
+      "Go to https://example.com today",
+      "example",
+      "https://example.com",
+    ],
+    ["an image", "![A chart](img/chart.png)", "chart", "img/chart.png"],
+    [
+      "an image in a link, as the link",
+      "[![badge](b.png)](target.md)",
+      "badge",
+      "target.md",
+    ],
+    [
+      "a bare www address, on the web",
+      "Go to www.example.com today",
+      "example",
+      "http://www.example.com",
+    ],
+    [
+      "a bare email address",
+      "Write to ada@example.com today",
+      "example",
+      "mailto:ada@example.com",
+    ],
+    [
+      "an email autolink",
+      "<ada@example.com>",
+      "example",
+      "mailto:ada@example.com",
+    ],
+    [
+      "a link with escapes and entities",
+      "[x](my\\_note&amp;tea.md)",
+      "my",
+      "my_note&tea.md",
+    ],
+    [
+      "a link with numeric character references",
+      "[x](a&#38;b&#x26;c&nope;d&#0;e.md)",
+      "x",
+      "a&b&c&nope;d&#0;e.md",
+    ],
+  ])("finds the address of %s", (_, text, near, href) => {
+    const made = state(text);
+    expect(linkAt(made, text.indexOf(near) + 1)).toBe(href);
+  });
+
+  it.each([
+    ["plain text", "See the plan now", "plan"],
+    ["a reference link", "[Plan][1]\n\n[1]: plan.md", "Plan"],
+  ])("finds nothing in %s", (_, text, near) => {
+    expect(linkAt(state(text), text.indexOf(near) + 1)).toBeUndefined();
   });
 });

@@ -108,6 +108,35 @@ describe("editing a note in the viewer", () => {
     expect(await screen.findByText("Serve")).toBeVisible();
   });
 
+  it("saves with Cmd or Ctrl+S, and never lets the browser save the page", async () => {
+    const { drive, renew } = open();
+    fireEvent.click(await box(0));
+
+    const ctrl = fireEvent.keyDown(window, { key: "s", ctrlKey: true });
+    await waitFor(() => {
+      expect(drive.saveContent).toHaveBeenCalledOnce();
+    });
+    expect(ctrl).toBe(false);
+    expect(renew).toHaveBeenCalledOnce();
+    await waitFor(() => {
+      expect(screen.queryByText("Unsaved changes")).toBeNull();
+    });
+
+    // Nothing left to save: the shortcut does nothing, but the browser's.
+    expect(fireEvent.keyDown(window, { key: "S", ctrlKey: true })).toBe(false);
+    expect(fireEvent.keyDown(window, { key: "s" })).toBe(true);
+    // A layout that is not Latin: the key is the one where S is.
+    expect(
+      fireEvent.keyDown(window, { key: "ы", code: "KeyS", ctrlKey: true }),
+    ).toBe(false);
+    // Autofill sends keydown events without a key.
+    expect(fireEvent.keyDown(window, { ctrlKey: true })).toBe(true);
+    expect(
+      fireEvent.keyDown(window, { key: "s", ctrlKey: true, altKey: true }),
+    ).toBe(true);
+    expect(drive.saveContent).toHaveBeenCalledOnce();
+  });
+
   it("writes back a byte order mark and CRLF line breaks as they were", async () => {
     const bom = new Uint8Array([0xef, 0xbb, 0xbf]);
     const drive = fakeDrive();
