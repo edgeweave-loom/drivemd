@@ -15,6 +15,7 @@ import {
 import {
   EditorState,
   RangeSetBuilder,
+  type ChangeSpec,
   type Extension,
 } from "@codemirror/state";
 import {
@@ -125,6 +126,26 @@ function codeLines(view: EditorView): DecorationSet {
   return builder.finish();
 }
 
+/**
+ * Gives any line break an edit inserts the file's own, however it comes:
+ * pasted, dropped, typed by an input method, or put by a replacement. A
+ * break of another kind would stay inside its line as a character, and the
+ * file would no longer have one kind of line break.
+ */
+function ownLineBreaks(lineBreak: LineBreak): Extension {
+  return EditorState.transactionFilter.of((transaction) => {
+    const fixes: ChangeSpec[] = [];
+    transaction.changes.iterChanges((_fromA, _toA, from, to) => {
+      const written = transaction.newDoc.sliceString(from, to, lineBreak);
+      const fixed = written.replace(/\r\n|\r|\n/g, lineBreak);
+      if (fixed !== written) fixes.push({ from, to, insert: fixed });
+    }, true);
+    return fixes.length === 0
+      ? transaction
+      : [transaction, { changes: fixes, sequential: true }];
+  });
+}
+
 function extensions(
   lineBreak: LineBreak,
   changed: (update: ViewUpdate) => void,
@@ -132,9 +153,7 @@ function extensions(
   return [
     // Lines join with the file's own break, whatever the browser sends.
     EditorState.lineSeparator.of(lineBreak),
-    EditorView.clipboardInputFilter.of((text) =>
-      text.replace(/\r\n|\r|\n/g, lineBreak),
-    ),
+    ownLineBreaks(lineBreak),
     history(),
     // GitHub's Markdown, its fences highlighted in their language; Enter
     // continues lists and task lists.
