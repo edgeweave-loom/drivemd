@@ -329,3 +329,84 @@ test("creates, renames, moves and trashes a note", async ({ page, run }) => {
   expect(file.parents).toEqual([run.ids.archive]);
   expect(file.trashed).toBe(true);
 });
+
+/** A note another tool wrote in the run's notes folder, with these bytes. */
+async function written(
+  run: Run,
+  name: string,
+  content: Uint8Array<ArrayBuffer>,
+) {
+  const made = await run.drive.createFile(
+    { id: run.ids.notes },
+    `${RUN} ${name}`,
+  );
+  await run.drive.saveContent(await run.drive.getMetadata(made), content);
+  return made.id;
+}
+
+async function bytesOf(run: Run, id: string) {
+  return run.drive.getContent(await run.drive.getMetadata({ id }), 1_000_000);
+}
+
+const utf8 = (text: string) => new TextEncoder().encode(text);
+
+test("checks a task in a CRLF note with a byte order mark, saving that byte only", async ({
+  page,
+  run,
+}) => {
+  const before = new Uint8Array([
+    0xef,
+    0xbb,
+    0xbf,
+    ...utf8("# Tea\r\n\r\n- [ ] Boil\r\n- [ ] Pour\r\n"),
+  ]);
+  const id = await written(run, "crlf", before);
+  await page.goto(`/edit?id=${id}`);
+  const note = page.locator(".markdown");
+  await expect(note.getByRole("checkbox")).toHaveCount(2);
+  await loaded(page);
+
+  await note.getByRole("checkbox").last().check();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+
+  const after = before.slice();
+  // The space between the brackets of "- [ ] Pour\r\n", 9 bytes from the end.
+  after[after.length - 9] = 0x78;
+  expect(await bytesOf(run, id)).toEqual(after);
+});
+
+test("edits a note's source and saves it, keeping its line breaks", async ({
+  page,
+  run,
+}) => {
+  const id = await written(run, "edited", utf8("# Tea\r\n\r\nGreen.\r\n"));
+  await page.goto(`/edit?id=${id}`);
+  await expect(page.locator(".markdown").getByText("Green.")).toBeVisible();
+  await loaded(page);
+
+  await page.getByRole("button", { name: "Edit" }).click();
+  const source = page.getByRole("textbox", { name: "Markdown source" });
+  await source.click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type("Black.");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+
+  expect(await bytesOf(run, id)).toEqual(utf8("# Tea\r\n\r\nGreen.\r\nBlack."));
+});
+
+test("shows a note that is not UTF-8 read-only", async ({ page, run }) => {
+  const id = await written(
+    run,
+    "latin1",
+    new Uint8Array([0x63, 0x61, 0x66, 0xe9]),
+  );
+  await page.goto(`/edit?id=${id}`);
+
+  await expect(
+    page.getByText("Not UTF-8 text: DriveMD only shows it"),
+  ).toBeVisible();
+  await loaded(page);
+  await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
+});
