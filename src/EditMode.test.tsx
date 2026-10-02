@@ -114,21 +114,59 @@ describe("editing a note's source", () => {
     expect((await editor()).state.sliceDoc()).toContain("Green.");
   });
 
-  it("starts the editor again from a revision someone else made, while nothing is edited", async () => {
+  it("keeps the revision opened while editing, and shows Drive's newer one after Done", async () => {
     holdScreen("wide");
     const { drive, rerender } = open();
     fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
-    const before = await editor();
+    const view = await editor();
+    type(view, "x");
 
     drive.getContent.mockResolvedValue(utf8("# Coffee\n"));
     rerender(
       <FileContent file={metadata(PLAN, { headRevisionId: "revision-3" })} />,
     );
-
-    await waitFor(async () => {
-      expect((await editor()).state.sliceDoc()).toBe("# Coffee\n");
+    // Typing passes back through the text opened: still the same editor.
+    act(() => {
+      view.dispatch({
+        changes: { from: view.state.doc.length - 1, to: view.state.doc.length },
+      });
     });
-    expect(await editor()).not.toBe(before);
+    expect(await editor()).toBe(view);
+    expect(screen.queryByText("Loading…")).toBeNull();
+    expect(drive.getContent).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(
+      await screen.findByRole("heading", { name: "Coffee" }),
+    ).toBeVisible();
+  });
+
+  it("keeps as unsaved an undo made while a save runs", async () => {
+    holdScreen("wide");
+    const { drive } = open();
+    let answer: (saved: FileMetadata) => void = () => undefined;
+    drive.saveContent.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const view = await editor();
+    type(view, "x");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByRole("button", { name: "Saving…" });
+
+    act(() => {
+      view.dispatch({
+        changes: { from: view.state.doc.length - 1, to: view.state.doc.length },
+      });
+    });
+    answer(metadata(PLAN, { headRevisionId: "revision-2" }));
+
+    await screen.findByRole("button", { name: "Save" });
+    expect(screen.getByText("Unsaved changes")).toBeVisible();
+    expect(view.state.sliceDoc()).toBe("# Tea\r\n\r\n- [ ] Boil\r\n");
   });
 
   it("keeps the same editor, its cursor and history, after a save", async () => {

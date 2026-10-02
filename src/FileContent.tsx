@@ -52,6 +52,30 @@ export function FileContent({ file }: { file: FileMetadata }) {
   return <Content file={file} />;
 }
 
+/**
+ * A revision the page holds to: with the user's edits, or just saved here,
+ * or else opened in the editor.
+ */
+interface Held {
+  opened: FileMetadata;
+  text?: string;
+  saved?: true;
+}
+
+/**
+ * Whether the page, out of the editor, may show Drive's latest revision
+ * again: its edits were undone by hand, or Drive told it of the one saved,
+ * or it held one only for the editor.
+ */
+function released(
+  { opened, text, saved }: Held,
+  file: FileMetadata,
+  note: Note | undefined,
+): boolean {
+  if (text !== undefined) return text === note?.text;
+  return !saved || sameRevision(opened, file);
+}
+
 /** What a phone shows while editing: the source, or the preview. */
 type Pane = "source" | "preview";
 
@@ -71,12 +95,13 @@ function Content({ file }: { file: FileMetadata }) {
   const { drive } = useDrive();
   const client = useQueryClient();
   // The revision the page holds to, with the edits made to it, rather than
-  // Drive's latest: one the user edited, or one just saved, until the page
-  // hears of it.
-  const [held, setHeld] = useState<{ opened: FileMetadata; text?: string }>();
-  if (held && held.text === undefined && sameRevision(held.opened, file)) {
-    setHeld(undefined);
-  }
+  // Drive's latest: one the user edited, one open in the editor, or one just
+  // saved, until the page hears of it.
+  const [held, setHeld] = useState<Held>();
+  // Whether the editor shows, and on a phone, the source or the preview:
+  // kept while another revision loads.
+  const [editing, setEditing] = useState(false);
+  const [pane, setPane] = useState<Pane>("source");
   // The revisions saved from this page, which the next save need not keep:
   // the one from before the first edit is kept, as is one someone else made.
   const [written, setWritten] = useState<ReadonlySet<string>>(new Set());
@@ -91,10 +116,12 @@ function Content({ file }: { file: FileMetadata }) {
     setShown({ revision, session: shown.session + (ours ? 0 : 1) });
   }
   const content = useQuery({ ...contentQuery(drive, opened), select: read });
-  // Whether the editor shows, and on a phone, the source or the preview:
-  // kept while another revision loads.
-  const [editing, setEditing] = useState(false);
-  const [pane, setPane] = useState<Pane>("source");
+  // Out of the editor, the page shows Drive's latest again once it holds no
+  // edits, or once it heard of the revision just saved; in the editor, Drive
+  // never changes the text being typed.
+  if (held && !editing && released(held, file, content.data)) {
+    setHeld(undefined);
+  }
   const save = useMutation({
     mutationFn: ({ bytes }: { bytes: Uint8Array<ArrayBuffer>; text: string }) =>
       saveText(drive, opened, bytes, {
@@ -117,7 +144,7 @@ function Content({ file }: { file: FileMetadata }) {
       setHeld((now) =>
         now?.text !== undefined && now.text !== text
           ? { opened: saved, text: now.text }
-          : { opened: saved },
+          : { opened: saved, saved: true },
       );
     },
   });
@@ -138,15 +165,16 @@ function Content({ file }: { file: FileMetadata }) {
           note={note}
           session={shown.session}
           editing={editing}
-          onEditing={setEditing}
+          onEditing={(open) => {
+            // The editor holds to the revision it opens with.
+            if (open) setHeld((now) => now ?? { opened: file });
+            setEditing(open);
+          }}
           pane={pane}
           onPane={setPane}
           text={held?.text ?? note.text}
           onEdit={(edited) => {
-            // Edits undone by hand leave Drive's revisions to show.
-            setHeld(
-              edited === note.text ? undefined : { opened, text: edited },
-            );
+            setHeld({ opened, text: edited });
           }}
           save={save}
         />
@@ -276,8 +304,13 @@ function NoteView({
               !editable
                 ? undefined
                 : source
-                  ? // The editor holds the text: the tap goes through it.
-                    (toggled) => editor.current?.offer(previewed, toggled)
+                  ? // The editor, once it shows, holds the text: the tap goes
+                    // through it.
+                    (toggled) => {
+                      if (editor.current)
+                        editor.current.offer(previewed, toggled);
+                      else onEdit(toggled);
+                    }
                   : onEdit
             }
           />
