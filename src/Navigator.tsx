@@ -14,6 +14,7 @@ import {
 import { hrefOf, navigate, usePlace } from "./router.ts";
 import { SearchPage } from "./SearchPage.tsx";
 import type { Session } from "./session.ts";
+import { SignOut } from "./SignOut.tsx";
 
 const HOME = hrefOf({ name: "home" });
 
@@ -42,9 +43,7 @@ export function Navigator({
           </h1>
           <SearchBox />
           <span className="account">{email}</span>
-          <button type="button" onClick={session.signOut}>
-            Sign out
-          </button>
+          <SignOut account={email} onSignOut={session.signOut} />
         </header>
         <main className="page">
           {children}

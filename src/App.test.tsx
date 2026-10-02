@@ -1,4 +1,11 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  within,
+  waitFor,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "./App.tsx";
 import type { Session, SessionState } from "./session.ts";
@@ -81,7 +88,7 @@ describe("App", () => {
     expect(session.retry).toHaveBeenCalledOnce();
   });
 
-  it("continues or signs out for the remembered account, over the navigator", () => {
+  it("continues or signs out for the remembered account, over the navigator", async () => {
     const { session } = fakeSession({
       screen: { name: "continue", email: EMAIL },
     });
@@ -98,7 +105,9 @@ describe("App", () => {
     fireEvent.click(prompt.getByRole("button", { name: "Continue" }));
     expect(session.continueSession).toHaveBeenCalledOnce();
     fireEvent.click(prompt.getByRole("button", { name: "Sign out" }));
-    expect(session.signOut).toHaveBeenCalledOnce();
+    await waitFor(() => {
+      expect(session.signOut).toHaveBeenCalledOnce();
+    });
   });
 
   it("keeps the navigator while the session asks to Continue", () => {
@@ -133,14 +142,16 @@ describe("App", () => {
     expect(screen.getByText("grace@example.com")).toBeInTheDocument();
   });
 
-  it("opens the navigator for the signed-in account, which can sign out", () => {
+  it("opens the navigator for the signed-in account, which can sign out", async () => {
     const { session } = fakeSession({ screen: { name: "home", email: EMAIL } });
     render(<App session={session} />);
 
     expect(screen.getByRole("heading", { name: "Home" })).toBeInTheDocument();
     expect(screen.getByText(EMAIL)).toBeInTheDocument();
     fireEvent.click(button("Sign out"));
-    expect(session.signOut).toHaveBeenCalledOnce();
+    await waitFor(() => {
+      expect(session.signOut).toHaveBeenCalledOnce();
+    });
   });
 
   it("shows another account nothing the first one loaded", async () => {

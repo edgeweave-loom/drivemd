@@ -27,10 +27,15 @@ export function Dialog({
       ref={dialog}
       aria-labelledby={titleId}
       className={className}
+      // A dialog over this one reaches these handlers too, through React.
       onCancel={(event) => {
-        if (!onClose) event.preventDefault();
+        if (event.target === event.currentTarget && !onClose) {
+          event.preventDefault();
+        }
       }}
-      onClose={onClose}
+      onClose={(event) => {
+        if (event.target === event.currentTarget) onClose?.();
+      }}
     >
       <h2 id={titleId}>{title}</h2>
       {children}
