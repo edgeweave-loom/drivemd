@@ -3,6 +3,10 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { createDrive, type DriveAuth, type FileRef } from "../src/drive.ts";
 import { isRecord } from "../src/is-record.ts";
+import { MAX_CONTENT } from "../src/queries.ts";
+import { saveText } from "../src/save.ts";
+import { toggleTask } from "../src/tasks.ts";
+import { decode, encode } from "../src/text.ts";
 import {
   driveApi,
   FOLDER,
@@ -234,6 +238,98 @@ function defineChecks(auth: DriveAuth): void {
         typeof viewedByMeTime === "string" ? Date.parse(viewedByMeTime) : 0;
       return viewed >= before - 5_000;
     });
+  });
+
+  /**
+   * A file another tool wrote: made as plain text, then given its bytes
+   * through the API, and opened as the app opens one.
+   */
+  async function written(name: string, content: Uint8Array<ArrayBuffer>) {
+    const made = await typed(name, "text/plain");
+    await drive.saveContent(await drive.getMetadata(made), content);
+    return drive.getMetadata(made);
+  }
+
+  const utf8 = (text: string) => new TextEncoder().encode(text);
+  const BOM = [0xef, 0xbb, 0xbf];
+
+  it.each([
+    [
+      "CRLF line breaks and a byte order mark",
+      new Uint8Array([
+        ...BOM,
+        ...utf8("# Plan\r\n\r\n- [ ] Boil\r\n- [ ] Pour\r\n"),
+      ]),
+    ],
+    [
+      "LF line breaks, the last one left out",
+      utf8("# Plan\n\n- [ ] Boil\n- [ ] Pour"),
+    ],
+    ["CR line breaks", utf8("# Plan\r\r- [ ] Boil\r- [ ] Pour\r")],
+  ])(
+    "saves a task checked in a file another tool wrote with %s, changing that one byte",
+    async (name, content) => {
+      const opened = await written(name.split(" ")[0] ?? name, content);
+      const bytes = await drive.getContent(opened, MAX_CONTENT);
+      expect(bytes, "the bytes as written").toEqual(content);
+      const text = decode(bytes);
+      expect(text.readOnly).toBeUndefined();
+      expect(encode(text.text, text), "the bytes decoded and encoded").toEqual(
+        content,
+      );
+
+      const checked = toggleTask(text.text, text.text.indexOf("- [ ] Pour"));
+      if (checked === undefined) throw new Error("No task to check");
+      const result = await saveText(drive, opened, encode(checked, text), {
+        keep: true,
+      });
+      expect("saved" in result, "a save without a conflict").toBe(true);
+
+      const after = await drive.getContent(
+        await drive.getMetadata(opened),
+        MAX_CONTENT,
+      );
+      // The space between the brackets of "- [ ] Pour", and that alone.
+      const task = utf8("- [ ] Pour");
+      const at = content.findIndex((_, index) =>
+        task.every((byte, offset) => content[index + offset] === byte),
+      );
+      const expected = content.slice();
+      expected[at + 3] = 0x78;
+      expect(after, "the bytes saved").toEqual(expected);
+      const kept = await answer(
+        await call(
+          "GET",
+          `files/${opened.id}/revisions/${opened.headRevisionId ?? ""}?fields=keepForever`,
+        ),
+      );
+      expect(kept.keepForever, "the revision from before kept").toBe(true);
+    },
+  );
+
+  it("shows a file that is not UTF-8 read-only, with its bytes as they are", async () => {
+    const latin1 = new Uint8Array([0x63, 0x61, 0x66, 0xe9, 0x0a]);
+    const opened = await written("latin1", latin1);
+
+    const bytes = await drive.getContent(opened, MAX_CONTENT);
+
+    expect(bytes).toEqual(latin1);
+    expect(decode(bytes).readOnly).toBe("not-utf8");
+  });
+
+  it("writes nothing over someone else's change, and says so", async () => {
+    const opened = await written("conflict", utf8("- [ ] Boil\n"));
+    // Someone else saves meanwhile.
+    await drive.saveContent(opened, utf8("- [ ] Boil\n- [ ] Serve\n"));
+
+    const result = await saveText(drive, opened, utf8("- [x] Boil\n"), {
+      keep: true,
+    });
+
+    expect("conflict" in result, "a conflict found").toBe(true);
+    await expect(
+      drive.getContent(await drive.getMetadata(opened), MAX_CONTENT),
+    ).resolves.toEqual(utf8("- [ ] Boil\n- [ ] Serve\n"));
   });
 
   it("follows a shortcut it made, and tells when its target is in the trash", async () => {
