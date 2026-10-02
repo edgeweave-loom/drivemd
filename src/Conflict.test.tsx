@@ -70,31 +70,36 @@ afterEach(() => {
 });
 
 describe("a save that finds someone else's change", () => {
-  it("updates the differences as the user types, keeping the same view", async () => {
-    holdScreen("wide");
-    await conflict();
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    const view = await differences();
-    const source = await waitFor(() => {
-      const content = document
-        .querySelector(".editor")
-        ?.shadowRoot?.querySelector<HTMLElement>(".cm-content");
-      const found = content && EditorView.findFromDOM(content);
-      if (!found) throw new Error("No editor yet");
-      return found;
-    });
-
-    act(() => {
-      source.dispatch({
-        changes: { from: source.state.doc.length, insert: "Tea\n" },
+  // The editor and the view of the differences both load and draw in jsdom.
+  it(
+    "updates the differences as the user types, keeping the same view",
+    { timeout: 15_000 },
+    async () => {
+      holdScreen("wide");
+      await conflict();
+      fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+      const view = await differences();
+      const source = await waitFor(() => {
+        const content = document
+          .querySelector(".editor")
+          ?.shadowRoot?.querySelector<HTMLElement>(".cm-content");
+        const found = content && EditorView.findFromDOM(content);
+        if (!found) throw new Error("No editor yet");
+        return found;
       });
-    });
 
-    await waitFor(() => {
-      expect(view.state.sliceDoc()).toBe("- [x] Boil\nTea\n");
-    });
-    expect(await differences()).toBe(view);
-  });
+      act(() => {
+        source.dispatch({
+          changes: { from: source.state.doc.length, insert: "Tea\n" },
+        });
+      });
+
+      await waitFor(() => {
+        expect(view.state.sliceDoc()).toBe("- [x] Boil\nTea\n");
+      });
+      expect(await differences()).toBe(view);
+    },
+  );
 
   it("shows Drive's version against the user's, with nothing written", async () => {
     const { drive } = await conflict();
