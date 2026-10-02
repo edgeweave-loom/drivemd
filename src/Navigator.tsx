@@ -1,5 +1,5 @@
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { DriveContext, useDrive } from "./drive-context.ts";
 import { FileView } from "./FilePage.tsx";
 import { FolderPage } from "./FolderPage.tsx";
@@ -29,9 +29,13 @@ export function Navigator({
   children?: ReactNode;
 }) {
   const [client] = useState(createQueryClient);
+  const access = useMemo(
+    () => ({ drive: session.drive, renew: session.renew, account: email }),
+    [session, email],
+  );
   return (
     <QueryClientProvider client={client}>
-      <DriveContext value={session}>
+      <DriveContext value={access}>
         <header className="bar">
           <h1>
             <Link to={HOME}>DriveMD</Link>

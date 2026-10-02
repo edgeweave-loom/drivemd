@@ -6,6 +6,9 @@ import { DriveContext } from "../drive-context.ts";
 import { createQueryClient } from "../queries.ts";
 import { fakeDrive } from "./fake-drive.ts";
 
+/** The made-up account the tests sign in as. */
+export const ACCOUNT = "ada@example.com";
+
 /**
  * Renders a page with a made-up Drive. Failed calls are not tried again, so
  * that tests need not wait; queries.test.ts covers when the app does.
@@ -16,7 +19,9 @@ export function renderWithDrive(ui: ReactNode, drive = fakeDrive()) {
   const renew = vi.fn();
   const within = (page: ReactNode) => (
     <QueryClientProvider client={client}>
-      <DriveContext value={{ drive, renew }}>{page}</DriveContext>
+      <DriveContext value={{ drive, renew, account: ACCOUNT }}>
+        {page}
+      </DriveContext>
     </QueryClientProvider>
   );
   const { rerender, unmount } = render(within(ui));

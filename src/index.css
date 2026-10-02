@@ -566,3 +566,12 @@ dialog.drawer {
 .conflict .actions {
   justify-content: flex-start;
 }
+
+.restore {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.restore .actions {
+  justify-content: flex-start;
+}

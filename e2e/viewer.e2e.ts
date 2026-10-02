@@ -203,3 +203,51 @@ test("shows someone else's change at save, and overwrites it when asked", async 
     "- [x] Boil water",
   );
 });
+
+test("keeps unsaved changes on the device across a reload", async ({
+  page,
+  drive,
+}) => {
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  await page.locator(".markdown").getByRole("checkbox").first().check();
+  await expect(page.getByText("Unsaved changes")).toBeVisible();
+  // Kept on the device half a second after the last change.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Promise<number>((resolve) => {
+            const opening = indexedDB.open("drivemd");
+            opening.onsuccess = () => {
+              const database = opening.result;
+              if (!database.objectStoreNames.contains("drafts")) {
+                resolve(0);
+                return;
+              }
+              const counting = database
+                .transaction("drafts")
+                .objectStore("drafts")
+                .count();
+              counting.onsuccess = () => {
+                resolve(counting.result);
+              };
+            };
+          }),
+      ),
+    )
+    .toBe(1);
+
+  await page.reload();
+  await expect(
+    page.getByText(/^You have unsaved changes to this note from /),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Restore" }).click();
+  await expect(
+    page.locator(".markdown").getByRole("checkbox").first(),
+  ).toBeChecked();
+  await page.getByRole("button", { name: "Save" }).click();
+
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  expect(drive.writes).toEqual(["keep plan revision-1", "save plan"]);
+});
