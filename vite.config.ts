@@ -34,6 +34,24 @@ export default defineConfig({
   },
   server: { port, strictPort: true },
   preview: { port, strictPort: true, headers },
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          // The viewer's three largest libraries load beside it, each in a
+          // chunk of its own that browsers keep across releases.
+          groups: [
+            {
+              name: "highlight",
+              test: /node_modules\/(highlight\.js|lowlight)\//,
+            },
+            { name: "html", test: /node_modules\/(hast-util-raw|parse5)\// },
+            { name: "yaml", test: /node_modules\/yaml\// },
+          ],
+        },
+      },
+    },
+  },
   test: {
     environment: "jsdom",
     setupFiles: ["src/test/setup.ts"],
