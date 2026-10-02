@@ -161,14 +161,21 @@ export function signOut(): void {
   write("localStorage", ACCOUNT_KEY, null);
 }
 
+/** Whether a storage event says that another tab of this browser signed out. */
+export function signedOutElsewhere(event: StorageEvent): boolean {
+  return (
+    (event.key === ACCOUNT_KEY || event.key === null) &&
+    getRememberedAccount() === undefined
+  );
+}
+
 /**
  * Calls the listener after another tab of this browser signed out, once this
  * tab has forgotten its own token.
  */
 export function onSignOutElsewhere(listener: () => void): void {
   window.addEventListener("storage", (event) => {
-    if (event.key !== ACCOUNT_KEY && event.key !== null) return;
-    if (getRememberedAccount() !== undefined) return;
+    if (!signedOutElsewhere(event)) return;
     forgetSession("The user signed out in another tab");
     listener();
   });

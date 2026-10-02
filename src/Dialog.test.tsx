@@ -21,6 +21,29 @@ describe("Dialog", () => {
     );
   });
 
+  it("lets a dialog over one that stays close on Escape, and closes that one only", () => {
+    const outer = vi.fn();
+    const inner = vi.fn();
+    render(
+      <Dialog title="Welcome back">
+        <Dialog title="Discard?" onClose={inner}>
+          <p>Sure?</p>
+        </Dialog>
+        <Dialog title="Rename" onClose={outer}>
+          <p>Name</p>
+        </Dialog>
+      </Dialog>,
+    );
+
+    const discard = screen.getByRole("dialog", { name: "Discard?" });
+    expect(fireEvent(discard, new Event("cancel", { cancelable: true }))).toBe(
+      true,
+    );
+    fireEvent(discard, new Event("close"));
+    expect(inner).toHaveBeenCalledOnce();
+    expect(outer).not.toHaveBeenCalled();
+  });
+
   it("opens once, however often React sets it up", () => {
     const showModal = vi.spyOn(HTMLDialogElement.prototype, "showModal");
     render(

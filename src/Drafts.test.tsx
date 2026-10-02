@@ -4,6 +4,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { rememberAccount, signOut } from "./auth.ts";
 import { deleteDrafts, readDraft, writeDraft } from "./drafts.ts";
+import { resumeKeeping } from "./keep-draft.ts";
 import type { FileMetadata } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
 import { driveItem, metadata } from "./test/drive-items.ts";
@@ -39,6 +40,8 @@ function kept(text: string, revision = "revision-1", md5 = "aaaa") {
 }
 
 beforeEach(async () => {
+  // Signed in, as the navigator's Sign out button has it.
+  resumeKeeping();
   rememberAccount(ACCOUNT);
   await deleteDrafts(ACCOUNT);
 });
@@ -115,15 +118,33 @@ describe("unsaved text kept on the device", () => {
     });
   });
 
-  it("is not kept once the account signed out, as another tab may have", async () => {
+  it("is not kept once the account signed out in another tab", async () => {
     const { unmount } = open();
     fireEvent.click(await screen.findByRole("checkbox"));
 
     signOut();
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: "drivemd.account", newValue: null }),
+    );
     unmount();
 
     await new Promise((settle) => setTimeout(settle, 700));
     await expect(readDraft(ACCOUNT, "plan")).resolves.toBeUndefined();
+  });
+
+  it("is kept when the browser refuses its local storage", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("Refused", "SecurityError");
+    });
+    const { unmount } = open();
+    fireEvent.click(await screen.findByRole("checkbox"));
+
+    unmount();
+
+    vi.restoreAllMocks();
+    await waitFor(async () => {
+      expect(await readDraft(ACCOUNT, "plan")).toBeDefined();
+    });
   });
 
   it("is offered back when the note opens again, and restored on a tap", async () => {

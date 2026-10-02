@@ -1,11 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getRememberedAccount } from "./auth.ts";
 import { ConfirmDialog } from "./Dialog.tsx";
 import { countDrafts, deleteDrafts } from "./drafts.ts";
+import { keepPendingDrafts, resumeKeeping, stopKeeping } from "./keep-draft.ts";
 
 /**
  * Signs the account out. Unsaved changes kept on the device go with it, so
  * that nothing of the account stays behind: the user hears how many first,
- * and may stay.
+ * and may stay. The account another window may have switched to signs out
+ * too, so its changes go as well.
  */
 export function SignOut({
   account,
@@ -16,16 +19,35 @@ export function SignOut({
 }) {
   const [unsaved, setUnsaved] = useState<number>();
   const [pending, setPending] = useState(false);
+  const [failure, setFailure] = useState<Error | null>(null);
+  // A signed-in account keeps its edits.
+  useEffect(() => {
+    resumeKeeping();
+  }, []);
+  const accounts = () => [
+    ...new Set([account, getRememberedAccount() ?? account]),
+  ];
+  const discard = () => Promise.all(accounts().map(deleteDrafts));
   return (
     <>
       <button
         type="button"
         onClick={() => {
-          // A device that keeps nothing has nothing to lose.
-          countDrafts(account).then((count) => {
-            if (count === 0) onSignOut();
-            else setUnsaved(count);
-          }, onSignOut);
+          // Edits of the last half second count too, and none follow.
+          void keepPendingDrafts()
+            .then(() => {
+              stopKeeping();
+              return Promise.all(accounts().map(countDrafts));
+            })
+            .then(
+              (counts) => {
+                const count = counts.reduce((sum, one) => sum + one, 0);
+                if (count === 0) onSignOut();
+                else setUnsaved(count);
+              },
+              // Counting failed: what the device may hold goes all the same.
+              () => discard().then(onSignOut, onSignOut),
+            );
         }}
       >
         Sign out
@@ -35,12 +57,20 @@ export function SignOut({
           title="Discard unsaved changes?"
           action="Discard and sign out"
           pending={pending}
-          error={null}
+          error={failure}
           onConfirm={() => {
             setPending(true);
-            void deleteDrafts(account).finally(onSignOut);
+            setFailure(null);
+            discard().then(onSignOut, (error: unknown) => {
+              // Signed out, the account would leave them on the device.
+              setPending(false);
+              setFailure(
+                error instanceof Error ? error : new Error(String(error)),
+              );
+            });
           }}
           onClose={() => {
+            resumeKeeping();
             setUnsaved(undefined);
           }}
         >
