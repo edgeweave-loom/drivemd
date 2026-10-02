@@ -1,5 +1,6 @@
 import { QueryClient, queryOptions, skipToken } from "@tanstack/react-query";
 import { climb } from "./climb.ts";
+import { pool } from "./pool.ts";
 import { resolve } from "./resolve.ts";
 import {
   DriveError,
@@ -90,10 +91,17 @@ export function searchQuery(drive: Drive, text: string) {
 }
 
 /**
- * Larger files are not read: rendering them would stall a phone. 1 MB is far
+ * Larger notes are not read: rendering them would stall a phone. 1 MB is far
  * more than a note holds.
  */
 export const MAX_CONTENT = 1_000_000;
+
+/** Larger images are not read: a photo from a phone holds a few MB. */
+export const MAX_IMAGE = 10_000_000;
+
+// The links and images of a note ask Drive a few at a time, however many of
+// them come near the screen together.
+const lookups = pool(4);
 
 /**
  * A file's bytes, from the revision its details name on. Drive sends the
@@ -116,6 +124,27 @@ export function contentQuery(drive: Drive, file: FileMetadata) {
 }
 
 /**
+ * An image's bytes, as for a note's content; none while there is no image to
+ * read. Images leave the cache soon after their note, as they can be large.
+ */
+export function imageQuery(drive: Drive, file: FileMetadata | undefined) {
+  return queryOptions({
+    queryKey: key(
+      "image",
+      file?.id,
+      file?.resourceKey,
+      file?.headRevisionId,
+      file?.md5Checksum,
+    ),
+    queryFn: file
+      ? ({ signal }) => lookups(() => drive.getContent(file, MAX_IMAGE), signal)
+      : skipToken,
+    staleTime: Infinity,
+    gcTime: 30_000,
+  });
+}
+
+/**
  * What a relative path in a note leads to from the note's folder, or null,
  * reading folders through the cache that the pages share.
  */
@@ -127,19 +156,25 @@ export function resolveQuery(
 ) {
   return queryOptions({
     queryKey: key("resolve", folder.id, folder.resourceKey, ...path),
-    queryFn: async () =>
-      (await resolve(folder, path, {
-        // The resolution as a whole is tried again.
-        children: (inner) =>
-          client.query({ ...childrenQuery(drive, inner), retry: false }),
-        parent: async (inner) => {
-          const details = await client.query({
-            ...metadataQuery(drive, inner),
-            retry: false,
-          });
-          return details.parents[0];
-        },
-      })) ?? null,
+    queryFn: async ({ signal }) => {
+      const found = await lookups(
+        () =>
+          resolve(folder, path, {
+            // The resolution as a whole is tried again.
+            children: (inner) =>
+              client.query({ ...childrenQuery(drive, inner), retry: false }),
+            parent: async (inner) => {
+              const details = await client.query({
+                ...metadataQuery(drive, inner),
+                retry: false,
+              });
+              return details.parents[0];
+            },
+          }),
+        signal,
+      );
+      return found ?? null;
+    },
   });
 }
 

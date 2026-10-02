@@ -32,6 +32,13 @@ if ("window" in globalThis) {
       return undefined;
     }
   } as unknown as typeof IntersectionObserver;
+  // Nor does it make object URLs.
+  let objects = 0;
+  URL.createObjectURL = () => {
+    objects += 1;
+    return `blob:http://localhost:3000/object-${String(objects)}`;
+  };
+  URL.revokeObjectURL = () => undefined;
   installScreen();
 }
 

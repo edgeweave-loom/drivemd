@@ -24,7 +24,7 @@ test("renders a note as GitHub does, under the security policy", async ({
   await expect(
     note.getByRole("link", { name: "Image: a chart" }),
   ).toHaveAttribute("href", "https://example.com/chart.png");
-  await expect(note.locator("img")).toHaveCount(0);
+  await expect(note.locator('img[src^="http"]')).toHaveCount(0);
   // Relative links lead where their path does in Drive, once they come near
   // the screen.
   await note.getByText(/^Next:/).scrollIntoViewIfNeeded();
@@ -37,6 +37,13 @@ test("renders a note as GitHub does, under the security policy", async ({
     "href",
     "/folder/archive",
   );
+  // An image from Drive, read with the token and shown as an object URL.
+  const photo = note.getByRole("img", { name: "The photo" });
+  await photo.scrollIntoViewIfNeeded();
+  await expect(photo).toHaveAttribute("src", /^blob:/);
+  await expect
+    .poll(() => photo.evaluate((image: HTMLImageElement) => image.naturalWidth))
+    .toBe(1);
   // Raw HTML, sanitized as on GitHub.
   await note.getByText("More").click();
   await expect(note.locator("details b")).toHaveText("Bold");

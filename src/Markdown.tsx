@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Children,
   Component,
   createContext,
   useCallback,
@@ -18,10 +19,22 @@ import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import { useDrive } from "./drive-context.ts";
 import { inDrive } from "./drive-web.ts";
-import { FOLDER, GOOGLE_TYPES, isMarkdown, type FileRef } from "./drive.ts";
+import {
+  FOLDER,
+  GOOGLE_TYPES,
+  isMarkdown,
+  TooLargeError,
+  type FileMetadata,
+  type FileRef,
+} from "./drive.ts";
 import { Link } from "./Link.tsx";
 import { remarkProperties } from "./properties.ts";
-import { resolveQuery } from "./queries.ts";
+import {
+  imageQuery,
+  MAX_IMAGE,
+  metadataQuery,
+  resolveQuery,
+} from "./queries.ts";
 import { relativePath } from "./resolve.ts";
 import { hrefOf } from "./router.ts";
 
@@ -149,7 +162,10 @@ function Anchor({
   }
   if (href.startsWith("mailto:")) return <a {...attributes} href={href} />;
   const path = relativePath(href);
-  if (path) return <DriveLink {...attributes} path={path} />;
+  // A link without text cannot be tapped, so it asks Drive nothing.
+  if (path && Children.count(children) > 0) {
+    return <DriveLink {...attributes} path={path} />;
+  }
   // A target for links within the page, which HTML may mark by name.
   return <a {...attributes} id={id ?? name} />;
 }
@@ -251,15 +267,134 @@ function Unresolved(attributes: LinkAttributes) {
 
 /**
  * An image. One on another site is not loaded, so that a note cannot make
- * the app call that site: it is a link to open in a new tab.
+ * the app call that site: it is a link to open in a new tab. A relative one
+ * is read from Drive.
  */
-function Image({ src, alt }: ComponentProps<"img">) {
-  if (typeof src === "string" && onTheWeb(src)) {
+function Image({ src, alt = "" }: ComponentProps<"img">) {
+  if (typeof src !== "string") return <span>{alt}</span>;
+  if (onTheWeb(src)) return <ImageLink href={src} label={alt || src} />;
+  const path = relativePath(src);
+  if (!path) return <span>{alt}</span>;
+  return <DriveImage path={path} alt={alt} />;
+}
+
+function ImageLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="image-link">
+      Image: {label}
+    </a>
+  );
+}
+
+function DriveImage({ path, alt }: { path: string[]; alt: string }) {
+  const folder = useContext(NoteFolder);
+  if (!folder) return <Unresolved>{alt}</Unresolved>;
+  return <ImageInDrive folder={folder} path={path} alt={alt} />;
+}
+
+/**
+ * An image where its path leads in Drive, read with the user's token once it
+ * comes near the screen. One that is not an image, that the user may not
+ * download, or that holds over 10 MB is a link to Google Drive.
+ */
+function ImageInDrive({
+  folder,
+  path,
+  alt,
+}: {
+  folder: FileRef;
+  path: string[];
+  alt: string;
+}) {
+  const { drive } = useDrive();
+  const client = useQueryClient();
+  const [seen, near] = useSeen();
+  const found = useQuery({
+    ...resolveQuery(drive, client, folder, path),
+    enabled: seen,
+  });
+  // A path found already, by a link to it say, waits for the screen too.
+  const details = useQuery(
+    metadataQuery(drive, seen ? found.data?.ref : undefined),
+  );
+  const file = details.data;
+  const shown = file !== undefined && showsHere(file);
+  const bytes = useQuery(imageQuery(drive, shown ? file : undefined));
+  // An image waiting for the screen takes room, so that only the few the
+  // screen holds come near it together.
+  if (!seen) {
     return (
-      <a href={src} target="_blank" rel="noreferrer" className="image-link">
-        Image: {alt === undefined || alt === "" ? src : alt}
-      </a>
+      <span className="image-pending" ref={near}>
+        {alt}
+      </span>
     );
   }
-  return <span>{alt}</span>;
+  if (found.data === null) return <Unresolved>{alt}</Unresolved>;
+  if (file && (!shown || bytes.error instanceof TooLargeError)) {
+    return <ImageLink href={inDrive(file)} label={alt || file.name} />;
+  }
+  if (found.isError || details.isError || bytes.isError) {
+    return <span title="Google Drive could not send this image">{alt}</span>;
+  }
+  if (!file || !bytes.data) return <span>{alt}</span>;
+  return <BlobImage bytes={bytes.data} file={file} alt={alt} />;
+}
+
+// The images every browser shows. SVG is left out: it can hold script, which
+// an image does not run, but a tab opened on it might.
+const IMAGES = new Set([
+  "image/avif",
+  "image/bmp",
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
+/** Whether the viewer shows the file as an image, rather than a link. */
+function showsHere(file: FileMetadata): boolean {
+  return (
+    IMAGES.has(file.mimeType) &&
+    file.capabilities.canDownload &&
+    (file.size === undefined || file.size <= MAX_IMAGE)
+  );
+}
+
+/**
+ * An image of the bytes, through an object URL that lives as long as the
+ * image shows; a link to Google Drive when the browser cannot decode them.
+ */
+function BlobImage({
+  bytes,
+  file,
+  alt,
+}: {
+  bytes: Uint8Array<ArrayBuffer>;
+  file: FileMetadata;
+  alt: string;
+}) {
+  const [broken, setBroken] = useState(false);
+  const { mimeType: type } = file;
+  const show = useCallback(
+    (image: HTMLImageElement | null) => {
+      if (!image) return;
+      const url = URL.createObjectURL(new Blob([bytes], { type }));
+      image.src = url;
+      return () => {
+        URL.revokeObjectURL(url);
+      };
+    },
+    [bytes, type],
+  );
+  if (broken)
+    return <ImageLink href={inDrive(file)} label={alt || file.name} />;
+  return (
+    <img
+      alt={alt}
+      ref={show}
+      onError={() => {
+        setBroken(true);
+      }}
+    />
+  );
 }

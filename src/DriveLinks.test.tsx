@@ -163,6 +163,14 @@ describe("relative links in a note", () => {
     expect(drive.listChildren).toHaveBeenCalledOnce();
   });
 
+  it("ask Drive nothing for a link without text, which cannot be tapped", async () => {
+    const { drive } = open("[](plan.md) [Plan](plan.md)");
+
+    expect(await screen.findByRole("link", { name: "Plan" })).toBeVisible();
+    expect(drive.listChildren).toHaveBeenCalledOnce();
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+  });
+
   it("show faded, without asking Drive, in a note whose folder is unknown", () => {
     const { drive } = renderWithDrive(<Rendered text="[Plan](plan.md)" />);
 
