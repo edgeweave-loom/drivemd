@@ -11,7 +11,7 @@ import {
   SharedWithMePage,
   ShortcutsPage,
 } from "./RootPages.tsx";
-import { hrefOf, navigate, usePlace } from "./router.ts";
+import { hrefOf, mayLeave, navigate, usePlace } from "./router.ts";
 import { SearchPage } from "./SearchPage.tsx";
 import type { Session } from "./session.ts";
 import { SignOut } from "./SignOut.tsx";
@@ -99,8 +99,11 @@ function SearchBox() {
       onSubmit={(event) => {
         event.preventDefault();
         if (typed.trim() === "") return;
+        const href = hrefOf({ name: "search", text: typed });
+        // Asked first, so that a refusal opens no Google window.
+        if (!mayLeave(href)) return;
         renew();
-        navigate(hrefOf({ name: "search", text: typed }));
+        navigate(href, undefined, { asked: true });
         // The same search again asks Drive again.
         refreshSearches(client);
       }}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getRememberedAccount } from "./auth.ts";
+import { hrefOf, mayLeave } from "./router.ts";
 import { ConfirmDialog } from "./Dialog.tsx";
 import { countDrafts, deleteDrafts } from "./drafts.ts";
 import { keepPendingDrafts, resumeKeeping, stopKeeping } from "./keep-draft.ts";
@@ -28,6 +29,12 @@ export function SignOut({
     ...new Set([account, getRememberedAccount() ?? account]),
   ];
   const discard = () => Promise.all(accounts().map(deleteDrafts));
+  // A note whose changes the device did not keep asks before it goes.
+  const leaves = () => {
+    if (mayLeave(hrefOf({ name: "home" }))) return true;
+    resumeKeeping();
+    return false;
+  };
   return (
     <>
       <button
@@ -42,11 +49,13 @@ export function SignOut({
             .then(
               (counts) => {
                 const count = counts.reduce((sum, one) => sum + one, 0);
-                if (count === 0) onSignOut();
-                else setUnsaved(count);
+                if (count > 0) setUnsaved(count);
+                else if (leaves()) onSignOut();
               },
               // Counting failed: what the device may hold goes all the same.
-              () => discard().then(onSignOut, onSignOut),
+              () => {
+                if (leaves()) void discard().then(onSignOut, onSignOut);
+              },
             );
         }}
       >
