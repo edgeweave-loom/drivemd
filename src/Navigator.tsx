@@ -5,7 +5,7 @@ import { FileView } from "./FilePage.tsx";
 import { FolderPage } from "./FolderPage.tsx";
 import { Home } from "./Home.tsx";
 import { Link } from "./Link.tsx";
-import { createQueryClient } from "./queries.ts";
+import { createQueryClient, refreshSearches } from "./queries.ts";
 import {
   SharedDrivesPage,
   SharedWithMePage,
@@ -99,7 +99,7 @@ function SearchBox() {
         renew();
         navigate(hrefOf({ name: "search", text: typed }));
         // The same search again asks Drive again.
-        void client.invalidateQueries({ queryKey: ["search"] });
+        refreshSearches(client);
       }}
     >
       <input

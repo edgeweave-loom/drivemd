@@ -1,10 +1,19 @@
-import { useQuery, type QueryKey } from "@tanstack/react-query";
+import {
+  useQuery,
+  type QueryKey,
+  type UseQueryOptions,
+} from "@tanstack/react-query";
 import { Breadcrumbs } from "./Breadcrumbs.tsx";
 import { useDrive } from "./drive-context.ts";
 import type { DriveItem } from "./drive.ts";
 import { EntryList, ItemListing } from "./EntryList.tsx";
 import { inOrder } from "./listing.ts";
 import { Loaded } from "./Loaded.tsx";
+import {
+  sharedDrivesQuery,
+  sharedWithMeQuery,
+  shortcutsQuery,
+} from "./queries.ts";
 import { ROOTS } from "./roots.ts";
 import type { Crumb } from "./router.ts";
 
@@ -15,8 +24,7 @@ export function ShortcutsPage({ trail }: { trail: Crumb[] | undefined }) {
     <RootListing
       root={ROOTS.shortcuts}
       trail={trail}
-      queryKey={["shortcuts"]}
-      list={drive.listShortcuts}
+      query={shortcutsQuery(drive)}
       empty="No shortcuts to folders or Markdown files. Make them in Google Drive."
     />
   );
@@ -28,47 +36,36 @@ export function SharedWithMePage({ trail }: { trail: Crumb[] | undefined }) {
     <RootListing
       root={ROOTS.sharedWithMe}
       trail={trail}
-      queryKey={["shared-with-me"]}
-      list={drive.listSharedWithMe}
+      query={sharedWithMeQuery(drive)}
       empty="No folders or Markdown files are shared with you."
     />
   );
 }
 
 /** A root that lists items, which starts the path taken from it. */
-function RootListing({
+function RootListing<Key extends QueryKey>({
   root,
   trail,
-  queryKey,
-  list,
+  query,
   empty,
 }: {
   root: Crumb;
   trail: Crumb[] | undefined;
-  queryKey: QueryKey;
-  list: () => Promise<DriveItem[]>;
+  query: UseQueryOptions<DriveItem[], Error, DriveItem[], Key>;
   empty: string;
 }) {
   return (
     <>
       <Breadcrumbs path={[root]} />
       <h2>{root.name}</h2>
-      <ItemListing
-        queryKey={queryKey}
-        list={list}
-        trail={trail ?? [root]}
-        empty={empty}
-      />
+      <ItemListing query={query} trail={trail ?? [root]} empty={empty} />
     </>
   );
 }
 
 export function SharedDrivesPage({ trail }: { trail: Crumb[] | undefined }) {
   const { drive } = useDrive();
-  const drives = useQuery({
-    queryKey: ["shared-drives"],
-    queryFn: drive.listSharedDrives,
-  });
+  const drives = useQuery(sharedDrivesQuery(drive));
   return (
     <>
       <Breadcrumbs path={[ROOTS.sharedDrives]} />

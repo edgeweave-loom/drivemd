@@ -2,7 +2,7 @@ import { useId, type ReactNode } from "react";
 import { useDrive } from "./drive-context.ts";
 import { ItemListing } from "./EntryList.tsx";
 import { Link } from "./Link.tsx";
-import { VAULTS_STALE_TIME } from "./queries.ts";
+import { recentQuery, vaultsQuery } from "./queries.ts";
 import { ROOTS } from "./roots.ts";
 
 export function Home() {
@@ -12,8 +12,7 @@ export function Home() {
       <h2>Home</h2>
       <Section title="Recent">
         <ItemListing
-          queryKey={["recent"]}
-          list={drive.listRecent}
+          query={recentQuery(drive)}
           // Drive sends the file viewed last first.
           order="as-listed"
           // Where a file sits comes from Drive.
@@ -23,9 +22,7 @@ export function Home() {
       </Section>
       <Section title="Vaults">
         <ItemListing
-          queryKey={["vaults"]}
-          list={drive.findVaults}
-          staleTime={VAULTS_STALE_TIME}
+          query={vaultsQuery(drive)}
           trail={undefined}
           empty="No Obsidian vault in your Drive: a vault is a folder with a .obsidian folder in it."
         />

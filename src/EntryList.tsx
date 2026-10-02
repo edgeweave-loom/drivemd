@@ -1,9 +1,14 @@
-import { useQuery, type QueryKey } from "@tanstack/react-query";
+import {
+  useQuery,
+  type QueryKey,
+  type UseQueryOptions,
+} from "@tanstack/react-query";
 import { useDrive } from "./drive-context.ts";
 import type { DriveItem, ShortcutTarget } from "./drive.ts";
 import { Link } from "./Link.tsx";
 import { entriesOf, type Entry } from "./listing.ts";
 import { Loaded } from "./Loaded.tsx";
+import { shortcutQuery } from "./queries.ts";
 import { hrefOf, type Crumb } from "./router.ts";
 
 const BROKEN = {
@@ -11,21 +16,16 @@ const BROKEN = {
   trashed: "In the trash",
 };
 
-/** The entries among the items `list` finds, once Drive has answered. */
-export function ItemListing({
-  queryKey,
-  list,
-  staleTime,
+/** The entries among the items the query finds, once Drive has answered. */
+export function ItemListing<Key extends QueryKey>({
+  query,
   order,
   trail,
   current,
   missing,
   empty,
 }: {
-  queryKey: QueryKey;
-  list: () => Promise<DriveItem[]>;
-  /** How long the list stays fresh, if not the cache's own time. */
-  staleTime?: number;
+  query: UseQueryOptions<DriveItem[], Error, DriveItem[], Key>;
   /** By name, unless Drive's own order says more, as in search results. */
   order?: "by-name" | "as-listed";
   trail: Crumb[] | undefined;
@@ -35,11 +35,7 @@ export function ItemListing({
   missing?: string;
   empty: string;
 }) {
-  const items = useQuery({
-    queryKey,
-    queryFn: list,
-    ...(staleTime !== undefined && { staleTime }),
-  });
+  const items = useQuery(query);
   return (
     <Loaded query={items} missing={missing}>
       {(found) => (
@@ -136,11 +132,7 @@ function ShortcutEntry({
   current: boolean;
 }) {
   const { drive } = useDrive();
-  const check = useQuery({
-    queryKey: ["shortcut", target.id, target.resourceKey],
-    // A query cannot answer undefined: null says the target opens.
-    queryFn: async () => (await drive.checkShortcut(target)) ?? null,
-  });
+  const check = useQuery(shortcutQuery(drive, target));
   const broken = check.data;
   if (!broken) {
     return <EntryLink entry={entry} trail={trail} current={current} />;

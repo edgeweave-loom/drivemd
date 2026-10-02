@@ -1,6 +1,5 @@
 import {
   keepPreviousData,
-  queryOptions,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -8,7 +7,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Breadcrumbs } from "./Breadcrumbs.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
-import type { Drive, FileMetadata, FileRef } from "./drive.ts";
+import type { FileMetadata, FileRef } from "./drive.ts";
 import { FileActions } from "./FileActions.tsx";
 import { FolderPane } from "./FolderPane.tsx";
 import { Link } from "./Link.tsx";
@@ -16,6 +15,7 @@ import { kindOf } from "./listing.ts";
 import { useLayout } from "./layout.ts";
 import { Loaded } from "./Loaded.tsx";
 import { usePath } from "./path.ts";
+import { metadataQuery, refreshRecent } from "./queries.ts";
 import { hrefOf, routeOf, type Crumb } from "./router.ts";
 
 const WHEN = new Intl.DateTimeFormat(undefined, {
@@ -74,13 +74,6 @@ export function FileView({
       />
     </div>
   );
-}
-
-function metadataQuery(drive: Drive, file: FileRef) {
-  return queryOptions({
-    queryKey: ["metadata", file.id, file.resourceKey],
-    queryFn: () => drive.getMetadata(file),
-  });
 }
 
 /** The folder the path ends in, above the file, if it is one. */
@@ -151,8 +144,7 @@ export function FilePage({
     if (!opens) return;
     // Recent sorts by it; a failure must not keep the file from opening.
     drive.markViewed({ id, resourceKey }).then(
-      () =>
-        client.invalidateQueries({ queryKey: ["recent"], refetchType: "none" }),
+      () => refreshRecent(client),
       () => undefined,
     );
   }, [drive, client, id, resourceKey, opens]);

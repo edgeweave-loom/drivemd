@@ -6,7 +6,7 @@ import { useDrive } from "./drive-context.ts";
 import { FOLDER, type FileRef } from "./drive.ts";
 import { ItemListing } from "./EntryList.tsx";
 import { usePath } from "./path.ts";
-import { refreshAfterChange } from "./queries.ts";
+import { childrenQuery, metadataQuery, refreshAfterChange } from "./queries.ts";
 import { hrefOf, navigate, type Crumb } from "./router.ts";
 
 export function FolderPage({
@@ -17,13 +17,9 @@ export function FolderPage({
   trail: Crumb[] | undefined;
 }) {
   const { drive } = useDrive();
-  const key = [folder.id, folder.resourceKey];
   // Says whether the user may add files, and names a folder reached without
   // a path.
-  const details = useQuery({
-    queryKey: ["metadata", ...key],
-    queryFn: () => drive.getMetadata(folder),
-  });
+  const details = useQuery(metadataQuery(drive, folder));
   const path = usePath(folder, trail);
   const name = path?.at(-1)?.name ?? details.data?.name;
 
@@ -46,8 +42,7 @@ export function FolderPage({
         )}
       </div>
       <ItemListing
-        queryKey={["children", ...key]}
-        list={() => drive.listChildren(folder)}
+        query={childrenQuery(drive, folder)}
         trail={path}
         missing="This folder does not exist, or it is not shared with you."
         empty="No folders or Markdown files here."
