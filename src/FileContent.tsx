@@ -11,6 +11,7 @@ import {
   useEffect,
   useEffectEvent,
   useId,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -31,8 +32,11 @@ import { Loaded } from "./Loaded.tsx";
 import { Missing } from "./Missing.tsx";
 import { useFollow } from "./follow.ts";
 import { Rendered } from "./Markdown.tsx";
+import type { Draft } from "./drafts.ts";
+import { useKeptDraft } from "./keep-draft.ts";
 import {
   contentQuery,
+  draftQuery,
   MAX_CONTENT,
   refreshAfterChange,
   setDetails,
@@ -64,6 +68,11 @@ function DifferencesMissing() {
 function EditorMissing() {
   return <Missing part="editor" />;
 }
+
+const KEPT = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
 
 const MEGABYTES = new Intl.NumberFormat("en", {
   style: "unit",
@@ -239,7 +248,7 @@ function read(bytes: Uint8Array<ArrayBuffer>): Note {
  * since, and a save checks that nobody else changed it.
  */
 function Content({ file }: { file: FileMetadata }) {
-  const { drive } = useDrive();
+  const { drive, renew, account } = useDrive();
   const client = useQueryClient();
   // The revision the page holds to, with the edits made to it, rather than
   // Drive's latest: one the user edited, one open in the editor, or one just
@@ -263,6 +272,26 @@ function Content({ file }: { file: FileMetadata }) {
     setShown({ revision, session: shown.session + (ours ? 0 : 1) });
   }
   const content = useQuery({ ...contentQuery(drive, opened), select: read });
+  // The edits stay on the device until saved or dropped, and a note opened
+  // again offers them back.
+  const edits = useMemo(
+    () =>
+      held?.text === undefined
+        ? undefined
+        : {
+            fileId: file.id,
+            headRevisionId: held.opened.headRevisionId,
+            md5Checksum: held.opened.md5Checksum,
+            text: held.text,
+          },
+    [held, file.id],
+  );
+  const forget = useKeptDraft(account, edits);
+  const kept = useQuery(draftQuery(account, file.id));
+  function dropDraft() {
+    forget(file.id);
+    client.setQueryData(draftQuery(account, file.id).queryKey, null);
+  }
   // Out of the editor, the page shows Drive's latest again once it holds no
   // edits, or once it heard of the revision just saved; in the editor, Drive
   // never changes the text being typed.
@@ -296,6 +325,8 @@ function Content({ file }: { file: FileMetadata }) {
       // with any edit made while it was saving.
       client.setQueryData(contentQuery(drive, saved).queryKey, bytes);
       setDetails(client, saved);
+      // Edits made while it was saving are kept again as they change.
+      dropDraft();
       setHeld((now) =>
         now?.text !== undefined && now.text !== text
           ? { opened: saved, text: now.text }
@@ -333,6 +364,7 @@ function Content({ file }: { file: FileMetadata }) {
       return result.saved;
     },
     onSuccess: (made) => {
+      dropDraft();
       refreshAfterChange(client, made);
       navigate(hrefOf({ name: "file", file: made }));
     },
@@ -349,34 +381,97 @@ function Content({ file }: { file: FileMetadata }) {
   return (
     <Loaded query={content}>
       {(note) => (
-        <NoteView
-          file={file}
-          note={note}
-          session={shown.session}
-          editing={editing}
-          onEditing={(open) => {
-            // The editor holds to the revision it opens with.
-            if (open) setHeld((now) => now ?? { opened: file });
-            setEditing(open);
-          }}
-          pane={pane}
-          onPane={setPane}
-          text={held?.text ?? note.text}
-          onEdit={(edited) => {
-            setHeld({ opened, text: edited });
-          }}
-          save={save}
-          copy={copy}
-          onKeepTheirs={(theirs) => {
-            // Their revision shows, in the editor too, without the edits.
-            setHeld({ opened: theirs, newer: true });
-            save.reset();
-            copy.reset();
-            madeCopy.current = undefined;
-          }}
-        />
+        <>
+          {kept.data &&
+            held?.text === undefined &&
+            kept.data.text !== note.text && (
+              <Restore
+                draft={kept.data}
+                onRestore={(draft) => {
+                  // A draft of an older revision keeps that one, so that
+                  // its save shows what Drive holds since.
+                  const base = {
+                    ...opened,
+                    headRevisionId: draft.headRevisionId,
+                    md5Checksum: draft.md5Checksum,
+                  };
+                  setHeld({ opened: base, text: draft.text });
+                  if (!sameRevision(base, opened)) {
+                    renew();
+                    save.mutate({
+                      bytes: encode(draft.text, note),
+                      text: draft.text,
+                      over: base,
+                    });
+                  }
+                }}
+                onDiscard={dropDraft}
+              />
+            )}
+          <NoteView
+            file={file}
+            note={note}
+            session={shown.session}
+            editing={editing}
+            onEditing={(open) => {
+              // The editor holds to the revision it opens with.
+              if (open) setHeld((now) => now ?? { opened: file });
+              setEditing(open);
+            }}
+            pane={pane}
+            onPane={setPane}
+            text={held?.text ?? note.text}
+            onEdit={(edited) => {
+              setHeld({ opened, text: edited });
+            }}
+            save={save}
+            copy={copy}
+            onKeepTheirs={(theirs) => {
+              // Their revision shows, in the editor too, without the edits.
+              setHeld({ opened: theirs, newer: true });
+              dropDraft();
+              save.reset();
+              copy.reset();
+              madeCopy.current = undefined;
+            }}
+          />
+        </>
       )}
     </Loaded>
+  );
+}
+
+/** Unsaved changes kept on the device, which the user may restore. */
+function Restore({
+  draft,
+  onRestore,
+  onDiscard,
+}: {
+  draft: Draft;
+  onRestore: (draft: Draft) => void;
+  onDiscard: () => void;
+}) {
+  return (
+    <div className="warning restore">
+      <p>
+        You have unsaved changes to this note from{" "}
+        {KEPT.format(new Date(draft.keptAt))}, kept on this device.
+      </p>
+      <div className="actions">
+        <button
+          type="button"
+          className="primary"
+          onClick={() => {
+            onRestore(draft);
+          }}
+        >
+          Restore
+        </button>
+        <button type="button" onClick={onDiscard}>
+          Discard
+        </button>
+      </div>
+    </div>
   );
 }
 

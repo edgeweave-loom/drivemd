@@ -1,5 +1,6 @@
 import { QueryClient, queryOptions, skipToken } from "@tanstack/react-query";
 import { climb } from "./climb.ts";
+import { readDraft } from "./drafts.ts";
 import { pool } from "./pool.ts";
 import { resolve } from "./resolve.ts";
 import {
@@ -200,6 +201,17 @@ export function climbQuery(drive: Drive, client: QueryClient, item: FileRef) {
           retry: false,
         }),
       ),
+  });
+}
+
+/** The unsaved text the device keeps for a note of the account, or null. */
+export function draftQuery(account: string, fileId: string) {
+  return queryOptions({
+    queryKey: key("draft", account, fileId),
+    queryFn: async () => (await readDraft(account, fileId)) ?? null,
+    staleTime: Infinity,
+    // A device that keeps nothing has nothing to offer.
+    retry: false,
   });
 }
 
