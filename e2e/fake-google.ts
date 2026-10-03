@@ -117,7 +117,20 @@ function seed(): FakeFile[] {
       mimeType: FOLDER,
       parents: ["journal"],
     },
-    { id: "today", name: "today.md", mimeType: markdown, parents: ["journal"] },
+    {
+      id: "app-settings",
+      name: "app.json",
+      mimeType: "application/json",
+      parents: ["obsidian"],
+      content: '{"alwaysUpdateLinks": true}',
+    },
+    {
+      id: "today",
+      name: "today.md",
+      mimeType: markdown,
+      parents: ["journal"],
+      content: ["Woke up early.", "Made tea.", ""].join("\n"),
+    },
     {
       id: "to-plan",
       name: "Plan shortcut.md",

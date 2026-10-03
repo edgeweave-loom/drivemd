@@ -1,8 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDrive } from "./drive-context.ts";
-import type { FileRef } from "./drive.ts";
+import type { DriveItem, FileMetadata, FileRef } from "./drive.ts";
 import { useClimb } from "./path.ts";
-import { vaultsQuery } from "./queries.ts";
+import { vaultSettingsQuery, vaultsQuery } from "./queries.ts";
+import { DEFAULT_SETTINGS, type VaultSettings } from "./vault-settings.ts";
 
 export type VaultCheck = "in-vault" | "outside" | "checking" | "unknown";
 
@@ -37,9 +38,46 @@ export function useVaultCheck(item: FileRef, enabled: boolean): VaultCheck {
   const climb = useClimb(item, enabled);
   if (vaults.isError || climb.isError) return "unknown";
   if (!vaults.data || !climb.data) return "checking";
-  const roots = new Set(vaults.data.map(({ id }) => id));
-  const inVault = climb.data.chain.some(
-    ({ id }) => id !== item.id && roots.has(id),
-  );
+  const inVault = nearestVault(climb.data.chain, vaults.data) !== undefined;
   return inVault ? "in-vault" : "outside";
+}
+
+/**
+ * Where a note stands with Obsidian: in a vault, whose settings it follows,
+ * outside any, or not known yet, or at all.
+ */
+export type NoteVault =
+  | { state: "checking" | "outside" | "unknown" }
+  | { state: "inside"; settings: VaultSettings };
+
+/**
+ * The vault the note sits in, the nearest one above it, once Drive has said
+ * where the note is, where the vaults are, and how that vault is set; the
+ * note's folders are read only when Drive holds a vault.
+ */
+export function useNoteVault(note: FileRef): NoteVault {
+  const { drive } = useDrive();
+  const client = useQueryClient();
+  const vaults = useQuery(vaultsQuery(drive));
+  const climb = useClimb(note, Boolean(vaults.data?.length));
+  const vault =
+    vaults.data && climb.data && nearestVault(climb.data.chain, vaults.data);
+  // A vault whose settings Drive fails to send shows as Obsidian's own do.
+  const settings = useQuery(vaultSettingsQuery(drive, client, vault));
+  if (!vaults.data) return { state: vaults.isError ? "unknown" : "checking" };
+  if (vaults.data.length === 0) return { state: "outside" };
+  if (!climb.data) return { state: climb.isError ? "unknown" : "checking" };
+  if (!vault) return { state: "outside" };
+  if (settings.isPending) return { state: "checking" };
+  return { state: "inside", settings: settings.data ?? DEFAULT_SETTINGS };
+}
+
+/** The vault nearest the item above it, among the folders the item sits in. */
+function nearestVault(
+  chain: FileMetadata[],
+  vaults: DriveItem[],
+): FileMetadata | undefined {
+  const roots = new Set(vaults.map(({ id }) => id));
+  // The chain ends with the item itself.
+  return chain.slice(0, -1).findLast(({ id }) => roots.has(id));
 }

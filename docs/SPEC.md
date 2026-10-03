@@ -106,7 +106,8 @@ The interface is in English and follows the system's light or dark theme.
 A vault is a folder that contains a `.obsidian` folder. Inside a vault, the app follows Obsidian's rules; everywhere else, it follows GitHub's.
 
 - **Finding vaults.** One query across all drives finds them: `name='.obsidian' and mimeType='application/vnd.google-apps.folder' and trashed=false`. The parents of the results are the vault roots, listed on Home.
-- **Vault settings.** The app reads `.obsidian/app.json`; a missing key means Obsidian's default.
+- **A note's vault.** A note belongs to the nearest vault above it, among the folders it sits in; the app reads those folders only when Drive holds a vault. The note shows once the app knows, so that it never changes as the answer comes; when Drive fails to say, the note shows as Markdown, without Obsidian's syntax, and the page says so.
+- **Vault settings.** The app reads `.obsidian/app.json`; a missing key means Obsidian's default, and so does a file that is not JSON, holds over 100 KB, or that Drive fails to send.
 - **Line breaks.** By default, Obsidian shows a single line break as a line break, where GitHub joins the two lines. The viewer does the same, unless the vault's `strictLineBreaks` setting is on.
 - **Rendered in v1:**
   - Properties (YAML front matter), as a table at the top of the note.
