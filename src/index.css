@@ -451,6 +451,65 @@ dialog.drawer {
   color: var(--muted);
 }
 
+/* Obsidian's callouts, in the colors of its own theme. */
+.markdown .callout {
+  --callout: 8 109 221;
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-left: 0.25em solid rgb(var(--callout));
+  border-radius: 6px;
+  background: rgb(var(--callout) / 10%);
+}
+
+.markdown .callout:is([data-callout="abstract"], [data-callout="tip"]) {
+  --callout: 0 191 188;
+}
+
+.markdown .callout[data-callout="success"] {
+  --callout: 8 185 78;
+}
+
+.markdown .callout:is([data-callout="question"], [data-callout="warning"]) {
+  --callout: 236 117 0;
+}
+
+.markdown
+  .callout:is(
+    [data-callout="failure"],
+    [data-callout="danger"],
+    [data-callout="bug"]
+  ) {
+  --callout: 233 49 71;
+}
+
+.markdown .callout[data-callout="example"] {
+  --callout: 120 82 238;
+}
+
+.markdown .callout[data-callout="quote"] {
+  --callout: 158 158 158;
+}
+
+.markdown .callout-title {
+  color: rgb(var(--callout));
+  font-weight: 600;
+}
+
+/* A tap target of 44 px, which takes no more room than the title. */
+.markdown summary.callout-title {
+  margin-block: -0.625rem;
+  padding-block: 0.625rem;
+  cursor: pointer;
+}
+
+.markdown .callout-content {
+  margin-top: 0.5rem;
+}
+
+.markdown .callout-content > :last-child {
+  margin-bottom: 0;
+}
+
 .markdown :is(code, pre) {
   font-family: var(--monospace);
   font-size: 85%;

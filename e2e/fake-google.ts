@@ -129,7 +129,14 @@ function seed(): FakeFile[] {
       name: "today.md",
       mimeType: markdown,
       parents: ["journal"],
-      content: ["Woke up early.", "Made tea.", ""].join("\n"),
+      content: [
+        "Woke up early.",
+        "Made tea.",
+        "",
+        "> [!tip]- Brew it hot",
+        "> Water at 90 °C.",
+        "",
+      ].join("\n"),
     },
     {
       id: "to-plan",
