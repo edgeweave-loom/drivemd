@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { AuthError } from "./auth.ts";
-import { DriveError } from "./drive.ts";
-import { createQueryClient, refreshAfterChange } from "./queries.ts";
+import { DriveError, TooLargeError } from "./drive.ts";
+import {
+  createQueryClient,
+  refreshAfterChange,
+  vaultSettingsQuery,
+} from "./queries.ts";
+import { driveItem, metadata, metadataOf } from "./test/drive-items.ts";
+import { fakeDrive } from "./test/fake-drive.ts";
 
 function retries(failures: number, error: Error): boolean {
   const { retry } = createQueryClient().getDefaultOptions().queries ?? {};
@@ -40,5 +46,22 @@ describe("refreshAfterChange", () => {
     refreshAfterChange(client, { id: "plan" });
 
     expect(client.getQueryState(resolved)?.isInvalidated).toBe(true);
+  });
+});
+
+describe("vaultSettingsQuery", () => {
+  it("gives Obsidian's defaults for a settings file too large to read, which it keeps", async () => {
+    const drive = fakeDrive();
+    const settings = metadata(
+      driveItem("app.json", { id: "app", mimeType: "application/json" }),
+    );
+    drive.listChildren.mockResolvedValue([settings]);
+    drive.getMetadata.mockImplementation(metadataOf(settings));
+    drive.getContent.mockRejectedValue(new TooLargeError());
+    const client = createQueryClient();
+
+    await expect(
+      client.query(vaultSettingsQuery(drive, client, { id: "config" })),
+    ).resolves.toEqual({ strictLineBreaks: false });
   });
 });
