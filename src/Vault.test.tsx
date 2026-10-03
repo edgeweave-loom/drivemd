@@ -1,4 +1,5 @@
-import { screen, waitFor } from "@testing-library/react";
+import { focusManager } from "@tanstack/react-query";
+import { act, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
   DriveError,
@@ -55,25 +56,21 @@ function open(
   note: FileMetadata,
   {
     settings = "{}",
-    folders = {},
     items = [],
     prepare = () => undefined,
   }: {
     settings?: string | Error | null;
-    folders?: Record<string, DriveItem[]>;
     items?: FileMetadata[];
     prepare?: (drive: FakeDrive) => void;
   } = {},
 ) {
   const drive = fakeDrive();
-  drive.findVaults.mockResolvedValue([VAULT]);
+  drive.findVaultConfigs.mockResolvedValue([CONFIG]);
   drive.getMetadata.mockImplementation(
     metadataOf(VAULT, DAILY, NOTE, SETTINGS, ELSEWHERE, PLAIN, ...items),
   );
   const listed: Record<string, DriveItem[]> = {
-    vault: [CONFIG, DAILY],
     config: settings === null ? [] : [SETTINGS],
-    ...folders,
   };
   drive.listChildren.mockImplementation((folder) =>
     Promise.resolve(listed[folder.id] ?? []),
@@ -85,6 +82,30 @@ function open(
   });
   prepare(drive);
   return renderWithDrive(<FileContent file={note} />, drive);
+}
+
+/**
+ * Has Drive fail to send the vaults, or the vault's settings, `failures`
+ * times, then never answer.
+ */
+function holding(call: "findVaultConfigs" | "getContent", failures: number) {
+  return (drive: FakeDrive) => {
+    let left = failures;
+    const next = () => {
+      left -= 1;
+      return left >= 0
+        ? Promise.reject(new DriveError(500, "Oops"))
+        : new Promise<never>(() => undefined);
+    };
+    if (call === "findVaultConfigs") {
+      drive.findVaultConfigs.mockImplementation(next);
+      return;
+    }
+    const answer = drive.getContent.getMockImplementation();
+    drive.getContent.mockImplementation((file, limit) =>
+      file.id === SETTINGS.id || !answer ? next() : answer(file, limit),
+    );
+  };
 }
 
 /** The line breaks in the rendered note's first paragraph. */
@@ -132,26 +153,47 @@ describe("a note in an Obsidian vault", () => {
     );
     open(note, {
       settings: '{"strictLineBreaks": true}',
-      folders: { inner: [innerConfig] },
       items: [inner, note],
       prepare: (drive) => {
-        drive.findVaults.mockResolvedValue([VAULT, inner]);
+        drive.findVaultConfigs.mockResolvedValue([CONFIG, innerConfig]);
       },
     });
 
     expect(await breaks()).toBe(1);
   });
 
-  it("waits to know whether the note is in a vault before showing it", async () => {
-    open(NOTE, {
-      prepare: (drive) => {
-        drive.findVaults.mockReturnValue(new Promise(() => undefined));
-      },
-    });
+  it.each([
+    ["whether the note is in a vault", "findVaultConfigs"],
+    ["how the vault is set", "getContent"],
+  ] as const)("waits to know %s before showing it", async (_, call) => {
+    open(NOTE, { prepare: holding(call, 0) });
 
-    expect(await screen.findByText("Loading…")).toBeVisible();
+    // The note's content has come.
+    await screen.findByRole("button", { name: "Edit" });
+    expect(screen.getByText("Loading…")).toBeVisible();
     expect(screen.queryByText(/one/)).toBeNull();
   });
+
+  it.each([
+    ["the vaults", "findVaultConfigs"],
+    ["the vault's settings", "getContent"],
+  ] as const)(
+    "keeps showing the note while Drive is asked again for %s, after it failed",
+    async (_, call) => {
+      const { client } = open(NOTE, { prepare: holding(call, 1) });
+      await screen.findByText(/one/, { selector: "p" });
+
+      act(() => {
+        focusManager.setFocused(false);
+        focusManager.setFocused(true);
+      });
+      await waitFor(() => {
+        expect(client.isFetching()).toBeGreaterThan(0);
+      });
+      expect(screen.getByText(/one/, { selector: "p" })).toBeVisible();
+      expect(screen.queryByText("Loading…")).toBeNull();
+    },
+  );
 });
 
 describe("a note outside any vault", () => {
@@ -165,7 +207,7 @@ describe("a note outside any vault", () => {
   it("reads no folder of the note's when Drive holds no vault", async () => {
     const { drive } = open(PLAIN, {
       prepare: (fake) => {
-        fake.findVaults.mockResolvedValue([]);
+        fake.findVaultConfigs.mockResolvedValue([]);
       },
     });
 
@@ -174,7 +216,7 @@ describe("a note outside any vault", () => {
   });
 
   it.each([
-    ["the vaults", "findVaults"],
+    ["the vaults", "findVaultConfigs"],
     ["the note's folders", "getMetadata"],
   ] as const)(
     "shows as Markdown does, and says so, when Drive fails to send %s",

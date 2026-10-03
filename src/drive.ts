@@ -155,6 +155,11 @@ export interface Drive {
   search: (text: string) => Promise<DriveItem[]>;
   /** The folders that hold an Obsidian vault, in every drive. */
   findVaults: () => Promise<DriveItem[]>;
+  /**
+   * The `.obsidian` folders in every drive, each in the folder of its vault:
+   * one search, where findVaults also reads each vault's folder.
+   */
+  findVaultConfigs: () => Promise<DriveItem[]>;
   /** The shortcuts the user made outside shared drives, wherever they are. */
   listShortcuts: () => Promise<DriveItem[]>;
   /**
@@ -298,6 +303,13 @@ export function createDrive(auth: DriveAuth): Drive {
     return items.filter((item) => isMarkdown(item.name));
   }
 
+  function findVaultConfigs(): Promise<DriveItem[]> {
+    return listFiles({
+      q: `name = '.obsidian' and mimeType = '${FOLDER}' and trashed = false`,
+      corpora: "allDrives",
+    });
+  }
+
   async function getMetadata(file: FileRef): Promise<FileMetadata> {
     const response = await send(fileUrl(file, { fields: FILE_FIELDS }), [file]);
     return parse(response, parseFile);
@@ -341,12 +353,10 @@ export function createDrive(auth: DriveAuth): Drive {
       const terms = words.map((word) => `name contains ${quoted(word)}`);
       return findMarkdown(terms.join(" and "), "modifiedTime desc");
     },
+    findVaultConfigs,
     async findVaults() {
       // A vault is a folder that holds an .obsidian folder.
-      const configs = await listFiles({
-        q: `name = '.obsidian' and mimeType = '${FOLDER}' and trashed = false`,
-        corpora: "allDrives",
-      });
+      const configs = await findVaultConfigs();
       const roots = new Set(configs.flatMap(({ parents }) => parents));
       const vaults = await Promise.all(
         [...roots].map((id) => getMetadata({ id }).catch(outOfReach)),

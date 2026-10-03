@@ -10,7 +10,6 @@ import {
 } from "./vault-settings.ts";
 import {
   DriveError,
-  FOLDER,
   GOOGLE_TYPES,
   TooLargeError,
   type Drive,
@@ -92,34 +91,41 @@ export function vaultsQuery(drive: Drive) {
   });
 }
 
+/** Where the vaults are: one search, which reads no vault's folder. */
+export function vaultConfigsQuery(drive: Drive) {
+  return queryOptions({
+    queryKey: key("vault-configs"),
+    queryFn: drive.findVaultConfigs,
+    staleTime: VAULTS_STALE_TIME,
+  });
+}
+
 /** Larger settings files are not read: Obsidian's holds a few hundred bytes. */
 const MAX_SETTINGS = 100_000;
 
 /**
- * The settings of the vault in a folder, from its `.obsidian/app.json`, read
- * through the cache the pages share; none while there is no vault.
+ * The settings of a vault, from the `app.json` in its `.obsidian` folder,
+ * read through the cache the pages share; none while there is no vault.
  */
 export function vaultSettingsQuery(
   drive: Drive,
   client: QueryClient,
-  vault: FileRef | undefined,
+  config: FileRef | undefined,
 ) {
   return queryOptions({
-    queryKey: key("vault-settings", vault?.id, vault?.resourceKey),
-    queryFn: vault
+    queryKey: key("vault-settings", config?.id, config?.resourceKey),
+    queryFn: config
       ? async (): Promise<VaultSettings> => {
-          // The settings as a whole are read again.
-          const list = (folder: FileRef) =>
-            client.query({ ...childrenQuery(drive, folder), retry: false });
-          const config = (await list(vault)).find(
-            ({ name, mimeType }) => name === ".obsidian" && mimeType === FOLDER,
+          // The settings as a whole are tried again.
+          const file = (
+            await client.query({
+              ...childrenQuery(drive, config),
+              retry: false,
+            })
+          ).find(
+            ({ name, mimeType }) =>
+              name === "app.json" && !mimeType.startsWith(GOOGLE_TYPES),
           );
-          const file =
-            config &&
-            (await list(config)).find(
-              ({ name, mimeType }) =>
-                name === "app.json" && !mimeType.startsWith(GOOGLE_TYPES),
-            );
           if (!file) return DEFAULT_SETTINGS;
           const details = await client.query({
             ...metadataQuery(drive, file),
