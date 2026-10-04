@@ -97,6 +97,27 @@ export async function readDraft(
   };
 }
 
+/** A note with unsaved text on the device, as Home lists it: without the text. */
+export type DraftEntry = Pick<
+  Draft,
+  "fileId" | "name" | "resourceKey" | "keptAt"
+>;
+
+/** The account's notes with unsaved text on the device, the latest first. */
+export async function listDrafts(account: string): Promise<DraftEntry[]> {
+  const stored = (await run("readonly", (store) =>
+    store.getAll(ofAccount(account)),
+  )) as Stored[];
+  return stored
+    .map(({ fileId, name, resourceKey, keptAt }) => ({
+      fileId,
+      name,
+      resourceKey,
+      keptAt,
+    }))
+    .toSorted((a, b) => Date.parse(b.keptAt) - Date.parse(a.keptAt));
+}
+
 export async function deleteDraft(
   account: string,
   fileId: string,

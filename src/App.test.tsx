@@ -6,8 +6,10 @@ import {
   within,
   waitFor,
 } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import "fake-indexeddb/auto";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.tsx";
+import { deleteDrafts, writeDraft } from "./drafts.ts";
 import type { Session, SessionState } from "./session.ts";
 import { driveItem } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
@@ -46,6 +48,10 @@ function fakeSession(initial: Partial<SessionState> = {}) {
   };
   return { session, change };
 }
+
+afterEach(async () => {
+  await deleteDrafts(EMAIL);
+});
 
 function button(name: string | RegExp) {
   return screen.getByRole("button", { name });
@@ -140,6 +146,34 @@ describe("App", () => {
     });
     expect(home).not.toBeInTheDocument();
     expect(screen.getByText("grace@example.com")).toBeInTheDocument();
+  });
+
+  it("lists the notes with unsaved changes only once the account continues", async () => {
+    await writeDraft(EMAIL, {
+      fileId: "plan",
+      name: "plan.md",
+      resourceKey: undefined,
+      headRevisionId: "revision-1",
+      md5Checksum: "aaaa",
+      text: "Changed",
+      keptAt: "2026-10-02T09:00:00.000Z",
+    });
+    visit("/");
+    const { session, change } = fakeSession({
+      screen: { name: "continue", email: EMAIL },
+    });
+    render(<App session={session} />);
+
+    // Behind Welcome back, nobody has signed in to Google yet.
+    await new Promise((settle) => setTimeout(settle, 50));
+    expect(screen.queryByText("Unsaved changes")).toBeNull();
+    act(() => {
+      change({ screen: { name: "home", email: EMAIL } });
+    });
+
+    expect(
+      await screen.findByRole("region", { name: "Unsaved changes" }),
+    ).toBeVisible();
   });
 
   it("opens the navigator for the signed-in account, which can sign out", async () => {
