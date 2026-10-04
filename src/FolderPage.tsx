@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Breadcrumbs } from "./Breadcrumbs.tsx";
 import { NameDialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
@@ -89,12 +89,15 @@ export function CreateFile({
   path,
   replace = false,
   onClose,
+  children,
 }: {
   folder: FileRef;
   path: Crumb[] | undefined;
   /** Whether the file's page takes the place of the page shown. */
   replace?: boolean;
   onClose: () => void;
+  /** Anything else to know before creating it. */
+  children?: ReactNode;
 }) {
   const { drive, renew } = useDrive();
   const client = useQueryClient();
@@ -124,6 +127,8 @@ export function CreateFile({
         });
       }}
       onClose={onClose}
-    />
+    >
+      {children}
+    </NameDialog>
   );
 }

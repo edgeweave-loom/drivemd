@@ -20,8 +20,10 @@ const ROOT = folderItem("My Drive", { id: "my-root", parents: [] });
  * Drive's New in the folder Work, after the page it was opened from; Drive
  * knows nothing of Work when `work` is null.
  */
-function openNew(work: DriveItem | null = workFolder(true)) {
-  const drive = fakeDrive();
+function openNew(
+  work: DriveItem | null = workFolder(true),
+  { signedIn = true, drive = fakeDrive() } = {},
+) {
   const items = work ? [work, ROOT] : [ROOT];
   drive.getMetadata.mockImplementation(
     metadataOf(...items.map((item) => metadata(item))),
@@ -30,7 +32,9 @@ function openNew(work: DriveItem | null = workFolder(true)) {
   history.pushState(null, "", hrefOf({ name: "new", folder: WORK }));
   window.dispatchEvent(new PopStateEvent("popstate"));
   const entries = history.length;
-  const rendered = renderWithDrive(<NewPage folder={WORK} />, drive);
+  const rendered = renderWithDrive(<NewPage folder={WORK} />, drive, {
+    signedIn,
+  });
   return { ...rendered, drive, entries };
 }
 
@@ -78,6 +82,32 @@ describe("Drive's New", () => {
       { name: "Work", href: "/folder/work?resourcekey=k" },
       { name: "Ideas.md", href: "/edit?id=ideas" },
     ]);
+  });
+
+  it("names the folder the file goes in", async () => {
+    openNew();
+
+    const dialog = await nameDialog();
+    expect(await dialog.findByText("My Drive › Work")).toBeVisible();
+  });
+
+  it("names the folder before its path comes", async () => {
+    const drive = fakeDrive();
+    openNew(workFolder(true), { drive });
+    const read = drive.getMetadata.getMockImplementation();
+    drive.getMetadata.mockImplementation((item) =>
+      item.id === "work" && read ? read(item) : new Promise(() => undefined),
+    );
+
+    const dialog = await nameDialog();
+    expect(dialog.getByText("Work")).toBeVisible();
+  });
+
+  it("asks nothing until the tab has signed in", async () => {
+    openNew(workFolder(true), { signedIn: false });
+
+    expect(await screen.findByRole("link", { name: "Work" })).toBeVisible();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("opens the folder in its place when cancelled", async () => {
