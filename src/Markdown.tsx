@@ -43,6 +43,7 @@ import {
   remarkHighlights,
   remarkInlineFootnotes,
   remarkTags,
+  remarkWikiLinks,
 } from "./obsidian.ts";
 import { remarkProperties } from "./properties.ts";
 import {
@@ -50,12 +51,13 @@ import {
   MAX_IMAGE,
   metadataQuery,
   resolveQuery,
+  vaultLinkQuery,
 } from "./queries.ts";
-import { hashOf, onTheWeb, relativePath } from "./resolve.ts";
+import { hashOf, onTheWeb, relativePath, type Found } from "./resolve.ts";
 import { toggleTask } from "./tasks.ts";
 import { hrefOf } from "./router.ts";
-import { showPart } from "./parts.ts";
-import type { VaultSettings } from "./vault-settings.ts";
+import { linkPartHash, partHash, showPart } from "./parts.ts";
+import type { Vault } from "./vault-settings.ts";
 import { remarkEscapes } from "./written.ts";
 
 type Plugins = NonNullable<Options["remarkPlugins"]>;
@@ -76,6 +78,7 @@ const VAULT_SCHEMA: Schema = {
   tagNames: [...(defaultSchema.tagNames ?? []), "mark"],
   attributes: {
     ...defaultSchema.attributes,
+    a: [...(defaultSchema.attributes?.a ?? []), "dataWikilink"],
     details: [
       ["className", "callout"],
       ["dataCallout", ...CALLOUT_TYPES],
@@ -105,6 +108,7 @@ const OBSIDIAN = {
     remarkInlineFootnotes,
     remarkHighlights,
     remarkBlockIds,
+    remarkWikiLinks,
     remarkTags,
   ],
   rehype: rehype(VAULT_SCHEMA),
@@ -116,9 +120,9 @@ const OBSIDIAN_BREAKS = {
 };
 
 /** How a note renders: as Obsidian renders it in a vault, else as GitHub. */
-function pluginsFor(vault: VaultSettings | undefined) {
+function pluginsFor(vault: Vault | undefined) {
   if (!vault) return GITHUB;
-  return vault.strictLineBreaks ? OBSIDIAN : OBSIDIAN_BREAKS;
+  return vault.settings.strictLineBreaks ? OBSIDIAN : OBSIDIAN_BREAKS;
 }
 const COMPONENTS: Components = {
   a: Anchor,
@@ -129,6 +133,9 @@ const COMPONENTS: Components = {
 
 /** The folder the note sits in, where its relative links start. */
 const NoteFolder = createContext<FileRef | undefined>(undefined);
+
+/** The vault the note sits in, where its links lead as Obsidian's do. */
+const NoteVault = createContext<Vault | undefined>(undefined);
 
 /** The note's text, and what changes it when a task's checkbox is tapped. */
 const Tasks = createContext<
@@ -153,28 +160,30 @@ export function Rendered({
   text: string;
   /** The folder the note sits in, if known: relative links start there. */
   folder?: FileRef | undefined;
-  /** The settings of the Obsidian vault the note sits in, if it does. */
-  vault?: VaultSettings | undefined;
+  /** The Obsidian vault the note sits in, if it does. */
+  vault?: Vault | undefined;
   /** Takes the text with a task checked or unchecked, if the user may edit. */
   onEdit?: ((text: string) => void) | undefined;
 }) {
   const plugins = pluginsFor(vault);
   return (
-    <NoteFolder value={folder}>
-      <Tasks value={onEdit && { text, edit: onEdit }}>
-        <Fallible text={text}>
-          <div className="markdown">
-            <Markdown
-              remarkPlugins={plugins.remark}
-              rehypePlugins={plugins.rehype}
-              components={COMPONENTS}
-            >
-              {text}
-            </Markdown>
-          </div>
-        </Fallible>
-      </Tasks>
-    </NoteFolder>
+    <NoteVault value={vault}>
+      <NoteFolder value={folder}>
+        <Tasks value={onEdit && { text, edit: onEdit }}>
+          <Fallible text={text}>
+            <div className="markdown">
+              <Markdown
+                remarkPlugins={plugins.remark}
+                rehypePlugins={plugins.rehype}
+                components={COMPONENTS}
+              >
+                {text}
+              </Markdown>
+            </div>
+          </Fallible>
+        </Tasks>
+      </NoteFolder>
+    </NoteVault>
   );
 }
 
@@ -265,11 +274,15 @@ function Anchor({
   className,
   "aria-label": label,
   "aria-describedby": describedBy,
+  "data-wikilink": wikiLink,
   children,
 }: ComponentProps<"a"> & {
   /** The older way HTML marks a target, which React does not type. */
   name?: string;
+  /** What an Obsidian link leads to, as written: `Note#Heading`. */
+  "data-wikilink"?: string;
 }) {
+  const vault = useContext(NoteVault);
   const attributes = {
     id,
     title,
@@ -278,25 +291,52 @@ function Anchor({
     "aria-describedby": describedBy,
     children,
   };
-  if (href.startsWith("#")) {
-    const scroll = (event: MouseEvent) => {
-      // The address stays the page's own, with the path taken in history.
-      event.preventDefault();
-      showPart(href.slice(1));
-    };
-    return <a {...attributes} href={href} onClick={scroll} />;
+  // A link without text cannot be tapped, so it asks Drive nothing.
+  const tappable = Children.count(children) > 0;
+  if (vault && wikiLink && tappable) {
+    const at = wikiLink.indexOf("#");
+    const path = at < 0 ? wikiLink : wikiLink.slice(0, at);
+    // Of headings under one another, the last names the part.
+    const part =
+      at < 0
+        ? ""
+        : (wikiLink
+            .slice(at + 1)
+            .split("#")
+            .at(-1) ?? "");
+    const hash = partHash(part);
+    if (path === "") return <PartLink {...attributes} href={hash} />;
+    return <VaultLink {...attributes} path={path.split("/")} hash={hash} />;
   }
+  if (href.startsWith("#")) return <PartLink {...attributes} href={href} />;
   if (onTheWeb(href)) {
     return <a {...attributes} href={href} target="_blank" rel="noreferrer" />;
   }
   if (href.startsWith("mailto:")) return <a {...attributes} href={href} />;
   const path = relativePath(href);
-  // A link without text cannot be tapped, so it asks Drive nothing.
-  if (path && Children.count(children) > 0) {
-    return <DriveLink {...attributes} path={path} hash={hashOf(href)} />;
+  if (path && tappable) {
+    return vault ? (
+      <VaultLink
+        {...attributes}
+        path={path}
+        hash={linkPartHash(hashOf(href))}
+      />
+    ) : (
+      <DriveLink {...attributes} path={path} hash={hashOf(href)} />
+    );
   }
   // A target for links within the page, which HTML may mark by name.
   return <a {...attributes} id={id ?? name} />;
+}
+
+/** A link to a part of the note, which scrolls to it. */
+function PartLink({ href, ...attributes }: LinkAttributes & { href: string }) {
+  const scroll = (event: MouseEvent) => {
+    // The address stays the page's own, with the path taken in history.
+    event.preventDefault();
+    showPart(href.slice(1));
+  };
+  return <a {...attributes} href={href} onClick={scroll} />;
 }
 
 /**
@@ -373,7 +413,80 @@ function Resolved({
   }
   if (found.isPending) return <span {...attributes} />;
   if (!found.data) return <Unresolved {...attributes} />;
-  const { ref, name, mimeType } = found.data;
+  return <LinkTo {...attributes} found={found.data} hash={hash} />;
+}
+
+/**
+ * A link to what a link in a note of a vault leads to, as Obsidian finds it.
+ * When Drive left some drives out of the search, the link is not called
+ * broken: it may lead to a note in one of them.
+ */
+function VaultLink({
+  path,
+  hash,
+  ...attributes
+}: LinkAttributes & { path: string[]; hash: string }) {
+  const vault = useContext(NoteVault);
+  const folder = useContext(NoteFolder);
+  if (!vault || !folder) return <Unresolved {...attributes} />;
+  return (
+    <InVault
+      {...attributes}
+      from={{ vault: vault.root, folder }}
+      path={path}
+      hash={hash}
+    />
+  );
+}
+
+function InVault({
+  from,
+  path,
+  hash,
+  ...attributes
+}: LinkAttributes & {
+  from: { vault: FileRef; folder: FileRef };
+  path: string[];
+  hash: string;
+}) {
+  const { drive } = useDrive();
+  const client = useQueryClient();
+  const [seen, near] = useSeen();
+  const link = useQuery({
+    ...vaultLinkQuery(drive, client, from, path),
+    enabled: seen,
+  });
+  if (!seen) return <span {...attributes} ref={near} />;
+  if (link.isError) {
+    return (
+      <span
+        {...attributes}
+        title="Google Drive could not say where this link leads"
+      />
+    );
+  }
+  if (link.isPending) return <span {...attributes} />;
+  const { found, incomplete } = link.data;
+  if (found) return <LinkTo {...attributes} found={found} hash={hash} />;
+  if (!incomplete) return <Unresolved {...attributes} />;
+  return (
+    <span
+      {...attributes}
+      title="Google Drive did not search every drive, so this link may lead to a note it left out"
+    />
+  );
+}
+
+/**
+ * A link to what a link in a note found in Drive: a folder or a Markdown file
+ * opens in the app, the file at the part `hash` names, and another file opens
+ * in Google Drive.
+ */
+function LinkTo({
+  found: { ref, name, mimeType },
+  hash,
+  ...attributes
+}: LinkAttributes & { found: Found; hash: string }) {
   if (mimeType === FOLDER) {
     return (
       <Link {...attributes} to={hrefOf({ name: "folder", folder: ref })} />

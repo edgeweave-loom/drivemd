@@ -550,7 +550,10 @@ function NoteView({
   const { renew } = useDrive();
   const layout = useLayout();
   const editor = useRef<EditorHandle>(null);
-  const follow = useFollow(folderOf(file));
+  const follow = useFollow(
+    folderOf(file),
+    vault.state === "inside" ? vault.vault : undefined,
+  );
   // Beside the editor, the preview catches up with typing when it can.
   const deferred = useDeferredValue(text);
   const reason = readOnly(file, note);
@@ -710,7 +713,7 @@ function NoteView({
           <Rendered
             text={previewed}
             folder={folderOf(file)}
-            vault={vault.state === "inside" ? vault.settings : undefined}
+            vault={vault.state === "inside" ? vault.vault : undefined}
             onEdit={
               !editable
                 ? undefined

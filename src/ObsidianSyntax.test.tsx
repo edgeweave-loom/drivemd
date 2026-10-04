@@ -1,11 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Rendered } from "./Markdown.tsx";
-import { DEFAULT_SETTINGS } from "./vault-settings.ts";
+import { VAULT } from "./test/vault.ts";
 
 /** Renders a note of a vault, with Obsidian's default settings. */
 function show(text: string) {
-  return render(<Rendered text={text} vault={DEFAULT_SETTINGS} />).container;
+  return render(<Rendered text={text} vault={VAULT} />).container;
 }
 
 /** The text of each element the selector finds. */
@@ -295,7 +295,7 @@ describe("Obsidian's syntax", () => {
     render(
       <Rendered
         text={"- [ ] ==Buy== #tea ^buy %%later%%\n"}
-        vault={DEFAULT_SETTINGS}
+        vault={VAULT}
         onEdit={edit}
       />,
     );

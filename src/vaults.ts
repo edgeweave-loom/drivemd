@@ -3,7 +3,7 @@ import { useDrive } from "./drive-context.ts";
 import type { DriveItem, FileMetadata, FileRef } from "./drive.ts";
 import { useClimb } from "./path.ts";
 import { vaultConfigsQuery, vaultSettingsQuery } from "./queries.ts";
-import { DEFAULT_SETTINGS, type VaultSettings } from "./vault-settings.ts";
+import { DEFAULT_SETTINGS, type Vault } from "./vault-settings.ts";
 
 export type VaultCheck = "in-vault" | "outside" | "checking" | "unknown";
 
@@ -49,7 +49,7 @@ export function useVaultCheck(item: FileRef, enabled: boolean): VaultCheck {
  */
 export type NoteVault =
   | { state: "checking" | "outside" | "unknown" }
-  | { state: "inside"; settings: VaultSettings };
+  | { state: "inside"; vault: Vault };
 
 /**
  * The vault the note sits in, the nearest one above it, once Drive has said
@@ -61,17 +61,24 @@ export function useNoteVault(note: FileRef): NoteVault {
   const client = useQueryClient();
   const configs = useQuery(vaultConfigsQuery(drive));
   const climb = useClimb(note, Boolean(configs.data?.length));
-  const config =
+  const found =
     configs.data && climb.data && nearestVault(climb.data.chain, configs.data);
-  const settings = useQuery(vaultSettingsQuery(drive, client, config));
+  const settings = useQuery(vaultSettingsQuery(drive, client, found?.config));
   // A note shown stays as it is while Drive is asked again after failing.
   if (!configs.data) return { state: failed(configs) ? "unknown" : "checking" };
   if (configs.data.length === 0) return { state: "outside" };
   if (!climb.data) return { state: failed(climb) ? "unknown" : "checking" };
-  if (!config) return { state: "outside" };
+  if (!found) return { state: "outside" };
   if (!settings.data && !failed(settings)) return { state: "checking" };
-  // A vault whose settings Drive fails to send shows as Obsidian's own do.
-  return { state: "inside", settings: settings.data ?? DEFAULT_SETTINGS };
+  const { id, resourceKey } = found.root;
+  return {
+    state: "inside",
+    vault: {
+      root: { id, resourceKey },
+      // A vault whose settings Drive fails to send shows as Obsidian's own do.
+      settings: settings.data ?? DEFAULT_SETTINGS,
+    },
+  };
 }
 
 /**
@@ -83,19 +90,18 @@ function failed({ errorUpdateCount }: { errorUpdateCount: number }): boolean {
 }
 
 /**
- * The `.obsidian` folder of the vault nearest the item, among the folders the
- * item sits in.
+ * The top folder of the vault nearest the item, among the folders the item
+ * sits in, and that vault's `.obsidian` folder.
  */
 function nearestVault(
   chain: FileMetadata[],
   configs: DriveItem[],
-): DriveItem | undefined {
+): { root: FileMetadata; config: DriveItem } | undefined {
   const byVault = new Map(
     configs.flatMap((config) => config.parents.map((id) => [id, config])),
   );
   // The chain ends with the item itself.
-  return chain
-    .slice(0, -1)
-    .map(({ id }) => byVault.get(id))
-    .findLast((config) => config !== undefined);
+  const root = chain.slice(0, -1).findLast(({ id }) => byVault.has(id));
+  const config = root && byVault.get(root.id);
+  return root && config && { root, config };
 }

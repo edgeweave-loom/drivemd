@@ -138,6 +138,21 @@ function seed(): FakeFile[] {
       parents: ["obsidian"],
       content: '{"alwaysUpdateLinks": true}',
     },
+    { id: "how-to", name: "How to", mimeType: FOLDER, parents: ["journal"] },
+    {
+      id: "guide",
+      name: "Guide.md",
+      mimeType: markdown,
+      parents: ["how-to"],
+      // Long enough that its last heading starts off the screen.
+      content: [
+        "# Guide",
+        ...Array.from({ length: 60 }, (_, line) => `\nStep ${String(line)}.`),
+        "\n## Brewing",
+        "\nWait.",
+        "",
+      ].join("\n"),
+    },
     {
       id: "today",
       name: "today.md",
@@ -148,6 +163,8 @@ function seed(): FakeFile[] {
         "Made tea.",
         "",
         "==Green tea== for #morning %%not shown%%done.^[From Japan.] ^tea",
+        "",
+        "Read [[guide#Brewing|the guide]] and [[Nowhere]].",
         "",
         "> [!tip]- Brew it hot",
         "> Water at 90 °C.",
@@ -373,6 +390,30 @@ export class FakeDrive {
     }
     if (q.startsWith("name = '.obsidian'")) {
       return all.filter((file) => file.name === ".obsidian");
+    }
+    // The folders in several folders, as listFolders asks.
+    const several =
+      /^\(((?:'[\w-]+' in parents(?: or )?)+)\) and mimeType/.exec(q)?.[1];
+    if (several !== undefined) {
+      const ids = [...several.matchAll(/'([\w-]+)'/g)].map(([, id]) =>
+        id === "root" ? "my-root" : id,
+      );
+      return all.filter(
+        (file) =>
+          file.mimeType === FOLDER &&
+          file.parents.some((parent) => ids.includes(parent)),
+      );
+    }
+    // Drive matches an exact name whatever the case of its ASCII letters.
+    const names = [...q.matchAll(/name = '((?:[^'\\]|\\.)*)'/g)].map(
+      ([, name = ""]) => name.replace(/\\(.)/g, "$1").toLowerCase(),
+    );
+    if (names.length > 0 && !q.startsWith("name = '.obsidian'")) {
+      return all.filter(
+        (file) =>
+          names.includes(file.name.toLowerCase()) &&
+          !file.mimeType.startsWith("application/vnd.google-apps."),
+      );
     }
     // Drive escapes quotes and backslashes in its string literals.
     const words = [...q.matchAll(/name contains '((?:[^'\\]|\\.)*)'/g)].map(

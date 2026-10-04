@@ -1,13 +1,12 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Rendered } from "./Markdown.tsx";
-import { DEFAULT_SETTINGS } from "./vault-settings.ts";
+import { VAULT } from "./test/vault.ts";
 
 /** Renders a note of a vault, with Obsidian's default settings. */
 function show(text: string, onEdit?: (text: string) => void) {
-  return render(
-    <Rendered text={text} vault={DEFAULT_SETTINGS} onEdit={onEdit} />,
-  ).container;
+  return render(<Rendered text={text} vault={VAULT} onEdit={onEdit} />)
+    .container;
 }
 
 /** The text an element shows, its blocks one space apart. */
@@ -189,7 +188,7 @@ describe("callouts in a note of a vault", () => {
     const page = render(
       <Rendered
         text={"> [!note] Title\n> One\n> Two"}
-        vault={{ strictLineBreaks: true }}
+        vault={{ ...VAULT, settings: { strictLineBreaks: true } }}
       />,
     ).container;
 

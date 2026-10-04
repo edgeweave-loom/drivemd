@@ -31,3 +31,18 @@ test("renders a note of a vault as Obsidian does", async ({ page }) => {
   const title = await callout.locator("summary").boundingBox();
   expect(title?.height).toBeGreaterThanOrEqual(44);
 });
+
+test("opens the note an internal link names, at its heading", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/edit?id=today");
+
+  const note = page.locator(".markdown");
+  await expect(note.getByText("Nowhere")).toHaveClass("unresolved");
+  await note.getByRole("link", { name: "the guide" }).click();
+  await expect(page).toHaveURL(/\/edit\?id=guide#brewing$/);
+  await expect(
+    page.locator(".markdown").getByRole("heading", { name: "Brewing" }),
+  ).toBeInViewport();
+});
