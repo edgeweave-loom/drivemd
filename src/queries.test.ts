@@ -4,9 +4,15 @@ import { DriveError, TooLargeError } from "./drive.ts";
 import {
   createQueryClient,
   refreshAfterChange,
+  vaultLinkQuery,
   vaultSettingsQuery,
 } from "./queries.ts";
-import { driveItem, metadata, metadataOf } from "./test/drive-items.ts";
+import {
+  driveItem,
+  folderItem,
+  metadata,
+  metadataOf,
+} from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 
 function retries(failures: number, error: Error): boolean {
@@ -41,11 +47,42 @@ describe("refreshAfterChange", () => {
   it("has the links in notes found again, as a rename or a move changes where they lead", () => {
     const client = createQueryClient();
     const resolved = ["resolve", "notes", undefined, "plan.md"];
-    client.setQueryData(resolved, null);
+    const linked = ["vault-link", "vault", "notes", undefined, "Plan"];
+    const named = ["name", "plan.md"];
+    for (const queryKey of [resolved, linked, named]) {
+      client.setQueryData(queryKey, null);
+    }
 
     refreshAfterChange(client, { id: "plan" });
 
-    expect(client.getQueryState(resolved)?.isInvalidated).toBe(true);
+    for (const queryKey of [resolved, linked, named]) {
+      expect(client.getQueryState(queryKey)?.isInvalidated).toBe(true);
+    }
+  });
+});
+
+describe("vaultLinkQuery", () => {
+  it("looks a name up once, whatever its case, for every link to it", async () => {
+    const drive = fakeDrive();
+    const guide = driveItem("Guide.md", { id: "guide", parents: ["vault"] });
+    drive.listChildren.mockResolvedValue([]);
+    drive.findByName.mockResolvedValue({ items: [guide], incomplete: false });
+    drive.getMetadata.mockImplementation(
+      metadataOf(
+        metadata(guide),
+        metadata(folderItem("Vault", { id: "vault", parents: [] })),
+      ),
+    );
+    const client = createQueryClient();
+    const from = { vault: { id: "vault" }, folder: { id: "notes" } };
+
+    const [one, other] = await Promise.all([
+      client.query(vaultLinkQuery(drive, client, from, ["Guide"])),
+      client.query(vaultLinkQuery(drive, client, from, ["guide"])),
+    ]);
+    expect(one.found?.ref.id).toBe("guide");
+    expect(other.found?.ref.id).toBe("guide");
+    expect(drive.findByName).toHaveBeenCalledOnce();
   });
 });
 

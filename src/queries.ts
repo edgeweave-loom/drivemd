@@ -2,7 +2,8 @@ import { QueryClient, queryOptions, skipToken } from "@tanstack/react-query";
 import { climb } from "./climb.ts";
 import { readDraft } from "./drafts.ts";
 import { pool } from "./pool.ts";
-import { resolve } from "./resolve.ts";
+import { resolve, type FolderReader } from "./resolve.ts";
+import { resolveInVault } from "./vault-links.ts";
 import {
   DEFAULT_SETTINGS,
   readSettings,
@@ -205,6 +206,24 @@ export function imageQuery(drive: Drive, file: FileMetadata | undefined) {
 }
 
 /**
+ * How a link's resolution reads folders, through the cache the pages share.
+ * The resolution as a whole is tried again.
+ */
+function folderReader(drive: Drive, client: QueryClient): FolderReader {
+  return {
+    children: (folder) =>
+      client.query({ ...childrenQuery(drive, folder), retry: false }),
+    parent: async (folder) => {
+      const details = await client.query({
+        ...metadataQuery(drive, folder),
+        retry: false,
+      });
+      return details.parents[0];
+    },
+  };
+}
+
+/**
  * What a relative path in a note leads to from the note's folder, or null,
  * reading folders through the cache that the pages share.
  */
@@ -218,23 +237,59 @@ export function resolveQuery(
     queryKey: key("resolve", folder.id, folder.resourceKey, ...path),
     queryFn: async ({ signal }) => {
       const found = await lookups(
-        () =>
-          resolve(folder, path, {
-            // The resolution as a whole is tried again.
-            children: (inner) =>
-              client.query({ ...childrenQuery(drive, inner), retry: false }),
-            parent: async (inner) => {
-              const details = await client.query({
-                ...metadataQuery(drive, inner),
-                retry: false,
-              });
-              return details.parents[0];
-            },
-          }),
+        () => resolve(folder, path, folderReader(drive, client)),
         signal,
       );
       return found ?? null;
     },
+  });
+}
+
+/** The files of a name, which Drive matches whatever its case. */
+function nameQuery(drive: Drive, name: string) {
+  return queryOptions({
+    queryKey: key("name", name.toLowerCase()),
+    queryFn: () => drive.findByName(name),
+  });
+}
+
+/**
+ * What a link in a note of a vault leads to, from the note's folder, reading
+ * Drive through the cache that the pages share.
+ */
+export function vaultLinkQuery(
+  drive: Drive,
+  client: QueryClient,
+  from: { vault: FileRef; folder: FileRef },
+  path: string[],
+) {
+  const { vault, folder } = from;
+  return queryOptions({
+    queryKey: key(
+      "vault-link",
+      vault.id,
+      folder.id,
+      folder.resourceKey,
+      ...path,
+    ),
+    queryFn: ({ signal }) =>
+      lookups(
+        () =>
+          resolveInVault(path, from, {
+            ...folderReader(drive, client),
+            named: (name) =>
+              client.query({ ...nameQuery(drive, name), retry: false }),
+            folders: async (item) => {
+              const { chain } = await client.query({
+                ...climbQuery(drive, client, item),
+                retry: false,
+              });
+              // The chain ends with the item itself.
+              return chain.slice(0, -1);
+            },
+          }),
+        signal,
+      ),
   });
 }
 
@@ -294,6 +349,8 @@ export function refreshAfterChange(
     "climb",
     "shortcut",
     "resolve",
+    "name",
+    "vault-link",
   ]) {
     void client.invalidateQueries({ queryKey: key(call) });
   }

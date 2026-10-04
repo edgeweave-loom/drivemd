@@ -55,13 +55,15 @@ export function hashOf(href: string): string {
  * What a relative path leads to from a folder, as Obsidian and GitHub read
  * it: the path is read as written first, so `a/../b` is `b` even when `a` is
  * a shortcut, then each leading `..` climbs to the parent, and a name must
- * match exactly. Shortcuts lead to their target. Undefined when nothing is
- * there; fails as Drive does for a folder it cannot list.
+ * match exactly, or as `same` says. Shortcuts lead to their target.
+ * Undefined when nothing is there; fails as Drive does for a folder it
+ * cannot list.
  */
 export async function resolve(
   folder: FileRef,
   path: string[],
   read: FolderReader,
+  same: (name: string, step: string) => boolean = (name, step) => name === step,
 ): Promise<Found | undefined> {
   let here: Found = { ref: folder, name: "", mimeType: FOLDER };
   for (const step of normalized(path)) {
@@ -72,8 +74,8 @@ export async function resolve(
       here = { ref: { id: parent }, name: "..", mimeType: FOLDER };
       continue;
     }
-    const named = (await read.children(here.ref)).filter(
-      ({ name }) => name === step,
+    const named = (await read.children(here.ref)).filter(({ name }) =>
+      same(name, step),
     );
     // A shortcut never hides the item whose name it takes.
     const item = named.find(({ target }) => !target) ?? named[0];
