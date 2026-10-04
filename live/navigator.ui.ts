@@ -37,7 +37,10 @@ interface Run {
   auth: DriveAuth;
   drive: Drive;
   /** The IDs of what the run made, by role. */
-  ids: Record<"folder" | "notes" | "note" | "archive" | "vault", string>;
+  ids: Record<
+    "folder" | "notes" | "note" | "archive" | "vault" | "obsidian" | "guide",
+    string
+  >;
 }
 
 const test = base.extend<{ run: Run }, { liveRun: Run | undefined }>({
@@ -121,7 +124,9 @@ const test = base.extend<{ run: Run }, { liveRun: Run | undefined }>({
   },
 });
 
-/** Makes a folder, a note, a shortcut to it, a vault and a note in it. */
+const utf8 = (text: string) => new TextEncoder().encode(text);
+
+/** Makes a folder, a note, a shortcut to it, a vault and notes in it. */
 async function fill(
   api: ReturnType<typeof driveApi>,
   drive: Drive,
@@ -144,15 +149,94 @@ async function fill(
     ...inRun,
   });
   const note = (await drive.createFile({ id: notes }, `${RUN} note`)).id;
-  await api.make({ name: ".obsidian", mimeType: FOLDER, parents: [vault] });
+  const config = await api.make({
+    name: ".obsidian",
+    mimeType: FOLDER,
+    parents: [vault],
+  });
   await drive.createFile({ id: vault }, `${RUN} daily`);
+  const { guide, obsidian } = await fillVault(api, drive, vault, config);
   await api.make({
     name: `${RUN} Linked note.md`,
     mimeType: SHORTCUT,
     shortcutDetails: { targetId: note },
     ...inRun,
   });
-  return { folder, notes, note, archive, vault };
+  return { folder, notes, note, archive, vault, obsidian, guide };
+}
+
+/** A made-up picture of one pixel. */
+const PIXEL = Uint8Array.from(
+  atob(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  ),
+  (character) => character.charCodeAt(0),
+);
+
+/**
+ * Writes a vault as Obsidian would: its settings, a guide and a picture in a
+ * folder of its own, and a note at its top that links to them and embeds
+ * them, with Obsidian's syntax.
+ */
+async function fillVault(
+  api: ReturnType<typeof driveApi>,
+  drive: Drive,
+  vault: string,
+  config: string,
+) {
+  const put = async (id: string, bytes: Uint8Array<ArrayBuffer>) => {
+    await drive.saveContent(await drive.getMetadata({ id }), bytes);
+  };
+  const settings = await api.make({
+    name: "app.json",
+    mimeType: "application/json",
+    parents: [config],
+  });
+  await put(settings, utf8("{}"));
+  const guides = await api.make({
+    name: `${RUN} Guides`,
+    mimeType: FOLDER,
+    parents: [vault],
+  });
+  const guide = (await drive.createFile({ id: guides }, `${RUN} Guide`)).id;
+  const filler = Array.from(
+    { length: 60 },
+    (_, line) => `Step ${String(line)}.`,
+  );
+  await put(
+    guide,
+    utf8(["# Guide", ...filler, "## Brewing", "Wait.", ...filler].join("\n\n")),
+  );
+  const pixel = await api.make({
+    name: `${RUN} pixel.png`,
+    mimeType: "image/png",
+    parents: [guides],
+  });
+  await put(pixel, PIXEL);
+  const obsidian = (await drive.createFile({ id: vault }, `${RUN} obsidian`))
+    .id;
+  await put(
+    obsidian,
+    utf8(
+      [
+        "Line one",
+        "Line two",
+        "",
+        "> [!tip]- Folded",
+        "> Hidden body",
+        "",
+        "==Lit== #live-tag %%secret%%",
+        "",
+        `Go to [[${RUN} Guide#Brewing|the guide]] and [[${RUN} Missing]].`,
+        "",
+        `![[${RUN} Guide#Brewing]]`,
+        "",
+        `![[${RUN} pixel.png|40]]`,
+        "",
+      ].join("\n"),
+    ),
+  );
+  return { guide, obsidian };
 }
 
 function heading(page: Page, name: string) {
@@ -348,8 +432,6 @@ async function bytesOf(run: Run, id: string) {
   return run.drive.getContent(await run.drive.getMetadata({ id }), 1_000_000);
 }
 
-const utf8 = (text: string) => new TextEncoder().encode(text);
-
 test("checks a task in a CRLF note with a byte order mark, saving that byte only", async ({
   page,
   run,
@@ -409,4 +491,51 @@ test("shows a note that is not UTF-8 read-only", async ({ page, run }) => {
   ).toBeVisible();
   await loaded(page);
   await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
+});
+
+test("renders a note of a vault as Obsidian does, its links and embeds leading to the right files", async ({
+  page,
+  run,
+}) => {
+  test.setTimeout(INDEX_TEST_TIMEOUT_MS);
+  // Drive's search finds the guide by name before the note looks for it.
+  await expect
+    .poll(
+      async () =>
+        (await run.drive.findByName(`${RUN} Guide.md`)).items.map(
+          ({ id }) => id,
+        ),
+      INDEX,
+    )
+    .toContain(run.ids.guide);
+  await page.goto(`/edit?id=${run.ids.obsidian}`);
+
+  const note = page.locator(".markdown").first();
+  await expect(note.locator("p br").first()).toBeAttached();
+  await expect(note.locator(".callout")).toHaveAttribute("data-callout", "tip");
+  await expect(note.locator("mark")).toHaveText("Lit");
+  await expect(note.locator(".tag")).toHaveText("#live-tag");
+  await expect(note).not.toContainText("secret");
+  const link = note.getByRole("link", { name: "the guide" });
+  await expect(link).toHaveAttribute(
+    "href",
+    `/edit?id=${run.ids.guide}#brewing`,
+  );
+  await expect(note.getByText(`${RUN} Missing`)).toHaveClass("unresolved");
+  await expect(note.locator(".embed").getByText("Wait.")).toBeVisible();
+  const pixel = note.getByRole("img", { name: `${RUN} pixel.png` });
+  await expect(pixel).toHaveAttribute("width", "40");
+  await expect
+    .poll(() => pixel.evaluate((image: HTMLImageElement) => image.naturalWidth))
+    .toBe(1);
+  await loaded(page);
+
+  await link.click();
+  await expect(page).toHaveURL(
+    new RegExp(`/edit\\?id=${run.ids.guide}#brewing$`),
+  );
+  await expect(
+    page.locator(".markdown").getByRole("heading", { name: "Brewing" }),
+  ).toBeInViewport();
+  await loaded(page);
 });
