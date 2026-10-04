@@ -10,14 +10,22 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import Markdown, { type Components, type ExtraProps } from "react-markdown";
+import Markdown, {
+  type Components,
+  type ExtraProps,
+  type Options,
+} from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
-import rehypeSanitize from "rehype-sanitize";
+import rehypeSanitize, {
+  defaultSchema,
+  type Options as Schema,
+} from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import remarkBreaks from "remark-breaks";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
+import { CALLOUT_TYPES, remarkCallouts } from "./callouts.ts";
 import { useDrive } from "./drive-context.ts";
 import { inDrive } from "./drive-web.ts";
 import {
@@ -40,14 +48,57 @@ import { onTheWeb, relativePath } from "./resolve.ts";
 import { toggleTask } from "./tasks.ts";
 import { hrefOf } from "./router.ts";
 import type { VaultSettings } from "./vault-settings.ts";
+import { remarkEscapes } from "./written.ts";
 
-const REMARK = [remarkGfm, remarkFrontmatter, remarkProperties];
+type Plugins = NonNullable<Options["remarkPlugins"]>;
+
+const REMARK: Plugins = [remarkGfm, remarkFrontmatter, remarkProperties];
+
+/** The rehype plugins for a note, sanitizing with the given rules, else GitHub's. */
+function rehype(schema?: Schema): Plugins {
+  // Raw HTML is parsed, headings get ids, then the rules sanitize it all,
+  // prefixing ids so that none can stand for one of the app's own. Code is
+  // highlighted last, with classes the sanitizer would drop.
+  return [rehypeRaw, rehypeSlug, [rehypeSanitize, schema], rehypeHighlight];
+}
+
+// GitHub's rules, and what Obsidian's syntax renders to, which they drop.
+const VAULT_SCHEMA: Schema = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    details: [
+      ["className", "callout"],
+      ["dataCallout", ...CALLOUT_TYPES],
+    ],
+    div: [
+      ...(defaultSchema.attributes?.div ?? []),
+      ["className", "callout", "callout-title", "callout-content"],
+      ["dataCallout", ...CALLOUT_TYPES],
+    ],
+    summary: [
+      ...(defaultSchema.attributes?.summary ?? []),
+      ["className", "callout-title"],
+    ],
+  },
+};
+
+const GITHUB = { remark: REMARK, rehype: rehype() };
+const OBSIDIAN = {
+  remark: [...REMARK, remarkEscapes, remarkCallouts],
+  rehype: rehype(VAULT_SCHEMA),
+};
 // Obsidian shows a single line break as one, where Markdown joins the lines.
-const REMARK_BREAKS = [...REMARK, remarkBreaks];
-// Raw HTML is parsed, headings get ids, then GitHub's rules sanitize it all,
-// prefixing ids so that none can stand for one of the app's own. Code is
-// highlighted last, with classes the sanitizer would drop.
-const REHYPE = [rehypeRaw, rehypeSlug, rehypeSanitize, rehypeHighlight];
+const OBSIDIAN_BREAKS = {
+  ...OBSIDIAN,
+  remark: [...OBSIDIAN.remark, remarkBreaks],
+};
+
+/** How a note renders: as Obsidian renders it in a vault, else as GitHub. */
+function pluginsFor(vault: VaultSettings | undefined) {
+  if (!vault) return GITHUB;
+  return vault.strictLineBreaks ? OBSIDIAN : OBSIDIAN_BREAKS;
+}
 const COMPONENTS: Components = {
   a: Anchor,
   img: Image,
@@ -70,7 +121,7 @@ const TaskAt = createContext<number | undefined>(undefined);
  * A Markdown file rendered as GitHub renders it: with tables, task lists,
  * strikethrough, autolinks, footnotes, highlighted code, sanitized HTML and
  * front matter as a table of properties. A note in an Obsidian vault breaks
- * its lines as Obsidian does.
+ * its lines and shows its callouts as Obsidian does.
  */
 export function Rendered({
   text,
@@ -86,16 +137,15 @@ export function Rendered({
   /** Takes the text with a task checked or unchecked, if the user may edit. */
   onEdit?: ((text: string) => void) | undefined;
 }) {
+  const plugins = pluginsFor(vault);
   return (
     <NoteFolder value={folder}>
       <Tasks value={onEdit && { text, edit: onEdit }}>
         <Fallible text={text}>
           <div className="markdown">
             <Markdown
-              remarkPlugins={
-                vault && !vault.strictLineBreaks ? REMARK_BREAKS : REMARK
-              }
-              rehypePlugins={REHYPE}
+              remarkPlugins={plugins.remark}
+              rehypePlugins={plugins.rehype}
               components={COMPONENTS}
             >
               {text}

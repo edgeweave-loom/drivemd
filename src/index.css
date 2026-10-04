@@ -451,6 +451,69 @@ dialog.drawer {
   color: var(--muted);
 }
 
+/* Obsidian's callouts, in the colors of its light and dark themes. */
+.markdown .callout {
+  --callout: light-dark(rgb(8 109 221), rgb(2 122 255));
+  padding: 0.75rem 1rem;
+  border-left: 0.25em solid var(--callout);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--callout) 10%, transparent);
+}
+
+/* Below the rule that takes the margin off a note's last block. */
+.markdown :where(.callout) {
+  margin: 0 0 1rem;
+}
+
+.markdown .callout:is([data-callout="abstract"], [data-callout="tip"]) {
+  --callout: light-dark(rgb(0 191 188), rgb(83 223 221));
+}
+
+.markdown .callout[data-callout="success"] {
+  --callout: light-dark(rgb(8 185 78), rgb(68 207 110));
+}
+
+.markdown .callout:is([data-callout="question"], [data-callout="warning"]) {
+  --callout: light-dark(rgb(236 117 0), rgb(233 151 63));
+}
+
+.markdown
+  .callout:is(
+    [data-callout="failure"],
+    [data-callout="danger"],
+    [data-callout="bug"]
+  ) {
+  --callout: light-dark(rgb(233 49 71), rgb(251 70 76));
+}
+
+.markdown .callout[data-callout="example"] {
+  --callout: light-dark(rgb(120 82 238), rgb(168 130 255));
+}
+
+.markdown .callout[data-callout="quote"] {
+  --callout: rgb(158 158 158);
+}
+
+.markdown .callout-title {
+  color: var(--callout);
+  font-weight: 600;
+}
+
+/* A tap target of 44 px, which takes no more room than the title. */
+.markdown .callout > summary.callout-title {
+  margin-block: -0.625rem;
+  padding-block: 0.625rem;
+  cursor: pointer;
+}
+
+.markdown .callout-content {
+  margin-top: 0.5rem;
+}
+
+.markdown .callout-content > :last-child {
+  margin-bottom: 0;
+}
+
 .markdown :is(code, pre) {
   font-family: var(--monospace);
   font-size: 85%;
