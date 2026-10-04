@@ -19,7 +19,7 @@ export function renderWithDrive(ui: ReactNode, drive = fakeDrive()) {
   const renew = vi.fn();
   const within = (page: ReactNode) => (
     <QueryClientProvider client={client}>
-      <DriveContext value={{ drive, renew, account: ACCOUNT }}>
+      <DriveContext value={{ drive, renew, account: ACCOUNT, signedIn: true }}>
         {page}
       </DriveContext>
     </QueryClientProvider>

@@ -8,6 +8,7 @@ import { deleteDrafts, readDraft, writeDraft } from "./drafts.ts";
 import { resumeKeeping } from "./keep-draft.ts";
 import type { FileMetadata } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
+import { metadataQuery } from "./queries.ts";
 import { driveItem, metadata } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 import { ACCOUNT, renderWithDrive } from "./test/render.tsx";
@@ -33,6 +34,8 @@ function open(file: FileMetadata = PLAN) {
 function kept(text: string, revision = "revision-1", md5 = "aaaa") {
   return writeDraft(ACCOUNT, {
     fileId: "plan",
+    name: "plan.md",
+    resourceKey: undefined,
     headRevisionId: revision,
     md5Checksum: md5,
     text,
@@ -52,12 +55,14 @@ afterEach(() => {
 });
 
 describe("unsaved text kept on the device", () => {
-  it("is kept as the user edits, with the revision edited", async () => {
-    open();
+  it("is kept as the user edits, with the revision edited and the note's name", async () => {
+    open({ ...PLAN, resourceKey: "key-1" });
     fireEvent.click(await screen.findByRole("checkbox"));
 
     await waitFor(async () => {
       expect(await readDraft(ACCOUNT, "plan")).toMatchObject({
+        name: "plan.md",
+        resourceKey: "key-1",
         text: "- [x] Boil\n",
         headRevisionId: "revision-1",
         md5Checksum: "aaaa",
@@ -250,6 +255,56 @@ describe("unsaved text kept on the device", () => {
     ).toBeVisible();
   });
 
+  it("is not forgotten for Drive's text when another tab kept newer text since", async () => {
+    const saved = metadata(PLAN, {
+      md5Checksum: "bbbb",
+      headRevisionId: "revision-2",
+    });
+    const drive = fakeDrive();
+    drive.getMetadata.mockResolvedValue(saved);
+    drive.getContent.mockImplementation((file) =>
+      Promise.resolve(
+        utf8(
+          file.headRevisionId === "revision-2"
+            ? "- [x] Boil\n"
+            : "- [ ] Boil\n",
+        ),
+      ),
+    );
+    await kept("- [x] Boil\n");
+    const { rerender } = renderWithDrive(<FileContent file={PLAN} />, drive);
+    await screen.findByRole("button", { name: "Restore" });
+    // Another tab saved that text, then typed on.
+    await kept("- [x] Boil\n- [ ] Pour\n");
+
+    rerender(<FileContent file={saved} />);
+
+    expect(
+      await screen.findByRole("button", { name: "Restore" }),
+    ).toBeVisible();
+    await expect(readDraft(ACCOUNT, "plan")).resolves.toMatchObject({
+      text: "- [x] Boil\n- [ ] Pour\n",
+    });
+  });
+
+  it("is not forgotten for a revision the page shows from its cache, older than Drive's", async () => {
+    // Saved as revision 2 elsewhere, then edited back to revision 1's text.
+    await kept("- [ ] Boil\n", "revision-2", "bbbb");
+    const { drive, client } = open();
+    // As the file's page left it, fresh for half a minute as in the app.
+    client.setDefaultOptions({ queries: { retry: false, staleTime: 30_000 } });
+    client.setQueryData(metadataQuery(drive, PLAN).queryKey, PLAN);
+    drive.getMetadata.mockResolvedValue(
+      metadata(PLAN, { md5Checksum: "bbbb", headRevisionId: "revision-2" }),
+    );
+
+    await screen.findByRole("checkbox");
+    await new Promise((settle) => setTimeout(settle, 100));
+    await expect(readDraft(ACCOUNT, "plan")).resolves.toMatchObject({
+      text: "- [ ] Boil\n",
+    });
+  });
+
   it("is forgotten once the note is saved", async () => {
     await kept("- [x] Boil\n");
     const { drive } = open();
@@ -265,12 +320,14 @@ describe("unsaved text kept on the device", () => {
     });
   });
 
-  it("is not offered when it holds the note's own text", async () => {
+  it("is forgotten, not offered, when it holds the note's own text", async () => {
     await kept("- [ ] Boil\n");
     open();
 
     expect(await screen.findByRole("checkbox")).toBeVisible();
-    await new Promise((settle) => setTimeout(settle, 50));
+    await waitFor(async () => {
+      expect(await readDraft(ACCOUNT, "plan")).toBeUndefined();
+    });
     expect(screen.queryByRole("button", { name: "Restore" })).toBeNull();
   });
 

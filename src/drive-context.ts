@@ -5,6 +5,11 @@ import type { Session } from "./session.ts";
 export type DriveAccess = Pick<Session, "drive" | "renew"> & {
   /** The account's email, which keys what the device keeps for it. */
   account: string;
+  /**
+   * Whether Google gave the tab a token for the account. Until it has, as
+   * behind Continue, nothing the device keeps for the account shows.
+   */
+  signedIn: boolean;
 };
 
 export const DriveContext = createContext<DriveAccess | undefined>(undefined);

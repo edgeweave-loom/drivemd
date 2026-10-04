@@ -8,6 +8,10 @@ const STORE = "drafts";
  */
 export interface Draft {
   fileId: string;
+  /** The note's name when the text was kept, so that Home lists it at once. */
+  name: string;
+  /** The note's resource key, if it has one: Home opens it with it. */
+  resourceKey: string | undefined;
   headRevisionId: string | undefined;
   md5Checksum: string | undefined;
   text: string;
@@ -77,8 +81,38 @@ export async function readDraft(
     store.get([account, fileId]),
   )) as Stored | undefined;
   if (!stored) return undefined;
-  const { fileId: id, headRevisionId, md5Checksum, text, keptAt } = stored;
-  return { fileId: id, headRevisionId, md5Checksum, text, keptAt };
+  const { fileId: id, name, resourceKey } = stored;
+  const { headRevisionId, md5Checksum, text, keptAt } = stored;
+  return {
+    fileId: id,
+    name,
+    resourceKey,
+    headRevisionId,
+    md5Checksum,
+    text,
+    keptAt,
+  };
+}
+
+/** A note with unsaved text on the device, as Home lists it: without the text. */
+export type DraftEntry = Pick<
+  Draft,
+  "fileId" | "name" | "resourceKey" | "keptAt"
+>;
+
+/** The account's notes with unsaved text on the device, the latest first. */
+export async function listDrafts(account: string): Promise<DraftEntry[]> {
+  const stored = (await run("readonly", (store) =>
+    store.getAll(ofAccount(account)),
+  )) as Stored[];
+  return stored
+    .map(({ fileId, name, resourceKey, keptAt }) => ({
+      fileId,
+      name,
+      resourceKey,
+      keptAt,
+    }))
+    .toSorted((a, b) => Date.parse(b.keptAt) - Date.parse(a.keptAt));
 }
 
 export async function deleteDraft(
@@ -86,6 +120,25 @@ export async function deleteDraft(
   fileId: string,
 ): Promise<void> {
   await run("readwrite", (store) => store.delete([account, fileId]));
+}
+
+/**
+ * Forgets a note's text, unless the device holds other text for it by now,
+ * as another tab may have kept since it was read.
+ */
+export async function deleteDraftHolding(
+  account: string,
+  fileId: string,
+  text: string,
+): Promise<void> {
+  await run("readwrite", (store) => {
+    const request = store.openCursor([account, fileId]);
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (cursor && (cursor.value as Stored).text === text) cursor.delete();
+    };
+    return request;
+  });
 }
 
 /** How many notes of the account have unsaved text on the device. */

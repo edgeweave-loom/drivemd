@@ -18,7 +18,12 @@ export function App({ session }: { session: Session }) {
       // cached.
       return (
         <>
-          <Navigator key={screen.email} session={session} email={screen.email}>
+          <Navigator
+            key={screen.email}
+            session={session}
+            email={screen.email}
+            signedIn={!renewing}
+          >
             {!renewing && status}
           </Navigator>
           {renewing && (

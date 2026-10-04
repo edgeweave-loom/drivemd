@@ -1,6 +1,6 @@
 import { QueryClient, queryOptions, skipToken } from "@tanstack/react-query";
 import { climb } from "./climb.ts";
-import { readDraft } from "./drafts.ts";
+import { listDrafts, readDraft } from "./drafts.ts";
 import { pool } from "./pool.ts";
 import { resolve, type FolderReader } from "./resolve.ts";
 import { resolveInVault } from "./vault-links.ts";
@@ -395,6 +395,21 @@ export function draftQuery(account: string, fileId: string) {
     staleTime: 0,
     gcTime: 0,
     // A device that keeps nothing has nothing to offer.
+    retry: false,
+    // The device answers, with or without a connection.
+    networkMode: "always",
+  });
+}
+
+/** The account's notes with unsaved text on the device, the latest first. */
+export function draftsQuery(account: string) {
+  return queryOptions({
+    queryKey: key("drafts", account),
+    queryFn: () => listDrafts(account),
+    // Read afresh each time Home shows: notes keep and forget text as they go.
+    staleTime: 0,
+    gcTime: 0,
+    // A device that keeps nothing has nothing to list.
     retry: false,
     // The device answers, with or without a connection.
     networkMode: "always",
