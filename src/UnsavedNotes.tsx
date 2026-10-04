@@ -1,13 +1,23 @@
-import { useQuery } from "@tanstack/react-query";
-import type { DraftEntry } from "./drafts.ts";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useId, useState } from "react";
+import { ConfirmDialog } from "./Dialog.tsx";
+import { deleteDraft, type DraftEntry } from "./drafts.ts";
 import { useDrive } from "./drive-context.ts";
+import { notFound, type FileMetadata } from "./drive.ts";
 import { Link } from "./Link.tsx";
-import { metadataQuery } from "./queries.ts";
+import { BROKEN, kindOf } from "./listing.ts";
+import { draftsQuery, MAX_CONTENT, metadataQuery } from "./queries.ts";
 import { hrefOf } from "./router.ts";
 
 const KEPT = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
+});
+
+const MEGABYTES = new Intl.NumberFormat("en", {
+  style: "unit",
+  unit: "megabyte",
+  maximumFractionDigits: 1,
 });
 
 /** The notes with unsaved changes kept on the device, as Home lists them. */
@@ -25,19 +35,131 @@ export function UnsavedNotes({ drafts }: { drafts: DraftEntry[] }) {
 
 /**
  * A note with unsaved changes, named as Drive names it once its details
- * come: its page offers the changes back.
+ * come: its page offers the changes back. A note that no longer opens says
+ * why instead, and its changes are discarded here, since no page offers to.
  */
 function UnsavedNote({ draft }: { draft: DraftEntry }) {
   const { drive } = useDrive();
   const file = { id: draft.fileId, resourceKey: draft.resourceKey };
-  const details = useQuery(metadataQuery(drive, file));
+  // Asked afresh each time Home shows: the note may open again since, as
+  // once restored from Drive's trash.
+  const details = useQuery({ ...metadataQuery(drive, file), staleTime: 0 });
   const name = details.data?.name ?? draft.name ?? "Note";
+  // Only Drive's answer since Home showed tells whether the note opens: the
+  // cache may hold one from before it was restored, or deleted.
+  const reason = !details.isFetchedAfterMount
+    ? undefined
+    : missing(draft, details.error)
+      ? BROKEN.missing
+      : details.isSuccess
+        ? closed(details.data)
+        : undefined;
+  if (reason === undefined) {
+    return (
+      <Link to={hrefOf({ name: "file", file })} className="entry file">
+        <span className="name">{name}</span>
+        <time dateTime={draft.keptAt} className="when">
+          {KEPT.format(new Date(draft.keptAt))}
+        </time>
+      </Link>
+    );
+  }
+  return <ClosedNote draft={draft} name={name} reason={reason} />;
+}
+
+/** Why the note's page cannot offer its changes back, if it cannot. */
+function closed(file: FileMetadata): string | undefined {
+  if (file.trashed) return BROKEN.trashed;
+  if (kindOf(file) !== "file") return "Not a Markdown file";
+  if (!file.capabilities.canDownload) {
+    return "Its owner does not let you download it";
+  }
+  if (file.size !== undefined && file.size > MAX_CONTENT) {
+    return `Over ${MEGABYTES.format(MAX_CONTENT / 1e6)}`;
+  }
+  return undefined;
+}
+
+/**
+ * Whether Drive answered that the note is not there. A draft kept before
+ * drafts held names lacks the resource key a note shared by link needs, and
+ * Drive answers the same without it: that note may still open from Recent
+ * or its folder, which know the key.
+ */
+function missing(draft: DraftEntry, error: Error | null): boolean {
+  return draft.name !== undefined && notFound(error);
+}
+
+/**
+ * A note whose page cannot offer its changes back: why, and Discard, which
+ * asks first, since the changes cannot come back.
+ */
+function ClosedNote({
+  draft,
+  name,
+  reason,
+}: {
+  draft: DraftEntry;
+  name: string;
+  reason: string;
+}) {
+  const { account } = useDrive();
+  const client = useQueryClient();
+  const id = useId();
+  const [asking, setAsking] = useState(false);
+  const discard = useMutation({
+    mutationFn: () => deleteDraft(account, draft.fileId),
+    onSuccess: () =>
+      client.invalidateQueries({ queryKey: draftsQuery(account).queryKey }),
+    // The device answers, with or without a connection.
+    networkMode: "always",
+  });
   return (
-    <Link to={hrefOf({ name: "file", file })} className="entry file">
-      <span className="name">{name}</span>
-      <time dateTime={draft.keptAt} className="when">
-        {KEPT.format(new Date(draft.keptAt))}
-      </time>
-    </Link>
+    <>
+      <div className="entry file">
+        <span className="lines">
+          <span id={`${id}-name`} className="name">
+            {name}
+          </span>
+          <small id={`${id}-reason`}>{reason}</small>
+        </span>
+        <button
+          type="button"
+          id={`${id}-discard`}
+          // "Discard plan.md": each button says which note it is for.
+          aria-labelledby={`${id}-discard ${id}-name`}
+          aria-describedby={`${id}-reason`}
+          onClick={() => {
+            discard.reset();
+            setAsking(true);
+          }}
+        >
+          Discard
+        </button>
+      </div>
+      {asking && (
+        <ConfirmDialog
+          title="Discard unsaved changes?"
+          action="Discard"
+          pending={discard.isPending}
+          error={discard.error}
+          onConfirm={() => {
+            discard.mutate(undefined, {
+              onSuccess: () => {
+                setAsking(false);
+              },
+            });
+          }}
+          onClose={() => {
+            setAsking(false);
+          }}
+        >
+          <p>
+            Your changes to {name} from {KEPT.format(new Date(draft.keptAt))},
+            kept on this device, go for good. This cannot be undone.
+          </p>
+        </ConfirmDialog>
+      )}
+    </>
   );
 }

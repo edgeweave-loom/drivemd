@@ -1,8 +1,8 @@
 import "fake-indexeddb/auto";
 import { onlineManager } from "@tanstack/react-query";
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { deleteDraft, deleteDrafts, writeDraft } from "./drafts.ts";
+import { deleteDraft, deleteDrafts, listDrafts, writeDraft } from "./drafts.ts";
 import { DriveError, type FileMetadata } from "./drive.ts";
 import { Home } from "./Home.tsx";
 import {
@@ -174,6 +174,9 @@ describe("Home", () => {
       "datetime",
       "2026-10-03T09:00:00.000Z",
     );
+    expect(
+      section("Unsaved changes").queryByRole("button", { name: /^Discard/ }),
+    ).toBeNull();
   });
 
   it("lists a note by the name it had until Drive's details come", async () => {
@@ -266,5 +269,217 @@ describe("Home", () => {
     expect(
       screen.queryByRole("region", { name: "Unsaved changes" }),
     ).toBeNull();
+  });
+
+  it.each<[string, FileMetadata | undefined, string]>([
+    ["deleted", undefined, "Deleted, or not shared with you"],
+    ["trashed", { ...PLAN, trashed: true }, "In the trash"],
+    [
+      "not downloadable",
+      {
+        ...PLAN,
+        capabilities: { ...PLAN.capabilities, canDownload: false },
+      },
+      "Its owner does not let you download it",
+    ],
+    ["too large", { ...PLAN, size: 1_200_000 }, "Over 1 MB"],
+    ["renamed", { ...PLAN, name: "plan.txt" }, "Not a Markdown file"],
+  ])(
+    "says why a note %s cannot open, and discards its changes once the user agrees",
+    async (_, now, reason) => {
+      await keep(PLAN);
+      await keep(SHARED, "2026-10-01T09:00:00.000Z");
+      home(SHARED, ...(now ? [now] : []));
+
+      expect(await (await unsaved()).findByText(reason)).toBeVisible();
+      expect(
+        section("Unsaved changes").queryByRole("link", { name: /^plan/ }),
+      ).toBeNull();
+      fireEvent.click(
+        section("Unsaved changes").getByRole("button", {
+          name: /^Discard plan/,
+        }),
+      );
+      const dialog = within(
+        screen.getByRole("dialog", { name: "Discard unsaved changes?" }),
+      );
+      fireEvent.click(dialog.getByRole("button", { name: "Discard" }));
+
+      await waitFor(() => {
+        expect(screen.queryByText(reason)).toBeNull();
+      });
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(linksIn("Unsaved changes")).toEqual([
+        expect.stringMatching(/^shared\.md/),
+      ]);
+      expect((await listDrafts(ACCOUNT)).map(({ fileId }) => fileId)).toEqual([
+        "shared",
+      ]);
+    },
+  );
+
+  it("leaves a note kept before drafts held names as a link, as its 404 may come from a missing resource key", async () => {
+    await writeDraft(ACCOUNT, {
+      fileId: "shared",
+      text: "Changed",
+      keptAt: "2026-10-02T09:00:00.000Z",
+    } as Parameters<typeof writeDraft>[1]);
+    home();
+
+    expect(
+      await (await unsaved()).findByRole("link", { name: /^Note/ }),
+    ).toHaveAttribute("href", "/edit?id=shared");
+    expect(
+      section("Unsaved changes").queryByRole("button", { name: /^Discard/ }),
+    ).toBeNull();
+  });
+
+  it.each<[string, FileMetadata]>([
+    ["locked", { ...PLAN, locked: true }],
+    [
+      "view only",
+      {
+        ...PLAN,
+        capabilities: { ...PLAN.capabilities, canModifyContent: false },
+      },
+    ],
+  ])(
+    "leaves a note that is %s as a link, as its page offers the changes back",
+    async (_, now) => {
+      await keep(PLAN);
+      const { drive } = home(now);
+
+      await waitFor(() => {
+        expect(drive.getMetadata).toHaveBeenCalled();
+      });
+      expect(
+        await (await unsaved()).findByRole("link", { name: /^plan\.md/ }),
+      ).toBeVisible();
+      await new Promise((settle) => setTimeout(settle, 50));
+      expect(
+        section("Unsaved changes").queryByRole("button", { name: /^Discard/ }),
+      ).toBeNull();
+    },
+  );
+
+  it("asks Drive afresh whether a note opens each time Home shows", async () => {
+    await keep(PLAN);
+    const { drive, client, rerender } = home({ ...PLAN, trashed: true });
+    // Drive's answers stay fresh for half a minute, as in the app.
+    client.setDefaultOptions({ queries: { retry: false, staleTime: 30_000 } });
+    await (await unsaved()).findByText("In the trash");
+    rerender(<p>Elsewhere</p>);
+    // Restored from Drive's trash.
+    drive.getMetadata.mockImplementation(metadataOf(PLAN));
+
+    rerender(<Home />);
+
+    expect(
+      await (await unsaved()).findByRole("link", { name: /^plan\.md/ }),
+    ).toBeVisible();
+  });
+
+  it("waits for Drive's answer since Home showed before offering Discard", async () => {
+    await keep(PLAN);
+    const { drive, rerender } = home({ ...PLAN, trashed: true });
+    await (await unsaved()).findByText("In the trash");
+    rerender(<p>Elsewhere</p>);
+    // Restored from Drive's trash, which Drive has yet to say.
+    drive.getMetadata.mockReturnValue(new Promise(() => undefined));
+
+    rerender(<Home />);
+
+    expect(
+      await (await unsaved()).findByRole("link", { name: /^plan\.md/ }),
+    ).toBeVisible();
+    expect(
+      section("Unsaved changes").queryByRole("button", { name: /^Discard/ }),
+    ).toBeNull();
+  });
+
+  it("says a note is gone once Drive no longer finds it, whatever it said before", async () => {
+    await keep(PLAN);
+    const { drive, rerender } = home(PLAN);
+    await (await unsaved()).findByRole("link", { name: /^plan\.md/ });
+    rerender(<p>Elsewhere</p>);
+    drive.getMetadata.mockImplementation(metadataOf());
+
+    rerender(<Home />);
+
+    expect(
+      await (await unsaved()).findByText("Deleted, or not shared with you"),
+    ).toBeVisible();
+  });
+
+  it("names the note each Discard is for", async () => {
+    await keep(PLAN);
+    home({ ...PLAN, trashed: true });
+
+    expect(
+      await (await unsaved()).findByRole("button", { name: "Discard plan.md" }),
+    ).toHaveAccessibleDescription("In the trash");
+  });
+
+  it("discards while the device is offline", async () => {
+    await keep(PLAN);
+    home({ ...PLAN, trashed: true });
+    fireEvent.click(
+      await (await unsaved()).findByRole("button", { name: "Discard plan.md" }),
+    );
+    onlineManager.setOnline(false);
+
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Discard",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    await expect(listDrafts(ACCOUNT)).resolves.toEqual([]);
+  });
+
+  it("says when it could not discard, keeps the changes, and asks afresh", async () => {
+    await keep(PLAN);
+    home({ ...PLAN, trashed: true });
+    const refusal = vi
+      .spyOn(IDBObjectStore.prototype, "delete")
+      .mockImplementation(() => {
+        throw new DOMException("Lost", "UnknownError");
+      });
+    fireEvent.click(
+      await (await unsaved()).findByRole("button", { name: "Discard plan.md" }),
+    );
+    const dialog = within(screen.getByRole("dialog"));
+    fireEvent.click(dialog.getByRole("button", { name: "Discard" }));
+
+    expect(await dialog.findByRole("alert")).toHaveTextContent(
+      "Something went wrong.",
+    );
+    refusal.mockRestore();
+    await expect(listDrafts(ACCOUNT)).resolves.toHaveLength(1);
+    fireEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(
+      section("Unsaved changes").getByRole("button", {
+        name: "Discard plan.md",
+      }),
+    );
+
+    expect(within(screen.getByRole("dialog")).queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps the changes when the user cancels", async () => {
+    await keep(PLAN);
+    home({ ...PLAN, trashed: true });
+
+    fireEvent.click(
+      await (await unsaved()).findByRole("button", { name: "Discard plan.md" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(section("Unsaved changes").getByText("In the trash")).toBeVisible();
+    await expect(listDrafts(ACCOUNT)).resolves.toHaveLength(1);
   });
 });

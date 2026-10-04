@@ -536,7 +536,7 @@ export function outOfReach(error: unknown): undefined {
  * with the user. Drive also answers 403 when it limits the rate, so a 403
  * says nothing about the item.
  */
-function notFound(error: unknown): boolean {
+export function notFound(error: unknown): boolean {
   return error instanceof DriveError && error.status === 404;
 }
 
