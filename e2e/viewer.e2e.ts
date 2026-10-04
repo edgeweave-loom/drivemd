@@ -126,6 +126,19 @@ test("edits the source and saves it", async ({ page, drive }, info) => {
 
   await page.getByRole("button", { name: "Edit" }).click();
   const source = page.getByRole("textbox", { name: "Markdown source" });
+  // Front matter shows as YAML at the text's size, its keys dimmed as
+  // Markdown's symbols are.
+  const key = source.getByText("tags", { exact: true });
+  await expect(key).toHaveCSS(
+    "font-size",
+    await source.evaluate((element) => getComputedStyle(element).fontSize),
+  );
+  await expect(key).toHaveCSS(
+    "color",
+    await source
+      .getByText("#", { exact: true })
+      .evaluate((element) => getComputedStyle(element).color),
+  );
   await source.click();
   await page.keyboard.press("ControlOrMeta+End");
   // On iOS, CodeMirror waits for the keyboard's own Enter to reach the page
