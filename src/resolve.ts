@@ -45,6 +45,12 @@ export function relativePath(href: string): string[] | undefined {
   }
 }
 
+/** A link's `#` and what follows, which names a part of its page, or "". */
+export function hashOf(href: string): string {
+  const at = href.indexOf("#");
+  return at < 0 || at === href.length - 1 ? "" : href.slice(at);
+}
+
 /**
  * What a relative path leads to from a folder, as Obsidian and GitHub read
  * it: the path is read as written first, so `a/../b` is `b` even when `a` is

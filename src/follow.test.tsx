@@ -56,6 +56,15 @@ describe("useFollow", () => {
     });
   });
 
+  it("opens a note at the heading the link names", async () => {
+    follow("plan.md#set-up");
+
+    await waitFor(() => {
+      expect(getPlace().fragment).toBe("set-up");
+    });
+    expect(getPlace().route).toEqual({ name: "file", file: { id: "plan" } });
+  });
+
   it.each([
     ["a web page", "https://example.com/docs", "https://example.com/docs"],
     [

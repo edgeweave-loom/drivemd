@@ -53,7 +53,7 @@ describe("relative links in a note", () => {
     expect(plan).toHaveAttribute("href", "/edit?id=plan");
     expect(await screen.findByRole("link", { name: "Mine" })).toHaveAttribute(
       "href",
-      "/edit?id=mine",
+      "/edit?id=mine#tea",
     );
     fireEvent.click(plan);
     expect(renew).toHaveBeenCalledOnce();

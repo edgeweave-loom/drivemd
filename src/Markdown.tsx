@@ -51,9 +51,10 @@ import {
   metadataQuery,
   resolveQuery,
 } from "./queries.ts";
-import { onTheWeb, relativePath } from "./resolve.ts";
+import { hashOf, onTheWeb, relativePath } from "./resolve.ts";
 import { toggleTask } from "./tasks.ts";
 import { hrefOf } from "./router.ts";
+import { showPart } from "./parts.ts";
 import type { VaultSettings } from "./vault-settings.ts";
 import { remarkEscapes } from "./written.ts";
 
@@ -281,11 +282,7 @@ function Anchor({
     const scroll = (event: MouseEvent) => {
       // The address stays the page's own, with the path taken in history.
       event.preventDefault();
-      // Ids keep the encoding links have, and get the prefix the sanitizer
-      // gives them all, as on GitHub.
-      document
-        .getElementById(`user-content-${href.slice(1)}`)
-        ?.scrollIntoView();
+      showPart(href.slice(1));
     };
     return <a {...attributes} href={href} onClick={scroll} />;
   }
@@ -296,7 +293,7 @@ function Anchor({
   const path = relativePath(href);
   // A link without text cannot be tapped, so it asks Drive nothing.
   if (path && Children.count(children) > 0) {
-    return <DriveLink {...attributes} path={path} />;
+    return <DriveLink {...attributes} path={path} hash={hashOf(href)} />;
   }
   // A target for links within the page, which HTML may mark by name.
   return <a {...attributes} id={id ?? name} />;
@@ -338,23 +335,26 @@ type LinkAttributes = Pick<
 
 /**
  * A relative link, which leads where its path does in Drive from the note's
- * folder: a Markdown file or a folder opens in the app, another file opens in
- * Google Drive, and a link to nothing is faded.
+ * folder: a Markdown file opens in the app, at the part its `#` names, and so
+ * does a folder; another file opens in Google Drive, and a link to nothing is
+ * faded.
  */
 function DriveLink({
   path,
+  hash,
   ...attributes
-}: LinkAttributes & { path: string[] }) {
+}: LinkAttributes & { path: string[]; hash: string }) {
   const folder = useContext(NoteFolder);
   if (!folder) return <Unresolved {...attributes} />;
-  return <Resolved {...attributes} folder={folder} path={path} />;
+  return <Resolved {...attributes} folder={folder} path={path} hash={hash} />;
 }
 
 function Resolved({
   folder,
   path,
+  hash,
   ...attributes
-}: LinkAttributes & { folder: FileRef; path: string[] }) {
+}: LinkAttributes & { folder: FileRef; path: string[]; hash: string }) {
   const { drive } = useDrive();
   const client = useQueryClient();
   const [seen, near] = useSeen();
@@ -380,7 +380,9 @@ function Resolved({
     );
   }
   if (!mimeType.startsWith(GOOGLE_TYPES) && isMarkdown(name)) {
-    return <Link {...attributes} to={hrefOf({ name: "file", file: ref })} />;
+    return (
+      <Link {...attributes} to={hrefOf({ name: "file", file: ref }) + hash} />
+    );
   }
   return (
     <a {...attributes} href={inDrive(ref)} target="_blank" rel="noreferrer" />

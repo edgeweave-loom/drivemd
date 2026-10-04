@@ -12,6 +12,7 @@ import {
   useEffectEvent,
   useId,
   useMemo,
+  useCallback,
   useRef,
   useState,
 } from "react";
@@ -41,7 +42,14 @@ import {
   refreshAfterChange,
   setDetails,
 } from "./queries.ts";
-import { guardLeaving, hrefOf, navigate } from "./router.ts";
+import { showPart } from "./parts.ts";
+import {
+  guardLeaving,
+  hrefOf,
+  navigate,
+  usePlace,
+  type Place,
+} from "./router.ts";
 import { saveText, type SaveResult } from "./save.ts";
 import { decode, encode, sameBytes, type FileText } from "./text.ts";
 import { useNoteVault, type NoteVault } from "./vaults.ts";
@@ -275,6 +283,13 @@ function Content({ file }: { file: FileMetadata }) {
   const content = useQuery({ ...contentQuery(drive, opened), select: read });
   // Asked beside the content, so that the note waits for neither in turn.
   const vault = useNoteVault({ id: file.id, resourceKey: file.resourceKey });
+  // The address whose part showed last, kept as other revisions load.
+  const reached = useRef<Place>(undefined);
+  const firstAt = useCallback((place: Place) => {
+    if (reached.current === place) return false;
+    reached.current = place;
+    return true;
+  }, []);
   // The edits stay on the device until saved or dropped, and a note opened
   // again offers them back.
   const unsaved = held?.text !== undefined && held.text !== content.data?.text;
@@ -407,6 +422,7 @@ function Content({ file }: { file: FileMetadata }) {
             file={file}
             note={note}
             vault={vault}
+            firstAt={firstAt}
             waiting={offered(kept.data, held, note)}
             session={shown.session}
             editing={editing}
@@ -493,6 +509,7 @@ function NoteView({
   file,
   note,
   vault,
+  firstAt,
   waiting,
   session,
   editing,
@@ -508,6 +525,8 @@ function NoteView({
   file: FileMetadata;
   note: Note;
   vault: NoteVault;
+  /** Whether the page reaches this address for the first time. */
+  firstAt: (place: Place) => boolean;
   /** Unsaved changes on the device wait for the user's answer first. */
   waiting: boolean;
   /** Changes when the editor must start again from the note's text. */
@@ -589,6 +608,14 @@ function NoteView({
   const rendered =
     !(editing && editable) || layout !== "phone" || pane === "preview";
   const previewed = source ? deferred : text;
+  const shown = rendered && vault.state !== "checking";
+  // The part of the note the address leads to shows once the note does,
+  // each time the address changes, but not as the note changes.
+  const place = usePlace();
+  useEffect(() => {
+    if (!shown || !firstAt(place)) return;
+    if (place.fragment !== undefined) showPart(place.fragment);
+  }, [shown, place, firstAt]);
   return (
     <>
       <div className="note-bar">
@@ -679,7 +706,7 @@ function NoteView({
             so it shows as Markdown, without Obsidian's syntax.
           </p>
         )}
-        {rendered && vault.state !== "checking" && (
+        {shown && (
           <Rendered
             text={previewed}
             folder={folderOf(file)}

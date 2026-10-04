@@ -86,10 +86,18 @@ test("opens a note a relative link leads to", async ({ page }) => {
   await expect(
     page.getByRole("heading", { level: 2, name: "notes.md" }),
   ).toBeVisible();
-  await expect(page).toHaveURL(/\/edit\?id=notes$/);
+  await expect(page).toHaveURL(/\/edit\?id=notes#later$/);
   await expect(page.getByText(/^Last modified by/)).toBeVisible();
-  // Its content has come too, before the test leaves the page.
-  await expect(page.locator(".markdown")).toBeAttached();
+  // It opens at the heading the link names, below the app's header.
+  const later = page
+    .locator(".markdown")
+    .getByRole("heading", { name: "Later" });
+  await expect(later).toBeInViewport();
+  const header = await page.locator("header.bar").boundingBox();
+  const heading = await later.boundingBox();
+  expect(heading?.y).toBeGreaterThanOrEqual(
+    (header?.y ?? 0) + (header?.height ?? 0) - 1,
+  );
 });
 
 test("checks a task and saves that change only", async ({ page, drive }) => {
