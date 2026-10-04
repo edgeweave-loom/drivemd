@@ -90,11 +90,14 @@ describe("SignOut", () => {
     await draft("plan");
     const signOut = show();
 
-    expect(
-      await screen.findByText(
-        "1 note has unsaved changes on this device. Signing out discards them.",
-      ),
-    ).toBeVisible();
+    // The dialog opens once it has rendered.
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "1 note has unsaved changes on this device. Signing out discards them.",
+        ),
+      ).toBeVisible();
+    });
     fireEvent.click(
       screen.getByRole("button", { name: "Discard and sign out" }),
     );
@@ -182,11 +185,14 @@ describe("SignOut", () => {
     rememberAccount(GRACE);
     const signOut = show();
 
-    expect(
-      await screen.findByText(
-        "2 notes have unsaved changes on this device. Signing out discards them.",
-      ),
-    ).toBeVisible();
+    // The dialog opens once it has rendered.
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "2 notes have unsaved changes on this device. Signing out discards them.",
+        ),
+      ).toBeVisible();
+    });
     fireEvent.click(
       screen.getByRole("button", { name: "Discard and sign out" }),
     );
