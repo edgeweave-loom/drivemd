@@ -66,6 +66,14 @@ describe("Rendered", () => {
     expect(scrolled.mock.contexts).not.toContain(null);
   });
 
+  it("links a footnote back to its reference with an arrow shown as text, not as an emoji", () => {
+    show("Tea[^1].\n\n[^1]: Green.");
+
+    expect(
+      screen.getByRole("link", { name: "Back to reference 1" }),
+    ).toHaveTextContent("\u21A9\uFE0E");
+  });
+
   it("leaves the page where it is for a link to nothing in it", () => {
     const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
     show("[Up](#nowhere) [Odd](#%E0)");

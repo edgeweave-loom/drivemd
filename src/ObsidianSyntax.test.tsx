@@ -307,6 +307,19 @@ describe("Obsidian's syntax", () => {
   });
 });
 
+describe("a note of a vault", () => {
+  it("is styled as Obsidian styles it, a checked task struck through", () => {
+    expect(show("- [x] Done").querySelector(".markdown")).toHaveClass(
+      "obsidian",
+    );
+    expect(
+      render(<Rendered text="- [x] Done" />).container.querySelector(
+        ".markdown",
+      ),
+    ).not.toHaveClass("obsidian");
+  });
+});
+
 describe("Obsidian's syntax in HTML", () => {
   it("cannot be made up with other classes", () => {
     const page = show('<span class="tag evil">#x</span> <mark>kept</mark>');

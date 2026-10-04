@@ -445,6 +445,16 @@ dialog.drawer {
   vertical-align: middle;
 }
 
+/* In a vault, as in Obsidian, a checked task is struck through. */
+.markdown.obsidian
+  .task-list-item:is(
+    :has(> input:checked),
+    :has(> p:first-child > input:checked)
+  ) {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
 .markdown blockquote {
   padding: 0 1em;
   border-left: 0.25em solid var(--border);

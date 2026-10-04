@@ -76,6 +76,10 @@ type Plugins = NonNullable<Options["remarkPlugins"]>;
 
 const REMARK: Plugins = [remarkGfm, remarkFrontmatter, remarkProperties];
 
+// A footnote's way back to its reference is an arrow shown as text: iOS draws
+// the arrow alone as an emoji.
+const REMARK_REHYPE = { footnoteBackContent: "\u21A9\uFE0E" };
+
 /** The rehype plugins for a note, sanitizing with the given rules, else GitHub's. */
 function rehype(schema?: Schema): Plugins {
   // Raw HTML is parsed, headings get ids, then the rules sanitize it all,
@@ -252,9 +256,10 @@ export function Rendered({
           <NoteFolder value={inFolder}>
             <Tasks value={onEdit && { text, edit: onEdit }}>
               <Fallible text={text}>
-                <div className="markdown">
+                <div className={vault ? "markdown obsidian" : "markdown"}>
                   <Markdown
                     remarkPlugins={plugins.remark}
+                    remarkRehypeOptions={REMARK_REHYPE}
                     rehypePlugins={plugins.rehype}
                     components={COMPONENTS}
                   >

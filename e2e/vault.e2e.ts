@@ -10,6 +10,15 @@ test("renders a note of a vault as Obsidian does", async ({ page }) => {
     "Woke up early.\nMade tea.",
   );
   await expect(note.locator("p br")).toHaveCount(1);
+  // A checked task is struck through, as in Obsidian.
+  await expect(note.getByRole("listitem").first()).toHaveCSS(
+    "text-decoration-line",
+    "line-through",
+  );
+  await expect(note.getByRole("listitem").nth(1)).toHaveCSS(
+    "text-decoration-line",
+    "none",
+  );
   // Highlights and tags show, comments and block IDs do not.
   const tea = note.locator("p#user-content-\\^tea");
   await expect(tea).toHaveText("Green tea for #morning done.1");
