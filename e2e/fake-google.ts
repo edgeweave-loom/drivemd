@@ -139,6 +139,17 @@ function seed(): FakeFile[] {
     },
     { id: "how-to", name: "How to", mimeType: FOLDER, parents: ["journal"] },
     {
+      id: "pixel",
+      name: "pixel.png",
+      mimeType: "image/png",
+      parents: ["how-to"],
+      // A made-up picture of one pixel.
+      content: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+        "base64",
+      ),
+    },
+    {
       id: "guide",
       name: "Guide.md",
       mimeType: markdown,
@@ -164,6 +175,8 @@ function seed(): FakeFile[] {
         "==Green tea== for #morning %%not shown%%done.^[From Japan.] ^tea",
         "",
         "Read [[guide#Brewing|the guide]] and [[Nowhere]].",
+        "",
+        "![[pixel.png|40]]",
         "",
         "> [!tip]- Brew it hot",
         "> Water at 90 °C.",

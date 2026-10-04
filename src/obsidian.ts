@@ -359,8 +359,9 @@ const WIKI_LINK = /\[\[([^[\]\r\n]*)\]\]/g;
 /**
  * Turns Obsidian's internal links, `[[Note]]`, `[[Note|text]]`,
  * `[[Note#Heading]]` and `[[Note#^block]]`, into links that name their
- * target in `data-wikilink`, for the viewer to find in Drive. A link's text
- * holds none, as a link holds no link.
+ * target in `data-wikilink`, and its embeds, `![[image.png|300]]`, into
+ * images that name theirs in `data-embed`, for the viewer to find in Drive.
+ * A link's text holds none, as a link holds no link.
  */
 export function remarkWikiLinks() {
   return (tree: Root) => {
@@ -388,19 +389,19 @@ function withWikiLinks(content: PhrasingContent[]): PhrasingContent[] {
       const [whole, inner = ""] = match;
       const at = match.index;
       const end = at + whole.length;
-      // An embed, `![[...]]`, is no link.
       const embed =
         node.value.charAt(at - 1) === "!" && writtenAt(node, at - 1, 1);
-      const link = wikiNode(inner);
+      const start = embed ? at - 1 : at;
+      const link = embed ? embedNode(inner) : wikiNode(inner);
       if (
         !link ||
-        embed ||
+        start < from ||
         !writtenAt(node, at, 2) ||
         !writtenAt(node, end - 2, 2)
       ) {
         continue;
       }
-      if (at > from) parts.push(sliceText(node, from, at));
+      if (start > from) parts.push(sliceText(node, from, start));
       parts.push(link);
       from = end;
       changed = true;
@@ -427,6 +428,33 @@ function wikiNode(inner: string): PhrasingContent | undefined {
     url: "",
     children: [{ type: "text", value: text || shown }],
     data: { hProperties: { dataWikilink: target } },
+  };
+}
+
+// An embed's size: a width, or a width and a height.
+const SIZE = /^(\d+)(?:x(\d+))?$/;
+
+/**
+ * The embed `![[inner]]` stands for: its target as written, then its text
+ * and its size, which Obsidian gives after `|`.
+ */
+function embedNode(inner: string): PhrasingContent | undefined {
+  const [target = "", ...options] = inner.split("|").map((part) => part.trim());
+  if (target === "" || target.startsWith("#")) return;
+  const size = SIZE.exec(options.at(-1) ?? "");
+  const text = options.find((option) => option !== "" && !SIZE.test(option));
+  const [, width, height] = size ?? [];
+  return {
+    type: "image",
+    url: "",
+    alt: text ?? target.split("#")[0] ?? "",
+    data: {
+      hProperties: {
+        dataEmbed: target,
+        ...(width !== undefined && { width }),
+        ...(height !== undefined && { height }),
+      },
+    },
   };
 }
 

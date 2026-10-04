@@ -18,6 +18,14 @@ test("renders a note of a vault as Obsidian does", async ({ page }) => {
     "rgba(255, 208, 0, 0.4)",
   );
   await expect(tea.locator(".tag")).toHaveText("#morning");
+  // An embedded image, found by name in the vault, at the size it gives.
+  const pixel = note.getByRole("img", { name: "pixel.png" });
+  await pixel.scrollIntoViewIfNeeded();
+  await expect(pixel).toHaveAttribute("src", /^blob:/);
+  await expect(pixel).toHaveAttribute("width", "40");
+  await expect
+    .poll(() => pixel.evaluate((image: HTMLImageElement) => image.naturalWidth))
+    .toBe(1);
   // An inline footnote shows among the note's footnotes.
   await expect(note.locator("section[data-footnotes] li")).toContainText(
     "From Japan.",
