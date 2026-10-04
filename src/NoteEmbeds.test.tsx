@@ -27,9 +27,14 @@ const TEXTS: Record<string, string> = {
   D: "In D.\n\n![[E]]",
   E: "In E.",
   Big: "Too big.",
+  "v1.2 notes": "Dotted.",
+  Linked: "[[#Water]] and a note[^1].\n\n## Water\n\n[^1]: Here.",
 };
 const NOTE_ITEMS = Object.keys(TEXTS).map((name) =>
-  driveItem(`${name}.md`, { id: name.toLowerCase(), parents: ["notes"] }),
+  driveItem(`${name}.md`, {
+    id: name.toLowerCase().replace(/\W/g, "-"),
+    parents: ["notes"],
+  }),
 );
 const ITEMS: DriveItem[] = [ROOT, DAILY, NOTES, ...NOTE_ITEMS];
 const DETAILS: FileMetadata[] = NOTE_ITEMS.map((item) =>
@@ -61,7 +66,7 @@ function open(text: string) {
       text={text}
       folder={{ id: "daily" }}
       vault={VAULT}
-      note="today"
+      note={{ id: "today" }}
       onEdit={() => undefined}
     />,
     drive,
@@ -143,12 +148,63 @@ describe("note embeds in a note of a vault", () => {
     ["within text", "See ![[Guide]] here.", "Guide"],
     ["of a note too large to show", "![[Big]]", "Big"],
   ])("are links %s", async (_, text, name) => {
-    open(text);
+    const { drive } = open(text);
 
-    expect(await screen.findByRole("link", { name })).toBeVisible();
-    expect(embeds().some((embed) => embed.querySelector(".markdown"))).toBe(
-      false,
-    );
+    // The link shows as it is, neither loading nor shown.
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name }).parentElement?.className).toBe(
+        "",
+      );
+    });
+    expect(document.querySelector(".embed .markdown")).toBeNull();
+    expect(drive.getContent).not.toHaveBeenCalled();
+  });
+
+  it("show a note whose name has a dot", async () => {
+    open("![[v1.2 notes]]");
+
+    expect(await screen.findByText("Dotted.")).toBeVisible();
+  });
+
+  it("show ten notes at most, and links past them", async () => {
+    open(Array.from({ length: 11 }, () => "![[E]]").join("\n\n"));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("In E.")).toHaveLength(10);
+    });
+    expect(
+      screen
+        .getAllByRole("link", { name: "E" })
+        .filter((link) => link.parentElement?.className === ""),
+    ).toHaveLength(1);
+  });
+
+  it("keep the block ID that names them", async () => {
+    open("![[E]] ^here");
+
+    await screen.findByText("In E.");
+    expect(document.getElementById("user-content-^here")).toHaveClass("embed");
+  });
+
+  it("show the headings they name, whatever the spaces around #", async () => {
+    open("![[Guide # Water]]");
+
+    expect(await screen.findByText("Boil it.")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Guide > Water" })).toBeVisible();
+  });
+
+  it("give the note they show no id of its own, and lead its links to its parts to its page", async () => {
+    open("![[Linked]]\n\n## Water\n\nOurs[^1].\n\n[^1]: Ours.");
+
+    await screen.findByText(/and a note/);
+    expect(document.querySelectorAll("#user-content-water")).toHaveLength(1);
+    expect(
+      document.querySelectorAll("[id='user-content-user-content-fn-1']"),
+    ).toHaveLength(1);
+    const [embed] = embeds();
+    expect(
+      within(embed as HTMLElement).getByRole("link", { name: "Water" }),
+    ).toHaveAttribute("href", "/edit?id=linked#water");
   });
 
   it("show faded when the note is not there", async () => {

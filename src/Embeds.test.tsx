@@ -89,7 +89,7 @@ describe("image embeds in a note of a vault", () => {
       "doc.pdf",
       "https://drive.google.com/file/d/doc/view",
     ],
-    ["a note", "![[Guide]]", "Guide", "/edit?id=guide"],
+    ["a note within text", "See ![[Guide]] here.", "Guide", "/edit?id=guide"],
   ])("show %s as a link", async (_, text, name, href) => {
     open(text);
 
@@ -113,6 +113,25 @@ describe("image embeds in a note of a vault", () => {
 
     expect(await screen.findByRole("link", { name: "cat.png" })).toBeVisible();
     expect(screen.queryByRole("img")).toBeNull();
+  });
+});
+
+describe("embeds in a note of a vault", () => {
+  it("lead to the last heading they name, whatever the spaces around #", async () => {
+    open("See ![[Guide # Water # Cups]].");
+
+    expect(await screen.findByRole("link", { name: "Guide" })).toHaveAttribute(
+      "href",
+      "/edit?id=guide#cups",
+    );
+  });
+
+  it("take a size in pixels only, even written in HTML", async () => {
+    open('<img data-embed="cat.png" width="100%" height="99999" alt="cat">');
+
+    const image = await screen.findByRole("img", { name: "cat" });
+    expect(image).not.toHaveAttribute("width");
+    expect(image).toHaveAttribute("height", "99999");
   });
 });
 

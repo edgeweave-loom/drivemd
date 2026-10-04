@@ -376,15 +376,21 @@ const WIKI_LINK = /\[\[([^[\]\r\n]*)\]\]/g;
  */
 export function remarkWikiLinks() {
   return (tree: Root) => {
-    wikiLink(tree);
+    wikiLink(tree, { left: MAX_NOTE_EMBEDS });
   };
 }
 
-function wikiLink(node: Nodes): void {
+// The embeds of notes a note shows as notes; past them, they are links, so
+// that a note cannot make the page read and render a great many.
+const MAX_NOTE_EMBEDS = 10;
+
+function wikiLink(node: Nodes, embeds: { left: number }): void {
   if (!("children" in node) || node.type === "link") return;
   if (node.type === "linkReference") return;
-  for (const child of node.children) wikiLink(child);
-  if (holdsBlocks(node)) node.children = node.children.flatMap(embedded);
+  for (const child of node.children) wikiLink(child, embeds);
+  if (holdsBlocks(node)) {
+    node.children = node.children.flatMap((block) => embedded(block, embeds));
+  }
   if (holdsText(node)) node.children = withWikiLinks(node.children);
 }
 
@@ -405,12 +411,7 @@ function withWikiLinks(content: PhrasingContent[]): PhrasingContent[] {
         node.value.charAt(at - 1) === "!" && writtenAt(node, at - 1, 1);
       const start = embed ? at - 1 : at;
       const link = embed ? embedNode(inner) : wikiNode(inner);
-      if (
-        !link ||
-        start < from ||
-        !writtenAt(node, at, 2) ||
-        !writtenAt(node, end - 2, 2)
-      ) {
+      if (!link || !writtenAt(node, at, 2) || !writtenAt(node, end - 2, 2)) {
         continue;
       }
       if (start > from) parts.push(sliceText(node, from, start));
@@ -452,7 +453,10 @@ function wikiNode(inner: string): PhrasingContent | undefined {
  * A paragraph that holds only embeds of notes, as blocks that show those
  * notes, which a paragraph cannot hold; any other block as it is.
  */
-function embedded<Block extends RootContent>(block: Block): Block[] {
+function embedded<Block extends RootContent>(
+  block: Block,
+  embeds: { left: number },
+): Block[] {
   if (block.type !== "paragraph") return [block];
   const notes = block.children.flatMap((node) => {
     if (node.type === "text" && node.value.trim() === "") return [];
@@ -463,25 +467,38 @@ function embedded<Block extends RootContent>(block: Block): Block[] {
       ? [target]
       : [undefined];
   });
-  if (notes.length === 0 || notes.some((target) => target === undefined)) {
+  if (
+    notes.length === 0 ||
+    notes.length > embeds.left ||
+    notes.some((target) => target === undefined)
+  ) {
     return [block];
   }
-  return notes.map((target) => ({
+  embeds.left -= notes.length;
+  return notes.map((target, index) => ({
     ...block,
     type: "blockquote",
     children: [],
     data: {
       hName: "div",
-      hProperties: { className: ["embed"], dataEmbed: target },
+      hProperties: {
+        // A block ID that ended the paragraph names the first note shown.
+        ...(index === 0 && block.data?.hProperties),
+        className: ["embed"],
+        dataEmbed: target,
+      },
     },
   }));
 }
 
-/** Whether an embed's target is a note: a name without an extension, or `.md`. */
+// The files Obsidian embeds as what they are, rather than as notes.
+const NOT_NOTES =
+  /\.(png|jpe?g|gif|webp|avif|bmp|svg|mp3|wav|m4a|ogg|flac|3gp|mp4|webm|ogv|mov|mkv|pdf|canvas)$/i;
+
+/** Whether an embed's target is a note: any name but a picture's, a sound's... */
 function isNote(target: string): boolean {
   const [path = ""] = target.split("#");
-  const name = path.split("/").at(-1) ?? "";
-  return /\.md$/i.test(name) || !name.includes(".");
+  return !NOT_NOTES.test(path.trim());
 }
 
 // An embed's size: a width, or a width and a height.
@@ -500,7 +517,7 @@ function embedNode(inner: string): PhrasingContent | undefined {
   return {
     type: "image",
     url: "",
-    alt: text ?? target.split("#")[0] ?? "",
+    alt: text ?? target.split("#")[0]?.trim() ?? "",
     data: {
       hProperties: {
         dataEmbed: target,

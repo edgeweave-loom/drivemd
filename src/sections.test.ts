@@ -32,8 +32,32 @@ const NOTE = [
 ].join("\n");
 
 describe("partOf", () => {
-  it("gives the whole note for no part", () => {
+  it("gives the whole note for no part, but its properties", () => {
     expect(partOf(NOTE, "")).toBe(NOTE);
+    expect(partOf("---\ntitle: Tea\n---\n# Tea", "")).toBe("# Tea");
+  });
+
+  it("reads a long line of spaces in no time", () => {
+    const line = `# a${" ".repeat(100_000)}b`;
+
+    expect(partOf(line, "x")).toBeUndefined();
+    expect(partOf(`${line}\n\nText ^id`, "^id")).toBe("Text ^id");
+  });
+
+  it("finds a heading underlined with = or -", () => {
+    const note = "Title\n=====\n\nBody.\n\nSub\n---\n\nMore.\n\nNext\n====\n";
+    expect(partOf(note, "Title")).toBe(
+      "Title\n=====\n\nBody.\n\nSub\n---\n\nMore.\n",
+    );
+    expect(partOf(note, "Sub")).toBe("Sub\n---\n\nMore.\n");
+  });
+
+  it.each([
+    ["properties", "---\n# Not a heading\n---\n# Real"],
+    ["a comment", "%%\n# Not a heading\n%%\n# Real"],
+  ])("finds no heading in %s", (_, note) => {
+    expect(partOf(note, "Not a heading")).toBeUndefined();
+    expect(partOf(note, "Real")).toBe("# Real");
   });
 
   it("gives a heading's section, with the headings under it, up to the next of its level", () => {
@@ -58,6 +82,20 @@ describe("partOf", () => {
     ["the block before an ID of its own", "^quote", "> A quote"],
   ])("gives %s a block ID names", (_, part, block) => {
     expect(partOf(NOTE, part)).toBe(block);
+  });
+
+  it("gives a list item with the items under it", () => {
+    expect(partOf("- parent ^item\n  - child\n- next", "^item")).toBe(
+      "- parent ^item\n  - child",
+    );
+  });
+
+  it.each([
+    ["a list", "Para ^id\n- item"],
+    ["code", "Para ^id\n```\ncode\n```"],
+    ["a heading", "# Title\nPara ^id"],
+  ])("ends a paragraph's block at %s", (_, note) => {
+    expect(partOf(note, "^id")).toBe("Para ^id");
   });
 
   it("gives nothing for a part the note does not have", () => {
