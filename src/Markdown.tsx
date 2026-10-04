@@ -10,6 +10,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useMemo,
   useState,
   type ComponentProps,
   type MouseEvent,
@@ -53,8 +54,10 @@ import {
 import { remarkProperties } from "./properties.ts";
 import {
   imageQuery,
+  MAX_CONTENT,
   MAX_IMAGE,
   metadataQuery,
+  noteQuery,
   resolveQuery,
   vaultLinkQuery,
 } from "./queries.ts";
@@ -62,6 +65,8 @@ import { hashOf, onTheWeb, relativePath, type Found } from "./resolve.ts";
 import { toggleTask } from "./tasks.ts";
 import { hrefOf } from "./router.ts";
 import { linkPartHash, partHash, showPart } from "./parts.ts";
+import { partOf } from "./sections.ts";
+import { decode } from "./text.ts";
 import type { VaultLink } from "./vault-links.ts";
 import type { Vault } from "./vault-settings.ts";
 import { remarkEscapes } from "./written.ts";
@@ -92,8 +97,9 @@ const VAULT_SCHEMA: Schema = {
     ],
     div: [
       ...(defaultSchema.attributes?.div ?? []),
-      ["className", "callout", "callout-title", "callout-content"],
+      ["className", "callout", "callout-title", "callout-content", "embed"],
       ["dataCallout", ...CALLOUT_TYPES],
+      "dataEmbed",
     ],
     span: [["className", "tag"]],
     summary: [
@@ -133,16 +139,23 @@ function pluginsFor(vault: Vault | undefined) {
 }
 const COMPONENTS: Components = {
   a: Anchor,
+  div: Division,
   img: Image,
   li: ListItem,
   input: Checkbox,
 };
+
+// Embeds of notes in embeds of notes show this deep at most.
+const MAX_EMBEDS = 3;
 
 /** The folder the note sits in, where its relative links start. */
 const NoteFolder = createContext<FileRef | undefined>(undefined);
 
 /** The vault the note sits in, where its links lead as Obsidian's do. */
 const NoteVault = createContext<Vault | undefined>(undefined);
+
+/** The notes shown, the outermost first, down to the one an embed shows. */
+const Shown = createContext<string[]>([]);
 
 /** The note's text, and what changes it when a task's checkbox is tapped. */
 const Tasks = createContext<
@@ -162,6 +175,7 @@ export function Rendered({
   text,
   folder,
   vault,
+  note,
   onEdit,
 }: {
   text: string;
@@ -169,28 +183,37 @@ export function Rendered({
   folder?: FileRef | undefined;
   /** The Obsidian vault the note sits in, if it does. */
   vault?: Vault | undefined;
+  /** The ID of the note, which its embeds of notes never show again. */
+  note?: string | undefined;
   /** Takes the text with a task checked or unchecked, if the user may edit. */
   onEdit?: ((text: string) => void) | undefined;
 }) {
   const plugins = pluginsFor(vault);
+  const outer = useContext(Shown);
+  const shown = useMemo(
+    () => (note === undefined ? outer : [...outer, note]),
+    [outer, note],
+  );
   return (
-    <NoteVault value={vault}>
-      <NoteFolder value={folder}>
-        <Tasks value={onEdit && { text, edit: onEdit }}>
-          <Fallible text={text}>
-            <div className="markdown">
-              <Markdown
-                remarkPlugins={plugins.remark}
-                rehypePlugins={plugins.rehype}
-                components={COMPONENTS}
-              >
-                {text}
-              </Markdown>
-            </div>
-          </Fallible>
-        </Tasks>
-      </NoteFolder>
-    </NoteVault>
+    <Shown value={shown}>
+      <NoteVault value={vault}>
+        <NoteFolder value={folder}>
+          <Tasks value={onEdit && { text, edit: onEdit }}>
+            <Fallible text={text}>
+              <div className="markdown">
+                <Markdown
+                  remarkPlugins={plugins.remark}
+                  rehypePlugins={plugins.rehype}
+                  components={COMPONENTS}
+                >
+                  {text}
+                </Markdown>
+              </div>
+            </Fallible>
+          </Tasks>
+        </NoteFolder>
+      </NoteVault>
+    </Shown>
   );
 }
 
@@ -790,5 +813,140 @@ function BlobImage({
         setBroken(true);
       }}
     />
+  );
+}
+
+/** A block of the note: an embed of a note shows that note. */
+function Division({ node, ...attributes }: ComponentProps<"div"> & ExtraProps) {
+  const vault = useContext(NoteVault);
+  const folder = useContext(NoteFolder);
+  // What an Obsidian embed shows, as written: `Note#Heading`.
+  const embed = node?.properties.dataEmbed;
+  if (typeof embed !== "string" || !vault || !folder) {
+    return <div {...attributes} />;
+  }
+  const at = embed.indexOf("#");
+  const path = at < 0 ? embed : embed.slice(0, at);
+  const part =
+    at < 0
+      ? ""
+      : (embed
+          .slice(at + 1)
+          .split("#")
+          .at(-1) ?? "");
+  return (
+    <NoteEmbed
+      from={{ vault: vault.root, folder }}
+      vault={vault}
+      path={path.split("/")}
+      part={part.trim()}
+      name={path.split("/").at(-1) ?? path}
+    />
+  );
+}
+
+/**
+ * A note an embed shows, or the part of it the embed names, read as it comes
+ * near the screen. Its own embeds show this deep at most, and a note never
+ * shows within itself: past that, and for a note DriveMD cannot show, the
+ * embed is a link.
+ */
+function NoteEmbed({
+  from,
+  vault,
+  path,
+  part,
+  name,
+}: {
+  from: { vault: FileRef; folder: FileRef };
+  vault: Vault;
+  path: string[];
+  part: string;
+  name: string;
+}) {
+  const { drive } = useDrive();
+  const client = useQueryClient();
+  const shown = useContext(Shown);
+  const [seen, near] = useSeen();
+  const link = useQuery({
+    ...vaultLinkQuery(drive, client, from, path),
+    enabled: seen,
+  });
+  const found = link.data?.found;
+  const note =
+    found &&
+    !found.mimeType.startsWith(GOOGLE_TYPES) &&
+    isMarkdown(found.name) &&
+    !shown.includes(found.ref.id) &&
+    shown.length <= MAX_EMBEDS
+      ? found
+      : undefined;
+  const details = useQuery(metadataQuery(drive, note?.ref));
+  const file = details.data;
+  const readable =
+    file !== undefined &&
+    file.capabilities.canDownload &&
+    (file.size === undefined || file.size <= MAX_CONTENT);
+  const bytes = useQuery(noteQuery(drive, readable ? file : undefined));
+  const text = useMemo(
+    () => (bytes.data ? decode(bytes.data) : undefined),
+    [bytes.data],
+  );
+  const hash = partHash(part);
+  if (!seen) {
+    return (
+      <div className="embed" ref={near}>
+        {name}
+      </div>
+    );
+  }
+  if (link.isError) {
+    return (
+      <p title="Google Drive could not say what this embed shows">{name}</p>
+    );
+  }
+  if (link.isPending) return <p className="hint">{name}</p>;
+  if (!found) {
+    return (
+      <p>
+        {link.data.incomplete ? (
+          <span title="Google Drive did not search every drive, so this embed may show a note it left out">
+            {name}
+          </span>
+        ) : (
+          <Unresolved>{name}</Unresolved>
+        )}
+      </p>
+    );
+  }
+  const title = (
+    <LinkTo found={found} hash={hash}>
+      {part === "" ? name : `${name} > ${part}`}
+    </LinkTo>
+  );
+  if (!note || (file && !readable) || text?.readOnly === "not-utf8") {
+    return <p>{title}</p>;
+  }
+  if (details.isError || bytes.isError) {
+    return <p title="Google Drive could not send this note">{title}</p>;
+  }
+  if (!file || !text) return <p className="hint">{title}</p>;
+  const content = partOf(text.text, part);
+  return (
+    <div className="embed">
+      <p className="embed-title">{title}</p>
+      {content === undefined ? (
+        <p className="hint">This part is not in the note.</p>
+      ) : (
+        <Rendered
+          text={content}
+          folder={
+            file.parents[0] === undefined ? undefined : { id: file.parents[0] }
+          }
+          vault={vault}
+          note={file.id}
+        />
+      )}
+    </div>
   );
 }

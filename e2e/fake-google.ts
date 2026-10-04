@@ -179,6 +179,8 @@ function seed(): FakeFile[] {
         "",
         "![[pixel.png|40]]",
         "",
+        "![[guide#Brewing]]",
+        "",
         "> [!tip]- Brew it hot",
         "> Water at 90 °C.",
         "",

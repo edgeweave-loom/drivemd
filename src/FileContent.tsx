@@ -714,6 +714,7 @@ function NoteView({
             text={previewed}
             folder={folderOf(file)}
             vault={vault.state === "inside" ? vault.vault : undefined}
+            note={file.id}
             onEdit={
               !editable
                 ? undefined

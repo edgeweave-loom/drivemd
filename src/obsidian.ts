@@ -384,6 +384,7 @@ function wikiLink(node: Nodes): void {
   if (!("children" in node) || node.type === "link") return;
   if (node.type === "linkReference") return;
   for (const child of node.children) wikiLink(child);
+  if (holdsBlocks(node)) node.children = node.children.flatMap(embedded);
   if (holdsText(node)) node.children = withWikiLinks(node.children);
 }
 
@@ -445,6 +446,42 @@ function wikiNode(inner: string): PhrasingContent | undefined {
     children: [{ type: "text", value: text || shown }],
     data: { hProperties: { dataWikilink: written } },
   };
+}
+
+/**
+ * A paragraph that holds only embeds of notes, as blocks that show those
+ * notes, which a paragraph cannot hold; any other block as it is.
+ */
+function embedded<Block extends RootContent>(block: Block): Block[] {
+  if (block.type !== "paragraph") return [block];
+  const notes = block.children.flatMap((node) => {
+    if (node.type === "text" && node.value.trim() === "") return [];
+    if (node.type === "break") return [];
+    const target =
+      node.type === "image" ? node.data?.hProperties?.dataEmbed : undefined;
+    return typeof target === "string" && isNote(target)
+      ? [target]
+      : [undefined];
+  });
+  if (notes.length === 0 || notes.some((target) => target === undefined)) {
+    return [block];
+  }
+  return notes.map((target) => ({
+    ...block,
+    type: "blockquote",
+    children: [],
+    data: {
+      hName: "div",
+      hProperties: { className: ["embed"], dataEmbed: target },
+    },
+  }));
+}
+
+/** Whether an embed's target is a note: a name without an extension, or `.md`. */
+function isNote(target: string): boolean {
+  const [path = ""] = target.split("#");
+  const name = path.split("/").at(-1) ?? "";
+  return /\.md$/i.test(name) || !name.includes(".");
 }
 
 // An embed's size: a width, or a width and a height.

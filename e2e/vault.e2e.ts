@@ -26,6 +26,13 @@ test("renders a note of a vault as Obsidian does", async ({ page }) => {
   await expect
     .poll(() => pixel.evaluate((image: HTMLImageElement) => image.naturalWidth))
     .toBe(1);
+  // An embedded note shows the section it names, with a link to the note.
+  const embed = note.locator(".embed");
+  await embed.scrollIntoViewIfNeeded();
+  await expect(embed.getByText("Wait.")).toBeVisible();
+  await expect(
+    embed.getByRole("link", { name: "guide > Brewing" }),
+  ).toHaveAttribute("href", "/edit?id=guide#brewing");
   // An inline footnote shows among the note's footnotes.
   await expect(note.locator("section[data-footnotes] li")).toContainText(
     "From Japan.",
