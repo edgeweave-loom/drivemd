@@ -1,4 +1,11 @@
-import type { Nodes, Parents, PhrasingContent, Root, RootContent } from "mdast";
+import type {
+  Nodes,
+  Parents,
+  PhrasingContent,
+  Root,
+  RootContent,
+  Text,
+} from "mdast";
 import {
   findAndReplace,
   type RegExpMatchObject,
@@ -13,17 +20,38 @@ interface Place {
 }
 
 /**
- * The places where the pattern matches in the content's own text, where the
- * note writes the mark as it is.
+ * Where a mark stands in a text, written as it is, and as `accept` says. A
+ * mark the note escapes is none, but the next character may start one.
  */
-function marks(content: PhrasingContent[], pattern: RegExp): Place[] {
-  return content.flatMap((node, index) =>
-    node.type === "text"
-      ? [...node.value.matchAll(pattern)]
-          .filter((match) => writtenAt(node, match.index, match[0].length))
-          .map((match) => ({ node: index, offset: match.index }))
-      : [],
-  );
+function marksIn(
+  node: Text,
+  mark: string,
+  accept: (offset: number) => boolean = () => true,
+): number[] {
+  const offsets: number[] = [];
+  let at = node.value.indexOf(mark);
+  while (at >= 0) {
+    const found = writtenAt(node, at, mark.length) && accept(at);
+    if (found) offsets.push(at);
+    at = node.value.indexOf(mark, at + (found ? mark.length : 1));
+  }
+  return offsets;
+}
+
+/** Where a mark stands in the content's own texts, in order. */
+function marks(
+  content: PhrasingContent[],
+  mark: string,
+  accept: (node: Text, offset: number) => boolean = () => true,
+): Place[] {
+  const places: Place[] = [];
+  for (const [index, node] of content.entries()) {
+    if (node.type !== "text") continue;
+    for (const offset of marksIn(node, mark, (at) => accept(node, at))) {
+      places.push({ node: index, offset });
+    }
+  }
+  return places;
 }
 
 /** Just after a mark of the given length. */
@@ -31,13 +59,13 @@ function after({ node, offset }: Place, length: number): Place {
   return { node, offset: offset + length };
 }
 
-/** The content from one place up to another, or to its end. */
+/** Adds the content from one place up to another, or to its end, to `parts`. */
 function range(
+  parts: PhrasingContent[],
   content: PhrasingContent[],
   from: Place,
   to: Place = { node: content.length, offset: 0 },
 ): PhrasingContent[] {
-  const parts: PhrasingContent[] = [];
   for (let index = from.node; index < content.length; index += 1) {
     const node = content[index];
     if (!node || index > to.node) break;
@@ -52,11 +80,6 @@ function range(
     else if (start < end) parts.push(sliceText(node, start, end));
   }
   return parts;
-}
-
-/** Whether the content shows anything but spaces. */
-function written(content: PhrasingContent[]): boolean {
-  return content.some((node) => node.type !== "text" || /\S/.test(node.value));
 }
 
 /** The nodes whose children are Markdown text: paragraphs, headings... */
@@ -84,65 +107,97 @@ function holdsBlocks(
   );
 }
 
-const COMMENT = /%%/g;
-
 /**
- * Hides Obsidian's comments, `%%text%%`: within a paragraph, or from a `%%`
- * to the next one across blocks, or to the end of the quote, list item or
- * note when none closes it. Code shows them as written.
+ * Hides Obsidian's comments: what lies between a `%%` and the next one, in
+ * the note's order, whatever blocks it spans, and from a last `%%` to the end
+ * of the note. A block it hides as a whole goes. Code shows them as written.
  */
 export function remarkComments() {
   return (tree: Root) => {
-    visit(tree, (node) => {
-      if (node.type === "heading" || node.type === "tableCell") {
-        [node.children] = uncommented(node.children);
-      } else if (holdsBlocks(node)) {
-        node.children = uncommentedBlocks(node.children);
-      }
-    });
+    uncomment(tree, { open: false });
   };
 }
 
-/** The blocks without their comments, which may span several of them. */
-function uncommentedBlocks<Block extends RootContent>(
-  blocks: Block[],
-): Block[] {
-  let open = false;
-  return blocks.flatMap((block) => {
-    if (block.type !== "paragraph") return open ? [] : [block];
-    let content = block.children;
-    if (open) {
-      const [close] = marks(content, COMMENT);
-      if (!close) return [];
-      content = range(content, after(close, 2));
+/**
+ * Takes out of a node what comments hide, the comment open or not as the
+ * note's order reaches it; whether anything of the node is left.
+ */
+function uncomment(node: Nodes, comment: { open: boolean }): boolean {
+  if (!("children" in node)) return !comment.open;
+  const kept: RootContent[] = [];
+  let changed = false;
+  for (const child of node.children) {
+    if (child.type === "text") {
+      const parts = uncommentText(child, comment);
+      changed ||= parts.length !== 1 || parts[0] !== child;
+      for (const part of parts) kept.push(part);
+    } else if (uncomment(child, comment)) {
+      kept.push(child);
+    } else {
+      changed = true;
     }
-    [content, open] = uncommented(content);
-    return written(content) ? [{ ...block, children: content }] : [];
-  });
-}
-
-/** The content without its comments, and whether the last one is open. */
-function uncommented(content: PhrasingContent[]): [PhrasingContent[], boolean] {
-  const found = marks(content, COMMENT);
-  const parts: PhrasingContent[] = [];
-  let from: Place = { node: 0, offset: 0 };
-  for (let index = 0; index + 1 < found.length; index += 2) {
-    const [open, close] = [found[index], found[index + 1]];
-    if (!open || !close) break;
-    parts.push(...range(content, from, open));
-    from = after(close, 2);
   }
-  const left = found.length % 2 === 1 ? found.at(-1) : undefined;
-  parts.push(...range(content, from, left));
-  return [parts, left !== undefined];
+  if (!changed) return true;
+  Object.assign(node, { children: kept });
+  if (holdsText(node)) trim(node.children);
+  // A table keeps its shape, and goes only when nothing of it is left.
+  if (node.type === "tableCell" || node.type === "tableRow") return true;
+  if (node.type === "table") {
+    return node.children.some((row) =>
+      row.children.some((cell) => cell.children.length > 0),
+    );
+  }
+  return node.children.length > 0;
 }
 
-// Two = only: a longer run is no mark.
-const HIGHLIGHT = /(?<!=)==(?!=)/g;
+/** The parts of a text outside comments, the comment open or not after it. */
+function uncommentText(node: Text, comment: { open: boolean }): Text[] {
+  const parts: Text[] = [];
+  let from = 0;
+  for (const at of marksIn(node, "%%")) {
+    if (!comment.open && at > from) parts.push(sliceText(node, from, at));
+    comment.open = !comment.open;
+    from = at + 2;
+  }
+  if (from === 0) return comment.open ? [] : [node];
+  if (!comment.open && from < node.value.length) {
+    parts.push(sliceText(node, from));
+  }
+  return parts;
+}
+
+/**
+ * Takes off the spaces and line breaks a comment left at either end of some
+ * text, as Markdown takes them off a paragraph's.
+ */
+function trim(content: PhrasingContent[]): void {
+  while (content[0]?.type === "break") content.shift();
+  while (content.at(-1)?.type === "break") content.pop();
+  const [first] = content;
+  if (first?.type === "text") {
+    content[0] = sliceText(
+      first,
+      first.value.length - first.value.trimStart().length,
+    );
+  }
+  const last = content.at(-1);
+  if (last?.type === "text") {
+    content[content.length - 1] = sliceText(
+      last,
+      0,
+      last.value.trimEnd().length,
+    );
+  }
+  for (let index = content.length - 1; index >= 0; index -= 1) {
+    const node = content[index];
+    if (node?.type === "text" && node.value === "") content.splice(index, 1);
+  }
+}
 
 /**
  * Shows Obsidian's highlights, `==text==`, marked. As with emphasis, the
- * opening `==` comes before text and the closing one after it.
+ * opening `==` comes before text and the closing one after it, and a longer
+ * run of `=` is no mark.
  */
 export function remarkHighlights() {
   return (tree: Root) => {
@@ -157,24 +212,31 @@ function highlight(node: Nodes): void {
 }
 
 function highlighted(content: PhrasingContent[]): PhrasingContent[] {
+  const found = marks(content, "==", (node, offset) =>
+    // An `=` the note escapes is no part of the run.
+    [offset - 1, offset + 2].every(
+      (at) => node.value.charAt(at) !== "=" || !writtenAt(node, at, 1),
+    ),
+  );
+  if (found.length < 2) return content;
   const parts: PhrasingContent[] = [];
   let from: Place = { node: 0, offset: 0 };
   let open: Place | undefined;
-  for (const mark of marks(content, HIGHLIGHT)) {
+  for (const mark of found) {
     if (!open) {
       if (/\S/.test(next(content, after(mark, 2)))) open = mark;
     } else if (/\S/.test(previous(content, mark))) {
-      parts.push(...range(content, from, open), {
+      range(parts, content, from, open);
+      parts.push({
         type: "emphasis",
-        children: range(content, after(open, 2), mark),
+        children: range([], content, after(open, 2), mark),
         data: { hName: "mark" },
       });
       from = after(mark, 2);
       open = undefined;
     }
   }
-  parts.push(...range(content, from));
-  return parts;
+  return range(parts, content, from);
 }
 
 /** The character after a place, or a letter for another node there. */
@@ -206,8 +268,8 @@ const TAG = /#([\p{L}\p{M}\p{N}_/-]+)/gu;
 
 /**
  * Shows Obsidian's tags, `#tag` and `#parent/child`, as labels. A tag starts
- * a line or follows a space, and holds more than digits. It runs last: the
- * texts it splits lose what the note escapes in them.
+ * a line or follows a space, and holds more than digits. It comes last of the
+ * plugins that read escapes: the texts it splits lose them.
  */
 export function remarkTags() {
   return (tree: Root) => {
@@ -251,23 +313,17 @@ function siblingBefore(
   stack: RegExpMatchObject["stack"],
 ): PhrasingContent | undefined {
   const [parent, node] = stack.slice(-2);
-  if (!parent || !node || !("children" in parent)) return;
-  const siblings: Nodes[] = parent.children;
-  const sibling = siblings[siblings.indexOf(node) - 1];
-  return sibling && isPhrasing(sibling) ? sibling : undefined;
+  if (!parent || node?.type !== "text" || !holdsText(parent)) return;
+  return parent.children[parent.children.indexOf(node) - 1];
 }
 
-function isPhrasing(node: Nodes): node is PhrasingContent {
-  return node.type === "text" || node.type === "break" || !holdsBlocks(node);
-}
-
-// `^id` ends a block: letters, digits and dashes, after a space.
-const BLOCK_ID = /(?:^|\s+)\^([A-Za-z0-9-]+)$/;
+const BLOCK_NAME = /^[A-Za-z0-9-]+$/;
 
 /**
- * Hides Obsidian's block IDs, `^id` at the end of a paragraph or on a line of
- * its own after a block, and names that block with them, or the list item
- * whose text they end.
+ * Hides Obsidian's block IDs, `^id` after a space at the end of a paragraph,
+ * or on a line of its own, and names with them that paragraph, the list item
+ * whose text it is, or the block before a line of its own. A heading keeps
+ * its name, which links give by its text.
  */
 export function remarkBlockIds() {
   return (tree: Root) => {
@@ -281,29 +337,50 @@ function named<Block extends RootContent>(
   container: Nodes,
   blocks: Block[],
 ): Block[] {
-  return blocks.flatMap((block, index) => {
-    const last = block.type === "paragraph" ? block.children.at(-1) : undefined;
-    const found = last?.type === "text" ? BLOCK_ID.exec(last.value) : null;
-    if (block.type !== "paragraph" || last?.type !== "text" || !found) {
-      return [block];
-    }
-    const id = `^${found[1] ?? ""}`;
-    const caret = found.index + found[0].length - id.length;
-    if (!writtenAt(last, caret, 1)) return [block];
-    const value = sliceText(last, 0, found.index);
-    if (block.children.length > 1 || value.value !== "") {
-      block.children[block.children.length - 1] = value;
+  const kept: Block[] = [];
+  for (const [index, block] of blocks.entries()) {
+    const found = block.type === "paragraph" && blockId(block.children);
+    const before = kept.at(-1);
+    if (!found) {
+      kept.push(block);
+    } else if (found.alone) {
+      // On a line of its own, the ID names the block before.
+      if (!before) kept.push(block);
+      else if (before.type !== "heading") nameBlock(before, found.id);
+    } else {
       // The first paragraph of a list item is the item's own text.
       const item = container.type === "listItem" && index === 0;
-      nameBlock(item ? container : block, id);
-      return [block];
+      nameBlock(item ? container : block, found.id);
+      kept.push(block);
     }
-    // On a line of its own, the ID names the block before.
-    const before = blocks[index - 1];
-    if (!before) return [block];
-    nameBlock(before, id);
-    return [];
-  });
+  }
+  return kept;
+}
+
+/**
+ * The block ID ending a paragraph's text, and whether it was all the text;
+ * a line of its own keeps it until the block before takes it.
+ */
+function blockId(
+  content: PhrasingContent[],
+): { id: string; alone: boolean } | undefined {
+  const last = content.at(-1);
+  if (last?.type !== "text") return;
+  const at = last.value.lastIndexOf("^");
+  const name = last.value.slice(at + 1);
+  if (at < 0 || !BLOCK_NAME.test(name) || !writtenAt(last, at, 1)) return;
+  // A space comes before the ID, unless it starts a line.
+  const before = content.at(-2);
+  const startsLine = at === 0 && (!before || before.type === "break");
+  if (!startsLine && !/\s/.test(last.value.charAt(at - 1))) return;
+  const alone = at === 0 && !before;
+  if (!alone) {
+    const rest = sliceText(last, 0, last.value.slice(0, at).trimEnd().length);
+    content.pop();
+    if (rest.value !== "") content.push(rest);
+    else if (content.at(-1)?.type === "break") content.pop();
+  }
+  return { id: `^${name}`, alone };
 }
 
 function nameBlock(block: Nodes, id: string): void {

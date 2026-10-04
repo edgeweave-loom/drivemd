@@ -32,22 +32,35 @@ export function remarkEscapes() {
 
 /** Whether the note writes these characters of the text as they are. */
 export function writtenAt(node: Text, start: number, length: number): boolean {
-  return !node.data?.escaped?.some(
-    (offset) => offset >= start && offset < start + length,
-  );
+  const escaped = node.data?.escaped ?? [];
+  const first = escaped[firstFrom(escaped, start)];
+  return first === undefined || first >= start + length;
 }
 
 /** A part of a text, which keeps what the note escapes in it. */
 export function sliceText(node: Text, start: number, end?: number): Text {
   const value = node.value.slice(start, end);
-  const escaped = node.data?.escaped
-    ?.map((offset) => offset - start)
-    .filter((offset) => offset >= 0 && offset < value.length);
+  const all = node.data?.escaped ?? [];
+  const escaped = all
+    .slice(firstFrom(all, start), firstFrom(all, start + value.length))
+    .map((offset) => offset - start);
   return {
     type: "text",
     value,
-    ...(escaped?.length && { data: { escaped } }),
+    ...(escaped.length > 0 && { data: { escaped } }),
   };
+}
+
+/** Where the first offset at or after `start` is, among offsets in order. */
+function firstFrom(offsets: number[], start: number): number {
+  let low = 0;
+  let high = offsets.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if ((offsets[middle] ?? Infinity) < start) low = middle + 1;
+    else high = middle;
+  }
+  return low;
 }
 
 const PUNCTUATION = /^[!-/:-@[-`{-~]$/;
