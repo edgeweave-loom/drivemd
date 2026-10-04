@@ -65,9 +65,12 @@ describe("New", () => {
     fireEvent.focus(name);
     expect([name.selectionStart, name.selectionEnd]).toEqual([3, 3]);
     fireEvent.change(name, { target: { value: " Ideas " } });
+    const entries = history.length;
     fireEvent.click(dialog.getByRole("button", { name: "Create" }));
     expect(renew).toHaveBeenCalledOnce();
     await expect.poll(() => getPlace().href).toBe("/edit?id=ideas");
+    // Back returns to the folder.
+    expect(history.length).toBe(entries + 1);
     expect(drive.createFile).toHaveBeenCalledWith({ id: "work" }, " Ideas ");
     expect(getPlace().trail).toEqual([
       ...TRAIL,

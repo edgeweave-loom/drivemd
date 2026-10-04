@@ -114,8 +114,15 @@ describe("Drive's New", () => {
     const { drive, entries } = openNew();
 
     const dialog = await nameDialog();
+    await dialog.findByText("My Drive › Work");
     fireEvent.click(dialog.getByRole("button", { name: "Cancel" }));
-    expect(getPlace().href).toBe("/folder/work?resourcekey=k");
+    expect(getPlace()).toMatchObject({
+      href: "/folder/work?resourcekey=k",
+      trail: [
+        { name: "My Drive", href: "/my-drive" },
+        { name: "Work", href: "/folder/work?resourcekey=k" },
+      ],
+    });
     expect(history.length).toBe(entries);
     expect(drive.createFile).not.toHaveBeenCalled();
   });

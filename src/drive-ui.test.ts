@@ -41,6 +41,16 @@ describe("Drive's Open with", () => {
     });
   });
 
+  it("takes an empty resource key for none", () => {
+    const url = address("/open", {
+      ids: [ID],
+      resourceKeys: { [ID]: "" },
+      action: "open",
+    });
+
+    expect(requestFromDrive(url)).toMatchObject({ file: { id: ID } });
+  });
+
   it("opens without an account or resource keys", () => {
     const url = address("/open", { ids: [ID], action: "open" });
 
@@ -106,6 +116,19 @@ describe("Drive's New", () => {
       action: "create",
       folder: { id: ID, resourceKey: KEY },
       account: USER,
+    });
+  });
+
+  it("takes an empty resource key for none", () => {
+    const url = address("/new", {
+      action: "create",
+      folderId: ID,
+      folderResourceKey: "",
+    });
+
+    expect(requestFromDrive(url)).toEqual({
+      action: "create",
+      folder: { id: ID },
     });
   });
 
