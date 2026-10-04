@@ -295,7 +295,7 @@ Build in eight milestones, each ending with something that runs; give Claude Cod
    - Carried over from milestone 3, and settled: link resolution and search say when Drive answers that its search was incomplete (`incompleteSearch`), rather than calling a link broken; a note's vault cannot be found past a folder out of the user's reach, since Drive names no such folder (see Obsidian vaults).
 6. **Routing and links.** `/edit?id=` with resource keys, paste a Drive link, `/open?state=` and `/new?state=` handlers.
    - Done when: each URL opens the right file after sign-in.
-   - Carried over from milestone 3: breadcrumbs rebuilt from parents read each parent without its resource key, which the app does not know; check how Drive answers for a parent shared by link, and end the path cleanly there.
+   - Carried over from milestone 3, and settled: breadcrumbs rebuilt from parents read each parent without its resource key, which the app does not know. Only items shared by link in 2017 or before need one, so no test item can be made; Google documents that Drive may answer 404 to a request for such an item without its key, and the path then ends there, at Shared with me, as at any parent out of reach, which a unit test pins.
 7. **Drive integration and Marketplace.** Manual console steps from the Open with section; deploy to `md.corp.edgeweave.tech` once the domain is verified.
    - Done when: right-click > Open with in Drive on the web opens the file in the app.
 8. **Mobile polish.** Manifest and icons, safe areas, 16 px editor font, keyboard toolbar, Add to Home Screen hint, Android share target, smart punctuation check.

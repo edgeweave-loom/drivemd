@@ -414,6 +414,63 @@ test("creates, renames, moves and trashes a note", async ({ page, run }) => {
   expect(file.trashed).toBe(true);
 });
 
+/** Drive's Open with or New address, as Drive opens it. */
+function fromDrive(path: "/open" | "/new", state: Record<string, unknown>) {
+  // A made-up profile ID: a tab that has a token acts as its own account.
+  const userId = "104857600000000000001";
+  const query = new URLSearchParams({
+    state: JSON.stringify({ ...state, userId }),
+  });
+  return `${path}?${query.toString()}`;
+}
+
+test("opens what Drive's Open with, New and pasted links name", async ({
+  page,
+  run,
+}) => {
+  await page.goto(
+    fromDrive("/open", {
+      ids: [run.ids.note],
+      resourceKeys: {},
+      action: "open",
+    }),
+  );
+  await expect(page).toHaveURL(new RegExp(`/edit\\?id=${run.ids.note}$`));
+  await expect(heading(page, `${RUN} note.md`)).toBeVisible();
+  await expect(crumbs(page)).toHaveText([
+    "Home",
+    "My Drive",
+    run.name,
+    `${RUN} Notes`,
+  ]);
+  await loaded(page);
+
+  const search = page.getByRole("searchbox", {
+    name: "Search Markdown files by name",
+  });
+  await search.fill(
+    `https://drive.google.com/drive/folders/${run.ids.notes}?usp=sharing`,
+  );
+  await search.press("Enter");
+  await expect(heading(page, `${RUN} Notes`)).toBeVisible();
+  await loaded(page);
+
+  await page.goto(
+    fromDrive("/new", { action: "create", folderId: run.ids.notes }),
+  );
+  const create = page.getByRole("dialog", { name: "New Markdown file" });
+  await create.getByRole("textbox", { name: "Name" }).fill(`${RUN} from Drive`);
+  await create.getByRole("button", { name: "Create" }).click();
+  await expect(heading(page, `${RUN} from Drive.md`)).toBeVisible();
+  await loaded(page);
+  const id = new URL(page.url()).searchParams.get("id") ?? "";
+
+  // Drive agrees with what the pages showed.
+  const file = await run.drive.getMetadata({ id });
+  expect(file.name).toBe(`${RUN} from Drive.md`);
+  expect(file.parents).toEqual([run.ids.notes]);
+});
+
 /** A note another tool wrote in the run's notes folder, with these bytes. */
 async function written(
   run: Run,
