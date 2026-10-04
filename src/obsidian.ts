@@ -404,12 +404,7 @@ function withWikiLinks(content: PhrasingContent[]): PhrasingContent[] {
         node.value.charAt(at - 1) === "!" && writtenAt(node, at - 1, 1);
       const start = embed ? at - 1 : at;
       const link = embed ? embedNode(inner) : wikiNode(inner);
-      if (
-        !link ||
-        start < from ||
-        !writtenAt(node, at, 2) ||
-        !writtenAt(node, end - 2, 2)
-      ) {
+      if (!link || !writtenAt(node, at, 2) || !writtenAt(node, end - 2, 2)) {
         continue;
       }
       if (start > from) parts.push(sliceText(node, from, start));
@@ -463,7 +458,7 @@ function embedNode(inner: string): PhrasingContent | undefined {
   return {
     type: "image",
     url: "",
-    alt: text ?? target.split("#")[0] ?? "",
+    alt: text ?? target.split("#")[0]?.trim() ?? "",
     data: {
       hProperties: {
         dataEmbed: target,

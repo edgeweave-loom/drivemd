@@ -116,6 +116,25 @@ describe("image embeds in a note of a vault", () => {
   });
 });
 
+describe("embeds in a note of a vault", () => {
+  it("lead to the last heading they name, whatever the spaces around #", async () => {
+    open("See ![[Guide # Water # Cups]].");
+
+    expect(await screen.findByRole("link", { name: "Guide" })).toHaveAttribute(
+      "href",
+      "/edit?id=guide#cups",
+    );
+  });
+
+  it("take a size in pixels only, even written in HTML", async () => {
+    open('<img data-embed="cat.png" width="100%" height="99999" alt="cat">');
+
+    const image = await screen.findByRole("img", { name: "cat" });
+    expect(image).not.toHaveAttribute("width");
+    expect(image).toHaveAttribute("height", "99999");
+  });
+});
+
 describe("Markdown images in a note of a vault", () => {
   it("find the image as Obsidian does", async () => {
     open("![a cat](cat.png)");

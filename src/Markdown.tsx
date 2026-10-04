@@ -61,7 +61,7 @@ import {
 import { hashOf, onTheWeb, relativePath, type Found } from "./resolve.ts";
 import { toggleTask } from "./tasks.ts";
 import { hrefOf } from "./router.ts";
-import { linkPartHash, partHash, showPart } from "./parts.ts";
+import { linkPartHash, partHash, showPart, targetOf } from "./parts.ts";
 import type { VaultLink } from "./vault-links.ts";
 import type { Vault } from "./vault-settings.ts";
 import { remarkEscapes } from "./written.ts";
@@ -301,17 +301,9 @@ function Anchor({
   // A link without text cannot be tapped, so it asks Drive nothing.
   const tappable = Children.count(children) > 0;
   if (vault && wikiLink && tappable) {
-    const at = wikiLink.indexOf("#");
-    const path = at < 0 ? wikiLink : wikiLink.slice(0, at);
+    const { path, parts } = targetOf(wikiLink);
     // Of headings under one another, the last names the part.
-    const part =
-      at < 0
-        ? ""
-        : (wikiLink
-            .slice(at + 1)
-            .split("#")
-            .at(-1) ?? "");
-    const hash = partHash(part);
+    const hash = partHash(parts.at(-1) ?? "");
     if (path === "") return <PartLink {...attributes} href={hash} />;
     return <VaultLink {...attributes} path={path.split("/")} hash={hash} />;
   }
@@ -536,11 +528,18 @@ function Image({
 }) {
   const vault = useContext(NoteVault);
   if (vault && embed !== undefined) {
+    // A size in pixels, as an embed gives it, whatever HTML says.
+    const pixels = (value: string | number | undefined) => {
+      const written = value?.toString();
+      return written !== undefined && /^\d+$/.test(written)
+        ? written
+        : undefined;
+    };
     return (
       <Embed
         target={embed}
         alt={alt}
-        size={{ width: width?.toString(), height: height?.toString() }}
+        size={{ width: pixels(width), height: pixels(height) }}
       />
     );
   }
@@ -646,13 +645,12 @@ function Embed({
   const folder = useContext(NoteFolder);
   const vault = useContext(NoteVault);
   if (!folder || !vault) return <Unresolved>{alt}</Unresolved>;
-  const at = target.indexOf("#");
-  const path = (at < 0 ? target : target.slice(0, at)).split("/");
-  const hash = at < 0 ? "" : partHash(target.slice(at + 1));
+  const { path, parts } = targetOf(target);
+  const hash = partHash(parts.at(-1) ?? "");
   return (
     <VaultImage
       from={{ vault: vault.root, folder }}
-      path={path}
+      path={path.split("/")}
       alt={alt}
       size={size}
       other={(found) => (
@@ -714,7 +712,7 @@ function ImageInDrive<Answer, Key extends QueryKey>({
   if (found.data === null) return <Unresolved>{alt}</Unresolved>;
   if (found.data === "incomplete") {
     return (
-      <span title="Google Drive did not search every drive, so this embed may show a file it left out">
+      <span title="Google Drive did not search every drive, so this may be a file it left out">
         {alt}
       </span>
     );
