@@ -5,6 +5,7 @@ import {
   deleteDraft,
   deleteDraftHolding,
   deleteDrafts,
+  listDrafts,
   readDraft,
   writeDraft,
   type Draft,
@@ -13,7 +14,11 @@ import {
 const ADA = "ada@example.com";
 const GRACE = "grace@example.com";
 
-function draft(fileId: string, text = "- [x] Boil\r\n"): Draft {
+function draft(
+  fileId: string,
+  text = "- [x] Boil\r\n",
+  keptAt = "2026-10-02T09:00:00.000Z",
+): Draft {
   return {
     fileId,
     name: `${fileId}.md`,
@@ -21,7 +26,7 @@ function draft(fileId: string, text = "- [x] Boil\r\n"): Draft {
     headRevisionId: "revision-1",
     md5Checksum: "aaaa",
     text,
-    keptAt: "2026-10-02T09:00:00.000Z",
+    keptAt,
   };
 }
 
@@ -80,6 +85,40 @@ describe("drafts", () => {
 
     await expect(countDrafts(ADA)).resolves.toBe(0);
     await expect(readDraft(GRACE, "plan")).resolves.toEqual(draft("plan"));
+  });
+
+  it("lists an account's notes with unsaved text, the one kept last first, without their text", async () => {
+    await writeDraft(ADA, draft("plan", "one", "2026-10-02T09:00:00.000Z"));
+    await writeDraft(ADA, {
+      ...draft("shared", "two", "2026-10-03T09:00:00.000Z"),
+      resourceKey: "key-1",
+    });
+    await writeDraft(ADA, draft("notes", "three", "2026-10-01T09:00:00.000Z"));
+    await writeDraft(GRACE, draft("other"));
+
+    await expect(listDrafts(ADA)).resolves.toStrictEqual([
+      {
+        fileId: "shared",
+        name: "shared.md",
+        resourceKey: "key-1",
+        keptAt: "2026-10-03T09:00:00.000Z",
+      },
+      {
+        fileId: "plan",
+        name: "plan.md",
+        resourceKey: undefined,
+        keptAt: "2026-10-02T09:00:00.000Z",
+      },
+      {
+        fileId: "notes",
+        name: "notes.md",
+        resourceKey: undefined,
+        keptAt: "2026-10-01T09:00:00.000Z",
+      },
+    ]);
+    await expect(listDrafts(GRACE)).resolves.toMatchObject([
+      { fileId: "other" },
+    ]);
   });
 
   it("fails when the device keeps nothing, as in some private windows", async () => {

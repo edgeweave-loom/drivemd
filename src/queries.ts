@@ -1,6 +1,6 @@
 import { QueryClient, queryOptions, skipToken } from "@tanstack/react-query";
 import { climb } from "./climb.ts";
-import { readDraft } from "./drafts.ts";
+import { listDrafts, readDraft } from "./drafts.ts";
 import { pool } from "./pool.ts";
 import { resolve, type FolderReader } from "./resolve.ts";
 import { resolveInVault } from "./vault-links.ts";
@@ -11,6 +11,7 @@ import {
 } from "./vault-settings.ts";
 import {
   DriveError,
+  FOLDER,
   GOOGLE_TYPES,
   TooLargeError,
   type Drive,
@@ -275,26 +276,46 @@ function nameQuery(drive: Drive, name: string) {
   });
 }
 
+// The folders of a vault are listed a few at a time, apart from the links
+// and images, which wait for them.
+const vaultListings = pool(4);
+
 /**
  * The folders of a vault, but those whose name starts with a dot, as Obsidian
- * leaves them out, and each one's path from the vault's: read a level at a
- * time, a call for 50 folders at most, rather than a call for each.
+ * leaves them out, and each one's path from the vault's: each read by its
+ * own listing, which the pages share. A search over several folders at once
+ * would be fewer calls, but leaves out what other people made (checked live).
  */
-export function vaultFoldersQuery(drive: Drive, vault: FileRef) {
+export function vaultFoldersQuery(
+  drive: Drive,
+  client: QueryClient,
+  vault: FileRef,
+) {
   return queryOptions({
     queryKey: key("vault-folders", vault.id, vault.resourceKey),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const paths = new Map<string, string[]>([[vault.id, []]]);
       let level: FileRef[] = [vault];
       while (level.length > 0) {
-        const found = await drive.listFolders(level);
+        const listings = await Promise.all(
+          level.map((folder) =>
+            vaultListings(
+              () =>
+                client.query({ ...childrenQuery(drive, folder), retry: false }),
+              signal,
+            ).then((children) => ({ folder, children })),
+          ),
+        );
         level = [];
-        for (const { id, resourceKey, name, parents } of found) {
-          const parent = parents.find((above) => paths.has(above));
-          const path = parent === undefined ? undefined : paths.get(parent);
-          if (!path || paths.has(id) || name.startsWith(".")) continue;
-          paths.set(id, [...path, name]);
-          level.push({ id, resourceKey });
+        for (const { folder, children } of listings) {
+          const path = paths.get(folder.id) ?? [];
+          for (const { id, resourceKey, name, mimeType } of children) {
+            if (mimeType !== FOLDER || paths.has(id) || name.startsWith(".")) {
+              continue;
+            }
+            paths.set(id, [...path, name]);
+            level.push({ id, resourceKey });
+          }
         }
       }
       return paths;
@@ -331,7 +352,7 @@ export function vaultLinkQuery(
               client.query({ ...nameQuery(drive, name), retry: false }),
             folders: () =>
               client.query({
-                ...vaultFoldersQuery(drive, vault),
+                ...vaultFoldersQuery(drive, client, vault),
                 retry: false,
               }),
           }),
@@ -374,6 +395,21 @@ export function draftQuery(account: string, fileId: string) {
     staleTime: 0,
     gcTime: 0,
     // A device that keeps nothing has nothing to offer.
+    retry: false,
+    // The device answers, with or without a connection.
+    networkMode: "always",
+  });
+}
+
+/** The account's notes with unsaved text on the device, the latest first. */
+export function draftsQuery(account: string) {
+  return queryOptions({
+    queryKey: key("drafts", account),
+    queryFn: () => listDrafts(account),
+    // Read afresh each time Home shows: notes keep and forget text as they go.
+    staleTime: 0,
+    gcTime: 0,
+    // A device that keeps nothing has nothing to list.
     retry: false,
     // The device answers, with or without a connection.
     networkMode: "always",

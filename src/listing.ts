@@ -19,6 +19,12 @@ export interface Entry {
   target: ShortcutTarget | undefined;
 }
 
+/** Why an item that the user reached before no longer opens. */
+export const BROKEN = {
+  missing: "Deleted, or not shared with you",
+  trashed: "In the trash",
+};
+
 // Natural order: "file2" before "file10", whatever the case.
 const byName = new Intl.Collator(undefined, {
   numeric: true,

@@ -22,7 +22,7 @@ function open(path: string, drive = fakeDrive()) {
   history.replaceState(null, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
   const session = { drive, renew: vi.fn(), signOut: vi.fn() };
-  render(<Navigator session={session} email={EMAIL} />);
+  render(<Navigator session={session} email={EMAIL} signedIn />);
   return session;
 }
 

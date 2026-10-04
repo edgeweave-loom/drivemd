@@ -279,6 +279,38 @@ test("keeps unsaved changes on the device across a reload", async ({
   expect(drive.writes).toEqual(["keep plan revision-1", "save plan"]);
 });
 
+test("lists a note with unsaved changes first on Home, then offers them back", async ({
+  page,
+  drive,
+}) => {
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  await page.locator(".markdown").getByRole("checkbox").first().check();
+  await expect.poll(() => draftsKept(page)).toBe(1);
+
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("link", { name: "DriveMD" }).click();
+  const unsaved = page.getByRole("region", { name: "Unsaved changes" });
+  await expect(page.getByRole("region").first()).toHaveAccessibleName(
+    "Unsaved changes",
+  );
+  await expect(unsaved.getByRole("link")).toHaveText([/^plan\.md/]);
+  await expect(
+    page.getByRole("region", { name: "Vaults" }).getByRole("link"),
+  ).toHaveText(["Journal"]);
+  await unsaved.getByRole("link").click();
+  await page.getByRole("button", { name: "Restore" }).click();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+
+  await page.getByRole("link", { name: "DriveMD" }).click();
+  await expect(
+    page.getByRole("region", { name: "Vaults" }).getByRole("link"),
+  ).toHaveText(["Journal"]);
+  await expect(unsaved).toHaveCount(0);
+  expect(drive.writes).toEqual(["keep plan revision-1", "save plan"]);
+});
+
 test("signs out once the user agrees to discard unsaved changes", async ({
   page,
 }) => {
