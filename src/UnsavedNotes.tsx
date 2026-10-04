@@ -44,7 +44,7 @@ function UnsavedNote({ draft }: { draft: DraftEntry }) {
   // Asked afresh each time Home shows: the note may open again since, as
   // once restored from Drive's trash.
   const details = useQuery({ ...metadataQuery(drive, file), staleTime: 0 });
-  const name = details.data?.name ?? draft.name ?? "Note";
+  const name = details.data?.name ?? draft.name;
   // Only Drive's answer since Home showed tells whether the note opens: the
   // cache may hold one from before it was restored, or deleted.
   const reason = !details.isFetchedAfterMount
