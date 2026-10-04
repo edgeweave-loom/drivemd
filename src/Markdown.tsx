@@ -101,8 +101,8 @@ const OBSIDIAN = {
     remarkComments,
     remarkCallouts,
     remarkHighlights,
-    remarkTags,
     remarkBlockIds,
+    remarkTags,
   ],
   rehype: rehype(VAULT_SCHEMA),
 };

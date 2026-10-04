@@ -1,5 +1,5 @@
-import { render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { Rendered } from "./Markdown.tsx";
 import { DEFAULT_SETTINGS } from "./vault-settings.ts";
 
@@ -44,6 +44,20 @@ describe("highlights in a note of a vault", () => {
     const page = show(text);
 
     expect(page.querySelector("mark")).toBeNull();
+  });
+
+  it.each([
+    ["an escaped mark", "\\==tea\\=="],
+    ["a character reference", "&#61;=tea=&#61;"],
+  ])("are not made of %s", (_, text) => {
+    expect(show(text).querySelector("mark")).toBeNull();
+  });
+
+  it("may start and end with other Markdown", () => {
+    expect(texts(show("==**Green**== ==*tea*=="), "mark")).toEqual([
+      "Green",
+      "tea",
+    ]);
   });
 
   it("can hold a mark that a space follows", () => {
@@ -100,6 +114,10 @@ describe("comments in a note of a vault", () => {
   it("are not made in code", () => {
     expect(shown(show("`%%code%%`"))).toBe("%%code%%");
   });
+
+  it("are not made of escaped marks", () => {
+    expect(shown(show("Tea \\%\\%x\\%\\% time"))).toBe("Tea %%x%% time");
+  });
 });
 
 describe("tags in a note of a vault", () => {
@@ -123,6 +141,8 @@ describe("tags in a note of a vault", () => {
     ["in a link", "[#tea](https://example.com)"],
     ["in code", "`#tea`"],
     ["a heading's marks", "# Title"],
+    ["escaped", "\\#tea"],
+    ["written as a character reference", "&num;tea"],
   ])("are not %s", (_, text) => {
     expect(show(text).querySelector(".tag")).toBeNull();
   });
@@ -171,6 +191,45 @@ describe("block IDs in a note of a vault", () => {
 
     expect(shown(page)).toBe(text);
     expect(page.querySelector("[id]")).toBeNull();
+  });
+
+  it("show as written when escaped", () => {
+    const page = show("Tea \\^id");
+
+    expect(shown(page)).toBe("Tea ^id");
+    expect(page.querySelector("[id]")).toBeNull();
+  });
+});
+
+describe("Obsidian's syntax", () => {
+  it("reads a note with Windows line breaks", () => {
+    const page = show(
+      "#tea ==hot==\r\n%%no%%Time. ^time\r\n\r\n> Quote\r\n\r\n^quote",
+    );
+
+    expect(texts(page, ".tag, mark")).toEqual(["#tea", "hot"]);
+    expect(page.querySelector("p")).toHaveAttribute("id", "user-content-^time");
+    expect(page.querySelector("blockquote")).toHaveAttribute(
+      "id",
+      "user-content-^quote",
+    );
+    expect(shown(page)).toBe("#tea hot Time. Quote");
+  });
+
+  it("leaves the user's tasks to check", () => {
+    const edit = vi.fn();
+    render(
+      <Rendered
+        text={"- [ ] ==Buy== #tea ^buy %%later%%\n"}
+        vault={DEFAULT_SETTINGS}
+        onEdit={edit}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(edit).toHaveBeenCalledExactlyOnceWith(
+      "- [x] ==Buy== #tea ^buy %%later%%\n",
+    );
   });
 });
 

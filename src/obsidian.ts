@@ -1,16 +1,10 @@
-import type {
-  Nodes,
-  Parents,
-  PhrasingContent,
-  Root,
-  RootContent,
-  Text,
-} from "mdast";
+import type { Nodes, Parents, PhrasingContent, Root, RootContent } from "mdast";
 import {
   findAndReplace,
   type RegExpMatchObject,
 } from "mdast-util-find-and-replace";
 import { visit } from "unist-util-visit";
+import { sliceText, writtenAt } from "./written.ts";
 
 /** Where a mark such as `==` starts, in a text among some content. */
 interface Place {
@@ -18,14 +12,16 @@ interface Place {
   offset: number;
 }
 
-/** The places where the pattern matches in the content's own text. */
+/**
+ * The places where the pattern matches in the content's own text, where the
+ * note writes the mark as it is.
+ */
 function marks(content: PhrasingContent[], pattern: RegExp): Place[] {
   return content.flatMap((node, index) =>
     node.type === "text"
-      ? [...node.value.matchAll(pattern)].map((match) => ({
-          node: index,
-          offset: match.index,
-        }))
+      ? [...node.value.matchAll(pattern)]
+          .filter((match) => writtenAt(node, match.index, match[0].length))
+          .map((match) => ({ node: index, offset: match.index }))
       : [],
   );
 }
@@ -51,15 +47,11 @@ function range(
       continue;
     }
     const start = index === from.node ? from.offset : 0;
-    const end = index === to.node ? to.offset : undefined;
-    const value = node.value.slice(start, end);
-    if (value !== "") parts.push(text(value));
+    const end = index === to.node ? to.offset : node.value.length;
+    if (start === 0 && end === node.value.length) parts.push(node);
+    else if (start < end) parts.push(sliceText(node, start, end));
   }
   return parts;
-}
-
-function text(value: string): Text {
-  return { type: "text", value };
 }
 
 /** Whether the content shows anything but spaces. */
@@ -214,7 +206,8 @@ const TAG = /#([\p{L}\p{M}\p{N}_/-]+)/gu;
 
 /**
  * Shows Obsidian's tags, `#tag` and `#parent/child`, as labels. A tag starts
- * a line or follows a space, and holds more than digits.
+ * a line or follows a space, and holds more than digits. It runs last: the
+ * texts it splits lose what the note escapes in them.
  */
 export function remarkTags() {
   return (tree: Root) => {
@@ -227,11 +220,19 @@ export function remarkTags() {
           name: string,
           { index, input, stack }: RegExpMatchObject,
         ) => {
+          const node = stack.at(-1);
           const before =
             index > 0
               ? input.charAt(index - 1)
               : shownAt(siblingBefore(stack), (value) => value.slice(-1));
-          if (/\S/.test(before) || /^\p{N}+$/u.test(name)) return false;
+          if (
+            node?.type !== "text" ||
+            !writtenAt(node, index, 1) ||
+            /\S/.test(before) ||
+            /^\p{N}+$/u.test(name)
+          ) {
+            return false;
+          }
           return {
             type: "text",
             value: whole,
@@ -287,9 +288,11 @@ function named<Block extends RootContent>(
       return [block];
     }
     const id = `^${found[1] ?? ""}`;
-    const value = last.value.slice(0, found.index);
-    if (block.children.length > 1 || value !== "") {
-      last.value = value;
+    const caret = found.index + found[0].length - id.length;
+    if (!writtenAt(last, caret, 1)) return [block];
+    const value = sliceText(last, 0, found.index);
+    if (block.children.length > 1 || value.value !== "") {
+      block.children[block.children.length - 1] = value;
       // The first paragraph of a list item is the item's own text.
       const item = container.type === "listItem" && index === 0;
       nameBlock(item ? container : block, id);

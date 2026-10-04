@@ -133,6 +133,8 @@ function seed(): FakeFile[] {
         "Woke up early.",
         "Made tea.",
         "",
+        "==Green tea== for #morning %%not shown%%done. ^tea",
+        "",
         "> [!tip]- Brew it hot",
         "> Water at 90 °C.",
         "",

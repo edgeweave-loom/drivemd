@@ -514,6 +514,20 @@ dialog.drawer {
   margin-bottom: 0;
 }
 
+/* Obsidian's highlights and tags. */
+.markdown mark {
+  background: rgb(255 208 0 / 40%);
+  color: inherit;
+}
+
+.markdown .tag {
+  padding: 0.1em 0.5em;
+  border-radius: 1em;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--link);
+  font-size: 0.875em;
+}
+
 .markdown :is(code, pre) {
   font-family: var(--monospace);
   font-size: 85%;
