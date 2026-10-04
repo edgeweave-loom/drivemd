@@ -277,6 +277,27 @@ function defineChecks(auth: DriveAuth): void {
     });
   });
 
+  it("names no folder of a file shared alone that the account cannot reach", async (context) => {
+    const shared = (await drive.listSharedWithMe()).find(
+      ({ name }) => name === VIEW_ONLY,
+    );
+    if (!shared) return context.skip(`No ${VIEW_ONLY} is shared with it`);
+
+    // So a note's vault above a folder out of reach cannot be found.
+    const { parents } = await drive.getMetadata(shared);
+    const reached = await Promise.all(
+      parents.map((id) =>
+        drive.getMetadata({ id }).then(
+          () => true,
+          () => false,
+        ),
+      ),
+    );
+    expect(reached, "whether each folder Drive names opens").not.toContain(
+      false,
+    );
+  });
+
   /**
    * A file another tool wrote: made as plain text, then given its bytes
    * through the API, and opened as the app opens one.
