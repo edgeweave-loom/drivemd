@@ -8,12 +8,9 @@ const STORE = "drafts";
  */
 export interface Draft {
   fileId: string;
-  /**
-   * The note's name and resource key when the text was kept, so that Home
-   * lists it at once and opens a note shared by link; none in drafts kept
-   * before they held them.
-   */
-  name: string | undefined;
+  /** The note's name when the text was kept, so that Home lists it at once. */
+  name: string;
+  /** The note's resource key, if it has one: Home opens it with it. */
   resourceKey: string | undefined;
   headRevisionId: string | undefined;
   md5Checksum: string | undefined;
