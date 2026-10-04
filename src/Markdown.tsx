@@ -140,8 +140,8 @@ const TaskAt = createContext<number | undefined>(undefined);
 /**
  * A Markdown file rendered as GitHub renders it: with tables, task lists,
  * strikethrough, autolinks, footnotes, highlighted code, sanitized HTML and
- * front matter as a table of properties. A note in an Obsidian vault breaks
- * its lines and shows its callouts as Obsidian does.
+ * front matter as a table of properties. A note in an Obsidian vault renders
+ * the syntax Obsidian adds as Obsidian does.
  */
 export function Rendered({
   text,
