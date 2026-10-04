@@ -12,7 +12,7 @@ import {
   SharedWithMePage,
   ShortcutsPage,
 } from "./RootPages.tsx";
-import { hrefOf, mayLeave, navigate, usePlace } from "./router.ts";
+import { getPlace, hrefOf, mayLeave, navigate, usePlace } from "./router.ts";
 import { SearchPage } from "./SearchPage.tsx";
 import type { Session } from "./session.ts";
 import { SignOut } from "./SignOut.tsx";
@@ -117,12 +117,12 @@ function SearchBox() {
         if (!mayLeave(href)) return;
         renew();
         navigate(href, undefined, { asked: true });
-        if (linked !== undefined) {
-          setTyped("");
-          return;
-        }
+        const { route } = getPlace();
+        const words = route.name === "search" ? route.text : "";
+        // A link gives way to the words of the search it opens, if any.
+        if (linked !== undefined) setTyped(words);
         // The same search again asks Drive again.
-        refreshSearches(client);
+        if (route.name === "search") refreshSearches(client);
       }}
     >
       <input
