@@ -5,7 +5,6 @@ import { Rendered } from "./Markdown.tsx";
 import {
   driveItem,
   folderItem,
-  foldersAmong,
   metadata,
   metadataOf,
 } from "./test/drive-items.ts";
@@ -47,7 +46,6 @@ function open(text: string) {
   drive.listChildren.mockImplementation(({ id }) =>
     Promise.resolve(ITEMS.filter(({ parents }) => parents.includes(id))),
   );
-  drive.listFolders.mockImplementation(foldersAmong(ITEMS));
   drive.findByName.mockImplementation((name) =>
     Promise.resolve({
       items: ITEMS.filter(

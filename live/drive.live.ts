@@ -131,7 +131,6 @@ function defineChecks(auth: DriveAuth): void {
     await drive.findByName(`${RUN}.md`);
     await drive.findVaults();
     await drive.findVaultConfigs();
-    await drive.listFolders([run]);
   });
 
   it("finds a file by its exact name, whatever its case", async () => {
@@ -157,15 +156,6 @@ function defineChecks(auth: DriveAuth): void {
     );
     const lower = await drive.findByName(name.toLowerCase());
     expect(ids(lower.items), "the file found in small letters").toContain(id);
-  });
-
-  it("lists the folders in several folders at once", async () => {
-    const one = await make({ name: `${RUN} one`, mimeType: FOLDER });
-    const two = await make({ name: `${RUN} two`, mimeType: FOLDER });
-    const inner = await make({ name: `${RUN} inner`, mimeType: FOLDER }, two);
-
-    const found = ids(await drive.listFolders([{ id: one }, { id: two }]));
-    expect(found, "the folder in the second folder").toEqual([inner]);
   });
 
   it.each(["text/markdown", "text/plain", "application/octet-stream"])(
