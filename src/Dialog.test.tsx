@@ -60,6 +60,35 @@ describe("Dialog", () => {
     expect(dialog.open).toBe(true);
   });
 
+  it("opens again, the lowest first, the dialogs that cannot close that the browser closed together", () => {
+    const onClose = vi.fn();
+    render(
+      <>
+        <Dialog title="Saving">
+          <p>Waiting for Drive</p>
+        </Dialog>
+        <Dialog title="Rename" onClose={onClose}>
+          <p>Name</p>
+        </Dialog>
+        <Dialog title="Welcome back">
+          <p>Continue</p>
+        </Dialog>
+      </>,
+    );
+    const [saving, rename, welcome] = ["Saving", "Rename", "Welcome back"].map(
+      (name) => screen.getByRole<HTMLDialogElement>("dialog", { name }),
+    );
+    const showModal = vi.spyOn(HTMLDialogElement.prototype, "showModal");
+
+    // As browsers do on Escape, once a page has refused it without a tap.
+    for (const dialog of [saving, rename, welcome]) dialog.open = false;
+    fireEvent(welcome, new Event("close"));
+    expect(showModal.mock.contexts).toEqual([saving, welcome]);
+    expect(rename.open).toBe(false);
+    expect(welcome).toHaveAttribute("closedby", "none");
+    expect(rename).not.toHaveAttribute("closedby");
+  });
+
   it("opens once, however often React sets it up", () => {
     const showModal = vi.spyOn(HTMLDialogElement.prototype, "showModal");
     render(

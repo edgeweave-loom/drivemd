@@ -33,12 +33,22 @@ export function Dialog({
           event.preventDefault();
         }
       }}
+      // Escape cannot close it, where browsers know the attribute.
+      closedby={onClose ? undefined : "none"}
       onClose={(event) => {
         if (event.target !== event.currentTarget) return;
-        if (onClose) onClose();
-        // Browsers let a page refuse Escape only once without a tap in
-        // between, then close the dialog anyway.
-        else event.currentTarget.showModal();
+        if (onClose) {
+          onClose();
+          return;
+        }
+        // Elsewhere, browsers let a page refuse Escape once without a tap in
+        // between, then close it anyway, with the dialogs under it that
+        // cannot close either: they open again, the lowest first.
+        for (const closed of document.querySelectorAll<HTMLDialogElement>(
+          'dialog[closedby="none"]:not([open])',
+        )) {
+          closed.showModal();
+        }
       }}
     >
       <h2 id={titleId}>{title}</h2>
