@@ -291,10 +291,20 @@ function Anchor({
     "aria-describedby": describedBy,
     children,
   };
-  if (vault && wikiLink !== undefined) {
+  // A link without text cannot be tapped, so it asks Drive nothing.
+  const tappable = Children.count(children) > 0;
+  if (vault && wikiLink && tappable) {
     const at = wikiLink.indexOf("#");
     const path = at < 0 ? wikiLink : wikiLink.slice(0, at);
-    const hash = at < 0 ? "" : partHash(wikiLink.slice(at + 1));
+    // Of headings under one another, the last names the part.
+    const part =
+      at < 0
+        ? ""
+        : (wikiLink
+            .slice(at + 1)
+            .split("#")
+            .at(-1) ?? "");
+    const hash = partHash(part);
     if (path === "") return <PartLink {...attributes} href={hash} />;
     return <VaultLink {...attributes} path={path.split("/")} hash={hash} />;
   }
@@ -304,8 +314,7 @@ function Anchor({
   }
   if (href.startsWith("mailto:")) return <a {...attributes} href={href} />;
   const path = relativePath(href);
-  // A link without text cannot be tapped, so it asks Drive nothing.
-  if (path && Children.count(children) > 0) {
+  if (path && tappable) {
     return vault ? (
       <VaultLink
         {...attributes}

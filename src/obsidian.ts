@@ -428,16 +428,21 @@ function wikiNode(inner: string): PhrasingContent | undefined {
   const target = (bar < 0 ? inner : inner.slice(0, bar)).trim();
   const text = bar < 0 ? "" : inner.slice(bar + 1).trim();
   const hash = target.indexOf("#");
-  const path = hash < 0 ? target : target.slice(0, hash);
-  const part = hash < 0 ? "" : target.slice(hash + 1);
-  if (path === "" && part === "") return;
+  const path = (hash < 0 ? target : target.slice(0, hash)).trim();
+  // Several `#` name a heading under another.
+  const parts = (hash < 0 ? "" : target.slice(hash + 1))
+    .split("#")
+    .map((part) => part.trim())
+    .filter((part) => part !== "");
+  if (path === "" && parts.length === 0) return;
   // As Obsidian shows a link without its own text.
-  const shown = path === "" ? part : part === "" ? path : `${path} > ${part}`;
+  const shown = [path, ...parts].filter((step) => step !== "").join(" > ");
+  const written = parts.length > 0 ? `${path}#${parts.join("#")}` : path;
   return {
     type: "link",
     url: "",
     children: [{ type: "text", value: text || shown }],
-    data: { hProperties: { dataWikilink: target } },
+    data: { hProperties: { dataWikilink: written } },
   };
 }
 

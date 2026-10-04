@@ -7,9 +7,11 @@ import { slug } from "github-slugger";
  * do not. Nothing happens when the note has no such part.
  */
 export function showPart(name: string): void {
+  // A heading's text, as Obsidian's Markdown links give it, names it last.
   const part =
     document.getElementById(`user-content-${name}`) ??
-    document.getElementById(`user-content-${decoded(name)}`);
+    document.getElementById(`user-content-${decoded(name)}`) ??
+    document.getElementById(`user-content-${slug(decoded(name))}`);
   if (!part) return;
   // The note's own folded callouts only, never one of the app's.
   for (
