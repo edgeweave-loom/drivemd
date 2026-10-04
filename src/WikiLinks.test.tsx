@@ -6,6 +6,7 @@ import { getPlace } from "./router.ts";
 import {
   driveItem,
   folderItem,
+  foldersAmong,
   metadata,
   metadataOf,
 } from "./test/drive-items.ts";
@@ -31,6 +32,7 @@ function open(text: string, { incomplete = false } = {}) {
   drive.listChildren.mockImplementation(({ id }) =>
     Promise.resolve(ITEMS.filter(({ parents }) => parents.includes(id))),
   );
+  drive.listFolders.mockImplementation(foldersAmong(ITEMS));
   drive.findByName.mockImplementation((name) =>
     Promise.resolve({
       items: ITEMS.filter(
@@ -137,21 +139,54 @@ describe("internal links in a note of a vault", () => {
   });
 
   it.each([
-    ["escaped", "\\[[Guide]]"],
-    ["in code", "`[[Guide]]`"],
-    ["in a link's text", "[a [[Guide]]](https://example.com)"],
-    ["empty", "[[]]"],
-  ])("are none when %s", (_, text) => {
+    ["escaped", "\\[[Guide]]", "[[Guide]]"],
+    ["in code", "`[[Guide]]`", "[[Guide]]"],
+    ["in a link's text", "[a [[Guide]]](https://example.com)", "a [[Guide]]"],
+    ["empty", "[[]]", "[[]]"],
+    ["an embed, which is no link", "![[Guide]]", "![[Guide]]"],
+  ])("are none when %s", (_, text, written) => {
     const { drive } = open(text);
 
-    for (const link of screen.queryAllByRole("link")) {
-      expect(link.getAttribute("href")).not.toMatch(/^\/edit/);
-    }
+    expect(screen.getByText(written)).toBeVisible();
+    expect(drive.listChildren).not.toHaveBeenCalled();
     expect(drive.findByName).not.toHaveBeenCalled();
+  });
+
+  it("name subheadings with several #", async () => {
+    open("[[Guide#Set up#Water]] [[Guide #Set up]]");
+
+    expect(
+      await screen.findByRole("link", { name: "Guide > Set up > Water" }),
+    ).toHaveAttribute("href", "/edit?id=guide#water");
+    expect(
+      await screen.findByRole("link", { name: "Guide > Set up" }),
+    ).toHaveAttribute("href", "/edit?id=guide#set-up");
+  });
+
+  it("may be written in HTML, but an empty one asks Drive nothing", async () => {
+    const { drive } = open(
+      '<a data-wikilink="Guide">the guide</a> <a data-wikilink="Gone"></a> <a data-wikilink="">x</a>',
+    );
+
+    expect(
+      await screen.findByRole("link", { name: "the guide" }),
+    ).toHaveAttribute("href", "/edit?id=guide");
+    expect(drive.findByName).not.toHaveBeenCalledWith("Gone.md");
+    expect(screen.getByText("x")).not.toHaveAttribute("href");
   });
 });
 
 describe("Markdown links in a note of a vault", () => {
+  it("show a heading of the note itself written as its text", () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    open("[Go](#Set%20up)\n\n## Set up");
+
+    fireEvent.click(screen.getByRole("link", { name: "Go" }));
+    expect(scrolled.mock.contexts).toEqual([
+      screen.getByRole("heading", { name: "Set up" }),
+    ]);
+  });
+
   it("find a note by name, as Obsidian does", async () => {
     open("[the guide](Guide.md) and [the other](Sub/Guide.md#set-up)");
 
@@ -169,5 +204,13 @@ describe("a note outside a vault", () => {
     const page = render(<Rendered text="[[Guide]]" />).container;
 
     expect(page.textContent).toBe("[[Guide]]");
+  });
+
+  it("drops an internal link's target written in HTML", () => {
+    const page = render(
+      <Rendered text={'<a data-wikilink="Guide" href="x.md">G</a>'} />,
+    ).container;
+
+    expect(page.querySelector("[data-wikilink]")).toBeNull();
   });
 });

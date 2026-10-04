@@ -77,6 +77,7 @@ describe("useFollow", () => {
     const guide = driveItem("Guide.md", { id: "guide", parents: ["vault"] });
     drive.listChildren.mockResolvedValue([]);
     drive.findByName.mockResolvedValue({ items: [guide], incomplete: false });
+    drive.listFolders.mockResolvedValue([]);
     drive.getMetadata.mockImplementation(
       metadataOf(
         metadata(guide),

@@ -7,18 +7,27 @@ import { slug } from "github-slugger";
  * do not. Nothing happens when the note has no such part.
  */
 export function showPart(name: string): void {
+  // A heading's text, as Obsidian's Markdown links give it, names it last.
   const part =
     document.getElementById(`user-content-${name}`) ??
-    document.getElementById(`user-content-${decoded(name)}`);
+    document.getElementById(`user-content-${decoded(name)}`) ??
+    document.getElementById(`user-content-${slug(decoded(name))}`);
   if (!part) return;
+  // The note's own folded callouts only, never one of the app's.
   for (
-    let folded = part.closest("details");
+    let folded = part.closest(".markdown details");
     folded;
-    folded = folded.parentElement?.closest("details") ?? null
+    folded = folded.parentElement?.closest(".markdown details") ?? null
   ) {
-    folded.open = true;
+    if (folded instanceof HTMLDetailsElement) folded.open = true;
   }
   part.scrollIntoView();
+  // The app's header stays at the top of the screen: the part goes below it.
+  const header = document.querySelector("header.bar");
+  const covered =
+    (header?.getBoundingClientRect().bottom ?? 0) -
+    part.getBoundingClientRect().top;
+  if (covered > 0) window.scrollBy(0, -covered);
 }
 
 function decoded(name: string): string {

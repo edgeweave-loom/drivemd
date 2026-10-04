@@ -33,6 +33,16 @@ describe("a note opened at a heading", () => {
     expect(scrolled.mock.contexts).toEqual([heading]);
   });
 
+  it("shows it once, not again when another revision of the note comes", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    const { rerender } = open("/edit?id=plan#tea", "# Plan\n\n## Tea");
+    await screen.findByRole("heading", { name: "Tea" });
+
+    rerender(<FileContent file={{ ...PLAN, headRevisionId: "revision-2" }} />);
+    await screen.findByRole("heading", { name: "Tea" });
+    expect(scrolled).toHaveBeenCalledOnce();
+  });
+
   it("stays put when no part of the note has that name", async () => {
     const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
     open("/edit?id=plan#nowhere", "# Plan");

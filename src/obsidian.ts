@@ -270,9 +270,10 @@ function shownAt(
  */
 export function remarkInlineFootnotes() {
   return (tree: Root) => {
+    // The names the note gives its own footnotes, even hidden ones.
     const taken = new Set<string>();
-    visit(tree, "footnoteDefinition", ({ identifier }) => {
-      taken.add(identifier);
+    visit(tree, ["footnoteDefinition", "footnoteReference"], (node) => {
+      if ("identifier" in node) taken.add(node.identifier);
     });
     const definitions: FootnoteDefinition[] = [];
     let count = 0;
@@ -301,8 +302,10 @@ function footnote(
 ): void {
   if (!("children" in node) || node.type === "link") return;
   if (node.type === "linkReference") return;
-  for (const child of node.children) footnote(child, define);
+  // The notes a text holds first: what lies in one, emphasis included, goes
+  // with it and holds no other.
   if (holdsText(node)) node.children = withNotes(node.children, define);
+  for (const child of node.children) footnote(child, define);
 }
 
 function withNotes(
@@ -311,6 +314,7 @@ function withNotes(
 ): PhrasingContent[] {
   const found = marks(content, "^[");
   if (found.length === 0) return content;
+  const closes = closings(content);
   const parts: PhrasingContent[] = [];
   let from: Place = { node: 0, offset: 0 };
   for (const open of found) {
@@ -321,8 +325,8 @@ function withNotes(
     ) {
       continue;
     }
-    const close = closing(content, after(open, 2));
-    if (!close) break;
+    const close = closes.get(`${String(open.node)}:${String(open.offset + 1)}`);
+    if (!close) continue;
     const identifier = define(range([], content, after(open, 2), close));
     range(parts, content, from, open);
     parts.push({ type: "footnoteReference", identifier, label: identifier });
@@ -331,26 +335,33 @@ function withNotes(
   return range(parts, content, from);
 }
 
-/** The `]` that closes a bracket open before a place, among written ones. */
-function closing(content: PhrasingContent[], from: Place): Place | undefined {
-  let depth = 1;
-  for (let index = from.node; index < content.length; index += 1) {
-    const node = content[index];
-    if (node?.type !== "text") continue;
-    const start = index === from.node ? from.offset : 0;
-    for (let offset = start; offset < node.value.length; offset += 1) {
+/**
+ * Where each written `[` of the content's texts is closed, by the place of
+ * the `[`: found in one pass, so that a `[` never closed costs nothing more.
+ */
+function closings(content: PhrasingContent[]): Map<string, Place> {
+  const closes = new Map<string, Place>();
+  const open: Place[] = [];
+  for (const [index, node] of content.entries()) {
+    if (node.type !== "text") continue;
+    for (let offset = 0; offset < node.value.length; offset += 1) {
       const character = node.value.charAt(offset);
-      if (
-        (character !== "[" && character !== "]") ||
-        !writtenAt(node, offset, 1)
-      ) {
+      if (character !== "[" && character !== "]") continue;
+      if (!writtenAt(node, offset, 1)) continue;
+      if (character === "[") {
+        open.push({ node: index, offset });
         continue;
       }
-      depth += character === "[" ? 1 : -1;
-      if (depth === 0) return { node: index, offset };
+      const opened = open.pop();
+      if (opened) {
+        closes.set(`${String(opened.node)}:${String(opened.offset)}`, {
+          node: index,
+          offset,
+        });
+      }
     }
   }
-  return undefined;
+  return closes;
 }
 
 // `[[target#part|text]]`, with no bracket or line break inside.
@@ -418,16 +429,21 @@ function wikiNode(inner: string): PhrasingContent | undefined {
   const target = (bar < 0 ? inner : inner.slice(0, bar)).trim();
   const text = bar < 0 ? "" : inner.slice(bar + 1).trim();
   const hash = target.indexOf("#");
-  const path = hash < 0 ? target : target.slice(0, hash);
-  const part = hash < 0 ? "" : target.slice(hash + 1);
-  if (path === "" && part === "") return;
+  const path = (hash < 0 ? target : target.slice(0, hash)).trim();
+  // Several `#` name a heading under another.
+  const parts = (hash < 0 ? "" : target.slice(hash + 1))
+    .split("#")
+    .map((part) => part.trim())
+    .filter((part) => part !== "");
+  if (path === "" && parts.length === 0) return;
   // As Obsidian shows a link without its own text.
-  const shown = path === "" ? part : part === "" ? path : `${path} > ${part}`;
+  const shown = [path, ...parts].filter((step) => step !== "").join(" > ");
+  const written = parts.length > 0 ? `${path}#${parts.join("#")}` : path;
   return {
     type: "link",
     url: "",
     children: [{ type: "text", value: text || shown }],
-    data: { hProperties: { dataWikilink: target } },
+    data: { hProperties: { dataWikilink: written } },
   };
 }
 

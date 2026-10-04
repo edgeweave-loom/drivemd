@@ -108,7 +108,8 @@ function seed(): FakeFile[] {
         "# Notes",
         ...Array.from({ length: 60 }, (_, line) => `\nLine ${String(line)}.`),
         "\n## Later",
-        "\nThe end.",
+        // And after it, so that it can scroll to the top of the screen.
+        ...Array.from({ length: 60 }, (_, line) => `\nLater ${String(line)}.`),
         "",
       ].join("\n"),
     },
@@ -403,13 +404,27 @@ export class FakeDrive {
     if (q.startsWith("name = '.obsidian'")) {
       return all.filter((file) => file.name === ".obsidian");
     }
-    // Drive matches an exact name whatever its case.
-    const named = /^name = '((?:[^'\\]|\\.)*)'/.exec(q)?.[1];
-    if (named !== undefined) {
-      const name = named.replace(/\\(.)/g, "$1").toLowerCase();
+    // The folders in several folders, as listFolders asks.
+    const several =
+      /^\(((?:'[\w-]+' in parents(?: or )?)+)\) and mimeType/.exec(q)?.[1];
+    if (several !== undefined) {
+      const ids = [...several.matchAll(/'([\w-]+)'/g)].map(([, id]) =>
+        id === "root" ? "my-root" : id,
+      );
       return all.filter(
         (file) =>
-          file.name.toLowerCase() === name &&
+          file.mimeType === FOLDER &&
+          file.parents.some((parent) => ids.includes(parent)),
+      );
+    }
+    // Drive matches an exact name whatever the case of its ASCII letters.
+    const names = [...q.matchAll(/name = '((?:[^'\\]|\\.)*)'/g)].map(
+      ([, name = ""]) => name.replace(/\\(.)/g, "$1").toLowerCase(),
+    );
+    if (names.length > 0 && !q.startsWith("name = '.obsidian'")) {
+      return all.filter(
+        (file) =>
+          names.includes(file.name.toLowerCase()) &&
           !file.mimeType.startsWith("application/vnd.google-apps."),
       );
     }

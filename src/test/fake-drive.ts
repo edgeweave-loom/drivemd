@@ -11,6 +11,7 @@ export function fakeDrive(): FakeDrive {
     getMetadata: vi.fn<Drive["getMetadata"]>(unanswered),
     getContent: vi.fn<Drive["getContent"]>(unanswered),
     listChildren: vi.fn<Drive["listChildren"]>(unanswered),
+    listFolders: vi.fn<Drive["listFolders"]>(unanswered),
     listSharedDrives: vi.fn<Drive["listSharedDrives"]>(unanswered),
     listSharedWithMe: vi.fn<Drive["listSharedWithMe"]>(unanswered),
     listRecent: vi.fn<Drive["listRecent"]>(unanswered),
