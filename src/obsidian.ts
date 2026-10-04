@@ -458,8 +458,9 @@ function embedNode(inner: string): PhrasingContent | undefined {
   };
 }
 
-// Letters, digits, `_`, `-` and `/`, as Obsidian allows them in a tag.
-const TAG = /#([\p{L}\p{M}\p{N}_/-]+)/gu;
+// Letters, digits, `_`, `-` and `/`, as Obsidian allows them in a tag, after
+// a space or at the start of the text.
+const TAG = /(?<!\S)#([\p{L}\p{M}\p{N}_/-]+)/gu;
 
 /**
  * Shows Obsidian's tags, `#tag` and `#parent/child`, as labels. A tag starts
@@ -522,10 +523,15 @@ const BLOCK_NAME = /^[A-Za-z0-9-]+$/;
  */
 export function remarkBlockIds() {
   return (tree: Root) => {
-    visit(tree, (node) => {
-      if (holdsBlocks(node)) node.children = named(node, node.children);
-    });
+    nameBlocks(tree);
   };
+}
+
+/** Names the blocks under a node, a list's items too, but not text. */
+function nameBlocks(node: Nodes): void {
+  if (!("children" in node) || holdsText(node)) return;
+  if (holdsBlocks(node)) node.children = named(node, node.children);
+  for (const child of node.children) nameBlocks(child);
 }
 
 function named<Block extends RootContent>(
