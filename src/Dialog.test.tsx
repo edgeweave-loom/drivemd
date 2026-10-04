@@ -44,6 +44,22 @@ describe("Dialog", () => {
     expect(outer).not.toHaveBeenCalled();
   });
 
+  it("opens again when the browser closes it on Escape, if it cannot be closed", () => {
+    render(
+      <Dialog title="Welcome back">
+        <p>Continue</p>
+      </Dialog>,
+    );
+
+    const dialog = screen.getByRole<HTMLDialogElement>("dialog", {
+      name: "Welcome back",
+    });
+    // Without a tap since the last refusal, browsers close it anyway.
+    fireEvent(dialog, new Event("cancel", { cancelable: false }));
+    dialog.close();
+    expect(dialog.open).toBe(true);
+  });
+
   it("opens once, however often React sets it up", () => {
     const showModal = vi.spyOn(HTMLDialogElement.prototype, "showModal");
     render(

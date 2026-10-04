@@ -34,7 +34,11 @@ export function Dialog({
         }
       }}
       onClose={(event) => {
-        if (event.target === event.currentTarget) onClose?.();
+        if (event.target !== event.currentTarget) return;
+        if (onClose) onClose();
+        // Browsers let a page refuse Escape only once without a tap in
+        // between, then close the dialog anyway.
+        else event.currentTarget.showModal();
       }}
     >
       <h2 id={titleId}>{title}</h2>
