@@ -90,3 +90,14 @@ export function metadataOf(...items: FileMetadata[]) {
       : Promise.reject(new DriveError(404, `File not found: ${ref.id}.`));
   };
 }
+
+/** Lists, as Drive's listFolders would, the folders among made-up items. */
+export function foldersAmong(items: DriveItem[]) {
+  return (folders: FileRef[]): Promise<DriveItem[]> =>
+    Promise.resolve(
+      items.filter(
+        ({ mimeType, parents }) =>
+          mimeType === FOLDER && folders.some(({ id }) => parents.includes(id)),
+      ),
+    );
+}
