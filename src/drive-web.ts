@@ -10,11 +10,16 @@ export function inDrive(file: FileRef): string {
   return url.href;
 }
 
-// The addresses Google gives an item, `/u/<n>` naming the account signed in.
-const DRIVE_FILE = /^\/file(?:\/u\/\d+)?\/d\/([^/]+)/;
-const DRIVE_FOLDER = /^\/drive(?:\/u\/\d+)?\/folders\/([^/]+)\/?$/;
-const GOOGLE_DOCUMENT =
-  /^\/(?:document|spreadsheets|presentation)(?:\/u\/\d+)?\/d\/([^/]+)/;
+// The addresses Google gives an item, after the `/a/<domain>` of older
+// Workspace links, where `/u/<n>` picks one of several accounts signed in.
+const GOOGLE = new Set(["drive.google.com", "docs.google.com"]);
+const WORKSPACE = /^\/a\/[^/]+(?=\/)/;
+const FOLDER = /^\/drive(?:\/u\/\d+)?\/folders\/([^/]+)\/?$/;
+// A document published to the web, `/d/e/<code>`, names no item.
+const FILE =
+  /^\/(?:file|document|spreadsheets|presentation)(?:\/u\/\d+)?\/d\/(?!e\/)([^/]+)/;
+// Older links name the item in their query, a file or a folder alike.
+const BY_QUERY = /^(?:\/u\/\d+)?\/(?:open|uc)$/;
 
 /**
  * The page of the app a pasted address leads to, if any: a file or a folder
@@ -28,21 +33,14 @@ export function linkedPage(text: string): string | undefined {
     const route = routeOf(url);
     return route.name === "not-found" ? undefined : hrefOf(route) + url.hash;
   }
-  if (url.protocol !== "https:") return;
-  const { hostname, pathname, searchParams } = url;
-  let id: string | null | undefined;
-  if (hostname === "drive.google.com") {
-    const [, folderId] = DRIVE_FOLDER.exec(pathname) ?? [];
-    const folder = fileRef(folderId, searchParams);
-    if (folder) return hrefOf({ name: "folder", folder });
-    // Drive's older links name the item in the query.
-    id =
-      pathname === "/open" || pathname === "/uc"
-        ? searchParams.get("id")
-        : DRIVE_FILE.exec(pathname)?.[1];
-  } else if (hostname === "docs.google.com") {
-    id = GOOGLE_DOCUMENT.exec(pathname)?.[1];
-  }
+  if (url.protocol !== "https:" || !GOOGLE.has(url.hostname)) return;
+  const { searchParams } = url;
+  const path = url.pathname.replace(WORKSPACE, "");
+  const folder = fileRef(FOLDER.exec(path)?.[1], searchParams);
+  if (folder) return hrefOf({ name: "folder", folder });
+  const id = BY_QUERY.test(path)
+    ? searchParams.get("id")
+    : FILE.exec(path)?.[1];
   const file = fileRef(id, searchParams);
   return file && hrefOf({ name: "file", file });
 }

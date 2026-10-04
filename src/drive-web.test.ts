@@ -32,6 +32,25 @@ describe("the page a pasted link leads to", () => {
     [`https://docs.google.com/document/d/${ID}/edit`, `/edit?id=${ID}`],
     [`https://docs.google.com/spreadsheets/u/0/d/${ID}/edit`, `/edit?id=${ID}`],
     [`  https://drive.google.com/file/d/${ID}/view\n`, `/edit?id=${ID}`],
+    [
+      `https://drive.google.com/u/0/uc?id=${ID}&export=download`,
+      `/edit?id=${ID}`,
+    ],
+    [`https://drive.google.com/u/1/open?id=${ID}`, `/edit?id=${ID}`],
+    [`https://docs.google.com/open?id=${ID}`, `/edit?id=${ID}`],
+    [`https://docs.google.com/file/d/${ID}/edit`, `/edit?id=${ID}`],
+    [
+      `https://drive.google.com/a/example.com/file/d/${ID}/view`,
+      `/edit?id=${ID}`,
+    ],
+    [
+      `https://docs.google.com/a/example.com/document/d/${ID}/edit`,
+      `/edit?id=${ID}`,
+    ],
+    [
+      `https://drive.google.com/a/example.com/drive/folders/${ID}`,
+      `/folder/${ID}`,
+    ],
   ])("opens %s at %s", (link, page) => {
     expect(linkedPage(link)).toBe(page);
   });
@@ -57,7 +76,9 @@ describe("the page a pasted link leads to", () => {
     "https://drive.google.com/file/d/a.b/view",
     `https://drive.google.com/file/d/${ID}/view?resourcekey=a,b`,
     `https://drive.google.com/drive/folders/${ID}/more`,
-    `https://docs.google.com/file/d/${ID}/view`,
+    "https://docs.google.com/document/d/e/2PACX-1vTmAdEuP/pub",
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vTmAdEuP/pubhtml",
+    `https://drive.google.com/a/file/d/${ID}/view`,
     `${window.location.origin}/nowhere`,
   ])("leaves %s to search", (text) => {
     expect(linkedPage(text)).toBeUndefined();

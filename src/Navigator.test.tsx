@@ -153,6 +153,24 @@ describe("Navigator", () => {
     expect(search).toHaveValue("");
   });
 
+  it("searches again when the address of the search shown is pasted", async () => {
+    const session = open("/search?q=plan");
+    session.drive.search.mockResolvedValue({ items: [], incomplete: false });
+    await waitFor(() => {
+      expect(session.drive.search).toHaveBeenCalledOnce();
+    });
+
+    const search = screen.getByRole("searchbox");
+    fireEvent.change(search, {
+      target: { value: `${window.location.origin}/search?q=plan` },
+    });
+    fireEvent.submit(search);
+    expect(search).toHaveValue("plan");
+    await waitFor(() => {
+      expect(session.drive.search).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("opens a pasted link only once the page with unsaved changes lets it", () => {
     const session = open("/shortcuts");
     guardLeaving(() => false);
