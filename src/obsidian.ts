@@ -1,0 +1,311 @@
+import type {
+  Nodes,
+  Parents,
+  PhrasingContent,
+  Root,
+  RootContent,
+  Text,
+} from "mdast";
+import {
+  findAndReplace,
+  type RegExpMatchObject,
+} from "mdast-util-find-and-replace";
+import { visit } from "unist-util-visit";
+
+/** Where a mark such as `==` starts, in a text among some content. */
+interface Place {
+  node: number;
+  offset: number;
+}
+
+/** The places where the pattern matches in the content's own text. */
+function marks(content: PhrasingContent[], pattern: RegExp): Place[] {
+  return content.flatMap((node, index) =>
+    node.type === "text"
+      ? [...node.value.matchAll(pattern)].map((match) => ({
+          node: index,
+          offset: match.index,
+        }))
+      : [],
+  );
+}
+
+/** Just after a mark of the given length. */
+function after({ node, offset }: Place, length: number): Place {
+  return { node, offset: offset + length };
+}
+
+/** The content from one place up to another, or to its end. */
+function range(
+  content: PhrasingContent[],
+  from: Place,
+  to: Place = { node: content.length, offset: 0 },
+): PhrasingContent[] {
+  const parts: PhrasingContent[] = [];
+  for (let index = from.node; index < content.length; index += 1) {
+    const node = content[index];
+    if (!node || index > to.node) break;
+    if (node.type !== "text") {
+      // A place in another node stands just before it.
+      if (index < to.node) parts.push(node);
+      continue;
+    }
+    const start = index === from.node ? from.offset : 0;
+    const end = index === to.node ? to.offset : undefined;
+    const value = node.value.slice(start, end);
+    if (value !== "") parts.push(text(value));
+  }
+  return parts;
+}
+
+function text(value: string): Text {
+  return { type: "text", value };
+}
+
+/** Whether the content shows anything but spaces. */
+function written(content: PhrasingContent[]): boolean {
+  return content.some((node) => node.type !== "text" || /\S/.test(node.value));
+}
+
+/** The nodes whose children are Markdown text: paragraphs, headings... */
+function holdsText(
+  node: Nodes,
+): node is Extract<Parents, { children: PhrasingContent[] }> {
+  return [
+    "paragraph",
+    "heading",
+    "tableCell",
+    "emphasis",
+    "strong",
+    "delete",
+    "link",
+    "linkReference",
+  ].includes(node.type);
+}
+
+/** The nodes whose children are blocks: quotes, list items... */
+function holdsBlocks(
+  node: Nodes,
+): node is Extract<Parents, { children: RootContent[] }> {
+  return ["root", "blockquote", "listItem", "footnoteDefinition"].includes(
+    node.type,
+  );
+}
+
+const COMMENT = /%%/g;
+
+/**
+ * Hides Obsidian's comments, `%%text%%`: within a paragraph, or from a `%%`
+ * to the next one across blocks, or to the end of the quote, list item or
+ * note when none closes it. Code shows them as written.
+ */
+export function remarkComments() {
+  return (tree: Root) => {
+    visit(tree, (node) => {
+      if (node.type === "heading" || node.type === "tableCell") {
+        [node.children] = uncommented(node.children);
+      } else if (holdsBlocks(node)) {
+        node.children = uncommentedBlocks(node.children);
+      }
+    });
+  };
+}
+
+/** The blocks without their comments, which may span several of them. */
+function uncommentedBlocks<Block extends RootContent>(
+  blocks: Block[],
+): Block[] {
+  let open = false;
+  return blocks.flatMap((block) => {
+    if (block.type !== "paragraph") return open ? [] : [block];
+    let content = block.children;
+    if (open) {
+      const [close] = marks(content, COMMENT);
+      if (!close) return [];
+      content = range(content, after(close, 2));
+    }
+    [content, open] = uncommented(content);
+    return written(content) ? [{ ...block, children: content }] : [];
+  });
+}
+
+/** The content without its comments, and whether the last one is open. */
+function uncommented(content: PhrasingContent[]): [PhrasingContent[], boolean] {
+  const found = marks(content, COMMENT);
+  const parts: PhrasingContent[] = [];
+  let from: Place = { node: 0, offset: 0 };
+  for (let index = 0; index + 1 < found.length; index += 2) {
+    const [open, close] = [found[index], found[index + 1]];
+    if (!open || !close) break;
+    parts.push(...range(content, from, open));
+    from = after(close, 2);
+  }
+  const left = found.length % 2 === 1 ? found.at(-1) : undefined;
+  parts.push(...range(content, from, left));
+  return [parts, left !== undefined];
+}
+
+// Two = only: a longer run is no mark.
+const HIGHLIGHT = /(?<!=)==(?!=)/g;
+
+/**
+ * Shows Obsidian's highlights, `==text==`, marked. As with emphasis, the
+ * opening `==` comes before text and the closing one after it.
+ */
+export function remarkHighlights() {
+  return (tree: Root) => {
+    highlight(tree);
+  };
+}
+
+function highlight(node: Nodes): void {
+  if (!("children" in node)) return;
+  for (const child of node.children) highlight(child);
+  if (holdsText(node)) node.children = highlighted(node.children);
+}
+
+function highlighted(content: PhrasingContent[]): PhrasingContent[] {
+  const parts: PhrasingContent[] = [];
+  let from: Place = { node: 0, offset: 0 };
+  let open: Place | undefined;
+  for (const mark of marks(content, HIGHLIGHT)) {
+    if (!open) {
+      if (/\S/.test(next(content, after(mark, 2)))) open = mark;
+    } else if (/\S/.test(previous(content, mark))) {
+      parts.push(...range(content, from, open), {
+        type: "emphasis",
+        children: range(content, after(open, 2), mark),
+        data: { hName: "mark" },
+      });
+      from = after(mark, 2);
+      open = undefined;
+    }
+  }
+  parts.push(...range(content, from));
+  return parts;
+}
+
+/** The character after a place, or a letter for another node there. */
+function next(content: PhrasingContent[], { node, offset }: Place): string {
+  const here = content[node];
+  const character = here?.type === "text" ? here.value.charAt(offset) : "";
+  if (character !== "") return character;
+  return shownAt(content[node + 1], (value) => value.charAt(0));
+}
+
+/** The character before a place, or a letter for another node there. */
+function previous(content: PhrasingContent[], { node, offset }: Place): string {
+  const here = content[node];
+  if (here?.type === "text" && offset > 0) return here.value.charAt(offset - 1);
+  return shownAt(content[node - 1], (value) => value.slice(-1));
+}
+
+/** A neighbor's character next to a place: none at a line break. */
+function shownAt(
+  node: PhrasingContent | undefined,
+  character: (value: string) => string,
+): string {
+  if (!node || node.type === "break") return "";
+  return node.type === "text" ? character(node.value) : "x";
+}
+
+// Letters, digits, `_`, `-` and `/`, as Obsidian allows them in a tag.
+const TAG = /#([\p{L}\p{M}\p{N}_/-]+)/gu;
+
+/**
+ * Shows Obsidian's tags, `#tag` and `#parent/child`, as labels. A tag starts
+ * a line or follows a space, and holds more than digits.
+ */
+export function remarkTags() {
+  return (tree: Root) => {
+    findAndReplace(
+      tree,
+      [
+        TAG,
+        (
+          whole: string,
+          name: string,
+          { index, input, stack }: RegExpMatchObject,
+        ) => {
+          const before =
+            index > 0
+              ? input.charAt(index - 1)
+              : shownAt(siblingBefore(stack), (value) => value.slice(-1));
+          if (/\S/.test(before) || /^\p{N}+$/u.test(name)) return false;
+          return {
+            type: "text",
+            value: whole,
+            data: { hName: "span", hProperties: { className: ["tag"] } },
+          };
+        },
+      ],
+      // A link shows its text, and its address is no place for a tag.
+      { ignore: ["link", "linkReference"] },
+    );
+  };
+}
+
+/** The node before the text a match is in, if any. */
+function siblingBefore(
+  stack: RegExpMatchObject["stack"],
+): PhrasingContent | undefined {
+  const [parent, node] = stack.slice(-2);
+  if (!parent || !node || !("children" in parent)) return;
+  const siblings: Nodes[] = parent.children;
+  const sibling = siblings[siblings.indexOf(node) - 1];
+  return sibling && isPhrasing(sibling) ? sibling : undefined;
+}
+
+function isPhrasing(node: Nodes): node is PhrasingContent {
+  return node.type === "text" || node.type === "break" || !holdsBlocks(node);
+}
+
+// `^id` ends a block: letters, digits and dashes, after a space.
+const BLOCK_ID = /(?:^|\s+)\^([A-Za-z0-9-]+)$/;
+
+/**
+ * Hides Obsidian's block IDs, `^id` at the end of a paragraph or on a line of
+ * its own after a block, and names that block with them, or the list item
+ * whose text they end.
+ */
+export function remarkBlockIds() {
+  return (tree: Root) => {
+    visit(tree, (node) => {
+      if (holdsBlocks(node)) node.children = named(node, node.children);
+    });
+  };
+}
+
+function named<Block extends RootContent>(
+  container: Nodes,
+  blocks: Block[],
+): Block[] {
+  return blocks.flatMap((block, index) => {
+    const last = block.type === "paragraph" ? block.children.at(-1) : undefined;
+    const found = last?.type === "text" ? BLOCK_ID.exec(last.value) : null;
+    if (block.type !== "paragraph" || last?.type !== "text" || !found) {
+      return [block];
+    }
+    const id = `^${found[1] ?? ""}`;
+    const value = last.value.slice(0, found.index);
+    if (block.children.length > 1 || value !== "") {
+      last.value = value;
+      // The first paragraph of a list item is the item's own text.
+      const item = container.type === "listItem" && index === 0;
+      nameBlock(item ? container : block, id);
+      return [block];
+    }
+    // On a line of its own, the ID names the block before.
+    const before = blocks[index - 1];
+    if (!before) return [block];
+    nameBlock(before, id);
+    return [];
+  });
+}
+
+function nameBlock(block: Nodes, id: string): void {
+  block.data = {
+    ...block.data,
+    hProperties: { ...block.data?.hProperties, id },
+  };
+}

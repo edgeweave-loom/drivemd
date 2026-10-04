@@ -37,6 +37,12 @@ import {
   type FileRef,
 } from "./drive.ts";
 import { Link } from "./Link.tsx";
+import {
+  remarkBlockIds,
+  remarkComments,
+  remarkHighlights,
+  remarkTags,
+} from "./obsidian.ts";
 import { remarkProperties } from "./properties.ts";
 import {
   imageQuery,
@@ -66,6 +72,7 @@ const attributes = defaultSchema.attributes ?? {};
 // GitHub's rules, and what Obsidian's syntax renders to, which they drop.
 const VAULT_SCHEMA: Schema = {
   ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames ?? []), "mark"],
   attributes: {
     ...attributes,
     details: [
@@ -77,13 +84,22 @@ const VAULT_SCHEMA: Schema = {
       ["className", "callout", "callout-title", "callout-content"],
       ["dataCallout", ...CALLOUT_TYPES],
     ],
+    span: [["className", "tag"]],
     summary: [...(attributes.summary ?? []), ["className", "callout-title"]],
   },
 };
 
 const GITHUB = { remark: REMARK, rehype: rehype() };
 const OBSIDIAN = {
-  remark: [...REMARK, remarkCallouts],
+  // Comments go first, since what they hide is no other syntax.
+  remark: [
+    ...REMARK,
+    remarkComments,
+    remarkCallouts,
+    remarkHighlights,
+    remarkTags,
+    remarkBlockIds,
+  ],
   rehype: rehype(VAULT_SCHEMA),
 };
 // Obsidian shows a single line break as one, where Markdown joins the lines.
