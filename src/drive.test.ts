@@ -632,6 +632,57 @@ describe("getContent", () => {
   });
 });
 
+describe("listFolders", () => {
+  it("lists the folders in several folders in one call, outside the trash", async () => {
+    respond(Response.json({ files: [{ ...FILE, mimeType: FOLDER }] }));
+
+    await expect(
+      createDrive(fakeAuth()).listFolders([
+        { id: "folder-1", resourceKey: "key-1" },
+        { id: "folder-2" },
+      ]),
+    ).resolves.toMatchObject([{ id: "file-1" }]);
+    const { url, headers } = sent();
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      q: `('folder-1' in parents or 'folder-2' in parents) and mimeType = '${FOLDER}' and trashed = false`,
+      fields: `nextPageToken,files(${ITEM_FIELDS})`,
+      pageSize: "1000",
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
+    expect(headers.get("X-Goog-Drive-Resource-Keys")).toBe("folder-1/key-1");
+  });
+
+  it("asks for 50 folders at a time at most", async () => {
+    const folders = Array.from({ length: 120 }, (_, index) => ({
+      id: `folder-${String(index)}`,
+    }));
+    respond(
+      Response.json({ files: [] }),
+      Response.json({ files: [] }),
+      Response.json({ files: [] }),
+    );
+
+    await createDrive(fakeAuth()).listFolders(folders);
+    const asked = [0, 1, 2].map(
+      (call) =>
+        sent(call)
+          .url.searchParams.get("q")
+          ?.match(/in parents/g)?.length,
+    );
+    expect(asked).toEqual([50, 50, 20]);
+  });
+
+  it("refuses an ID not shaped like Drive's, asking nothing", async () => {
+    respond();
+
+    await expect(
+      createDrive(fakeAuth()).listFolders([{ id: "x' or '1" }]),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
 describe("listChildren", () => {
   function listChildren(folder: FileRef = { id: "folder-1" }) {
     return createDrive(fakeAuth()).listChildren(folder);
@@ -901,6 +952,29 @@ describe("findByName", () => {
       includeItemsFromAllDrives: "true",
     });
     expect(sent(1).url.searchParams.get("pageToken")).toBe("page-2");
+  });
+
+  it("fails when Drive sends a page twice, rather than asking forever", async () => {
+    respond(
+      Response.json({ files: [], nextPageToken: "again" }),
+      Response.json({ files: [], nextPageToken: "again" }),
+    );
+
+    await expect(
+      createDrive(fakeAuth()).findByName("notes.md"),
+    ).rejects.toMatchObject({ name: "DriveError", status: 502 });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks for a name in other cases where Drive would miss them", async () => {
+    respond(Response.json({ files: [] }));
+
+    await createDrive(fakeAuth()).findByName("été à paris.md");
+    expect(sent().url.searchParams.get("q")).toBe(
+      "(name = 'été à paris.md' or name = 'ÉTÉ À PARIS.MD' " +
+        "or name = 'Été à paris.md' or name = 'Été À Paris.md') " +
+        `and trashed = false and ${WITH_CONTENT}`,
+    );
   });
 
   it("says when any page left some drives out", async () => {

@@ -248,8 +248,36 @@ export function resolveQuery(
 /** The files of a name, which Drive matches whatever its case. */
 function nameQuery(drive: Drive, name: string) {
   return queryOptions({
-    queryKey: key("name", name.toLowerCase()),
+    queryKey: key("name", name),
     queryFn: () => drive.findByName(name),
+  });
+}
+
+/**
+ * The folders of a vault, but those whose name starts with a dot, as Obsidian
+ * leaves them out, and each one's path from the vault's: read a level at a
+ * time, a call for 50 folders at most, rather than a call for each.
+ */
+export function vaultFoldersQuery(drive: Drive, vault: FileRef) {
+  return queryOptions({
+    queryKey: key("vault-folders", vault.id, vault.resourceKey),
+    queryFn: async () => {
+      const paths = new Map<string, string[]>([[vault.id, []]]);
+      let level: FileRef[] = [vault];
+      while (level.length > 0) {
+        const found = await drive.listFolders(level);
+        level = [];
+        for (const { id, resourceKey, name, parents } of found) {
+          const parent = parents.find((above) => paths.has(above));
+          const path = parent === undefined ? undefined : paths.get(parent);
+          if (!path || paths.has(id) || name.startsWith(".")) continue;
+          paths.set(id, [...path, name]);
+          level.push({ id, resourceKey });
+        }
+      }
+      return paths;
+    },
+    staleTime: VAULTS_STALE_TIME,
   });
 }
 
@@ -279,14 +307,11 @@ export function vaultLinkQuery(
             ...folderReader(drive, client),
             named: (name) =>
               client.query({ ...nameQuery(drive, name), retry: false }),
-            folders: async (item) => {
-              const { chain } = await client.query({
-                ...climbQuery(drive, client, item),
+            folders: () =>
+              client.query({
+                ...vaultFoldersQuery(drive, vault),
                 retry: false,
-              });
-              // The chain ends with the item itself.
-              return chain.slice(0, -1);
-            },
+              }),
           }),
         signal,
       ),
@@ -351,6 +376,7 @@ export function refreshAfterChange(
     "resolve",
     "name",
     "vault-link",
+    "vault-folders",
   ]) {
     void client.invalidateQueries({ queryKey: key(call) });
   }

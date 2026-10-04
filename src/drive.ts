@@ -31,6 +31,9 @@ const FILE_FIELDS = `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),
 
 const UNREACHABLE = "Google Drive could not be reached";
 
+// How many folders a listing of their folders names in one call.
+const FOLDERS_PER_CALL = 50;
+
 /** The alias of My Drive's top folder in Drive's API. */
 export const MY_DRIVE = "root";
 
@@ -151,6 +154,8 @@ export interface Drive {
   ) => Promise<Uint8Array<ArrayBuffer>>;
   /** Everything in the folder that is not in the trash, from every page. */
   listChildren: (folder: FileRef) => Promise<DriveItem[]>;
+  /** The folders in any of these folders, out of the trash, in few calls. */
+  listFolders: (folders: FileRef[]) => Promise<DriveItem[]>;
   /** The shared drives the user is a member of. */
   listSharedDrives: () => Promise<SharedDrive[]>;
   /** What is shared with the user, but Google's own documents. */
@@ -159,7 +164,10 @@ export interface Drive {
   listRecent: () => Promise<DriveItem[]>;
   /** Markdown files whose name has a word starting with each word of `text`. */
   search: (text: string) => Promise<SearchResult>;
-  /** The files with content named exactly `name`, in every drive. */
+  /**
+   * The files with content named `name`, whatever its case in ASCII letters,
+   * and as written, in small letters, capitals or capital initials in others.
+   */
   findByName: (name: string) => Promise<SearchResult>;
   /** The folders that hold an Obsidian vault, in every drive. */
   findVaults: () => Promise<DriveItem[]>;
@@ -260,10 +268,10 @@ export function createDrive(auth: DriveAuth): Drive {
     return attempt();
   }
 
-  /** Follows nextPageToken until Drive has sent every page of `key`. */
   /**
    * Follows nextPageToken until Drive has sent every page of `key`, and says
-   * whether any page left some drives out of a search.
+   * whether any page left some drives out of a search. A page Drive sends
+   * twice fails the list, which would never end.
    */
   async function list<T>(
     path: string,
@@ -273,9 +281,16 @@ export function createDrive(auth: DriveAuth): Drive {
     read: (entry: Record<string, unknown>) => T | undefined,
   ): Promise<{ items: T[]; incomplete: boolean }> {
     const items: T[] = [];
+    const seen = new Set<string>();
     let incomplete = false;
     let pageToken: string | undefined;
     do {
+      if (pageToken !== undefined) {
+        if (seen.has(pageToken)) {
+          throw new DriveError(502, "Google Drive sent the same page twice");
+        }
+        seen.add(pageToken);
+      }
       const query = new URLSearchParams(params);
       if (pageToken !== undefined) query.set("pageToken", pageToken);
       const page = await parse(
@@ -347,6 +362,17 @@ export function createDrive(auth: DriveAuth): Drive {
       const q = `'${checked(folder.id)}' in parents and trashed = false`;
       return listFiles({ q }, [folder]);
     },
+    async listFolders(folders) {
+      const found: DriveItem[] = [];
+      // A query's length is bounded, as is the URL that carries it.
+      for (let start = 0; start < folders.length; start += FOLDERS_PER_CALL) {
+        const some = folders.slice(start, start + FOLDERS_PER_CALL);
+        const parents = some.map(({ id }) => `'${checked(id)}' in parents`);
+        const q = `(${parents.join(" or ")}) and mimeType = '${FOLDER}' and trashed = false`;
+        for (const folder of await listFiles({ q }, some)) found.push(folder);
+      }
+      return found;
+    },
     async listSharedDrives() {
       // As in Drive, the drives the user hid stay out of the list.
       const params = {
@@ -384,8 +410,13 @@ export function createDrive(auth: DriveAuth): Drive {
     },
     async findByName(name) {
       if (name === "") return { items: [], incomplete: false };
+      const names = caseVariants(name).map(
+        (variant) => `name = ${quoted(variant)}`,
+      );
+      const either =
+        names.length > 1 ? `(${names.join(" or ")})` : names.join("");
       return searchFiles({
-        q: `name = ${quoted(name)} and trashed = false and ${WITH_CONTENT}`,
+        q: `${either} and trashed = false and ${WITH_CONTENT}`,
         corpora: "allDrives",
         fields: `nextPageToken,incompleteSearch,files(${ITEM_FIELDS})`,
       });
@@ -507,6 +538,35 @@ export function outOfReach(error: unknown): undefined {
  */
 function notFound(error: unknown): boolean {
   return error instanceof DriveError && error.status === 404;
+}
+
+/**
+ * A name as written, in small letters, in capitals, with a capital first and
+ * with each word's: Drive matches a name whatever the case of its ASCII
+ * letters only, so `été` would not find `Été`. Variants that differ only in
+ * ASCII letters are one.
+ */
+function caseVariants(name: string): string[] {
+  const words = name
+    .toLowerCase()
+    .replace(
+      /(^|\s)(\S)/gu,
+      (_, space: string, first: string) => space + first.toUpperCase(),
+    );
+  const variants = [
+    name,
+    name.toLowerCase(),
+    name.toUpperCase(),
+    name.charAt(0).toUpperCase() + name.slice(1).toLowerCase(),
+    words,
+  ];
+  const folded = (variant: string) =>
+    variant.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+  return variants.filter(
+    (variant, index) =>
+      variants.findIndex((other) => folded(other) === folded(variant)) ===
+      index,
+  );
 }
 
 /** A string literal in a Drive query. */

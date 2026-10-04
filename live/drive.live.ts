@@ -131,6 +131,7 @@ function defineChecks(auth: DriveAuth): void {
     await drive.findByName(`${RUN}.md`);
     await drive.findVaults();
     await drive.findVaultConfigs();
+    await drive.listFolders([run]);
   });
 
   it("finds a file by its exact name, whatever its case", async () => {
@@ -143,6 +144,28 @@ function defineChecks(auth: DriveAuth): void {
     // Obsidian finds a note whatever the case of the link.
     const other = await drive.findByName(name.toUpperCase());
     expect(ids(other.items), "the file found in capitals").toContain(id);
+  });
+
+  it("finds a file by a name with accents, in small letters too", async () => {
+    // Drive matches the case of ASCII letters only: the client asks for the
+    // name with capital initials too.
+    const name = `${RUN} Été.md`;
+    const id = await make({ name, mimeType: "text/markdown" });
+
+    await eventually("the file by its accented name", async () =>
+      ids((await drive.findByName(name)).items).includes(id),
+    );
+    const lower = await drive.findByName(name.toLowerCase());
+    expect(ids(lower.items), "the file found in small letters").toContain(id);
+  });
+
+  it("lists the folders in several folders at once", async () => {
+    const one = await make({ name: `${RUN} one`, mimeType: FOLDER });
+    const two = await make({ name: `${RUN} two`, mimeType: FOLDER });
+    const inner = await make({ name: `${RUN} inner`, mimeType: FOLDER }, two);
+
+    const found = ids(await drive.listFolders([{ id: one }, { id: two }]));
+    expect(found, "the folder in the second folder").toEqual([inner]);
   });
 
   it.each(["text/markdown", "text/plain", "application/octet-stream"])(

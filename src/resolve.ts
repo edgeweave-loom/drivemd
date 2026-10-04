@@ -77,8 +77,12 @@ export async function resolve(
     const named = (await read.children(here.ref)).filter(({ name }) =>
       same(name, step),
     );
-    // A shortcut never hides the item whose name it takes.
-    const item = named.find(({ target }) => !target) ?? named[0];
+    // A shortcut never hides the item whose name it takes, and a name written
+    // in the same case comes first.
+    const item =
+      named.find(({ name, target }) => !target && name === step) ??
+      named.find(({ target }) => !target) ??
+      named[0];
     if (!item) return;
     const opens = item.target ?? item;
     here = {
