@@ -903,6 +903,18 @@ describe("findByName", () => {
     expect(sent(1).url.searchParams.get("pageToken")).toBe("page-2");
   });
 
+  it("fails when Drive sends a page twice, rather than asking forever", async () => {
+    respond(
+      Response.json({ files: [], nextPageToken: "again" }),
+      Response.json({ files: [], nextPageToken: "again" }),
+    );
+
+    await expect(
+      createDrive(fakeAuth()).findByName("notes.md"),
+    ).rejects.toMatchObject({ name: "DriveError", status: 502 });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("says when any page left some drives out", async () => {
     respond(
       Response.json({ files: [], incompleteSearch: true, nextPageToken: "2" }),

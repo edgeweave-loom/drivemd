@@ -33,6 +33,7 @@ describe("SearchPage", () => {
     await screen.findByRole("link", { name: "weekly plan.md" });
     expect(results()).toEqual(["weekly plan.md", "Plan B.md"]);
     expect(drive.search).toHaveBeenCalledWith("plan");
+    expect(screen.queryByText(/did not search every drive/)).toBeNull();
   });
 
   it.each([
