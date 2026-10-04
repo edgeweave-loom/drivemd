@@ -75,9 +75,11 @@ describe("Dialog", () => {
         </Dialog>
       </>,
     );
-    const [saving, rename, welcome] = ["Saving", "Rename", "Welcome back"].map(
-      (name) => screen.getByRole<HTMLDialogElement>("dialog", { name }),
-    );
+    const dialog = (name: string) =>
+      screen.getByRole<HTMLDialogElement>("dialog", { name });
+    const saving = dialog("Saving");
+    const rename = dialog("Rename");
+    const welcome = dialog("Welcome back");
     const showModal = vi.spyOn(HTMLDialogElement.prototype, "showModal");
 
     // As browsers do on Escape, once a page has refused it without a tap.
