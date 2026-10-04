@@ -73,6 +73,32 @@ describe("resolve", () => {
     };
   }
 
+  it("compares names as told, the same case first", async () => {
+    const read = {
+      children: vi.fn(() =>
+        Promise.resolve([
+          driveItem("Plan.md", { id: "upper" }),
+          driveItem("plan.md", { id: "lower" }),
+        ]),
+      ),
+      parent: vi.fn(() => Promise.resolve(undefined)),
+    };
+    const caseless = (name: string, step: string) =>
+      name.toLowerCase() === step.toLowerCase();
+
+    for (const [step, id] of [
+      ["plan.md", "lower"],
+      ["Plan.md", "upper"],
+      ["PLAN.md", "upper"],
+    ] as const) {
+      const found = await resolve({ id: "notes" }, [step], read, caseless);
+      expect(found?.ref.id).toBe(id);
+    }
+    await expect(
+      resolve({ id: "notes" }, ["PLAN.md"], read),
+    ).resolves.toBeUndefined();
+  });
+
   it("finds a file in the note's folder", async () => {
     await expect(
       resolve({ id: "notes" }, ["plan.md"], reader()),
