@@ -41,6 +41,7 @@ import {
   remarkBlockIds,
   remarkComments,
   remarkHighlights,
+  remarkInlineFootnotes,
   remarkTags,
 } from "./obsidian.ts";
 import { remarkProperties } from "./properties.ts";
@@ -100,6 +101,7 @@ const OBSIDIAN = {
     remarkEscapes,
     remarkComments,
     remarkCallouts,
+    remarkInlineFootnotes,
     remarkHighlights,
     remarkBlockIds,
     remarkTags,

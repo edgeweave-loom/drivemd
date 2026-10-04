@@ -1,4 +1,11 @@
-import type { Nodes, Parents, PhrasingContent, Root, RootContent } from "mdast";
+import type {
+  FootnoteDefinition,
+  Nodes,
+  Parents,
+  PhrasingContent,
+  Root,
+  RootContent,
+} from "mdast";
 import {
   findAndReplace,
   type RegExpMatchObject,
@@ -199,6 +206,98 @@ function shownAt(
 ): string {
   if (!node || node.type === "break") return "";
   return node.type === "text" ? character(node.value) : "x";
+}
+
+const INLINE_NOTE = /\^\[/g;
+
+/**
+ * Shows Obsidian's inline footnotes, `^[text]`, as footnotes, in their turn
+ * among the note's others. A link's text holds none, as a link holds no link.
+ */
+export function remarkInlineFootnotes() {
+  return (tree: Root) => {
+    const taken = new Set<string>();
+    visit(tree, "footnoteDefinition", ({ identifier }) => {
+      taken.add(identifier);
+    });
+    const definitions: FootnoteDefinition[] = [];
+    let count = 0;
+    const define = (content: PhrasingContent[]) => {
+      let identifier;
+      do {
+        count += 1;
+        identifier = `inline-${String(count)}`;
+      } while (taken.has(identifier));
+      definitions.push({
+        type: "footnoteDefinition",
+        identifier,
+        children: [{ type: "paragraph", children: content }],
+      });
+      return identifier;
+    };
+    footnote(tree, define);
+    tree.children.push(...definitions);
+  };
+}
+
+function footnote(
+  node: Nodes,
+  define: (content: PhrasingContent[]) => string,
+): void {
+  if (!("children" in node) || node.type === "link") return;
+  if (node.type === "linkReference") return;
+  for (const child of node.children) footnote(child, define);
+  if (holdsText(node)) node.children = withNotes(node.children, define);
+}
+
+function withNotes(
+  content: PhrasingContent[],
+  define: (content: PhrasingContent[]) => string,
+): PhrasingContent[] {
+  const parts: PhrasingContent[] = [];
+  let from: Place = { node: 0, offset: 0 };
+  for (const open of marks(content, INLINE_NOTE)) {
+    // A `^[` within a note is part of its text.
+    if (
+      open.node < from.node ||
+      (open.node === from.node && open.offset < from.offset)
+    ) {
+      continue;
+    }
+    const close = closing(content, after(open, 2));
+    if (!close) break;
+    const identifier = define(range(content, after(open, 2), close));
+    parts.push(...range(content, from, open), {
+      type: "footnoteReference",
+      identifier,
+      label: identifier,
+    });
+    from = after(close, 1);
+  }
+  parts.push(...range(content, from));
+  return parts;
+}
+
+/** The `]` that closes a bracket open before a place, among written ones. */
+function closing(content: PhrasingContent[], from: Place): Place | undefined {
+  let depth = 1;
+  for (let index = from.node; index < content.length; index += 1) {
+    const node = content[index];
+    if (node?.type !== "text") continue;
+    const start = index === from.node ? from.offset : 0;
+    for (let offset = start; offset < node.value.length; offset += 1) {
+      const character = node.value.charAt(offset);
+      if (
+        (character !== "[" && character !== "]") ||
+        !writtenAt(node, offset, 1)
+      ) {
+        continue;
+      }
+      depth += character === "[" ? 1 : -1;
+      if (depth === 0) return { node: index, offset };
+    }
+  }
+  return undefined;
 }
 
 // Letters, digits, `_`, `-` and `/`, as Obsidian allows them in a tag.
