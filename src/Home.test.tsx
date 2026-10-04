@@ -293,17 +293,18 @@ describe("Home", () => {
     },
   );
 
-  it("leaves a note kept before drafts held names as a link, as its 404 may come from a missing resource key", async () => {
-    await writeDraft(ACCOUNT, {
-      fileId: "shared",
-      text: "Changed",
-      keptAt: "2026-10-02T09:00:00.000Z",
-    } as Parameters<typeof writeDraft>[1]);
-    home();
+  it("leaves a note as a link when Drive fails for another reason", async () => {
+    await keep(PLAN);
+    const { drive } = home();
+    drive.getMetadata.mockRejectedValue(new DriveError(503, "Backend error"));
 
+    await waitFor(() => {
+      expect(drive.getMetadata).toHaveBeenCalled();
+    });
     expect(
-      await (await unsaved()).findByRole("link", { name: /^Note/ }),
-    ).toHaveAttribute("href", "/edit?id=shared");
+      await (await unsaved()).findByRole("link", { name: /^plan\.md/ }),
+    ).toHaveAttribute("href", "/edit?id=plan");
+    await new Promise((settle) => setTimeout(settle, 50));
     expect(
       section("Unsaved changes").queryByRole("button", { name: /^Discard/ }),
     ).toBeNull();

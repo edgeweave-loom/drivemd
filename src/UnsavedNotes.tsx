@@ -49,7 +49,7 @@ function UnsavedNote({ draft }: { draft: DraftEntry }) {
   // cache may hold one from before it was restored, or deleted.
   const reason = !details.isFetchedAfterMount
     ? undefined
-    : missing(draft, details.error)
+    : notFound(details.error)
       ? BROKEN.missing
       : details.isSuccess
         ? closed(details.data)
@@ -78,16 +78,6 @@ function closed(file: FileMetadata): string | undefined {
     return `Over ${MEGABYTES.format(MAX_CONTENT / 1e6)}`;
   }
   return undefined;
-}
-
-/**
- * Whether Drive answered that the note is not there. A draft kept before
- * drafts held names lacks the resource key a note shared by link needs, and
- * Drive answers the same without it: that note may still open from Recent
- * or its folder, which know the key.
- */
-function missing(draft: DraftEntry, error: Error | null): boolean {
-  return draft.name !== undefined && notFound(error);
 }
 
 /**
