@@ -376,14 +376,21 @@ const WIKI_LINK = /\[\[([^[\]\r\n]*)\]\]/g;
  */
 export function remarkWikiLinks() {
   return (tree: Root) => {
-    wikiLink(tree);
+    wikiLink(tree, { left: MAX_NOTE_EMBEDS });
   };
 }
 
-function wikiLink(node: Nodes): void {
+// The embeds of notes a note shows as notes; past them, they are links, so
+// that a note cannot make the page read and render a great many.
+const MAX_NOTE_EMBEDS = 10;
+
+function wikiLink(node: Nodes, embeds: { left: number }): void {
   if (!("children" in node) || node.type === "link") return;
   if (node.type === "linkReference") return;
-  for (const child of node.children) wikiLink(child);
+  for (const child of node.children) wikiLink(child, embeds);
+  if (holdsBlocks(node)) {
+    node.children = node.children.flatMap((block) => embedded(block, embeds));
+  }
   if (holdsText(node)) node.children = withWikiLinks(node.children);
 }
 
@@ -440,6 +447,58 @@ function wikiNode(inner: string): PhrasingContent | undefined {
     children: [{ type: "text", value: text || shown }],
     data: { hProperties: { dataWikilink: written } },
   };
+}
+
+/**
+ * A paragraph that holds only embeds of notes, as blocks that show those
+ * notes, which a paragraph cannot hold; any other block as it is.
+ */
+function embedded<Block extends RootContent>(
+  block: Block,
+  embeds: { left: number },
+): Block[] {
+  if (block.type !== "paragraph") return [block];
+  const notes = block.children.flatMap((node) => {
+    if (node.type === "text" && node.value.trim() === "") return [];
+    if (node.type === "break") return [];
+    const target =
+      node.type === "image" ? node.data?.hProperties?.dataEmbed : undefined;
+    return typeof target === "string" && isNote(target)
+      ? [target]
+      : [undefined];
+  });
+  if (
+    notes.length === 0 ||
+    notes.length > embeds.left ||
+    notes.some((target) => target === undefined)
+  ) {
+    return [block];
+  }
+  embeds.left -= notes.length;
+  return notes.map((target, index) => ({
+    ...block,
+    type: "blockquote",
+    children: [],
+    data: {
+      hName: "div",
+      hProperties: {
+        // A block ID that ended the paragraph names the first note shown.
+        ...(index === 0 && block.data?.hProperties),
+        className: ["embed"],
+        dataEmbed: target,
+      },
+    },
+  }));
+}
+
+// The files Obsidian embeds as what they are, rather than as notes.
+const NOT_NOTES =
+  /\.(png|jpe?g|gif|webp|avif|bmp|svg|mp3|wav|m4a|ogg|flac|3gp|mp4|webm|ogv|mov|mkv|pdf|canvas)$/i;
+
+/** Whether an embed's target is a note: any name but a picture's, a sound's... */
+function isNote(target: string): boolean {
+  const [path = ""] = target.split("#");
+  return !NOT_NOTES.test(path.trim());
 }
 
 // An embed's size: a width, or a width and a height.

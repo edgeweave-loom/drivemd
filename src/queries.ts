@@ -185,6 +185,28 @@ export function contentQuery(drive: Drive, file: FileMetadata) {
 }
 
 /**
+ * The bytes of a note an embed shows, as contentQuery reads them, sharing its
+ * cache, but a few at a time, as links and images; none while there is no
+ * note to read.
+ */
+export function noteQuery(drive: Drive, file: FileMetadata | undefined) {
+  return queryOptions({
+    queryKey: key(
+      "content",
+      file?.id,
+      file?.resourceKey,
+      file?.headRevisionId,
+      file?.md5Checksum,
+    ),
+    queryFn: file
+      ? ({ signal }) =>
+          lookups(() => drive.getContent(file, MAX_CONTENT), signal)
+      : skipToken,
+    staleTime: Infinity,
+  });
+}
+
+/**
  * An image's bytes, as for a note's content; none while there is no image to
  * read. Images leave the cache soon after their note, as they can be large.
  */

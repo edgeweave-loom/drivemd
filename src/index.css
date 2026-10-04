@@ -514,6 +514,18 @@ dialog.drawer {
   margin-bottom: 0;
 }
 
+/* A note an Obsidian embed shows, within the note that embeds it. */
+.markdown .embed {
+  margin: 0 0 1rem;
+  padding: 0.25rem 0 0.25rem 1rem;
+  border-left: 0.25em solid var(--border);
+}
+
+.markdown .embed-title {
+  margin-bottom: 0.5rem;
+  font-size: 0.875em;
+}
+
 /* Obsidian's highlights and tags. */
 .markdown mark {
   background: rgb(255 208 0 / 40%);

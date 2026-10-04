@@ -9,7 +9,9 @@ import {
   Component,
   createContext,
   useCallback,
+  memo,
   useContext,
+  useMemo,
   useState,
   type ComponentProps,
   type MouseEvent,
@@ -53,8 +55,10 @@ import {
 import { remarkProperties } from "./properties.ts";
 import {
   imageQuery,
+  MAX_CONTENT,
   MAX_IMAGE,
   metadataQuery,
+  noteQuery,
   resolveQuery,
   vaultLinkQuery,
 } from "./queries.ts";
@@ -62,6 +66,8 @@ import { hashOf, onTheWeb, relativePath, type Found } from "./resolve.ts";
 import { toggleTask } from "./tasks.ts";
 import { hrefOf } from "./router.ts";
 import { linkPartHash, partHash, showPart, targetOf } from "./parts.ts";
+import { partOf } from "./sections.ts";
+import { decode } from "./text.ts";
 import type { VaultLink } from "./vault-links.ts";
 import type { Vault } from "./vault-settings.ts";
 import { remarkEscapes } from "./written.ts";
@@ -92,8 +98,9 @@ const VAULT_SCHEMA: Schema = {
     ],
     div: [
       ...(defaultSchema.attributes?.div ?? []),
-      ["className", "callout", "callout-title", "callout-content"],
+      ["className", "callout", "callout-title", "callout-content", "embed"],
       ["dataCallout", ...CALLOUT_TYPES],
+      "dataEmbed",
     ],
     span: [["className", "tag"]],
     summary: [
@@ -126,23 +133,52 @@ const OBSIDIAN_BREAKS = {
   remark: [...OBSIDIAN.remark, remarkBreaks],
 };
 
-/** How a note renders: as Obsidian renders it in a vault, else as GitHub. */
-function pluginsFor(vault: Vault | undefined) {
+// A note an embed shows keeps no ids, which those of the note around it
+// already stand for.
+const EMBED_SCHEMA: Schema = {
+  ...VAULT_SCHEMA,
+  attributes: {
+    ...VAULT_SCHEMA.attributes,
+    "*": (VAULT_SCHEMA.attributes?.["*"] ?? []).filter(
+      (attribute) => attribute !== "id" && attribute !== "name",
+    ),
+  },
+};
+const EMBEDDED = { ...OBSIDIAN, rehype: rehype(EMBED_SCHEMA) };
+const EMBEDDED_BREAKS = { ...OBSIDIAN_BREAKS, rehype: rehype(EMBED_SCHEMA) };
+
+/**
+ * How a note renders: as Obsidian renders it in a vault, without ids when an
+ * embed shows it, else as GitHub.
+ */
+function pluginsFor(vault: Vault | undefined, embedded: boolean) {
   if (!vault) return GITHUB;
-  return vault.settings.strictLineBreaks ? OBSIDIAN : OBSIDIAN_BREAKS;
+  const breaks = !vault.settings.strictLineBreaks;
+  if (embedded) return breaks ? EMBEDDED_BREAKS : EMBEDDED;
+  return breaks ? OBSIDIAN_BREAKS : OBSIDIAN;
 }
 const COMPONENTS: Components = {
   a: Anchor,
+  div: Division,
   img: Image,
   li: ListItem,
   input: Checkbox,
 };
+
+// Embeds of notes in embeds of notes show this deep at most.
+const MAX_EMBEDS = 3;
 
 /** The folder the note sits in, where its relative links start. */
 const NoteFolder = createContext<FileRef | undefined>(undefined);
 
 /** The vault the note sits in, where its links lead as Obsidian's do. */
 const NoteVault = createContext<Vault | undefined>(undefined);
+
+/** The notes shown, the outermost first, down to the one an embed shows. */
+const Shown = createContext<string[]>([]);
+
+/** The note an embed shows, whose page its links to its own parts open. */
+const EmbeddedPage = createContext<FileRef | undefined>(undefined);
 
 /** The note's text, and what changes it when a task's checkbox is tapped. */
 const Tasks = createContext<
@@ -162,6 +198,7 @@ export function Rendered({
   text,
   folder,
   vault,
+  note,
   onEdit,
 }: {
   text: string;
@@ -169,28 +206,67 @@ export function Rendered({
   folder?: FileRef | undefined;
   /** The Obsidian vault the note sits in, if it does. */
   vault?: Vault | undefined;
+  /** The note, which its embeds of notes never show again. */
+  note?: FileRef | undefined;
   /** Takes the text with a task checked or unchecked, if the user may edit. */
   onEdit?: ((text: string) => void) | undefined;
 }) {
-  const plugins = pluginsFor(vault);
+  const outer = useContext(Shown);
+  // An embed's note shows within another: none of its ids may stand for
+  // one of that note's.
+  const embedded = outer.length > 0;
+  const plugins = pluginsFor(vault, embedded);
+  const noteId = note?.id;
+  const shown = useMemo(
+    () => (noteId === undefined ? outer : [...outer, noteId]),
+    [outer, noteId],
+  );
+  // The same folder and vault, as the page renders again, so that embeds
+  // need not render again with it.
+  const folderId = folder?.id;
+  const folderKey = folder?.resourceKey;
+  const inFolder = useMemo(
+    () =>
+      folderId === undefined
+        ? undefined
+        : { id: folderId, resourceKey: folderKey },
+    [folderId, folderKey],
+  );
+  const rootId = vault?.root.id;
+  const rootKey = vault?.root.resourceKey;
+  const strict = vault?.settings.strictLineBreaks;
+  const inVault = useMemo(
+    () =>
+      rootId === undefined || strict === undefined
+        ? undefined
+        : {
+            root: { id: rootId, resourceKey: rootKey },
+            settings: { strictLineBreaks: strict },
+          },
+    [rootId, rootKey, strict],
+  );
   return (
-    <NoteVault value={vault}>
-      <NoteFolder value={folder}>
-        <Tasks value={onEdit && { text, edit: onEdit }}>
-          <Fallible text={text}>
-            <div className="markdown">
-              <Markdown
-                remarkPlugins={plugins.remark}
-                rehypePlugins={plugins.rehype}
-                components={COMPONENTS}
-              >
-                {text}
-              </Markdown>
-            </div>
-          </Fallible>
-        </Tasks>
-      </NoteFolder>
-    </NoteVault>
+    <Shown value={shown}>
+      <EmbeddedPage value={embedded ? note : undefined}>
+        <NoteVault value={inVault}>
+          <NoteFolder value={inFolder}>
+            <Tasks value={onEdit && { text, edit: onEdit }}>
+              <Fallible text={text}>
+                <div className="markdown">
+                  <Markdown
+                    remarkPlugins={plugins.remark}
+                    rehypePlugins={plugins.rehype}
+                    components={COMPONENTS}
+                  >
+                    {text}
+                  </Markdown>
+                </div>
+              </Fallible>
+            </Tasks>
+          </NoteFolder>
+        </NoteVault>
+      </EmbeddedPage>
+    </Shown>
   );
 }
 
@@ -328,8 +404,17 @@ function Anchor({
   return <a {...attributes} id={id ?? name} />;
 }
 
-/** A link to a part of the note, which scrolls to it. */
+/**
+ * A link to a part of the note, which scrolls to it, or opens the page of the
+ * note an embed shows at that part.
+ */
 function PartLink({ href, ...attributes }: LinkAttributes & { href: string }) {
+  const page = useContext(EmbeddedPage);
+  if (page) {
+    return (
+      <Link {...attributes} to={hrefOf({ name: "file", file: page }) + href} />
+    );
+  }
   const scroll = (event: MouseEvent) => {
     // The address stays the page's own, with the path taken in history.
     event.preventDefault();
@@ -788,5 +873,149 @@ function BlobImage({
         setBroken(true);
       }}
     />
+  );
+}
+
+/** A block of the note: an embed of a note shows that note. */
+function Division({ node, ...attributes }: ComponentProps<"div"> & ExtraProps) {
+  const vault = useContext(NoteVault);
+  // What an Obsidian embed shows, as written: `Note#Heading`.
+  const embed = node?.properties.dataEmbed;
+  if (typeof embed !== "string" || !vault) return <div {...attributes} />;
+  return <NoteEmbed target={embed} id={attributes.id} />;
+}
+
+/**
+ * A note an embed shows, or the part of it the embed names, read as it comes
+ * near the screen. Its own embeds show this deep at most, and a note never
+ * shows within itself: past that, and for a note DriveMD cannot show, the
+ * embed is a link. It renders again only when what it shows changes, not as
+ * the note around it does.
+ */
+const NoteEmbed = memo(function NoteEmbed({
+  target,
+  id,
+}: {
+  target: string;
+  /** The block ID that names the embed, if any. */
+  id: string | undefined;
+}) {
+  const vault = useContext(NoteVault);
+  const folder = useContext(NoteFolder);
+  const { path, parts } = targetOf(target);
+  const name = path.split("/").at(-1) ?? path;
+  if (!vault || !folder) return <p>{name}</p>;
+  return (
+    <EmbeddedNote
+      from={{ vault: vault.root, folder }}
+      vault={vault}
+      path={path.split("/")}
+      parts={parts}
+      name={name}
+      id={id}
+    />
+  );
+});
+
+function EmbeddedNote({
+  from,
+  vault,
+  path,
+  parts,
+  name,
+  id,
+}: {
+  from: { vault: FileRef; folder: FileRef };
+  vault: Vault;
+  path: string[];
+  parts: string[];
+  name: string;
+  id: string | undefined;
+}) {
+  const { drive } = useDrive();
+  const client = useQueryClient();
+  const shown = useContext(Shown);
+  const [seen, near] = useSeen();
+  const part = parts.at(-1) ?? "";
+  const link = useQuery({
+    ...vaultLinkQuery(drive, client, from, path),
+    enabled: seen,
+  });
+  const found = link.data?.found;
+  const note =
+    found &&
+    !found.mimeType.startsWith(GOOGLE_TYPES) &&
+    isMarkdown(found.name) &&
+    !shown.includes(found.ref.id) &&
+    shown.length <= MAX_EMBEDS
+      ? found
+      : undefined;
+  const details = useQuery(metadataQuery(drive, note?.ref));
+  const file = details.data;
+  const readable =
+    file !== undefined &&
+    file.capabilities.canDownload &&
+    (file.size === undefined || file.size <= MAX_CONTENT);
+  const bytes = useQuery(noteQuery(drive, readable ? file : undefined));
+  const text = useMemo(
+    () => (bytes.data ? decode(bytes.data) : undefined),
+    [bytes.data],
+  );
+  const content = useMemo(
+    () => (text ? partOf(text.text, part) : undefined),
+    [text, part],
+  );
+  const parent = file?.parents[0];
+  const inFolder = useMemo(
+    () => (parent === undefined ? undefined : { id: parent }),
+    [parent],
+  );
+  if (!seen) {
+    return (
+      <div className="embed" id={id} ref={near}>
+        {name}
+      </div>
+    );
+  }
+  if (link.isError) {
+    return (
+      <p title="Google Drive could not say what this embed shows">{name}</p>
+    );
+  }
+  if (link.isPending) return <p className="hint">{name}</p>;
+  if (!found) {
+    return (
+      <p>
+        {link.data.incomplete ? (
+          <span title="Google Drive did not search every drive, so this embed may show a note it left out">
+            {name}
+          </span>
+        ) : (
+          <Unresolved>{name}</Unresolved>
+        )}
+      </p>
+    );
+  }
+  const title = (
+    <LinkTo found={found} hash={partHash(part)}>
+      {[name, ...parts].join(" > ")}
+    </LinkTo>
+  );
+  if (!note || (file && !readable) || text?.readOnly === "not-utf8") {
+    return <p>{title}</p>;
+  }
+  if (details.isError || bytes.isError) {
+    return <p title="Google Drive could not send this note">{title}</p>;
+  }
+  if (!file || !text) return <p className="hint">{title}</p>;
+  return (
+    <div className="embed" id={id}>
+      <p className="embed-title">{title}</p>
+      {content === undefined ? (
+        <p className="hint">This part is not in the note.</p>
+      ) : (
+        <Rendered text={content} folder={inFolder} vault={vault} note={file} />
+      )}
+    </div>
   );
 }
