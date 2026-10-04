@@ -15,6 +15,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
+import remarkBreaks from "remark-breaks";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import { useDrive } from "./drive-context.ts";
@@ -38,8 +39,11 @@ import {
 import { onTheWeb, relativePath } from "./resolve.ts";
 import { toggleTask } from "./tasks.ts";
 import { hrefOf } from "./router.ts";
+import type { VaultSettings } from "./vault-settings.ts";
 
 const REMARK = [remarkGfm, remarkFrontmatter, remarkProperties];
+// Obsidian shows a single line break as one, where Markdown joins the lines.
+const REMARK_BREAKS = [...REMARK, remarkBreaks];
 // Raw HTML is parsed, headings get ids, then GitHub's rules sanitize it all,
 // prefixing ids so that none can stand for one of the app's own. Code is
 // highlighted last, with classes the sanitizer would drop.
@@ -65,16 +69,20 @@ const TaskAt = createContext<number | undefined>(undefined);
 /**
  * A Markdown file rendered as GitHub renders it: with tables, task lists,
  * strikethrough, autolinks, footnotes, highlighted code, sanitized HTML and
- * front matter as a table of properties.
+ * front matter as a table of properties. A note in an Obsidian vault breaks
+ * its lines as Obsidian does.
  */
 export function Rendered({
   text,
   folder,
+  vault,
   onEdit,
 }: {
   text: string;
   /** The folder the note sits in, if known: relative links start there. */
   folder?: FileRef | undefined;
+  /** The settings of the Obsidian vault the note sits in, if it does. */
+  vault?: VaultSettings | undefined;
   /** Takes the text with a task checked or unchecked, if the user may edit. */
   onEdit?: ((text: string) => void) | undefined;
 }) {
@@ -84,7 +92,9 @@ export function Rendered({
         <Fallible text={text}>
           <div className="markdown">
             <Markdown
-              remarkPlugins={REMARK}
+              remarkPlugins={
+                vault && !vault.strictLineBreaks ? REMARK_BREAKS : REMARK
+              }
               rehypePlugins={REHYPE}
               components={COMPONENTS}
             >

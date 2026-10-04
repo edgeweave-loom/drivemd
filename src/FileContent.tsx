@@ -44,6 +44,7 @@ import {
 import { guardLeaving, hrefOf, navigate } from "./router.ts";
 import { saveText, type SaveResult } from "./save.ts";
 import { decode, encode, sameBytes, type FileText } from "./text.ts";
+import { useNoteVault, type NoteVault } from "./vaults.ts";
 
 // The editor loads with the first Edit, not with the viewer.
 const Editor = lazy(() =>
@@ -272,6 +273,8 @@ function Content({ file }: { file: FileMetadata }) {
     setShown({ revision, session: shown.session + (ours ? 0 : 1) });
   }
   const content = useQuery({ ...contentQuery(drive, opened), select: read });
+  // Asked beside the content, so that the note waits for neither in turn.
+  const vault = useNoteVault({ id: file.id, resourceKey: file.resourceKey });
   // The edits stay on the device until saved or dropped, and a note opened
   // again offers them back.
   const unsaved = held?.text !== undefined && held.text !== content.data?.text;
@@ -403,6 +406,7 @@ function Content({ file }: { file: FileMetadata }) {
           <NoteView
             file={file}
             note={note}
+            vault={vault}
             waiting={offered(kept.data, held, note)}
             session={shown.session}
             editing={editing}
@@ -488,6 +492,7 @@ function Restore({
 function NoteView({
   file,
   note,
+  vault,
   waiting,
   session,
   editing,
@@ -502,6 +507,7 @@ function NoteView({
 }: {
   file: FileMetadata;
   note: Note;
+  vault: NoteVault;
   /** Unsaved changes on the device wait for the user's answer first. */
   waiting: boolean;
   /** Changes when the editor must start again from the note's text. */
@@ -662,10 +668,22 @@ function NoteView({
             />
           </Suspense>
         )}
-        {rendered && (
+        {rendered && vault.state === "checking" && (
+          // Rendered as Markdown first, a note of a vault would change once
+          // the check answers.
+          <p className="hint">Loading…</p>
+        )}
+        {rendered && vault.state === "unknown" && (
+          <p className="hint">
+            DriveMD could not check whether this note is in an Obsidian vault,
+            so it shows as Markdown, without Obsidian's syntax.
+          </p>
+        )}
+        {rendered && vault.state !== "checking" && (
           <Rendered
             text={previewed}
             folder={folderOf(file)}
+            vault={vault.state === "inside" ? vault.settings : undefined}
             onEdit={
               !editable
                 ? undefined

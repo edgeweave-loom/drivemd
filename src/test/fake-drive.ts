@@ -16,6 +16,7 @@ export function fakeDrive(): FakeDrive {
     listRecent: vi.fn<Drive["listRecent"]>(unanswered),
     search: vi.fn<Drive["search"]>(unanswered),
     findVaults: vi.fn<Drive["findVaults"]>(unanswered),
+    findVaultConfigs: vi.fn<Drive["findVaultConfigs"]>(unanswered),
     listShortcuts: vi.fn<Drive["listShortcuts"]>(unanswered),
     checkShortcut: vi.fn<Drive["checkShortcut"]>(unanswered),
     saveContent: vi.fn<Drive["saveContent"]>(unanswered),

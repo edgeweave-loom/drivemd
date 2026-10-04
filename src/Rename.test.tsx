@@ -29,7 +29,11 @@ function openPlan(file = plan(), vaults: FileMetadata[] = []) {
   const drive = fakeDrive();
   drive.getMetadata.mockImplementation(metadataOf(WORK, file));
   drive.markViewed.mockResolvedValue();
-  drive.findVaults.mockResolvedValue(vaults);
+  drive.findVaultConfigs.mockResolvedValue(
+    vaults.map(({ id }) =>
+      folderItem(".obsidian", { id: `config-${id}`, parents: [id] }),
+    ),
+  );
   visit("/edit?id=plan", { trail: TRAIL });
   const rendered = renderWithDrive(<PlanPage />, drive);
   return { ...rendered, drive };
@@ -106,7 +110,7 @@ describe("Rename", () => {
 
   it("waits for the vault check before renaming", async () => {
     const { drive } = openPlan();
-    drive.findVaults.mockReturnValue(new Promise(() => undefined));
+    drive.findVaultConfigs.mockReturnValue(new Promise(() => undefined));
 
     const dialog = await openDialog();
     expect(
@@ -117,7 +121,9 @@ describe("Rename", () => {
 
   it("says when it could not check for a vault, and lets the user go on", async () => {
     const { drive } = openPlan();
-    drive.findVaults.mockRejectedValue(new DriveError(400, "Bad request"));
+    drive.findVaultConfigs.mockRejectedValue(
+      new DriveError(400, "Bad request"),
+    );
 
     const dialog = await openDialog();
     expect(
@@ -134,7 +140,7 @@ describe("Rename", () => {
     ]);
 
     const dialog = await openDialog();
-    await expect.poll(() => drive.findVaults.mock.calls.length).toBe(1);
+    await expect.poll(() => drive.findVaultConfigs.mock.calls.length).toBe(1);
     await waitFor(() => {
       expect(drive.getMetadata).toHaveBeenCalledWith({ id: "root" });
     });

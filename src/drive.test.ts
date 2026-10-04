@@ -863,6 +863,33 @@ describe("search", () => {
   });
 });
 
+describe("findVaultConfigs", () => {
+  it("lists the .obsidian folders in every drive, and nothing else", async () => {
+    const config = {
+      ...FILE,
+      id: "obsidian-1",
+      name: ".obsidian",
+      mimeType: FOLDER,
+      parents: ["vault-1"],
+    };
+    respond(Response.json({ files: [config] }));
+
+    const configs = await createDrive(fakeAuth()).findVaultConfigs();
+    expect(configs.map(({ id, parents }) => [id, parents])).toEqual([
+      ["obsidian-1", ["vault-1"]],
+    ]);
+    expect(Object.fromEntries(sent().url.searchParams)).toEqual({
+      q: `name = '.obsidian' and mimeType = '${FOLDER}' and trashed = false`,
+      corpora: "allDrives",
+      pageSize: "1000",
+      fields: `nextPageToken,files(${ITEM_FIELDS})`,
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+});
+
 describe("findVaults", () => {
   /** Answers the search for .obsidian folders, then each folder's metadata. */
   function answerVaults(parents: string[][], refused: Record<string, number>) {

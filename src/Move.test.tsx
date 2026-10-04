@@ -46,7 +46,11 @@ function openPlan(file = plan(), vaults: FileMetadata[] = []) {
     metadataOf(MY_ROOT, WORK, ARCHIVE, TEAM, file),
   );
   drive.markViewed.mockResolvedValue();
-  drive.findVaults.mockResolvedValue(vaults);
+  drive.findVaultConfigs.mockResolvedValue(
+    vaults.map(({ id }) =>
+      folderItem(".obsidian", { id: `config-${id}`, parents: [id] }),
+    ),
+  );
   drive.listChildren.mockImplementation(({ id }) =>
     Promise.resolve(
       id === "work"

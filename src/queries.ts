@@ -4,7 +4,14 @@ import { readDraft } from "./drafts.ts";
 import { pool } from "./pool.ts";
 import { resolve } from "./resolve.ts";
 import {
+  DEFAULT_SETTINGS,
+  readSettings,
+  type VaultSettings,
+} from "./vault-settings.ts";
+import {
   DriveError,
+  GOOGLE_TYPES,
+  TooLargeError,
   type Drive,
   type FileMetadata,
   type FileRef,
@@ -80,6 +87,58 @@ export function vaultsQuery(drive: Drive) {
   return queryOptions({
     queryKey: key("vaults"),
     queryFn: drive.findVaults,
+    staleTime: VAULTS_STALE_TIME,
+  });
+}
+
+/** Where the vaults are: one search, which reads no vault's folder. */
+export function vaultConfigsQuery(drive: Drive) {
+  return queryOptions({
+    queryKey: key("vault-configs"),
+    queryFn: drive.findVaultConfigs,
+    staleTime: VAULTS_STALE_TIME,
+  });
+}
+
+/** Larger settings files are not read: Obsidian's holds a few hundred bytes. */
+const MAX_SETTINGS = 100_000;
+
+/**
+ * The settings of a vault, from the `app.json` in its `.obsidian` folder,
+ * read through the cache the pages share; none while there is no vault.
+ */
+export function vaultSettingsQuery(
+  drive: Drive,
+  client: QueryClient,
+  config: FileRef | undefined,
+) {
+  return queryOptions({
+    queryKey: key("vault-settings", config?.id, config?.resourceKey),
+    queryFn: config
+      ? async (): Promise<VaultSettings> => {
+          // The settings as a whole are tried again.
+          const file = (
+            await client.query({
+              ...childrenQuery(drive, config),
+              retry: false,
+            })
+          ).find(
+            ({ name, mimeType }) =>
+              name === "app.json" && !mimeType.startsWith(GOOGLE_TYPES),
+          );
+          if (!file) return DEFAULT_SETTINGS;
+          const details = await client.query({
+            ...metadataQuery(drive, file),
+            retry: false,
+          });
+          try {
+            return readSettings(await drive.getContent(details, MAX_SETTINGS));
+          } catch (error) {
+            if (error instanceof TooLargeError) return DEFAULT_SETTINGS;
+            throw error;
+          }
+        }
+      : skipToken,
     staleTime: VAULTS_STALE_TIME,
   });
 }

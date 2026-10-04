@@ -1,8 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDrive } from "./drive-context.ts";
-import type { FileRef } from "./drive.ts";
+import type { DriveItem, FileMetadata, FileRef } from "./drive.ts";
 import { useClimb } from "./path.ts";
-import { vaultsQuery } from "./queries.ts";
+import { vaultConfigsQuery, vaultSettingsQuery } from "./queries.ts";
+import { DEFAULT_SETTINGS, type VaultSettings } from "./vault-settings.ts";
 
 export type VaultCheck = "in-vault" | "outside" | "checking" | "unknown";
 
@@ -32,14 +33,69 @@ export function vaultNote(
  */
 export function useVaultCheck(item: FileRef, enabled: boolean): VaultCheck {
   const { drive } = useDrive();
-  const vaults = useQuery({ ...vaultsQuery(drive), enabled });
+  const configs = useQuery({ ...vaultConfigsQuery(drive), enabled });
   // Where the item really is, whatever path the user took to it.
   const climb = useClimb(item, enabled);
-  if (vaults.isError || climb.isError) return "unknown";
-  if (!vaults.data || !climb.data) return "checking";
-  const roots = new Set(vaults.data.map(({ id }) => id));
-  const inVault = climb.data.chain.some(
-    ({ id }) => id !== item.id && roots.has(id),
-  );
+  if (!configs.data || !climb.data) {
+    return failed(configs) || failed(climb) ? "unknown" : "checking";
+  }
+  const inVault = nearestVault(climb.data.chain, configs.data) !== undefined;
   return inVault ? "in-vault" : "outside";
+}
+
+/**
+ * Where a note stands with Obsidian: in a vault, whose settings it follows,
+ * outside any, or not known yet, or at all.
+ */
+export type NoteVault =
+  | { state: "checking" | "outside" | "unknown" }
+  | { state: "inside"; settings: VaultSettings };
+
+/**
+ * The vault the note sits in, the nearest one above it, once Drive has said
+ * where the note is, where the vaults are, and how that vault is set; the
+ * note's folders are read only when Drive holds a vault.
+ */
+export function useNoteVault(note: FileRef): NoteVault {
+  const { drive } = useDrive();
+  const client = useQueryClient();
+  const configs = useQuery(vaultConfigsQuery(drive));
+  const climb = useClimb(note, Boolean(configs.data?.length));
+  const config =
+    configs.data && climb.data && nearestVault(climb.data.chain, configs.data);
+  const settings = useQuery(vaultSettingsQuery(drive, client, config));
+  // A note shown stays as it is while Drive is asked again after failing.
+  if (!configs.data) return { state: failed(configs) ? "unknown" : "checking" };
+  if (configs.data.length === 0) return { state: "outside" };
+  if (!climb.data) return { state: failed(climb) ? "unknown" : "checking" };
+  if (!config) return { state: "outside" };
+  if (!settings.data && !failed(settings)) return { state: "checking" };
+  // A vault whose settings Drive fails to send shows as Obsidian's own do.
+  return { state: "inside", settings: settings.data ?? DEFAULT_SETTINGS };
+}
+
+/**
+ * Whether Drive failed to answer a query, even as it is asked again: its
+ * error then gives way to a wait.
+ */
+function failed({ errorUpdateCount }: { errorUpdateCount: number }): boolean {
+  return errorUpdateCount > 0;
+}
+
+/**
+ * The `.obsidian` folder of the vault nearest the item, among the folders the
+ * item sits in.
+ */
+function nearestVault(
+  chain: FileMetadata[],
+  configs: DriveItem[],
+): DriveItem | undefined {
+  const byVault = new Map(
+    configs.flatMap((config) => config.parents.map((id) => [id, config])),
+  );
+  // The chain ends with the item itself.
+  return chain
+    .slice(0, -1)
+    .map(({ id }) => byVault.get(id))
+    .findLast((config) => config !== undefined);
 }
