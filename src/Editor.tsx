@@ -1,5 +1,6 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { yamlLanguage } from "@codemirror/lang-yaml";
 import {
   defaultHighlightStyle,
   HighlightStyle,
@@ -35,6 +36,7 @@ import {
   type Ref,
 } from "react";
 import { mountIn, THEME } from "./codemirror.ts";
+import { withFrontmatter } from "./frontmatter.ts";
 import { commandKey } from "./keys.ts";
 import { linkAt } from "./source-links.ts";
 import type { LineBreak } from "./text.ts";
@@ -59,6 +61,20 @@ const LIGHT = HighlightStyle.define([
   { tag: tags.link, color: "var(--link)" },
   { tag: [tags.processingInstruction, tags.url], color: "var(--muted)" },
 ]);
+
+/**
+ * YAML, in front matter and code blocks, in the same light way: its keys,
+ * symbols and comments dimmed, its values as text.
+ */
+const LIGHT_YAML = HighlightStyle.define(
+  [
+    {
+      tag: [tags.propertyName, tags.punctuation, tags.comment],
+      color: "var(--muted)",
+    },
+  ],
+  { scope: yamlLanguage },
+);
 
 const CODE_LINE = Decoration.line({ class: "cm-code-line" });
 
@@ -161,10 +177,13 @@ function extensions(
     EditorState.lineSeparator.of(lineBreak),
     writable(lineBreak),
     history(),
-    // GitHub's Markdown, its fences highlighted in their language; Enter
-    // continues lists and task lists.
-    markdown({ base: markdownLanguage, codeLanguages: languages }),
+    // GitHub's Markdown, its fences highlighted in their language and its
+    // front matter in YAML; Enter continues lists and task lists.
+    withFrontmatter(
+      markdown({ base: markdownLanguage, codeLanguages: languages }),
+    ),
     syntaxHighlighting(LIGHT),
+    syntaxHighlighting(LIGHT_YAML),
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     codeBlocks,
     THEME,
