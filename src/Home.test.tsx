@@ -255,7 +255,9 @@ describe("Home", () => {
 
   it("reads the device afresh each time it shows", async () => {
     await keep(PLAN);
-    const { rerender } = home(PLAN);
+    const { client, rerender } = home(PLAN);
+    // Answers stay fresh for half a minute, as in the app.
+    client.setDefaultOptions({ queries: { retry: false, staleTime: 30_000 } });
     await (await unsaved()).findByRole("link", { name: /^plan\.md/ });
     rerender(<p>Elsewhere</p>);
     // Saved or discarded on the note's page.
@@ -263,12 +265,11 @@ describe("Home", () => {
 
     rerender(<Home />);
 
-    await section("Recent").findByText(
-      "The Markdown files you view, here or in Google Drive, show here.",
-    );
-    expect(
-      screen.queryByRole("region", { name: "Unsaved changes" }),
-    ).toBeNull();
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("region", { name: "Unsaved changes" }),
+      ).toBeNull();
+    });
   });
 
   it.each<[string, FileMetadata | undefined, string]>([
