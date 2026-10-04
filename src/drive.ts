@@ -123,6 +123,12 @@ export interface FileMetadata extends DriveItem {
   trashed: boolean;
 }
 
+/** What a search found, and whether Drive says it left some drives out. */
+export interface SearchResult {
+  items: DriveItem[];
+  incomplete: boolean;
+}
+
 export interface SharedDrive {
   /** Also the ID of the drive's top folder. */
   id: string;
@@ -152,7 +158,9 @@ export interface Drive {
   /** The Markdown files the user viewed last, newest first. */
   listRecent: () => Promise<DriveItem[]>;
   /** Markdown files whose name has a word starting with each word of `text`. */
-  search: (text: string) => Promise<DriveItem[]>;
+  search: (text: string) => Promise<SearchResult>;
+  /** The files with content named `name`, whatever its case, in every drive. */
+  findByName: (name: string) => Promise<SearchResult>;
   /** The folders that hold an Obsidian vault, in every drive. */
   findVaults: () => Promise<DriveItem[]>;
   /**
@@ -252,17 +260,29 @@ export function createDrive(auth: DriveAuth): Drive {
     return attempt();
   }
 
-  /** Follows nextPageToken until Drive has sent every page of `key`. */
+  /**
+   * Follows nextPageToken until Drive has sent every page of `key`, and says
+   * whether any page left some drives out of a search. A page Drive sends
+   * twice fails the list, which would never end.
+   */
   async function list<T>(
     path: string,
     params: Record<string, string>,
     files: FileRef[],
     key: string,
     read: (entry: Record<string, unknown>) => T | undefined,
-  ): Promise<T[]> {
+  ): Promise<{ items: T[]; incomplete: boolean }> {
     const items: T[] = [];
+    const seen = new Set<string>();
+    let incomplete = false;
     let pageToken: string | undefined;
     do {
+      if (pageToken !== undefined) {
+        if (seen.has(pageToken)) {
+          throw new DriveError(502, "Google Drive sent the same page twice");
+        }
+        seen.add(pageToken);
+      }
       const query = new URLSearchParams(params);
       if (pageToken !== undefined) query.set("pageToken", pageToken);
       const page = await parse(
@@ -270,16 +290,17 @@ export function createDrive(auth: DriveAuth): Drive {
         (body) => readPage(body, key, read),
       );
       items.push(...page.items);
+      incomplete ||= page.incomplete;
       pageToken = page.nextPageToken;
     } while (pageToken !== undefined);
-    return items;
+    return { items, incomplete };
   }
 
   /** The items matching the query in `params.q`, in any drive. */
-  function listFiles(
+  function searchFiles(
     params: Record<string, string>,
     files: FileRef[] = [],
-  ): Promise<DriveItem[]> {
+  ): Promise<SearchResult> {
     const query = {
       pageSize: "1000",
       fields: `nextPageToken,files(${ITEM_FIELDS})`,
@@ -290,17 +311,24 @@ export function createDrive(auth: DriveAuth): Drive {
     return list("files", query, files, "files", parseItem);
   }
 
+  async function listFiles(
+    params: Record<string, string>,
+    files: FileRef[] = [],
+  ): Promise<DriveItem[]> {
+    return (await searchFiles(params, files)).items;
+  }
+
   /** The Markdown files among the first 100 matches of `q`, in every drive. */
   async function findMarkdown(q: string, orderBy: string) {
-    const items = await listFiles({
+    const { items, incomplete } = await searchFiles({
       q: `${q} and trashed = false and ${WITH_CONTENT}`,
       orderBy,
       corpora: "allDrives",
       pageSize: "100",
       // Without nextPageToken, Drive sends the first page only.
-      fields: `files(${ITEM_FIELDS})`,
+      fields: `incompleteSearch,files(${ITEM_FIELDS})`,
     });
-    return items.filter((item) => isMarkdown(item.name));
+    return { items: items.filter((item) => isMarkdown(item.name)), incomplete };
   }
 
   function findVaultConfigs(): Promise<DriveItem[]> {
@@ -333,7 +361,14 @@ export function createDrive(auth: DriveAuth): Drive {
         fields: "nextPageToken,drives(id,name)",
         pageSize: "100",
       };
-      return list("drives", params, [], "drives", parseSharedDrive);
+      const drives = await list(
+        "drives",
+        params,
+        [],
+        "drives",
+        parseSharedDrive,
+      );
+      return drives.items;
     },
     async listSharedWithMe() {
       const types = `mimeType = '${FOLDER}' or mimeType = '${SHORTCUT}' or ${WITH_CONTENT}`;
@@ -342,16 +377,25 @@ export function createDrive(auth: DriveAuth): Drive {
       });
     },
     async listRecent() {
-      return findMarkdown(
+      const recent = await findMarkdown(
         "viewedByMeTime > '1970-01-01T00:00:00'",
         "viewedByMeTime desc",
       );
+      return recent.items;
     },
     async search(text) {
       const words = text.split(/\s+/).filter((word) => word !== "");
-      if (words.length === 0) return [];
+      if (words.length === 0) return { items: [], incomplete: false };
       const terms = words.map((word) => `name contains ${quoted(word)}`);
       return findMarkdown(terms.join(" and "), "modifiedTime desc");
+    },
+    async findByName(name) {
+      if (name === "") return { items: [], incomplete: false };
+      return searchFiles({
+        q: `name = ${quoted(name)} and trashed = false and ${WITH_CONTENT}`,
+        corpora: "allDrives",
+        fields: `nextPageToken,incompleteSearch,files(${ITEM_FIELDS})`,
+      });
     },
     findVaultConfigs,
     async findVaults() {
@@ -480,6 +524,8 @@ function quoted(value: string): string {
 interface Page<T> {
   items: T[];
   nextPageToken: string | undefined;
+  /** Drive left some drives out of the search. */
+  incomplete: boolean;
 }
 
 /** A URL for one file, in any drive. */
@@ -695,7 +741,11 @@ function readPage<T>(
     const item = isRecord(entry) ? read(entry) : undefined;
     return item === undefined ? [] : [item];
   });
-  return { items, nextPageToken: optionalString(body.nextPageToken) };
+  return {
+    items,
+    nextPageToken: optionalString(body.nextPageToken),
+    incomplete: body.incompleteSearch === true,
+  };
 }
 
 function parseSharedDrive(

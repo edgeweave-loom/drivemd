@@ -117,7 +117,7 @@ describe("Navigator", () => {
 
   it("asks Drive again when the same search is submitted", async () => {
     const session = open("/search?q=plan");
-    session.drive.search.mockResolvedValue([]);
+    session.drive.search.mockResolvedValue({ items: [], incomplete: false });
     await waitFor(() => {
       expect(session.drive.search).toHaveBeenCalledOnce();
     });
