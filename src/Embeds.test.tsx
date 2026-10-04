@@ -89,7 +89,7 @@ describe("image embeds in a note of a vault", () => {
       "doc.pdf",
       "https://drive.google.com/file/d/doc/view",
     ],
-    ["a note", "![[Guide]]", "Guide", "/edit?id=guide"],
+    ["a note within text", "See ![[Guide]] here.", "Guide", "/edit?id=guide"],
   ])("show %s as a link", async (_, text, name, href) => {
     open(text);
 

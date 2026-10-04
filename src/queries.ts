@@ -185,8 +185,9 @@ export function contentQuery(drive: Drive, file: FileMetadata) {
 }
 
 /**
- * A note's bytes, as contentQuery reads them, sharing its cache; none while
- * there is no note to read, as for a note an embed shows.
+ * The bytes of a note an embed shows, as contentQuery reads them, sharing its
+ * cache, but a few at a time, as links and images; none while there is no
+ * note to read.
  */
 export function noteQuery(drive: Drive, file: FileMetadata | undefined) {
   return queryOptions({
@@ -197,7 +198,10 @@ export function noteQuery(drive: Drive, file: FileMetadata | undefined) {
       file?.headRevisionId,
       file?.md5Checksum,
     ),
-    queryFn: file ? () => drive.getContent(file, MAX_CONTENT) : skipToken,
+    queryFn: file
+      ? ({ signal }) =>
+          lookups(() => drive.getContent(file, MAX_CONTENT), signal)
+      : skipToken,
     staleTime: Infinity,
   });
 }
