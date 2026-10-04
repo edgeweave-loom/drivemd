@@ -1,4 +1,5 @@
 import type {
+  FootnoteDefinition,
   Nodes,
   Parents,
   PhrasingContent,
@@ -10,6 +11,7 @@ import {
   findAndReplace,
   type RegExpMatchObject,
 } from "mdast-util-find-and-replace";
+import { visit } from "unist-util-visit";
 import { sliceText, writtenAt } from "./written.ts";
 
 /** Where a mark such as `==` starts, in a text among some content. */
@@ -260,6 +262,106 @@ function shownAt(
 ): string {
   if (!node || node.type === "break") return "";
   return node.type === "text" ? character(node.value) : "x";
+}
+
+/**
+ * Shows Obsidian's inline footnotes, `^[text]`, as footnotes, in their turn
+ * among the note's others. A link's text holds none, as a link holds no link.
+ */
+export function remarkInlineFootnotes() {
+  return (tree: Root) => {
+    // The names the note gives its own footnotes, even hidden ones.
+    const taken = new Set<string>();
+    visit(tree, ["footnoteDefinition", "footnoteReference"], (node) => {
+      if ("identifier" in node) taken.add(node.identifier);
+    });
+    const definitions: FootnoteDefinition[] = [];
+    let count = 0;
+    const define = (content: PhrasingContent[]) => {
+      let identifier;
+      do {
+        count += 1;
+        identifier = `inline-${String(count)}`;
+      } while (taken.has(identifier));
+      definitions.push({
+        type: "footnoteDefinition",
+        identifier,
+        children: [{ type: "paragraph", children: content }],
+      });
+      return identifier;
+    };
+    footnote(tree, define);
+    // Added once all are found, so that a note's own text holds none.
+    for (const definition of definitions) tree.children.push(definition);
+  };
+}
+
+function footnote(
+  node: Nodes,
+  define: (content: PhrasingContent[]) => string,
+): void {
+  if (!("children" in node) || node.type === "link") return;
+  if (node.type === "linkReference") return;
+  // The notes a text holds first: what lies in one, emphasis included, goes
+  // with it and holds no other.
+  if (holdsText(node)) node.children = withNotes(node.children, define);
+  for (const child of node.children) footnote(child, define);
+}
+
+function withNotes(
+  content: PhrasingContent[],
+  define: (content: PhrasingContent[]) => string,
+): PhrasingContent[] {
+  const found = marks(content, "^[");
+  if (found.length === 0) return content;
+  const closes = closings(content);
+  const parts: PhrasingContent[] = [];
+  let from: Place = { node: 0, offset: 0 };
+  for (const open of found) {
+    // A `^[` within a note is part of its text.
+    if (
+      open.node < from.node ||
+      (open.node === from.node && open.offset < from.offset)
+    ) {
+      continue;
+    }
+    const close = closes.get(`${String(open.node)}:${String(open.offset + 1)}`);
+    if (!close) continue;
+    const identifier = define(range([], content, after(open, 2), close));
+    range(parts, content, from, open);
+    parts.push({ type: "footnoteReference", identifier, label: identifier });
+    from = after(close, 1);
+  }
+  return range(parts, content, from);
+}
+
+/**
+ * Where each written `[` of the content's texts is closed, by the place of
+ * the `[`: found in one pass, so that a `[` never closed costs nothing more.
+ */
+function closings(content: PhrasingContent[]): Map<string, Place> {
+  const closes = new Map<string, Place>();
+  const open: Place[] = [];
+  for (const [index, node] of content.entries()) {
+    if (node.type !== "text") continue;
+    for (let offset = 0; offset < node.value.length; offset += 1) {
+      const character = node.value.charAt(offset);
+      if (character !== "[" && character !== "]") continue;
+      if (!writtenAt(node, offset, 1)) continue;
+      if (character === "[") {
+        open.push({ node: index, offset });
+        continue;
+      }
+      const opened = open.pop();
+      if (opened) {
+        closes.set(`${String(opened.node)}:${String(opened.offset)}`, {
+          node: index,
+          offset,
+        });
+      }
+    }
+  }
+  return closes;
 }
 
 // Letters, digits, `_`, `-` and `/`, as Obsidian allows them in a tag, after
