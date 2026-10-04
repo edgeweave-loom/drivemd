@@ -128,7 +128,21 @@ function defineChecks(auth: DriveAuth): void {
     await drive.listShortcuts();
     await drive.listRecent();
     await drive.search(RUN);
+    await drive.findByName(`${RUN}.md`);
     await drive.findVaults();
+    await drive.findVaultConfigs();
+  });
+
+  it("finds a file by its exact name, whatever its case", async () => {
+    const name = `${RUN} Name's check.md`;
+    const id = await make({ name, mimeType: "text/markdown" });
+
+    await eventually("the file by its exact name", async () =>
+      ids((await drive.findByName(name)).items).includes(id),
+    );
+    // Obsidian finds a note whatever the case of the link.
+    const other = await drive.findByName(name.toUpperCase());
+    expect(ids(other.items), "the file found in capitals").toContain(id);
   });
 
   it.each(["text/markdown", "text/plain", "application/octet-stream"])(
@@ -199,9 +213,9 @@ function defineChecks(auth: DriveAuth): void {
       (await found(named)).includes(doc),
     );
     await eventually("the file found by name", async () =>
-      ids(await drive.search(RUN)).includes(plain.id),
+      ids((await drive.search(RUN)).items).includes(plain.id),
     );
-    const listed = ids(await drive.search(RUN)).includes(doc);
+    const listed = ids((await drive.search(RUN)).items).includes(doc);
     expect(listed, "a Google document found as Markdown").toBe(false);
   });
 

@@ -19,11 +19,14 @@ function results() {
 describe("SearchPage", () => {
   it("lists the matching files as Drive orders them, newest change first", async () => {
     const drive = fakeDrive();
-    drive.search.mockResolvedValue([
-      driveItem("weekly plan.md"),
-      driveItem("Plan B.md"),
-      driveItem(".plan.md"),
-    ]);
+    drive.search.mockResolvedValue({
+      items: [
+        driveItem("weekly plan.md"),
+        driveItem("Plan B.md"),
+        driveItem(".plan.md"),
+      ],
+      incomplete: false,
+    });
     renderWithDrive(<SearchPage text="plan" />, drive);
 
     expect(screen.getByRole("heading", { name: "Search: plan" })).toBeVisible();
@@ -37,7 +40,10 @@ describe("SearchPage", () => {
     ["weekly plan", "words starting with “weekly” and “plan”"],
   ])("explains how names match when nothing does: %s", async (text, words) => {
     const drive = fakeDrive();
-    drive.search.mockResolvedValue([driveItem(".hidden plan.md")]);
+    drive.search.mockResolvedValue({
+      items: [driveItem(".hidden plan.md")],
+      incomplete: false,
+    });
     renderWithDrive(<SearchPage text={text} />, drive);
 
     expect(
@@ -45,6 +51,22 @@ describe("SearchPage", () => {
         `Among Drive's first 100 matches, no Markdown file has a name with ${words}. Drive matches the start of words: “plan” finds planning.md, not myplan.md.`,
       ),
     ).toBeVisible();
+  });
+
+  it("says when Drive left some drives out of the search", async () => {
+    const drive = fakeDrive();
+    drive.search.mockResolvedValue({
+      items: [driveItem("plan.md")],
+      incomplete: true,
+    });
+    renderWithDrive(<SearchPage text="plan" />, drive);
+
+    expect(
+      await screen.findByText(
+        "Google Drive did not search every drive, so some matches may be missing.",
+      ),
+    ).toBeVisible();
+    expect(results()).toEqual(["plan.md"]);
   });
 
   it("asks for words when there are none", () => {

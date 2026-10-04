@@ -803,7 +803,7 @@ describe("listRecent", () => {
       orderBy: "viewedByMeTime desc",
       corpora: "allDrives",
       pageSize: "100",
-      fields: `files(${ITEM_FIELDS})`,
+      fields: `incompleteSearch,files(${ITEM_FIELDS})`,
       supportsAllDrives: "true",
       includeItemsFromAllDrives: "true",
     });
@@ -821,17 +821,27 @@ describe("search", () => {
       }),
     );
 
-    await expect(createDrive(fakeAuth()).search(" plan ")).resolves.toEqual([
-      expect.objectContaining({ name: "planning.md" }),
-    ]);
+    await expect(createDrive(fakeAuth()).search(" plan ")).resolves.toEqual({
+      items: [expect.objectContaining({ name: "planning.md" })],
+      incomplete: false,
+    });
     expect(Object.fromEntries(sent().url.searchParams)).toEqual({
       q: `name contains 'plan' and trashed = false and ${WITH_CONTENT}`,
       orderBy: "modifiedTime desc",
       corpora: "allDrives",
       pageSize: "100",
-      fields: `files(${ITEM_FIELDS})`,
+      fields: `incompleteSearch,files(${ITEM_FIELDS})`,
       supportsAllDrives: "true",
       includeItemsFromAllDrives: "true",
+    });
+  });
+
+  it("says when Drive left some drives out of the search", async () => {
+    respond(Response.json({ files: [FILE], incompleteSearch: true }));
+
+    await expect(createDrive(fakeAuth()).search("notes")).resolves.toEqual({
+      items: [expect.objectContaining({ id: "file-1" })],
+      incomplete: true,
     });
   });
 
@@ -858,7 +868,68 @@ describe("search", () => {
   it("finds nothing for blank text, without asking Drive", async () => {
     respond();
 
-    await expect(createDrive(fakeAuth()).search("  ")).resolves.toEqual([]);
+    await expect(createDrive(fakeAuth()).search("  ")).resolves.toEqual({
+      items: [],
+      incomplete: false,
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("findByName", () => {
+  it("finds the files with content of that exact name, in every drive and on every page", async () => {
+    respond(
+      Response.json({ files: [FILE], nextPageToken: "page-2" }),
+      Response.json({ files: [{ ...FILE, id: "file-2" }] }),
+    );
+
+    await expect(
+      createDrive(fakeAuth()).findByName("notes.md"),
+    ).resolves.toEqual({
+      items: [
+        expect.objectContaining({ id: "file-1" }),
+        expect.objectContaining({ id: "file-2" }),
+      ],
+      incomplete: false,
+    });
+    expect(Object.fromEntries(sent().url.searchParams)).toEqual({
+      q: `name = 'notes.md' and trashed = false and ${WITH_CONTENT}`,
+      corpora: "allDrives",
+      pageSize: "1000",
+      fields: `nextPageToken,incompleteSearch,files(${ITEM_FIELDS})`,
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
+    expect(sent(1).url.searchParams.get("pageToken")).toBe("page-2");
+  });
+
+  it("says when any page left some drives out", async () => {
+    respond(
+      Response.json({ files: [], incompleteSearch: true, nextPageToken: "2" }),
+      Response.json({ files: [] }),
+    );
+
+    await expect(
+      createDrive(fakeAuth()).findByName("notes.md"),
+    ).resolves.toMatchObject({ incomplete: true });
+  });
+
+  it("keeps quotes and backslashes in the name from changing the query", async () => {
+    respond(Response.json({ files: [] }));
+
+    await createDrive(fakeAuth()).findByName("Ada's\\notes.md");
+    expect(sent().url.searchParams.get("q")).toBe(
+      `name = 'Ada\\'s\\\\notes.md' and trashed = false and ${WITH_CONTENT}`,
+    );
+  });
+
+  it("finds nothing for no name, without asking Drive", async () => {
+    respond();
+
+    await expect(createDrive(fakeAuth()).findByName("")).resolves.toEqual({
+      items: [],
+      incomplete: false,
+    });
     expect(fetch).not.toHaveBeenCalled();
   });
 });

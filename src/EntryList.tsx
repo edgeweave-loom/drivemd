@@ -17,7 +17,7 @@ const BROKEN = {
 };
 
 /** The entries among the items the query finds, once Drive has answered. */
-export function ItemListing<Key extends QueryKey>({
+export function ItemListing<Answer, Key extends QueryKey>({
   query,
   order,
   trail,
@@ -25,7 +25,7 @@ export function ItemListing<Key extends QueryKey>({
   missing,
   empty,
 }: {
-  query: UseQueryOptions<DriveItem[], Error, DriveItem[], Key>;
+  query: UseQueryOptions<Answer, Error, DriveItem[], Key>;
   /** By name, unless Drive's own order says more, as in search results. */
   order?: "by-name" | "as-listed";
   trail: Crumb[] | undefined;
