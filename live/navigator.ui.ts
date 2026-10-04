@@ -453,6 +453,7 @@ test("opens what Drive's Open with, New and pasted links name", async ({
   );
   await search.press("Enter");
   await expect(heading(page, `${RUN} Notes`)).toBeVisible();
+  await expect(crumbs(page)).toHaveText(["Home", "My Drive", run.name]);
   await loaded(page);
 
   await page.goto(
