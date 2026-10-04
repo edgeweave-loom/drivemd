@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   countDrafts,
   deleteDraft,
+  deleteDraftHolding,
   deleteDrafts,
   readDraft,
   writeDraft,
@@ -15,6 +16,8 @@ const GRACE = "grace@example.com";
 function draft(fileId: string, text = "- [x] Boil\r\n"): Draft {
   return {
     fileId,
+    name: `${fileId}.md`,
+    resourceKey: undefined,
     headRevisionId: "revision-1",
     md5Checksum: "aaaa",
     text,
@@ -54,6 +57,17 @@ describe("drafts", () => {
 
     await expect(readDraft(ADA, "plan")).resolves.toBeUndefined();
     await expect(countDrafts(ADA)).resolves.toBe(1);
+  });
+
+  it("forgets a note's text only while the device still holds that text", async () => {
+    await writeDraft(ADA, draft("plan", "newer"));
+
+    await deleteDraftHolding(ADA, "plan", "older");
+    await expect(readDraft(ADA, "plan")).resolves.toMatchObject({
+      text: "newer",
+    });
+    await deleteDraftHolding(ADA, "plan", "newer");
+    await expect(readDraft(ADA, "plan")).resolves.toBeUndefined();
   });
 
   it("counts and forgets an account's texts, leaving others'", async () => {
