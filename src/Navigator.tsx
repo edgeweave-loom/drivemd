@@ -22,17 +22,25 @@ const HOME = hrefOf({ name: "home" });
 export function Navigator({
   session,
   email,
+  signedIn,
   children,
 }: {
   session: Pick<Session, "drive" | "renew" | "signOut">;
   email: string;
+  /** Whether Google gave the tab a token for the account yet. */
+  signedIn: boolean;
   /** What the session has to say, shown under the header. */
   children?: ReactNode;
 }) {
   const [client] = useState(createQueryClient);
   const access = useMemo(
-    () => ({ drive: session.drive, renew: session.renew, account: email }),
-    [session, email],
+    () => ({
+      drive: session.drive,
+      renew: session.renew,
+      account: email,
+      signedIn,
+    }),
+    [session, email, signedIn],
   );
   return (
     <QueryClientProvider client={client}>

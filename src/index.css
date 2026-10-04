@@ -345,10 +345,15 @@ dialog.drawer {
   color: var(--muted);
 }
 
-.entry.broken .reason {
+.entry.broken .reason,
+.entry .when {
   margin-left: auto;
   font-size: 0.875rem;
   text-align: end;
+}
+
+.entry .when {
+  color: var(--muted);
 }
 
 .read-only {

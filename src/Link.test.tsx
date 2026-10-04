@@ -10,7 +10,12 @@ const TRAIL = [{ name: "My Drive", href: "/my-drive" }];
 function renderLink(renew = vi.fn()) {
   render(
     <DriveContext
-      value={{ drive: fakeDrive(), renew, account: "ada@example.com" }}
+      value={{
+        drive: fakeDrive(),
+        renew,
+        account: "ada@example.com",
+        signedIn: true,
+      }}
     >
       <Link to="/my-drive" trail={TRAIL}>
         My Drive

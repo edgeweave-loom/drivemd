@@ -1,15 +1,23 @@
+import { useQuery } from "@tanstack/react-query";
 import { useId, type ReactNode } from "react";
 import { useDrive } from "./drive-context.ts";
 import { ItemListing } from "./EntryList.tsx";
 import { Link } from "./Link.tsx";
-import { recentQuery, vaultsQuery } from "./queries.ts";
+import { draftsQuery, recentQuery, vaultsQuery } from "./queries.ts";
 import { ROOTS } from "./roots.ts";
+import { UnsavedNotes } from "./UnsavedNotes.tsx";
 
 export function Home() {
-  const { drive } = useDrive();
+  const { drive, account, signedIn } = useDrive();
+  const drafts = useQuery({ ...draftsQuery(account), enabled: signedIn });
   return (
     <>
       <h2>Home</h2>
+      {drafts.data && drafts.data.length > 0 && (
+        <Section title="Unsaved changes">
+          <UnsavedNotes drafts={drafts.data} />
+        </Section>
+      )}
       <Section title="Recent">
         <ItemListing
           query={recentQuery(drive)}
