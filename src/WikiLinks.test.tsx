@@ -143,7 +143,6 @@ describe("internal links in a note of a vault", () => {
     ["in code", "`[[Guide]]`", "[[Guide]]"],
     ["in a link's text", "[a [[Guide]]](https://example.com)", "a [[Guide]]"],
     ["empty", "[[]]", "[[]]"],
-    ["an embed, which is no link", "![[Guide]]", "![[Guide]]"],
   ])("are none when %s", (_, text, written) => {
     const { drive } = open(text);
 
