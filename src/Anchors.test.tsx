@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FileContent } from "./FileContent.tsx";
 import { Rendered } from "./Markdown.tsx";
-import { DEFAULT_SETTINGS } from "./vault-settings.ts";
+import { VAULT } from "./test/vault.ts";
 import { driveItem, metadata } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 import { renderWithDrive, visit } from "./test/render.tsx";
@@ -59,7 +59,7 @@ describe("a link to a part of the note", () => {
         text={
           "[Go](#^answer)\n\n> [!faq]- Q\n> > [!note]- Inner\n> > Yes. ^answer"
         }
-        vault={DEFAULT_SETTINGS}
+        vault={VAULT}
       />,
     ).container;
 

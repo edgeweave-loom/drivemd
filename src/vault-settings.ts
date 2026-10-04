@@ -1,9 +1,16 @@
+import type { FileRef } from "./drive.ts";
 import { isRecord } from "./is-record.ts";
 
 /** The settings of an Obsidian vault that change how its notes show. */
 export interface VaultSettings {
   /** Lines join as Markdown joins them, rather than break where the note does. */
   strictLineBreaks: boolean;
+}
+
+/** An Obsidian vault a note sits in: its top folder, and its settings. */
+export interface Vault {
+  root: FileRef;
+  settings: VaultSettings;
 }
 
 /** Obsidian's own settings, which hold for what a vault leaves unset. */

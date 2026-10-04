@@ -353,6 +353,83 @@ function closing(content: PhrasingContent[], from: Place): Place | undefined {
   return undefined;
 }
 
+// `[[target#part|text]]`, with no bracket or line break inside.
+const WIKI_LINK = /\[\[([^[\]\r\n]*)\]\]/g;
+
+/**
+ * Turns Obsidian's internal links, `[[Note]]`, `[[Note|text]]`,
+ * `[[Note#Heading]]` and `[[Note#^block]]`, into links that name their
+ * target in `data-wikilink`, for the viewer to find in Drive. A link's text
+ * holds none, as a link holds no link.
+ */
+export function remarkWikiLinks() {
+  return (tree: Root) => {
+    wikiLink(tree);
+  };
+}
+
+function wikiLink(node: Nodes): void {
+  if (!("children" in node) || node.type === "link") return;
+  if (node.type === "linkReference") return;
+  for (const child of node.children) wikiLink(child);
+  if (holdsText(node)) node.children = withWikiLinks(node.children);
+}
+
+function withWikiLinks(content: PhrasingContent[]): PhrasingContent[] {
+  const parts: PhrasingContent[] = [];
+  let changed = false;
+  for (const node of content) {
+    if (node.type !== "text") {
+      parts.push(node);
+      continue;
+    }
+    let from = 0;
+    for (const match of node.value.matchAll(WIKI_LINK)) {
+      const [whole, inner = ""] = match;
+      const at = match.index;
+      const end = at + whole.length;
+      // An embed, `![[...]]`, is no link.
+      const embed =
+        node.value.charAt(at - 1) === "!" && writtenAt(node, at - 1, 1);
+      const link = wikiNode(inner);
+      if (
+        !link ||
+        embed ||
+        !writtenAt(node, at, 2) ||
+        !writtenAt(node, end - 2, 2)
+      ) {
+        continue;
+      }
+      if (at > from) parts.push(sliceText(node, from, at));
+      parts.push(link);
+      from = end;
+      changed = true;
+    }
+    if (from === 0) parts.push(node);
+    else if (from < node.value.length) parts.push(sliceText(node, from));
+  }
+  return changed ? parts : content;
+}
+
+/** The link `[[inner]]` stands for: its text, and its target as written. */
+function wikiNode(inner: string): PhrasingContent | undefined {
+  const bar = inner.indexOf("|");
+  const target = (bar < 0 ? inner : inner.slice(0, bar)).trim();
+  const text = bar < 0 ? "" : inner.slice(bar + 1).trim();
+  const hash = target.indexOf("#");
+  const path = hash < 0 ? target : target.slice(0, hash);
+  const part = hash < 0 ? "" : target.slice(hash + 1);
+  if (path === "" && part === "") return;
+  // As Obsidian shows a link without its own text.
+  const shown = path === "" ? part : part === "" ? path : `${path} > ${part}`;
+  return {
+    type: "link",
+    url: "",
+    children: [{ type: "text", value: text || shown }],
+    data: { hProperties: { dataWikilink: target } },
+  };
+}
+
 // Letters, digits, `_`, `-` and `/`, as Obsidian allows them in a tag.
 const TAG = /#([\p{L}\p{M}\p{N}_/-]+)/gu;
 

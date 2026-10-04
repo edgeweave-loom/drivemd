@@ -3,9 +3,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DriveItem } from "./drive.ts";
 import { useFollow } from "./follow.ts";
 import { getPlace } from "./router.ts";
-import { driveItem } from "./test/drive-items.ts";
+import {
+  driveItem,
+  folderItem,
+  metadata,
+  metadataOf,
+} from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 import { renderWithDrive, visit } from "./test/render.tsx";
+import { VAULT } from "./test/vault.ts";
+import type { Vault } from "./vault-settings.ts";
 
 const NOTES: DriveItem[] = [
   driveItem("plan.md", { id: "plan", parents: ["notes"] }),
@@ -16,8 +23,14 @@ const NOTES: DriveItem[] = [
   }),
 ];
 
-function Follower({ href }: { href: string }) {
-  const follow = useFollow({ id: "notes" });
+function Follower({
+  href,
+  vault,
+}: {
+  href: string;
+  vault?: Vault | undefined;
+}) {
+  const follow = useFollow({ id: "notes" }, vault);
   return (
     <>
       <h2 id="user-content-set-up">Set up</h2>
@@ -33,10 +46,13 @@ function Follower({ href }: { href: string }) {
   );
 }
 
-function follow(href: string) {
+function follow(href: string, vault?: Vault) {
   const drive = fakeDrive();
   drive.listChildren.mockResolvedValue(NOTES);
-  const rendered = renderWithDrive(<Follower href={href} />, drive);
+  const rendered = renderWithDrive(
+    <Follower href={href} vault={vault} />,
+    drive,
+  );
   fireEvent.click(screen.getByRole("button", { name: "Follow" }));
   return rendered;
 }
@@ -54,6 +70,26 @@ describe("useFollow", () => {
     await waitFor(() => {
       expect(getPlace().route).toEqual({ name: "file", file: { id: "plan" } });
     });
+  });
+
+  it("finds a note by name in a vault, at the heading the link names", async () => {
+    const drive = fakeDrive();
+    const guide = driveItem("Guide.md", { id: "guide", parents: ["vault"] });
+    drive.listChildren.mockResolvedValue([]);
+    drive.findByName.mockResolvedValue({ items: [guide], incomplete: false });
+    drive.getMetadata.mockImplementation(
+      metadataOf(
+        metadata(guide),
+        metadata(folderItem("Vault", { id: "vault", parents: [] })),
+      ),
+    );
+    renderWithDrive(<Follower href="Guide.md#Set%20up" vault={VAULT} />, drive);
+    fireEvent.click(screen.getByRole("button", { name: "Follow" }));
+
+    await waitFor(() => {
+      expect(getPlace().route).toEqual({ name: "file", file: { id: "guide" } });
+    });
+    expect(getPlace().fragment).toBe("set-up");
   });
 
   it("opens a note at the heading the link names", async () => {
