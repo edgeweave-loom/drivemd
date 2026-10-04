@@ -1,5 +1,6 @@
 import type { Blockquote, Paragraph, PhrasingContent, Root } from "mdast";
 import { visit } from "unist-util-visit";
+import { sliceText, writtenAt } from "./written.ts";
 
 /** Obsidian's callout types, and the aliases that show as one of them. */
 const TYPES = new Map(
@@ -24,13 +25,15 @@ const TYPES = new Map(
 export const CALLOUT_TYPES = [...new Set(TYPES.values())];
 
 // `[!type]` opens a callout's first line, then `-` or `+` if it folds.
-const MARKER = /^\[!([^\]\s]+)\]([+-]?)(?:[ \t]+|(?=\n|$))/;
+const MARKER = /^\[!([^\]\s]+)\]([+-]?)(?:[ \t]+|(?=[\r\n]|$))/;
+// The note's own line breaks reach the renderer.
+const LINE_BREAK = /\r\n?|\n/;
 
 /**
  * Shows Obsidian's callouts, quotes whose first line starts with `[!type]`,
  * as boxes titled by the rest of that line or else by their type, and that
  * fold when the type ends with `-` (folded) or `+` (open). An unknown type
- * shows as a note.
+ * shows as a note. It needs remarkEscapes first, which marks an escaped one.
  */
 export function remarkCallouts() {
   return (tree: Root) => {
@@ -43,10 +46,10 @@ export function remarkCallouts() {
       const [lead, ...after] = first.children;
       if (lead?.type !== "text") return;
       const marker = MARKER.exec(lead.value);
-      if (!marker) return;
+      if (!marker || !writtenAt(lead, 0, marker[0].length)) return;
       const [found, name = "", fold] = marker;
       const [title, body] = firstLine([
-        { ...lead, value: lead.value.slice(found.length) },
+        sliceText(lead, found.length),
         ...after,
       ]);
       const blocks = [...(written(body) ? [paragraph(body)] : []), ...rest];
@@ -88,15 +91,12 @@ function firstLine(
     if (node.type === "break") {
       return [content.slice(0, index), content.slice(index + 1)];
     }
-    const end = node.type === "text" ? node.value.indexOf("\n") : -1;
-    if (node.type === "text" && end >= 0) {
+    const end = node.type === "text" ? LINE_BREAK.exec(node.value) : null;
+    if (node.type === "text" && end) {
       return [
+        [...content.slice(0, index), sliceText(node, 0, end.index)],
         [
-          ...content.slice(0, index),
-          { ...node, value: node.value.slice(0, end) },
-        ],
-        [
-          { ...node, value: node.value.slice(end + 1) },
+          sliceText(node, end.index + end[0].length),
           ...content.slice(index + 1),
         ],
       ];

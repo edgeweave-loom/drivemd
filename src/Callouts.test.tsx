@@ -148,6 +148,58 @@ describe("callouts in a note of a vault", () => {
     ]);
   });
 
+  it.each([
+    ["CRLF", "\r\n"],
+    ["CR", "\r"],
+  ])("split their title from their content at a %s line break", (_, eol) => {
+    const page = show(
+      ["> [!note] Title", "> Body", "", "> [!faq]-", "> Folded", ""].join(eol),
+    );
+
+    expect(callouts(page)).toEqual([
+      { tag: "div", type: "note", title: "Title", content: "Body" },
+      { tag: "details", type: "question", title: "Faq", content: "Folded" },
+    ]);
+    expect(page.querySelectorAll(".callout-title br")).toHaveLength(0);
+  });
+
+  it.each([
+    ["an escaped bracket", "> \\[!note] Escaped"],
+    ["an escaped mark", "> [\\!note] Escaped"],
+    ["a character reference", "> &#91;!note] Escaped"],
+  ])("are no callout when written with %s", (_, text) => {
+    const page = show(text);
+
+    expect(callouts(page)).toEqual([]);
+    expect(page.querySelector("blockquote")).toHaveTextContent(
+      "[!note] Escaped",
+    );
+  });
+
+  it("show in a list item", () => {
+    const page = show("- Item\n\n  > [!tip] Inside\n  > Body");
+
+    expect(page.querySelector("li .callout")).toHaveAttribute(
+      "data-callout",
+      "tip",
+    );
+  });
+
+  it("join the lines of their content when the vault says so", () => {
+    const page = render(
+      <Rendered
+        text={"> [!note] Title\n> One\n> Two"}
+        vault={{ strictLineBreaks: true }}
+      />,
+    ).container;
+
+    expect(callouts(page)[0]).toMatchObject({
+      title: "Title",
+      content: "One Two",
+    });
+    expect(page.querySelector(".callout br")).toBeNull();
+  });
+
   it("show a marker in their content as written", () => {
     const page = show("> [!note] Title\n> [!tip] Not a callout");
 
@@ -184,18 +236,51 @@ describe("callouts in a note of a vault", () => {
     expect(page.querySelectorAll("blockquote")).toHaveLength(5);
   });
 
-  it("cannot be made up in HTML with other classes or handlers", () => {
+  it("keep their own classes and types only, when written in HTML", () => {
     const page = show(
-      '<div class="callout evil" data-callout="tip" onclick="alert(1)">Hi</div>',
+      '<div class="callout evil" data-callout="tip">Tip</div><div class="callout" data-callout="evil">Evil</div>',
     );
 
-    const made = page.querySelector(".callout");
-    expect(made).toHaveAttribute("class", "callout");
-    expect(made).not.toHaveAttribute("onclick");
+    const [tip, evil] = page.querySelectorAll(".callout");
+    expect(tip).toHaveAttribute("class", "callout");
+    expect(tip).toHaveAttribute("data-callout", "tip");
+    expect(evil).not.toHaveAttribute("data-callout");
+  });
+
+  it("keep nothing else of a folded one written in HTML", () => {
+    const page = show(
+      '<details class="callout x" data-callout="faq" open ontoggle="alert(1)" style="color: red" id="mine"><summary class="callout-title y" onclick="alert(1)">Q</summary>A</details>',
+    );
+
+    const details = page.querySelector("details");
+    expect(details?.getAttributeNames().sort()).toEqual([
+      "class",
+      "id",
+      "open",
+    ]);
+    expect(details).toHaveAttribute("class", "callout");
+    expect(details).toHaveAttribute("id", "user-content-mine");
+    expect(page.querySelector("summary")?.getAttributeNames()).toEqual([
+      "class",
+    ]);
+    expect(page.querySelector("summary")).toHaveAttribute(
+      "class",
+      "callout-title",
+    );
   });
 });
 
 describe("a note outside a vault", () => {
+  it("keeps GitHub's rules for HTML", () => {
+    const page = render(
+      <Rendered text={'<div class="callout" data-callout="tip">Tip</div>'} />,
+    ).container;
+
+    const div = page.querySelector(".markdown div");
+    expect(div).not.toHaveAttribute("class");
+    expect(div).not.toHaveAttribute("data-callout");
+  });
+
   it("shows a callout's marker as written, in a quote", () => {
     const page = render(<Rendered text="> [!tip] Brew it hot" />).container;
 

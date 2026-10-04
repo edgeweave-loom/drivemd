@@ -48,12 +48,13 @@ import { onTheWeb, relativePath } from "./resolve.ts";
 import { toggleTask } from "./tasks.ts";
 import { hrefOf } from "./router.ts";
 import type { VaultSettings } from "./vault-settings.ts";
+import { remarkEscapes } from "./written.ts";
 
 type Plugins = NonNullable<Options["remarkPlugins"]>;
 
 const REMARK: Plugins = [remarkGfm, remarkFrontmatter, remarkProperties];
 
-/** The sanitizer's rules for a note: GitHub's, and the ones given. */
+/** The rehype plugins for a note, sanitizing with the given rules, else GitHub's. */
 function rehype(schema?: Schema): Plugins {
   // Raw HTML is parsed, headings get ids, then the rules sanitize it all,
   // prefixing ids so that none can stand for one of the app's own. Code is
@@ -61,29 +62,30 @@ function rehype(schema?: Schema): Plugins {
   return [rehypeRaw, rehypeSlug, [rehypeSanitize, schema], rehypeHighlight];
 }
 
-const attributes = defaultSchema.attributes ?? {};
-
 // GitHub's rules, and what Obsidian's syntax renders to, which they drop.
 const VAULT_SCHEMA: Schema = {
   ...defaultSchema,
   attributes: {
-    ...attributes,
+    ...defaultSchema.attributes,
     details: [
       ["className", "callout"],
       ["dataCallout", ...CALLOUT_TYPES],
     ],
     div: [
-      ...(attributes.div ?? []),
+      ...(defaultSchema.attributes?.div ?? []),
       ["className", "callout", "callout-title", "callout-content"],
       ["dataCallout", ...CALLOUT_TYPES],
     ],
-    summary: [...(attributes.summary ?? []), ["className", "callout-title"]],
+    summary: [
+      ...(defaultSchema.attributes?.summary ?? []),
+      ["className", "callout-title"],
+    ],
   },
 };
 
 const GITHUB = { remark: REMARK, rehype: rehype() };
 const OBSIDIAN = {
-  remark: [...REMARK, remarkCallouts],
+  remark: [...REMARK, remarkEscapes, remarkCallouts],
   rehype: rehype(VAULT_SCHEMA),
 };
 // Obsidian shows a single line break as one, where Markdown joins the lines.
