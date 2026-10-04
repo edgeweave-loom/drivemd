@@ -1,6 +1,7 @@
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
 import { DriveContext, useDrive } from "./drive-context.ts";
+import { linkedPage } from "./drive-web.ts";
 import { FileView } from "./FilePage.tsx";
 import { FolderPage } from "./FolderPage.tsx";
 import { Home } from "./Home.tsx";
@@ -87,7 +88,10 @@ function Page() {
   }
 }
 
-/** Searches Markdown files by name, from every page. */
+/**
+ * Searches Markdown files by name, from every page, or opens the file or
+ * folder of a Drive link pasted in it.
+ */
 function SearchBox() {
   const { renew } = useDrive();
   const client = useQueryClient();
@@ -107,11 +111,16 @@ function SearchBox() {
       onSubmit={(event) => {
         event.preventDefault();
         if (typed.trim() === "") return;
-        const href = hrefOf({ name: "search", text: typed });
+        const linked = linkedPage(typed);
+        const href = linked ?? hrefOf({ name: "search", text: typed });
         // Asked first, so that a refusal opens no Google window.
         if (!mayLeave(href)) return;
         renew();
         navigate(href, undefined, { asked: true });
+        if (linked !== undefined) {
+          setTyped("");
+          return;
+        }
         // The same search again asks Drive again.
         refreshSearches(client);
       }}
@@ -123,7 +132,7 @@ function SearchBox() {
           setTyped(event.target.value);
         }}
         aria-label="Search Markdown files by name"
-        placeholder="Search"
+        placeholder="Search or paste a link"
         enterKeyHint="search"
         autoComplete="off"
       />

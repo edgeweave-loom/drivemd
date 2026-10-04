@@ -101,7 +101,7 @@ function withKey(
 }
 
 /** The item named in a URL, once its ID and resource key are well formed. */
-function fileRef(
+export function fileRef(
   id: string | null | undefined,
   params: URLSearchParams,
 ): FileRef | undefined {
