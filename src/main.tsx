@@ -10,9 +10,10 @@ const root = document.getElementById("root");
 if (!root) throw new Error("index.html has no #root element");
 
 // Drive's Open with gives way to the file's own address, which a reload or
-// a copied address then keeps, and names the account to sign in as.
+// a copied address then keeps; Open with and New name the account to sign in
+// as.
 const fromDrive = requestFromDrive(new URL(window.location.href));
-if (fromDrive) {
+if (fromDrive?.action === "open") {
   history.replaceState(
     null,
     "",

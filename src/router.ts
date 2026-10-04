@@ -12,6 +12,8 @@ export type Route =
   | { name: "folder"; folder: FileRef }
   | { name: "search"; text: string }
   | { name: "file"; file: FileRef }
+  /** Drive's New, which creates a Markdown file in the folder. */
+  | { name: "new"; folder: FileRef }
   | { name: "not-found" };
 
 /** A step of the path the user took, as the breadcrumbs show it. */
@@ -60,10 +62,13 @@ export function routeOf(url: URL): Route {
       const file = fileRef(searchParams.get("id"), searchParams);
       return file ? { name: "file", file } : NOT_FOUND;
     }
-    case "/open": {
-      // Drive's Open with, whose file has its own page.
+    case "/open":
+    case "/new": {
+      // Drive's Open with, whose file has its own page, and Drive's New.
       const request = requestFromDrive(url);
-      return request ? { name: "file", file: request.file } : NOT_FOUND;
+      if (request?.action === "open")
+        return { name: "file", file: request.file };
+      return request ? { name: "new", folder: request.folder } : NOT_FOUND;
     }
   }
   const [, id] = /^\/folder\/([^/]+)$/.exec(pathname) ?? [];
@@ -93,6 +98,16 @@ export function hrefOf(route: Exclude<Route, { name: "not-found" }>): string {
     case "file": {
       const { id, resourceKey } = route.file;
       return withKey("/edit", new URLSearchParams({ id }), resourceKey);
+    }
+    case "new": {
+      // As Drive's New writes it, without the account it acted as.
+      const { id, resourceKey } = route.folder;
+      const state = JSON.stringify({
+        action: "create",
+        folderId: id,
+        ...(resourceKey !== undefined && { folderResourceKey: resourceKey }),
+      });
+      return `/new?${new URLSearchParams({ state }).toString()}`;
     }
   }
 }
@@ -192,21 +207,24 @@ function fragmentOf({ hash }: URL): string | undefined {
 export function navigate(
   href: string,
   trail?: Crumb[],
-  /** The user already chose to leave, as when they trash the file shown. */
-  { asked = false } = {},
+  {
+    /** The user already chose to leave, as when they trash the file shown. */
+    asked = false,
+    /** The page shown gives way to this one, which Back then skips. */
+    replace = false,
+  } = {},
 ): void {
   if (!asked && !mayLeave(href)) return;
   const url = new URL(href, window.location.origin);
   const page = canonical(url);
   const target = page + url.hash;
-  if (page === getPlace().href) {
-    const state: unknown = trail === undefined ? history.state : { trail };
-    history.replaceState(state, "", target);
-  } else {
-    history.pushState(trail === undefined ? null : { trail }, "", target);
-    // Back returns to where the page was left, as the browser keeps it.
-    window.scrollTo(0, 0);
-  }
+  const same = page === getPlace().href;
+  const kept: unknown = same ? history.state : null;
+  const state = trail === undefined ? kept : { trail };
+  if (same || replace) history.replaceState(state, "", target);
+  else history.pushState(state, "", target);
+  // Back returns to where the page was left, as the browser keeps it.
+  if (!same) window.scrollTo(0, 0);
   changed();
 }
 

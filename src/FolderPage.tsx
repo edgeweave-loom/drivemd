@@ -51,7 +51,7 @@ export function FolderPage({
   );
 }
 
-/** Creates a Markdown file in the folder, named first, then opens it. */
+/** Offers to create a Markdown file in the folder. */
 function NewFile({
   folder,
   path,
@@ -59,9 +59,45 @@ function NewFile({
   folder: FileRef;
   path: Crumb[] | undefined;
 }) {
+  const [asking, setAsking] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setAsking(true);
+        }}
+      >
+        New
+      </button>
+      {asking && (
+        <CreateFile
+          folder={folder}
+          path={path}
+          onClose={() => {
+            setAsking(false);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/** Asks for a Markdown file's name, creates it in the folder, then opens it. */
+export function CreateFile({
+  folder,
+  path,
+  replace = false,
+  onClose,
+}: {
+  folder: FileRef;
+  path: Crumb[] | undefined;
+  /** Whether the file's page takes the place of the page shown. */
+  replace?: boolean;
+  onClose: () => void;
+}) {
   const { drive, renew } = useDrive();
   const client = useQueryClient();
-  const [asking, setAsking] = useState(false);
   const create = useMutation({
     mutationFn: (name: string) => drive.createFile(folder, name),
     onSuccess: (file) => {
@@ -69,39 +105,25 @@ function NewFile({
     },
   });
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => {
-          create.reset();
-          setAsking(true);
-        }}
-      >
-        New
-      </button>
-      {asking && (
-        <NameDialog
-          title="New Markdown file"
-          initial="Untitled"
-          hint={() => ".md is added unless the name ends in .md or .markdown."}
-          action="Create"
-          pending={create.isPending}
-          error={create.error}
-          onSubmit={(name) => {
-            renew();
-            // Only while the page shows: Back takes the user elsewhere.
-            create.mutate(name, {
-              onSuccess: (file) => {
-                const href = hrefOf({ name: "file", file });
-                navigate(href, path && [...path, { name: file.name, href }]);
-              },
-            });
-          }}
-          onClose={() => {
-            setAsking(false);
-          }}
-        />
-      )}
-    </>
+    <NameDialog
+      title="New Markdown file"
+      initial="Untitled"
+      hint={() => ".md is added unless the name ends in .md or .markdown."}
+      action="Create"
+      pending={create.isPending}
+      error={create.error}
+      onSubmit={(name) => {
+        renew();
+        // Only while the page shows: Back takes the user elsewhere.
+        create.mutate(name, {
+          onSuccess: (file) => {
+            const href = hrefOf({ name: "file", file });
+            const trail = path && [...path, { name: file.name, href }];
+            navigate(href, trail, { replace });
+          },
+        });
+      }}
+      onClose={onClose}
+    />
   );
 }

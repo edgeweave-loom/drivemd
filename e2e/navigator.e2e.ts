@@ -103,6 +103,35 @@ test("opens the file that Drive's Open with names, the user picking the account"
   ).toEqual([{ prompt: "select_account", login_hint: account }]);
 });
 
+test("creates a file where Drive's New asks, then opens it in its place", async ({
+  page,
+  drive,
+}) => {
+  const state = {
+    action: "create",
+    folderId: "work",
+    userId: "104857600000000000001",
+  };
+  await page.goto(`/new?state=${encodeURIComponent(JSON.stringify(state))}`);
+  await page.getByRole("button", { name: "Sign in with Google" }).click();
+
+  const create = page.getByRole("dialog", { name: "New Markdown file" });
+  const name = create.getByRole("textbox", { name: "Name" });
+  await expect(name).toHaveValue("Untitled");
+  await name.fill("ideas");
+  await create.getByRole("button", { name: "Create" }).click();
+  await expect(
+    page.getByRole("heading", { level: 2, name: "ideas.md" }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/edit\?id=created-1$/);
+  await expect(crumbs(page).getByRole("link")).toHaveText([
+    "Home",
+    "My Drive",
+    "Work",
+  ]);
+  expect(drive.writes).toEqual(["create ideas.md"]);
+});
+
 test("follows a shortcut, and greys out one whose target is gone", async ({
   page,
 }) => {

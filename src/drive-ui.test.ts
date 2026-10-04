@@ -92,3 +92,55 @@ describe("Drive's Open with", () => {
     expect(requestFromDrive(url)).toBeUndefined();
   });
 });
+
+describe("Drive's New", () => {
+  it("creates a file in the folder Drive names, as the account it names", () => {
+    const url = address("/new", {
+      action: "create",
+      folderId: ID,
+      folderResourceKey: KEY,
+      userId: USER,
+    });
+
+    expect(requestFromDrive(url)).toEqual({
+      action: "create",
+      folder: { id: ID, resourceKey: KEY },
+      account: USER,
+    });
+  });
+
+  it("creates a file in My Drive when Drive names no folder", () => {
+    const url = address("/new", { action: "create" });
+
+    expect(requestFromDrive(url)).toEqual({
+      action: "create",
+      folder: { id: "root" },
+    });
+  });
+
+  it.each([
+    ["another action", address("/new", { action: "open", folderId: ID })],
+    [
+      "a folder ID not shaped like Drive's",
+      address("/new", { action: "create", folderId: "a/b" }),
+    ],
+    [
+      "a resource key not shaped like Drive's",
+      address("/new", {
+        action: "create",
+        folderId: ID,
+        folderResourceKey: "a,b",
+      }),
+    ],
+    [
+      "a resource key without a folder",
+      address("/new", { action: "create", folderResourceKey: KEY }),
+    ],
+    [
+      "an account not shaped like Google's",
+      address("/new", { action: "create", folderId: ID, userId: 1 }),
+    ],
+  ])("creates nothing with %s", (_, url) => {
+    expect(requestFromDrive(url)).toBeUndefined();
+  });
+});
