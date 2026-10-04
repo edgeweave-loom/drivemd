@@ -66,9 +66,11 @@ const AUTH_MESSAGES: Record<AuthErrorReason, string | undefined> = {
 };
 
 /**
- * `driveAccount` is the account Drive's Open with acted as, when it opened
- * the tab: the tab's first token is asked for it, and the account Google
- * gives then replaces the one the device remembers, if another.
+ * `driveAccount` is the account Drive acted as, when its Open with or New
+ * opened the tab. Without a token, such a tab signs in afresh rather than
+ * continuing as the account the device remembers, which may be another: the
+ * user picks the account in Google's chooser, from Drive's, so that a link
+ * never picks it for them.
  */
 export function createSession(driveAccount?: string): Session {
   const listeners = new Set<() => void>();
@@ -83,7 +85,7 @@ export function createSession(driveAccount?: string): Session {
   };
   // Drive calls waiting for a token that only a tap can bring.
   const waiters = new Set<Waiter>();
-  // Who to ask Google for until the tab has signed in.
+  // The account Drive acted as, until the tab has signed in.
   let requested = driveAccount;
 
   function update(changes: Partial<SessionState>): void {
@@ -93,7 +95,7 @@ export function createSession(driveAccount?: string): Session {
 
   function signedOutScreen(): Screen {
     const email = auth.getRememberedAccount();
-    return email === undefined
+    return email === undefined || requested !== undefined
       ? { name: "sign-in" }
       : { name: "continue", email };
   }
@@ -255,7 +257,11 @@ export function createSession(driveAccount?: string): Session {
     },
     getSnapshot: () => state,
     signIn() {
-      start(auth.requestAccessToken(requested));
+      start(
+        requested === undefined
+          ? auth.requestAccessToken()
+          : auth.requestAccessToken(requested, { choose: true }),
+      );
     },
     continueSession() {
       const { screen } = state;
@@ -263,12 +269,12 @@ export function createSession(driveAccount?: string): Session {
       const current = auth.getAccessToken();
       // A fresh popup may sign in another account on purpose; a reused token
       // must still belong to the account shown.
-      if (current === undefined) {
-        start(auth.requestAccessToken(requested ?? screen.email));
-      } else start(Promise.resolve(current), screen.email);
+      if (current === undefined) start(auth.requestAccessToken(screen.email));
+      else start(Promise.resolve(current), screen.email);
     },
     signOut() {
       epoch += 1;
+      requested = undefined;
       auth.signOut();
       failWaiters("The user signed out");
       update({

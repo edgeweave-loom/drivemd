@@ -222,8 +222,7 @@ describe("signing in", () => {
     const session = createSession();
 
     session.signIn();
-    // Without a login hint, Google lets the user choose.
-    expect(auth.requestAccessToken).toHaveBeenCalledWith(undefined);
+    expect(auth.requestAccessToken).toHaveBeenCalledWith();
     expect(session.getSnapshot().waiting).toBe(true);
     request.resolve(TOKEN);
     await settled(session);
@@ -303,43 +302,60 @@ describe("signing in", () => {
 describe("a tab that Drive opened", () => {
   // Drive's Open with and New name the account by its Google profile ID.
   const DRIVE_ACCOUNT = "104857600000000000001";
+  const CHOOSE = { choose: true };
 
-  it("signs in as the account Drive acted as", async () => {
-    vi.mocked(auth.requestAccessToken).mockResolvedValue(TOKEN);
-    const session = createSession(DRIVE_ACCOUNT);
-
-    session.signIn();
-    expect(auth.requestAccessToken).toHaveBeenCalledWith(DRIVE_ACCOUNT);
-    await settled(session);
-    expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
-  });
-
-  it("continues as the account Drive acted as, which may be another", async () => {
+  it("signs in afresh, the user picking the account from Drive's", async () => {
     vi.mocked(auth.getRememberedAccount).mockReturnValue("grace@example.com");
     vi.mocked(auth.requestAccessToken).mockResolvedValue(TOKEN);
     const session = createSession(DRIVE_ACCOUNT);
+    expect(screenOf(session)).toEqual({ name: "sign-in" });
 
-    session.continueSession();
-    expect(auth.requestAccessToken).toHaveBeenCalledWith(DRIVE_ACCOUNT);
+    session.signIn();
+    expect(auth.requestAccessToken).toHaveBeenCalledWith(DRIVE_ACCOUNT, CHOOSE);
     await settled(session);
     expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
     expect(auth.rememberAccount).toHaveBeenCalledWith(EMAIL);
   });
 
-  it("asks for Drive's account until the tab has signed in", async () => {
+  it("acts as its own account when it already has a token", async () => {
+    vi.mocked(auth.getAccessToken).mockReturnValue(TOKEN);
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
+    const session = createSession(DRIVE_ACCOUNT);
+
+    await settled(session);
+    expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
+    expect(auth.requestAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("asks for Drive's account until the tab has signed in, then for its own", async () => {
+    vi.mocked(auth.getRememberedAccount).mockReturnValue(EMAIL);
     vi.mocked(auth.requestAccessToken)
       .mockRejectedValueOnce(new AuthError("popup_blocked", "details"))
       .mockResolvedValue(TOKEN);
     const session = createSession(DRIVE_ACCOUNT);
     session.signIn();
     await settled(session);
+    expect(screenOf(session)).toEqual({ name: "sign-in" });
 
     session.signIn();
-    expect(auth.requestAccessToken).toHaveBeenLastCalledWith(DRIVE_ACCOUNT);
+    expect(auth.requestAccessToken).toHaveBeenLastCalledWith(
+      DRIVE_ACCOUNT,
+      CHOOSE,
+    );
     await settled(session);
-    expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
-    session.renew();
-    expect(auth.requestAccessToken).toHaveBeenLastCalledWith(EMAIL);
+    onSignOutElsewhere();
+    expect(screenOf(session)).toEqual({ name: "continue", email: EMAIL });
+  });
+
+  it("forgets Drive's account once the user signs out", () => {
+    vi.mocked(auth.requestAccessToken).mockReturnValue(
+      new Promise(() => undefined),
+    );
+    const session = createSession(DRIVE_ACCOUNT);
+
+    session.signOut();
+    session.signIn();
+    expect(auth.requestAccessToken).toHaveBeenCalledWith();
   });
 });
 

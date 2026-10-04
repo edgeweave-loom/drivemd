@@ -95,9 +95,13 @@ export function loadGoogleIdentity(): Promise<void> {
  * Opens Google's popup, so it must run synchronously inside a click or tap
  * handler: browsers block popups opened after an `await`. Without a hint the
  * user picks an account; with one, the popup closes by itself when Google
- * needs nothing from the user.
+ * needs nothing from the user, unless `choose` has the user pick the account
+ * from the hinted one.
  */
-export function requestAccessToken(loginHint?: string): Promise<string> {
+export function requestAccessToken(
+  loginHint?: string,
+  { choose = false } = {},
+): Promise<string> {
   const tokenClient = client;
   if (!tokenClient) {
     return Promise.reject(
@@ -113,7 +117,7 @@ export function requestAccessToken(loginHint?: string): Promise<string> {
       tokenClient.requestAccessToken(
         loginHint === undefined
           ? { prompt: "select_account" }
-          : { prompt: "", login_hint: loginHint },
+          : { prompt: choose ? "select_account" : "", login_hint: loginHint },
       );
     } catch {
       takePending();

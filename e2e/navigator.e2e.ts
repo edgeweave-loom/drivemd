@@ -69,9 +69,14 @@ test("rebuilds the breadcrumbs of a page opened by its address", async ({
   ]);
 });
 
-test("opens the file that Drive's Open with names, as the account it names", async ({
+test("opens the file that Drive's Open with names, the user picking the account", async ({
   page,
 }) => {
+  await signIn(page);
+  // A new tab, as Drive opens: the device remembers the account.
+  await page.evaluate(() => {
+    sessionStorage.clear();
+  });
   const account = "104857600000000000001";
   const state = {
     ids: ["plan"],
@@ -93,9 +98,9 @@ test("opens the file that Drive's Open with names, as the account it names", asy
   ]);
   expect(
     await page.evaluate(
-      () => (window as unknown as { loginHints: unknown[] }).loginHints,
+      () => (window as unknown as { tokenRequests: unknown[] }).tokenRequests,
     ),
-  ).toEqual([account]);
+  ).toEqual([{ prompt: "select_account", login_hint: account }]);
 });
 
 test("follows a shortcut, and greys out one whose target is gone", async ({
