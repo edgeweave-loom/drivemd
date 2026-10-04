@@ -222,7 +222,9 @@ Drive opens our URL with a URL-encoded JSON `state` parameter. The app decodes i
 { "action": "create", "folderId": "FOLDER_ID", "userId": "USER_ID" }
 ```
 
-For `open`, redirect to `/edit?id=<first id>`, adding its resource key from `resourceKeys` when there is one. For `create`, ask for the file name (prefilled with `Untitled`), create the file in `folderId`, then redirect to its `/edit` URL. If `userId` differs from the signed-in account, pass it as `login_hint` when requesting the token.
+For `open`, redirect to `/edit?id=<first id>`, adding its resource key from `resourceKeys` when there is one, before the app starts, so that a reload or a copied address names the file; `exportIds`, which Drive sends for Google's own documents, open nothing, since the app is listed for Markdown files only. For `create`, ask for the file name (prefilled with `Untitled`), create the file in `folderId`, then redirect to its `/edit` URL. A state not shaped as Drive writes it, or with an ID or a key not shaped like Drive's, opens nothing.
+
+`userId` is the Google profile ID of the account Drive acted as, and Google asks apps to sign in as that account when it is not the one signed in. The app cannot compare them: Google gives an account's profile ID only to an app granted the `openid` scope (checked live: `tokeninfo` names no `sub` for the app's token). Drive opens these addresses in a new tab, which has no token yet and so asks for one, with **Sign in** or **Continue**: that request passes `userId` as `login_hint`, and the account Google then gives replaces the one the device remembers, if another. A tab that already has a token, such as one where the address was pasted, acts as its own account.
 
 **Phone limit**
 

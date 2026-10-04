@@ -69,6 +69,35 @@ test("rebuilds the breadcrumbs of a page opened by its address", async ({
   ]);
 });
 
+test("opens the file that Drive's Open with names, as the account it names", async ({
+  page,
+}) => {
+  const account = "104857600000000000001";
+  const state = {
+    ids: ["plan"],
+    resourceKeys: {},
+    action: "open",
+    userId: account,
+  };
+  await page.goto(`/open?state=${encodeURIComponent(JSON.stringify(state))}`);
+  await expect(page).toHaveURL(/\/edit\?id=plan$/);
+
+  await page.getByRole("button", { name: "Sign in with Google" }).click();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "The plan" }),
+  ).toBeVisible();
+  await expect(crumbs(page).getByRole("link")).toHaveText([
+    "Home",
+    "My Drive",
+    "Work",
+  ]);
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { loginHints: unknown[] }).loginHints,
+    ),
+  ).toEqual([account]);
+});
+
 test("follows a shortcut, and greys out one whose target is gone", async ({
   page,
 }) => {

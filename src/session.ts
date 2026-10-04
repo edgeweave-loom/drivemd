@@ -65,7 +65,12 @@ const AUTH_MESSAGES: Record<AuthErrorReason, string | undefined> = {
   failed: "Google sign-in failed. Try again.",
 };
 
-export function createSession(): Session {
+/**
+ * `driveAccount` is the account Drive's Open with acted as, when it opened
+ * the tab: the tab's first token is asked for it, and the account Google
+ * gives then replaces the one the device remembers, if another.
+ */
+export function createSession(driveAccount?: string): Session {
   const listeners = new Set<() => void>();
   // Each user action starts a new epoch; results from an older one are dropped.
   let epoch = 0;
@@ -78,6 +83,8 @@ export function createSession(): Session {
   };
   // Drive calls waiting for a token that only a tap can bring.
   const waiters = new Set<Waiter>();
+  // Who to ask Google for until the tab has signed in.
+  let requested = driveAccount;
 
   function update(changes: Partial<SessionState>): void {
     state = { ...state, ...changes };
@@ -143,6 +150,7 @@ export function createSession(): Session {
         return;
       }
       auth.rememberAccount(email);
+      requested = undefined;
       update({
         screen: { name: "home", email },
         waiting: false,
@@ -247,7 +255,7 @@ export function createSession(): Session {
     },
     getSnapshot: () => state,
     signIn() {
-      start(auth.requestAccessToken());
+      start(auth.requestAccessToken(requested));
     },
     continueSession() {
       const { screen } = state;
@@ -255,8 +263,9 @@ export function createSession(): Session {
       const current = auth.getAccessToken();
       // A fresh popup may sign in another account on purpose; a reused token
       // must still belong to the account shown.
-      if (current === undefined) start(auth.requestAccessToken(screen.email));
-      else start(Promise.resolve(current), screen.email);
+      if (current === undefined) {
+        start(auth.requestAccessToken(requested ?? screen.email));
+      } else start(Promise.resolve(current), screen.email);
     },
     signOut() {
       epoch += 1;

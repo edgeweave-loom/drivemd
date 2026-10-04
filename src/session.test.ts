@@ -222,7 +222,8 @@ describe("signing in", () => {
     const session = createSession();
 
     session.signIn();
-    expect(auth.requestAccessToken).toHaveBeenCalledWith();
+    // Without a login hint, Google lets the user choose.
+    expect(auth.requestAccessToken).toHaveBeenCalledWith(undefined);
     expect(session.getSnapshot().waiting).toBe(true);
     request.resolve(TOKEN);
     await settled(session);
@@ -296,6 +297,49 @@ describe("signing in", () => {
     session.signIn();
     await settled(session);
     expect(session.getSnapshot().message).toBe(message);
+  });
+});
+
+describe("a tab that Drive opened", () => {
+  // Drive's Open with and New name the account by its Google profile ID.
+  const DRIVE_ACCOUNT = "104857600000000000001";
+
+  it("signs in as the account Drive acted as", async () => {
+    vi.mocked(auth.requestAccessToken).mockResolvedValue(TOKEN);
+    const session = createSession(DRIVE_ACCOUNT);
+
+    session.signIn();
+    expect(auth.requestAccessToken).toHaveBeenCalledWith(DRIVE_ACCOUNT);
+    await settled(session);
+    expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
+  });
+
+  it("continues as the account Drive acted as, which may be another", async () => {
+    vi.mocked(auth.getRememberedAccount).mockReturnValue("grace@example.com");
+    vi.mocked(auth.requestAccessToken).mockResolvedValue(TOKEN);
+    const session = createSession(DRIVE_ACCOUNT);
+
+    session.continueSession();
+    expect(auth.requestAccessToken).toHaveBeenCalledWith(DRIVE_ACCOUNT);
+    await settled(session);
+    expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
+    expect(auth.rememberAccount).toHaveBeenCalledWith(EMAIL);
+  });
+
+  it("asks for Drive's account until the tab has signed in", async () => {
+    vi.mocked(auth.requestAccessToken)
+      .mockRejectedValueOnce(new AuthError("popup_blocked", "details"))
+      .mockResolvedValue(TOKEN);
+    const session = createSession(DRIVE_ACCOUNT);
+    session.signIn();
+    await settled(session);
+
+    session.signIn();
+    expect(auth.requestAccessToken).toHaveBeenLastCalledWith(DRIVE_ACCOUNT);
+    await settled(session);
+    expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
+    session.renew();
+    expect(auth.requestAccessToken).toHaveBeenLastCalledWith(EMAIL);
   });
 });
 

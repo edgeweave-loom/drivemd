@@ -63,8 +63,26 @@ describe("routes", () => {
     expect(route(path)).toEqual(expected);
   });
 
+  it("opens the first file that Drive's Open with names", () => {
+    const state = JSON.stringify({
+      ids: [ID],
+      resourceKeys: { [ID]: KEY },
+      action: "open",
+      userId: "104857600000000000001",
+    });
+    history.replaceState(null, "", `/open?state=${encodeURIComponent(state)}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+
+    expect(getPlace()).toMatchObject({
+      route: { name: "file", file: { id: ID, resourceKey: KEY } },
+      href: `/edit?id=${ID}&resourcekey=${KEY}`,
+    });
+  });
+
   it.each([
     "/nowhere",
+    "/open",
+    "/open?state=%7B",
     "/folder",
     "/folder/",
     `/folder/${ID}/more`,
