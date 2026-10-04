@@ -1,7 +1,8 @@
 import "fake-indexeddb/auto";
 import { EditorView } from "@codemirror/view";
+import { onlineManager } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { rememberAccount, signOut } from "./auth.ts";
 import { deleteDrafts, readDraft, writeDraft } from "./drafts.ts";
 import { resumeKeeping } from "./keep-draft.ts";
@@ -44,6 +45,10 @@ beforeEach(async () => {
   resumeKeeping();
   rememberAccount(ACCOUNT);
   await deleteDrafts(ACCOUNT);
+});
+
+afterEach(() => {
+  onlineManager.setOnline(true);
 });
 
 describe("unsaved text kept on the device", () => {
@@ -223,6 +228,21 @@ describe("unsaved text kept on the device", () => {
       expect(await readDraft(ACCOUNT, "plan")).toBeDefined();
     });
 
+    rerender(<FileContent file={PLAN} />);
+
+    expect(
+      await screen.findByRole("button", { name: "Restore" }),
+    ).toBeVisible();
+  });
+
+  it("is offered again while the device is offline, before an edit replaces it", async () => {
+    const { rerender } = open();
+    await screen.findByRole("checkbox");
+    rerender(<p>Elsewhere</p>);
+    await kept("- [x] Boil\n");
+    onlineManager.setOnline(false);
+
+    // The note shows from the cache.
     rerender(<FileContent file={PLAN} />);
 
     expect(
