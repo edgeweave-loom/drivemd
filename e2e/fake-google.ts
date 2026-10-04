@@ -108,7 +108,8 @@ function seed(): FakeFile[] {
         "# Notes",
         ...Array.from({ length: 60 }, (_, line) => `\nLine ${String(line)}.`),
         "\n## Later",
-        "\nThe end.",
+        // And after it, so that it can scroll to the top of the screen.
+        ...Array.from({ length: 60 }, (_, line) => `\nLater ${String(line)}.`),
         "",
       ].join("\n"),
     },
