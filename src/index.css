@@ -608,8 +608,10 @@ dialog.drawer {
   text-decoration: underline dotted;
 }
 
+/* An image keeps its proportions, whatever size an embed gives it. */
 .markdown img {
   max-width: 100%;
+  object-fit: contain;
 }
 
 .markdown .image-pending {
