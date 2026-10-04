@@ -51,6 +51,31 @@ describe("inline footnotes in a note of a vault", () => {
     expect(note?.querySelector(".tag")).toHaveTextContent("#tag");
   });
 
+  it("show after a ^[ that never closes", () => {
+    const page = show("Tea^[unclosed and ^[closed] then.");
+
+    expect(footnotes(page)).toEqual(["closed"]);
+    expect(shown(page.querySelector("p"))).toBe("Tea^[unclosed and 1 then.");
+  });
+
+  it.each([
+    ["in its text", "Tea^[a ^[b] c]"],
+    ["in its emphasis", "Tea^[a *^[b]* c]"],
+  ])("hold none %s", (_, text) => {
+    const page = show(text);
+
+    expect(page.querySelectorAll("section[data-footnotes] li")).toHaveLength(1);
+  });
+
+  it("take no name a reference of the note's has, even to nothing shown", () => {
+    const page = show("A[^inline-1] B^[mine]\n\n%%\n[^inline-1]: theirs\n%%");
+
+    expect(footnotes(page)).toContain("mine");
+    expect(
+      page.querySelectorAll("a[href='#user-content-fn-inline-2']"),
+    ).toHaveLength(1);
+  });
+
   it("take a name the note's own footnotes do not", () => {
     const page = show("A[^inline-1] B^[mine]\n\n[^inline-1]: theirs");
 
