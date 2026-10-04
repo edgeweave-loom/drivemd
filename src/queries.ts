@@ -375,6 +375,8 @@ export function draftQuery(account: string, fileId: string) {
     gcTime: 0,
     // A device that keeps nothing has nothing to offer.
     retry: false,
+    // The device answers, with or without a connection.
+    networkMode: "always",
   });
 }
 
