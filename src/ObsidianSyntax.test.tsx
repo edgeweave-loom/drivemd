@@ -60,6 +60,13 @@ describe("highlights in a note of a vault", () => {
     ]);
   });
 
+  it("start after an escaped mark", () => {
+    const page = show("\\===b== and \\%%%x%%\n\nAfter.");
+
+    expect(texts(page, "mark")).toEqual(["b"]);
+    expect(shown(page)).toBe("=b and % After.");
+  });
+
   it("can hold a mark that a space follows", () => {
     expect(texts(show("==a == b=="), "mark")).toEqual(["a == b"]);
   });
@@ -95,10 +102,34 @@ describe("comments in a note of a vault", () => {
     expect(page.querySelector("ul, pre")).toBeNull();
   });
 
-  it("hide what follows in the quote or list item when never closed", () => {
-    const page = show("> Quoted %%open\n>\n> hidden\n\nShown.");
+  it("hide what follows in the note's order until the next %%, whatever holds it", () => {
+    const page = show(
+      [
+        "%%",
+        "- a",
+        "- b",
+        "%%",
+        "",
+        "> Quoted %%open",
+        ">",
+        "> - [ ] hidden",
+        "",
+        "# Hidden %% Heading",
+        "",
+        "*tea %%not this%% and **so %%not",
+        "this either%% on***.",
+      ].join("\n"),
+    );
 
-    expect(shown(page)).toBe("Quoted Shown.");
+    expect(shown(page)).toBe("Quoted Heading tea and so on.");
+    expect(page.querySelector("ul, input")).toBeNull();
+    expect(texts(page, "h1")).toEqual(["Heading"]);
+  });
+
+  it("hide in a link's text", () => {
+    const page = show("[Tea %%no%%time](https://example.com)");
+
+    expect(texts(page, "a")).toEqual(["Tea time"]);
   });
 
   it("hide the rest of the note when never closed", () => {
@@ -108,7 +139,11 @@ describe("comments in a note of a vault", () => {
   it("hide text in a heading or a table cell", () => {
     const page = show("# Title %%x%%\n\n| A %%x%% |\n| - |\n| b %%y |");
 
-    expect(texts(page, "h1, th, td")).toEqual(["Title ", "A ", "b "]);
+    expect(texts(page, "h1, th, td")).toEqual(["Title", "A", "b"]);
+    expect(page.querySelector("h1")).toHaveAttribute(
+      "id",
+      "user-content-title",
+    );
   });
 
   it("are not made in code", () => {
@@ -147,6 +182,18 @@ describe("tags in a note of a vault", () => {
     expect(show(text).querySelector(".tag")).toBeNull();
   });
 
+  it("show after a hard line break", () => {
+    expect(texts(show("a\\\n#tea"), ".tag")).toEqual(["#tea"]);
+  });
+
+  it("keep what the note escapes around other syntax", () => {
+    const page = show("==a== \\#tag \\^id and %%x%% \\#t");
+
+    expect(texts(page, "mark")).toEqual(["a"]);
+    expect(page.querySelector(".tag, [id]")).toBeNull();
+    expect(shown(page)).toBe("a #tag ^id and #t");
+  });
+
   it("may hold numbers with something else", () => {
     expect(texts(show("#2024-plan"), ".tag")).toEqual(["#2024-plan"]);
   });
@@ -182,6 +229,23 @@ describe("block IDs in a note of a vault", () => {
     expect(shown(page)).toBe("A quote. A");
   });
 
+  it("name the block before them, never a heading, which keeps its name", () => {
+    const page = show("# Heading\n\n^h\n\nPara\n\n^a\n\n^b");
+
+    expect(page.querySelector("h1")).toHaveAttribute(
+      "id",
+      "user-content-heading",
+    );
+    expect(page.querySelector("p")).toHaveAttribute("id", "user-content-^b");
+    expect(shown(page)).toBe("Heading Para");
+  });
+
+  it("leave no line break before them", () => {
+    const page = show("Tea  \n^id");
+
+    expect(page.querySelector("p")?.innerHTML).toBe("Tea");
+  });
+
   it.each([
     ["inside a word", "x^y"],
     ["with a space", "Tea ^not an id"],
@@ -190,6 +254,16 @@ describe("block IDs in a note of a vault", () => {
     const page = show(text);
 
     expect(shown(page)).toBe(text);
+    expect(page.querySelector("[id]")).toBeNull();
+  });
+
+  it.each([
+    ["other Markdown", "**Tea**^id", "Tea^id"],
+    ["code", "`code`^x", "code^x"],
+  ])("show as written after %s", (_, text, written) => {
+    const page = show(text);
+
+    expect(shown(page)).toBe(written);
     expect(page.querySelector("[id]")).toBeNull();
   });
 
