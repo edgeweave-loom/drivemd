@@ -159,7 +159,7 @@ export interface Drive {
   listRecent: () => Promise<DriveItem[]>;
   /** Markdown files whose name has a word starting with each word of `text`. */
   search: (text: string) => Promise<SearchResult>;
-  /** The files with content named exactly `name`, in every drive. */
+  /** The files with content named `name`, whatever its case, in every drive. */
   findByName: (name: string) => Promise<SearchResult>;
   /** The folders that hold an Obsidian vault, in every drive. */
   findVaults: () => Promise<DriveItem[]>;
@@ -260,10 +260,10 @@ export function createDrive(auth: DriveAuth): Drive {
     return attempt();
   }
 
-  /** Follows nextPageToken until Drive has sent every page of `key`. */
   /**
    * Follows nextPageToken until Drive has sent every page of `key`, and says
-   * whether any page left some drives out of a search.
+   * whether any page left some drives out of a search. A page Drive sends
+   * twice fails the list, which would never end.
    */
   async function list<T>(
     path: string,
@@ -273,9 +273,16 @@ export function createDrive(auth: DriveAuth): Drive {
     read: (entry: Record<string, unknown>) => T | undefined,
   ): Promise<{ items: T[]; incomplete: boolean }> {
     const items: T[] = [];
+    const seen = new Set<string>();
     let incomplete = false;
     let pageToken: string | undefined;
     do {
+      if (pageToken !== undefined) {
+        if (seen.has(pageToken)) {
+          throw new DriveError(502, "Google Drive sent the same page twice");
+        }
+        seen.add(pageToken);
+      }
       const query = new URLSearchParams(params);
       if (pageToken !== undefined) query.set("pageToken", pageToken);
       const page = await parse(
