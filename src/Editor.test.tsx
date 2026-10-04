@@ -1,8 +1,13 @@
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { ensureSyntaxTree } from "@codemirror/language";
+import {
+  ensureSyntaxTree,
+  LanguageDescription,
+  syntaxTreeAvailable,
+} from "@codemirror/language";
+import { languages } from "@codemirror/language-data";
 import { EditorState } from "@codemirror/state";
 import { runScopeHandlers, EditorView } from "@codemirror/view";
-import { render } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { Editor, type EditorHandle } from "./Editor.tsx";
@@ -27,6 +32,33 @@ function open(text: string, lineBreak: LineBreak = "\n") {
   const view = element && EditorView.findFromDOM(element);
   if (!view) throw new Error("No editor");
   return { view, onChange, handle };
+}
+
+/**
+ * Each line as the editor shows it: dimmed text in ‹›, and "(larger)" after
+ * a line with text larger than the editor's.
+ */
+function looks(view: EditorView) {
+  const size = getComputedStyle(view.contentDOM).fontSize;
+  return [...view.contentDOM.querySelectorAll(".cm-line")].map((line) => {
+    let shown = "";
+    let larger = false;
+    const texts = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+    for (let text = texts.nextNode(); text; text = texts.nextNode()) {
+      const style = getComputedStyle(text.parentElement ?? line);
+      const value = text.textContent ?? "";
+      larger ||= style.fontSize !== size;
+      shown += style.color === "var(--muted)" ? `‹${value}›` : value;
+    }
+    return shown.replaceAll("›‹", "") + (larger ? " (larger)" : "");
+  });
+}
+
+/** Waits for the editor's parse, which may end in the background. */
+async function parsed(view: EditorView) {
+  await waitFor(() => {
+    expect(syntaxTreeAvailable(view.state)).toBe(true);
+  });
 }
 
 function press(
@@ -153,6 +185,36 @@ describe("Editor", () => {
       (line) => line.textContent,
     );
     expect(marked).toEqual(["```js", "const a = 1;", "```"]);
+  });
+
+  it("shows front matter as YAML at the text's size, its keys and symbols dimmed as Markdown's are", async () => {
+    const { view } = open(
+      "---\nowner: Ada\ntags: [tea, cups]\n---\n\n# The plan\n",
+    );
+    await parsed(view);
+
+    expect(looks(view)).toEqual([
+      "‹---›",
+      "‹owner:› Ada",
+      "‹tags:› ‹[›tea‹,› cups‹]›",
+      "‹---›",
+      "",
+      "‹#› The plan (larger)",
+      "",
+    ]);
+  });
+
+  it("dims only YAML's keys and symbols, not those of code in other languages", async () => {
+    await LanguageDescription.matchLanguageName(languages, "js")?.load();
+    const { view } = open("```js\n// Tea\nconst cups = { tea: 2 };\n```");
+    await parsed(view);
+
+    expect(looks(view)).toEqual([
+      "‹```›js",
+      "// Tea",
+      "const cups = { tea: 2 };",
+      "‹```›",
+    ]);
   });
 });
 
