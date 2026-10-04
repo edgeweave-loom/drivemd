@@ -41,6 +41,10 @@ test("renders a note as GitHub does, under the security policy", async ({
   // Types would refuse.
   await expect(note).toContainText("Tea & cups © Ada\u00a0Lovelace.");
   await expect(note.getByRole("checkbox")).toHaveCount(2);
+  // GitHub strikes no checked task through.
+  await expect(
+    note.getByRole("listitem").filter({ hasText: "Find cups" }),
+  ).toHaveCSS("text-decoration-line", "none");
   await expect(note.locator("pre code .hljs-keyword")).toHaveText("const");
   const docs = note.getByRole("link", { name: "the docs" });
   await expect(docs).toHaveAttribute("target", "_blank");

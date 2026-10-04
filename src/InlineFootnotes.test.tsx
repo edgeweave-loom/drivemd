@@ -16,7 +16,7 @@ function shown(element: Element | null) {
 /** Each footnote's text, without its link back, in the order they show. */
 function footnotes(page: HTMLElement) {
   return [...page.querySelectorAll("section[data-footnotes] li")].map((item) =>
-    shown(item).replace(/ ?↩$/, ""),
+    shown(item).replace(/ ?↩\uFE0E$/u, ""),
   );
 }
 
