@@ -6,15 +6,10 @@ import {
 import { useDrive } from "./drive-context.ts";
 import type { DriveItem, ShortcutTarget } from "./drive.ts";
 import { Link } from "./Link.tsx";
-import { entriesOf, type Entry } from "./listing.ts";
+import { BROKEN, entriesOf, type Entry } from "./listing.ts";
 import { Loaded } from "./Loaded.tsx";
 import { shortcutQuery } from "./queries.ts";
 import { hrefOf, type Crumb } from "./router.ts";
-
-const BROKEN = {
-  missing: "Deleted, or not shared with you",
-  trashed: "In the trash",
-};
 
 /** The entries among the items the query finds, once Drive has answered. */
 export function ItemListing<Answer, Key extends QueryKey>({
