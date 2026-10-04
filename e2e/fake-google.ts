@@ -86,7 +86,7 @@ function seed(): FakeFile[] {
         "",
         "Tea &amp; cups &copy; Ada&nbsp;Lovelace.",
         "",
-        "Next: [the notes](notes.md), [the archive](Archive/), [a photo](photo.png) and [nothing](gone.md).",
+        "Next: [the notes](notes.md#later), [the archive](Archive/), [a photo](photo.png) and [nothing](gone.md).",
         "",
         "![The photo](photo.png)",
         "",
@@ -98,7 +98,20 @@ function seed(): FakeFile[] {
         "",
       ].join("\n"),
     },
-    { id: "notes", name: "notes.md", mimeType: markdown, parents: ["work"] },
+    {
+      id: "notes",
+      name: "notes.md",
+      mimeType: markdown,
+      parents: ["work"],
+      // Long enough that its last heading starts off the screen.
+      content: [
+        "# Notes",
+        ...Array.from({ length: 60 }, (_, line) => `\nLine ${String(line)}.`),
+        "\n## Later",
+        "\nThe end.",
+        "",
+      ].join("\n"),
+    },
     {
       id: "photo",
       name: "photo.png",

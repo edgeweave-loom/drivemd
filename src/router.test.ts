@@ -87,6 +87,7 @@ describe("the place shown", () => {
       route: { name: "home" },
       href: "/",
       trail: undefined,
+      fragment: undefined,
     });
 
     act(() => {
@@ -97,6 +98,7 @@ describe("the place shown", () => {
       route: { name: "folder", folder: { id: "root" } },
       href: "/my-drive",
       trail: MY_DRIVE,
+      fragment: undefined,
     });
 
     act(() => {
@@ -151,7 +153,24 @@ describe("the place shown", () => {
       route: { name: "not-found" },
       href: "/nowhere?x=1",
       trail: undefined,
+      fragment: undefined,
     });
+  });
+
+  it("keeps the part of the page a link leads to, after its #", () => {
+    navigate(`/edit?id=${ID}#tea`);
+    const entries = history.length;
+
+    expect(window.location.hash).toBe("#tea");
+    expect(getPlace()).toMatchObject({
+      href: `/edit?id=${ID}`,
+      fragment: "tea",
+    });
+    navigate(`/edit?id=${ID}#thé`);
+    expect(history.length).toBe(entries);
+    expect(getPlace().fragment).toBe("th%C3%A9");
+    navigate(`/edit?id=${ID}`);
+    expect(getPlace().fragment).toBeUndefined();
   });
 
   it("knows a page by any of its URLs", () => {

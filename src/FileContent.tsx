@@ -41,7 +41,14 @@ import {
   refreshAfterChange,
   setDetails,
 } from "./queries.ts";
-import { guardLeaving, hrefOf, navigate } from "./router.ts";
+import { showPart } from "./parts.ts";
+import {
+  guardLeaving,
+  hrefOf,
+  navigate,
+  usePlace,
+  type Place,
+} from "./router.ts";
 import { saveText, type SaveResult } from "./save.ts";
 import { decode, encode, sameBytes, type FileText } from "./text.ts";
 import { useNoteVault, type NoteVault } from "./vaults.ts";
@@ -589,6 +596,16 @@ function NoteView({
   const rendered =
     !(editing && editable) || layout !== "phone" || pane === "preview";
   const previewed = source ? deferred : text;
+  const shown = rendered && vault.state !== "checking";
+  // The part of the note the address leads to shows once the note does,
+  // each time the address changes, but not as the note changes.
+  const place = usePlace();
+  const reached = useRef<Place>(undefined);
+  useEffect(() => {
+    if (!shown || reached.current === place) return;
+    reached.current = place;
+    if (place.fragment !== undefined) showPart(place.fragment);
+  }, [shown, place]);
   return (
     <>
       <div className="note-bar">
@@ -679,7 +696,7 @@ function NoteView({
             so it shows as Markdown, without Obsidian's syntax.
           </p>
         )}
-        {rendered && vault.state !== "checking" && (
+        {shown && (
           <Rendered
             text={previewed}
             folder={folderOf(file)}

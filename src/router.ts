@@ -29,6 +29,8 @@ export interface Place {
    * through the app's own links; kept by the browser's history.
    */
   trail: Crumb[] | undefined;
+  /** The part of the page the URL leads to, after its `#`, as encoded. */
+  fragment: string | undefined;
 }
 
 const NOT_FOUND: Route = { name: "not-found" };
@@ -140,6 +142,7 @@ export function getPlace(): Place {
       route: routeOf(url),
       href,
       trail: readTrail(history.state, href),
+      fragment: fragmentOf(url),
     };
   }
   return snapshot;
@@ -169,10 +172,16 @@ export function mayLeave(href: string): boolean {
   return !guard || guard(routeOf(new URL(href, window.location.origin)));
 }
 
+/** What follows a URL's `#`, if anything. */
+function fragmentOf({ hash }: URL): string | undefined {
+  return hash.length > 1 ? hash.slice(1) : undefined;
+}
+
 /**
  * Opens a page of the app, from its top, keeping the trail the user took for
- * its breadcrumbs. Opening the page already shown replaces it in the history,
- * so that Back does not show it twice, and keeps its trail unless given one.
+ * its breadcrumbs, and the part of the page the address leads to after its
+ * `#`. Opening the page already shown replaces it in the history, so that
+ * Back does not show it twice, and keeps its trail unless given one.
  */
 export function navigate(
   href: string,
@@ -181,8 +190,10 @@ export function navigate(
   { asked = false } = {},
 ): void {
   if (!asked && !mayLeave(href)) return;
-  const target = canonical(new URL(href, window.location.origin));
-  if (target === getPlace().href) {
+  const url = new URL(href, window.location.origin);
+  const page = canonical(url);
+  const target = page + url.hash;
+  if (page === getPlace().href) {
     const state: unknown = trail === undefined ? history.state : { trail };
     history.replaceState(state, "", target);
   } else {

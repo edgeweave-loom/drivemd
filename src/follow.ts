@@ -4,7 +4,8 @@ import { useDrive } from "./drive-context.ts";
 import { inDrive } from "./drive-web.ts";
 import { FOLDER, GOOGLE_TYPES, isMarkdown, type FileRef } from "./drive.ts";
 import { resolveQuery } from "./queries.ts";
-import { onTheWeb, relativePath, type Found } from "./resolve.ts";
+import { hashOf, onTheWeb, relativePath, type Found } from "./resolve.ts";
+import { showPart } from "./parts.ts";
 import { hrefOf, navigate } from "./router.ts";
 
 /**
@@ -25,9 +26,7 @@ export function useFollow(folder: FileRef | undefined): (href: string) => void {
   }, []);
   return (href) => {
     if (href.startsWith("#")) {
-      document
-        .getElementById(`user-content-${href.slice(1)}`)
-        ?.scrollIntoView();
+      showPart(href.slice(1));
       return;
     }
     if (onTheWeb(href) || href.startsWith("mailto:")) {
@@ -40,7 +39,7 @@ export function useFollow(folder: FileRef | undefined): (href: string) => void {
     const lookup = resolveQuery(drive, client, folder, path);
     const known = client.getQueryData(lookup.queryKey);
     if (known !== undefined) {
-      open(known);
+      open(known, hashOf(href));
       return;
     }
     // A link not looked up yet is followed if Drive answers within a second,
@@ -49,21 +48,26 @@ export function useFollow(folder: FileRef | undefined): (href: string) => void {
     const clicked = Date.now();
     client.query(lookup).then(
       (found) => {
-        if (shown.current && Date.now() - clicked < 1_000) open(found);
+        if (shown.current && Date.now() - clicked < 1_000) {
+          open(found, hashOf(href));
+        }
       },
       () => undefined,
     );
   };
 }
 
-/** Opens what a link leads to in Drive: in the app, or in Google Drive. */
-function open(found: Found | null): void {
+/**
+ * Opens what a link leads to in Drive: in the app, a note at the part `hash`
+ * names, or in Google Drive.
+ */
+function open(found: Found | null, hash: string): void {
   if (!found) return;
   const { ref, name, mimeType } = found;
   if (mimeType === FOLDER) {
     navigate(hrefOf({ name: "folder", folder: ref }));
   } else if (!mimeType.startsWith(GOOGLE_TYPES) && isMarkdown(name)) {
-    navigate(hrefOf({ name: "file", file: ref }));
+    navigate(hrefOf({ name: "file", file: ref }) + hash);
   } else {
     window.open(inDrive(ref), "_blank", "noopener,noreferrer");
   }
