@@ -10,6 +10,14 @@ test("renders a note of a vault as Obsidian does", async ({ page }) => {
     "Woke up early.\nMade tea.",
   );
   await expect(note.locator("p br")).toHaveCount(1);
+  // Highlights and tags show, comments and block IDs do not.
+  const tea = note.locator("p#user-content-\\^tea");
+  await expect(tea).toHaveText("Green tea for #morning done.");
+  await expect(tea.locator("mark")).toHaveCSS(
+    "background-color",
+    "rgba(255, 208, 0, 0.4)",
+  );
+  await expect(tea.locator(".tag")).toHaveText("#morning");
   // A folded callout, in its type's color, opens with a tap on its title.
   const callout = note.locator(".callout");
   await expect(callout).toHaveCSS("border-left-color", "rgb(0, 191, 188)");

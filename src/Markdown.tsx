@@ -37,6 +37,12 @@ import {
   type FileRef,
 } from "./drive.ts";
 import { Link } from "./Link.tsx";
+import {
+  remarkBlockIds,
+  remarkComments,
+  remarkHighlights,
+  remarkTags,
+} from "./obsidian.ts";
 import { remarkProperties } from "./properties.ts";
 import {
   imageQuery,
@@ -65,6 +71,7 @@ function rehype(schema?: Schema): Plugins {
 // GitHub's rules, and what Obsidian's syntax renders to, which they drop.
 const VAULT_SCHEMA: Schema = {
   ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames ?? []), "mark"],
   attributes: {
     ...defaultSchema.attributes,
     details: [
@@ -76,6 +83,7 @@ const VAULT_SCHEMA: Schema = {
       ["className", "callout", "callout-title", "callout-content"],
       ["dataCallout", ...CALLOUT_TYPES],
     ],
+    span: [["className", "tag"]],
     summary: [
       ...(defaultSchema.attributes?.summary ?? []),
       ["className", "callout-title"],
@@ -85,7 +93,17 @@ const VAULT_SCHEMA: Schema = {
 
 const GITHUB = { remark: REMARK, rehype: rehype() };
 const OBSIDIAN = {
-  remark: [...REMARK, remarkEscapes, remarkCallouts],
+  // Escapes are noted first, then comments go, since what they hide is no
+  // other syntax.
+  remark: [
+    ...REMARK,
+    remarkEscapes,
+    remarkComments,
+    remarkCallouts,
+    remarkHighlights,
+    remarkBlockIds,
+    remarkTags,
+  ],
   rehype: rehype(VAULT_SCHEMA),
 };
 // Obsidian shows a single line break as one, where Markdown joins the lines.
@@ -120,8 +138,8 @@ const TaskAt = createContext<number | undefined>(undefined);
 /**
  * A Markdown file rendered as GitHub renders it: with tables, task lists,
  * strikethrough, autolinks, footnotes, highlighted code, sanitized HTML and
- * front matter as a table of properties. A note in an Obsidian vault breaks
- * its lines and shows its callouts as Obsidian does.
+ * front matter as a table of properties. A note in an Obsidian vault renders
+ * the syntax Obsidian adds as Obsidian does.
  */
 export function Rendered({
   text,
