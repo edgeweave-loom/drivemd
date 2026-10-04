@@ -31,9 +31,6 @@ const FILE_FIELDS = `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),
 
 const UNREACHABLE = "Google Drive could not be reached";
 
-// How many folders a listing of their folders names in one call.
-const FOLDERS_PER_CALL = 50;
-
 /** The alias of My Drive's top folder in Drive's API. */
 export const MY_DRIVE = "root";
 
@@ -154,8 +151,6 @@ export interface Drive {
   ) => Promise<Uint8Array<ArrayBuffer>>;
   /** Everything in the folder that is not in the trash, from every page. */
   listChildren: (folder: FileRef) => Promise<DriveItem[]>;
-  /** The folders in any of these folders, out of the trash, in few calls. */
-  listFolders: (folders: FileRef[]) => Promise<DriveItem[]>;
   /** The shared drives the user is a member of. */
   listSharedDrives: () => Promise<SharedDrive[]>;
   /** What is shared with the user, but Google's own documents. */
@@ -361,17 +356,6 @@ export function createDrive(auth: DriveAuth): Drive {
     async listChildren(folder) {
       const q = `'${checked(folder.id)}' in parents and trashed = false`;
       return listFiles({ q }, [folder]);
-    },
-    async listFolders(folders) {
-      const found: DriveItem[] = [];
-      // A query's length is bounded, as is the URL that carries it.
-      for (let start = 0; start < folders.length; start += FOLDERS_PER_CALL) {
-        const some = folders.slice(start, start + FOLDERS_PER_CALL);
-        const parents = some.map(({ id }) => `'${checked(id)}' in parents`);
-        const q = `(${parents.join(" or ")}) and mimeType = '${FOLDER}' and trashed = false`;
-        for (const folder of await listFiles({ q }, some)) found.push(folder);
-      }
-      return found;
     },
     async listSharedDrives() {
       // As in Drive, the drives the user hid stay out of the list.

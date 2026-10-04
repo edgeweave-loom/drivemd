@@ -406,19 +406,6 @@ export class FakeDrive {
     if (q.startsWith("name = '.obsidian'")) {
       return all.filter((file) => file.name === ".obsidian");
     }
-    // The folders in several folders, as listFolders asks.
-    const several =
-      /^\(((?:'[\w-]+' in parents(?: or )?)+)\) and mimeType/.exec(q)?.[1];
-    if (several !== undefined) {
-      const ids = [...several.matchAll(/'([\w-]+)'/g)].map(([, id]) =>
-        id === "root" ? "my-root" : id,
-      );
-      return all.filter(
-        (file) =>
-          file.mimeType === FOLDER &&
-          file.parents.some((parent) => ids.includes(parent)),
-      );
-    }
     // Drive matches an exact name whatever the case of its ASCII letters.
     const names = [...q.matchAll(/name = '((?:[^'\\]|\\.)*)'/g)].map(
       ([, name = ""]) => name.replace(/\\(.)/g, "$1").toLowerCase(),

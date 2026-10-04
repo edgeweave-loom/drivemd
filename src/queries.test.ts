@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AuthError } from "./auth.ts";
-import { DriveError, TooLargeError } from "./drive.ts";
+import { DriveError, TooLargeError, type DriveItem } from "./drive.ts";
 import {
   createQueryClient,
   refreshAfterChange,
@@ -63,20 +63,23 @@ describe("refreshAfterChange", () => {
 });
 
 describe("vaultLinkQuery", () => {
-  it("reads the vault's folders once, a level at a time, for every link", async () => {
+  it("reads each of the vault's folders once, by its own listing, for every link", async () => {
+    // A search over several folders at once leaves out what other people
+    // made; a folder's own listing does not.
     const drive = fakeDrive();
     const notes = folderItem("Notes", { id: "notes", parents: ["vault"] });
     const deep = folderItem("Deep", { id: "deep", parents: ["notes"] });
     const hidden = folderItem(".trash", { id: "trash", parents: ["vault"] });
     const guide = driveItem("Guide.md", { id: "guide", parents: ["deep"] });
     const lost = driveItem("Guide.md", { id: "lost", parents: ["trash"] });
-    drive.listChildren.mockResolvedValue([]);
-    drive.listFolders.mockImplementation((folders) =>
-      Promise.resolve(
-        [notes, deep, hidden].filter(({ parents }) =>
-          folders.some(({ id }) => parents.includes(id)),
-        ),
-      ),
+    const children: Record<string, DriveItem[]> = {
+      vault: [notes, hidden],
+      notes: [deep],
+      deep: [guide],
+      trash: [lost],
+    };
+    drive.listChildren.mockImplementation(({ id }) =>
+      Promise.resolve(children[id] ?? []),
     );
     drive.findByName.mockResolvedValue({
       items: [lost, guide],
@@ -91,11 +94,8 @@ describe("vaultLinkQuery", () => {
     ]);
     expect(one.found?.ref.id).toBe("guide");
     expect(other.found?.ref.id).toBe("guide");
-    expect(drive.listFolders.mock.calls).toEqual([
-      [[{ id: "vault" }]],
-      [[{ id: "notes", resourceKey: undefined }]],
-      [[{ id: "deep", resourceKey: undefined }]],
-    ]);
+    const listed = drive.listChildren.mock.calls.map(([{ id }]) => id);
+    expect(listed.sort()).toEqual(["deep", "elsewhere", "notes", "vault"]);
     expect(drive.findByName).toHaveBeenCalledOnce();
     expect(drive.getMetadata).not.toHaveBeenCalled();
   });
