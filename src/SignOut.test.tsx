@@ -13,6 +13,8 @@ const GRACE = "grace@example.com";
 function draft(fileId: string) {
   return writeDraft(ADA, {
     fileId,
+    name: `${fileId}.md`,
+    resourceKey: undefined,
     headRevisionId: "revision-1",
     md5Checksum: "aaaa",
     text: "Tea",
@@ -27,6 +29,8 @@ function Typed() {
     "plan",
     {
       fileId: "plan",
+      name: "plan.md",
+      resourceKey: undefined,
       headRevisionId: "revision-1",
       md5Checksum: "aaaa",
       text: "Typed",
@@ -168,6 +172,8 @@ describe("SignOut", () => {
     await draft("plan");
     await writeDraft(GRACE, {
       fileId: "notes",
+      name: "notes.md",
+      resourceKey: undefined,
       headRevisionId: "revision-1",
       md5Checksum: "aaaa",
       text: "Coffee",

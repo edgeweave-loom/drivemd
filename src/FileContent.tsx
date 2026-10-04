@@ -33,12 +33,13 @@ import { Loaded } from "./Loaded.tsx";
 import { Missing } from "./Missing.tsx";
 import { useFollow } from "./follow.ts";
 import { Rendered } from "./Markdown.tsx";
-import type { Draft } from "./drafts.ts";
+import { deleteDraftHolding, type Draft } from "./drafts.ts";
 import { useKeptDraft } from "./keep-draft.ts";
 import {
   contentQuery,
   draftQuery,
   MAX_CONTENT,
+  metadataQuery,
   refreshAfterChange,
   setDetails,
 } from "./queries.ts";
@@ -299,16 +300,45 @@ function Content({ file }: { file: FileMetadata }) {
         ? undefined
         : {
             fileId: file.id,
+            name: file.name,
+            resourceKey: file.resourceKey,
             headRevisionId: held.opened.headRevisionId,
             md5Checksum: held.opened.md5Checksum,
             text: held.text,
           },
-    [held, unsaved, file.id],
+    [held, unsaved, file.id, file.name, file.resourceKey],
   );
   const kept = useQuery(draftQuery(account, file.id));
   const dropDraft = useKeptDraft(account, file.id, edits, () => {
     client.setQueryData(draftQuery(account, file.id).queryKey, null);
   });
+  // Text on the device that is the note's own holds nothing unsaved: the
+  // device forgets it, if the page shows Drive's latest revision rather than
+  // one from its cache, and unless another tab kept newer text since, which
+  // the note then offers.
+  const keptAsIs =
+    held?.text === undefined && kept.data?.text === content.data?.text
+      ? kept.data?.text
+      : undefined;
+  const forgetKept = useEffectEvent(async (text: string) => {
+    try {
+      const latest = await client.query({
+        ...metadataQuery(drive, file),
+        staleTime: 0,
+      });
+      if (sameRevision(latest, opened)) {
+        await deleteDraftHolding(account, file.id, text);
+      }
+    } catch {
+      // Kept: the note shows it again.
+    }
+    await client.invalidateQueries({
+      queryKey: draftQuery(account, file.id).queryKey,
+    });
+  });
+  useEffect(() => {
+    if (keptAsIs !== undefined) void forgetKept(keptAsIs);
+  }, [keptAsIs]);
   // Out of the editor, the page shows Drive's latest again once it holds no
   // edits, or once it heard of the revision just saved; in the editor, Drive
   // never changes the text being typed.
