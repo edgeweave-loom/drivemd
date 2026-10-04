@@ -52,3 +52,13 @@ export function partHash(part: string): string {
 export function linkPartHash(hash: string): string {
   return partHash(decoded(hash.slice(1)));
 }
+
+/**
+ * What an Obsidian link or embed names, `Note#Heading#Sub`: its path, and
+ * the headings under one another, or the block, it names, the spaces around
+ * `#` taken off.
+ */
+export function targetOf(written: string): { path: string; parts: string[] } {
+  const [path = "", ...parts] = written.split("#").map((step) => step.trim());
+  return { path, parts: parts.filter((part) => part !== "") };
+}

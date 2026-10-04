@@ -1,4 +1,9 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useQueryClient,
+  type QueryKey,
+  type UseQueryOptions,
+} from "@tanstack/react-query";
 import {
   Children,
   Component,
@@ -56,7 +61,8 @@ import {
 import { hashOf, onTheWeb, relativePath, type Found } from "./resolve.ts";
 import { toggleTask } from "./tasks.ts";
 import { hrefOf } from "./router.ts";
-import { linkPartHash, partHash, showPart } from "./parts.ts";
+import { linkPartHash, partHash, showPart, targetOf } from "./parts.ts";
+import type { VaultLink } from "./vault-links.ts";
 import type { Vault } from "./vault-settings.ts";
 import { remarkEscapes } from "./written.ts";
 
@@ -79,6 +85,7 @@ const VAULT_SCHEMA: Schema = {
   attributes: {
     ...defaultSchema.attributes,
     a: [...(defaultSchema.attributes?.a ?? []), "dataWikilink"],
+    img: [...(defaultSchema.attributes?.img ?? []), "dataEmbed"],
     details: [
       ["className", "callout"],
       ["dataCallout", ...CALLOUT_TYPES],
@@ -294,17 +301,9 @@ function Anchor({
   // A link without text cannot be tapped, so it asks Drive nothing.
   const tappable = Children.count(children) > 0;
   if (vault && wikiLink && tappable) {
-    const at = wikiLink.indexOf("#");
-    const path = at < 0 ? wikiLink : wikiLink.slice(0, at);
+    const { path, parts } = targetOf(wikiLink);
     // Of headings under one another, the last names the part.
-    const part =
-      at < 0
-        ? ""
-        : (wikiLink
-            .slice(at + 1)
-            .split("#")
-            .at(-1) ?? "");
-    const hash = partHash(part);
+    const hash = partHash(parts.at(-1) ?? "");
     if (path === "") return <PartLink {...attributes} href={hash} />;
     return <VaultLink {...attributes} path={path.split("/")} hash={hash} />;
   }
@@ -515,9 +514,35 @@ function Unresolved(attributes: LinkAttributes) {
 /**
  * An image. One on another site is not loaded, so that a note cannot make
  * the app call that site: it is a link to open in a new tab. A relative one
- * is read from Drive.
+ * is read from Drive, and so is an Obsidian embed.
  */
-function Image({ src, alt = "" }: ComponentProps<"img">) {
+function Image({
+  src,
+  alt = "",
+  width,
+  height,
+  "data-embed": embed,
+}: ComponentProps<"img"> & {
+  /** What an Obsidian embed shows, as written: `image.png`, `Note#Heading`. */
+  "data-embed"?: string;
+}) {
+  const vault = useContext(NoteVault);
+  if (vault && embed !== undefined) {
+    // A size in pixels, as an embed gives it, whatever HTML says.
+    const pixels = (value: string | number | undefined) => {
+      const written = value?.toString();
+      return written !== undefined && /^\d+$/.test(written)
+        ? written
+        : undefined;
+    };
+    return (
+      <Embed
+        target={embed}
+        alt={alt}
+        size={{ width: pixels(width), height: pixels(height) }}
+      />
+    );
+  }
   if (typeof src !== "string") return <span>{alt}</span>;
   if (onTheWeb(src)) return <ImageLink href={src} label={alt || src} />;
   const path = relativePath(src);
@@ -533,18 +558,33 @@ function ImageLink({ href, label }: { href: string; label: string }) {
   );
 }
 
-function DriveImage({ path, alt }: { path: string[]; alt: string }) {
-  const folder = useContext(NoteFolder);
-  if (!folder) return <Unresolved>{alt}</Unresolved>;
-  return <ImageInDrive folder={folder} path={path} alt={alt} />;
+/** An image's size, as an embed gives it. */
+interface Size {
+  width: string | undefined;
+  height: string | undefined;
 }
 
 /**
- * An image where its path leads in Drive, read with the user's token once it
- * comes near the screen. One that is not an image, that the user may not
- * download, or that holds over 10 MB is a link to Google Drive.
+ * An image where its path leads in Drive, from the note's folder, or as
+ * Obsidian finds it in a vault.
  */
-function ImageInDrive({
+function DriveImage({ path, alt }: { path: string[]; alt: string }) {
+  const folder = useContext(NoteFolder);
+  const vault = useContext(NoteVault);
+  if (!folder) return <Unresolved>{alt}</Unresolved>;
+  if (!vault) return <RelativeImage folder={folder} path={path} alt={alt} />;
+  return (
+    <VaultImage
+      from={{ vault: vault.root, folder }}
+      path={path}
+      alt={alt}
+      size={undefined}
+      other={undefined}
+    />
+  );
+}
+
+function RelativeImage({
   folder,
   path,
   alt,
@@ -555,14 +595,107 @@ function ImageInDrive({
 }) {
   const { drive } = useDrive();
   const client = useQueryClient();
+  return (
+    <ImageInDrive
+      lookup={resolveQuery(drive, client, folder, path)}
+      alt={alt}
+    />
+  );
+}
+
+/** An image as Obsidian finds it in a vault, or what `other` shows instead. */
+function VaultImage({
+  from,
+  path,
+  alt,
+  size,
+  other,
+}: {
+  from: { vault: FileRef; folder: FileRef };
+  path: string[];
+  alt: string;
+  size: Size | undefined;
+  other: ((found: Found) => ReactNode) | undefined;
+}) {
+  const { drive } = useDrive();
+  const client = useQueryClient();
+  return (
+    <ImageInDrive
+      lookup={{ ...vaultLinkQuery(drive, client, from, path), select: foundIn }}
+      alt={alt}
+      size={size}
+      other={other}
+    />
+  );
+}
+
+/**
+ * What an Obsidian embed shows: an image, sized as the embed says, or a link
+ * to anything else it finds, a note or a PDF say, at the part it names.
+ */
+function Embed({
+  target,
+  alt,
+  size,
+}: {
+  target: string;
+  alt: string;
+  size: Size;
+}) {
+  const folder = useContext(NoteFolder);
+  const vault = useContext(NoteVault);
+  if (!folder || !vault) return <Unresolved>{alt}</Unresolved>;
+  const { path, parts } = targetOf(target);
+  const hash = partHash(parts.at(-1) ?? "");
+  return (
+    <VaultImage
+      from={{ vault: vault.root, folder }}
+      path={path.split("/")}
+      alt={alt}
+      size={size}
+      other={(found) => (
+        <LinkTo found={found} hash={hash}>
+          {alt}
+        </LinkTo>
+      )}
+    />
+  );
+}
+
+/**
+ * What a link in a vault found: null for nothing, or "incomplete" when Drive
+ * left some drives out of the search.
+ */
+function foundIn({ found, incomplete }: VaultLink) {
+  return found ?? (incomplete ? ("incomplete" as const) : null);
+}
+
+/**
+ * An image where a lookup finds it in Drive, read with the user's token once
+ * it comes near the screen. One that is not an image, that the user may not
+ * download, or that holds over 10 MB is a link to Google Drive; `other`
+ * shows what is not an image at all, if given.
+ */
+function ImageInDrive<Answer, Key extends QueryKey>({
+  lookup,
+  alt,
+  size,
+  other,
+}: {
+  lookup: UseQueryOptions<Answer, Error, Found | null | "incomplete", Key>;
+  alt: string;
+  size?: Size | undefined;
+  other?: ((found: Found) => ReactNode) | undefined;
+}) {
+  const { drive } = useDrive();
   const [seen, near] = useSeen();
-  const found = useQuery({
-    ...resolveQuery(drive, client, folder, path),
-    enabled: seen,
-  });
+  const found = useQuery({ ...lookup, enabled: seen });
+  const image =
+    found.data && found.data !== "incomplete" ? found.data : undefined;
+  const elsewhere = image && other && !IMAGES.has(image.mimeType);
   // A path found already, by a link to it say, waits for the screen too.
   const details = useQuery(
-    metadataQuery(drive, seen ? found.data?.ref : undefined),
+    metadataQuery(drive, seen && !elsewhere ? image?.ref : undefined),
   );
   const file = details.data;
   const shown = file !== undefined && showsHere(file);
@@ -577,6 +710,14 @@ function ImageInDrive({
     );
   }
   if (found.data === null) return <Unresolved>{alt}</Unresolved>;
+  if (found.data === "incomplete") {
+    return (
+      <span title="Google Drive did not search every drive, so this may be a file it left out">
+        {alt}
+      </span>
+    );
+  }
+  if (elsewhere) return other(image);
   if (file && (!shown || bytes.error instanceof TooLargeError)) {
     return <ImageLink href={inDrive(file)} label={alt || file.name} />;
   }
@@ -584,7 +725,7 @@ function ImageInDrive({
     return <span title="Google Drive could not send this image">{alt}</span>;
   }
   if (!file || !bytes.data) return <span>{alt}</span>;
-  return <BlobImage bytes={bytes.data} file={file} alt={alt} />;
+  return <BlobImage bytes={bytes.data} file={file} alt={alt} size={size} />;
 }
 
 // The images every browser shows. SVG is left out: it can hold script, which
@@ -615,10 +756,12 @@ function BlobImage({
   bytes,
   file,
   alt,
+  size,
 }: {
   bytes: Uint8Array<ArrayBuffer>;
   file: FileMetadata;
   alt: string;
+  size: Size | undefined;
 }) {
   const [broken, setBroken] = useState(false);
   const { mimeType: type } = file;
@@ -638,6 +781,8 @@ function BlobImage({
   return (
     <img
       alt={alt}
+      width={size?.width}
+      height={size?.height}
       ref={show}
       onError={() => {
         setBroken(true);
