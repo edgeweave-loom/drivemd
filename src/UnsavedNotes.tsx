@@ -31,7 +31,7 @@ function UnsavedNote({ draft }: { draft: DraftEntry }) {
   const { drive } = useDrive();
   const file = { id: draft.fileId, resourceKey: draft.resourceKey };
   const details = useQuery(metadataQuery(drive, file));
-  const name = details.data?.name ?? draft.name ?? "Note";
+  const name = details.data?.name ?? draft.name;
   return (
     <Link to={hrefOf({ name: "file", file })} className="entry file">
       <span className="name">{name}</span>

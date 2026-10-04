@@ -186,32 +186,6 @@ describe("Home", () => {
     ).toBeVisible();
   });
 
-  it("names a note kept before drafts held names as Drive does, or plainly", async () => {
-    await writeDraft(ACCOUNT, {
-      fileId: "plan",
-      text: "Changed",
-      keptAt: "2026-10-02T09:00:00.000Z",
-    } as Parameters<typeof writeDraft>[1]);
-    await writeDraft(ACCOUNT, {
-      fileId: "lost",
-      text: "Changed",
-      keptAt: "2026-10-01T09:00:00.000Z",
-    } as Parameters<typeof writeDraft>[1]);
-    const { drive } = home();
-    drive.getMetadata.mockImplementation((file) =>
-      file.id === "plan"
-        ? Promise.resolve(PLAN)
-        : Promise.reject(new DriveError(503, "Backend error")),
-    );
-
-    expect(
-      await (await unsaved()).findByRole("link", { name: /^plan\.md/ }),
-    ).toBeVisible();
-    expect(
-      await section("Unsaved changes").findByRole("link", { name: /^Note/ }),
-    ).toHaveAttribute("href", "/edit?id=lost");
-  });
-
   it("lists the signed-in account's notes only", async () => {
     await keep(PLAN);
     await keep(SHARED, "2026-10-03T09:00:00.000Z", "grace@example.com");
