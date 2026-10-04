@@ -57,7 +57,8 @@ function folderNamed({
 }
 
 function item(id: string, resourceKey: unknown): FileRef | undefined {
-  if (resourceKey === undefined) return { id };
+  // Drive may send an empty key for an item that has none.
+  if (resourceKey === undefined || resourceKey === "") return { id };
   return isShaped(resourceKey) ? { id, resourceKey } : undefined;
 }
 

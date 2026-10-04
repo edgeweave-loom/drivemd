@@ -16,7 +16,7 @@ const TITLE = "New Markdown file";
  * then opens the file in its place, or the folder if the user gives up.
  */
 export function NewPage({ folder }: { folder: FileRef }) {
-  const { drive } = useDrive();
+  const { drive, signedIn } = useDrive();
   const details = useQuery(metadataQuery(drive, folder));
   const path = usePath(folder, undefined);
   const inFolder = hrefOf({ name: "folder", folder });
@@ -41,6 +41,9 @@ export function NewPage({ folder }: { folder: FileRef }) {
               </p>
             );
           }
+          // A link opens this page: the dialog waits for Continue, which
+          // shows over the page, and says where the file goes.
+          if (!signedIn) return null;
           return (
             <CreateFile
               folder={folder}
@@ -49,7 +52,14 @@ export function NewPage({ folder }: { folder: FileRef }) {
               onClose={() => {
                 navigate(inFolder, path, { replace: true });
               }}
-            />
+            >
+              <p>
+                In{" "}
+                <strong>
+                  {path?.map(({ name }) => name).join(" › ") ?? metadata.name}
+                </strong>
+              </p>
+            </CreateFile>
           );
         }}
       </Loaded>

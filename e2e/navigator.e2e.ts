@@ -107,17 +107,25 @@ test("creates a file where Drive's New asks, then opens it in its place", async 
   page,
   drive,
 }) => {
-  const state = {
-    action: "create",
-    folderId: "work",
-    userId: "104857600000000000001",
-  };
+  await signIn(page);
+  // A new tab, as Drive opens: the device remembers the account.
+  await page.evaluate(() => {
+    sessionStorage.clear();
+  });
+  const account = "104857600000000000001";
+  const state = { action: "create", folderId: "work", userId: account };
   await page.goto(`/new?state=${encodeURIComponent(JSON.stringify(state))}`);
   await page.getByRole("button", { name: "Sign in with Google" }).click();
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { tokenRequests: unknown[] }).tokenRequests,
+    ),
+  ).toEqual([{ prompt: "select_account", login_hint: account }]);
 
   const create = page.getByRole("dialog", { name: "New Markdown file" });
   const name = create.getByRole("textbox", { name: "Name" });
   await expect(name).toHaveValue("Untitled");
+  await expect(create.getByText("My Drive › Work")).toBeVisible();
   await name.fill("ideas");
   await create.getByRole("button", { name: "Create" }).click();
   await expect(
