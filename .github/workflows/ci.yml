@@ -19,21 +19,40 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+    outputs:
+      site: ${{ steps.site.outputs.site }}
     env:
       VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
     steps:
-      - name: Require the staging configuration
-        if: github.ref == 'refs/heads/dev' && vars.FIREBASE_PROJECT_ID != ''
+      # A push to dev deploys staging, and one to main production, once its
+      # site is set; nothing else deploys.
+      - name: Pick the site to deploy, and require its configuration
+        id: site
+        if: vars.FIREBASE_PROJECT_ID != '' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
+          case "$GITHUB_REF" in
+            refs/heads/dev) site=$FIREBASE_HOSTING_SITE ;;
+            refs/heads/main)
+              site=$PRODUCTION_FIREBASE_HOSTING_SITE
+              [ -n "$site" ] || exit 0
+              ;;
+            *) exit 0 ;;
+          esac
           for name in VITE_GOOGLE_CLIENT_ID FIREBASE_HOSTING_SITE GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
             if [ -z "${!name}" ]; then
               echo "::error::Set the $name repository variable."
               missing=1
             fi
           done
-          exit "${missing:-0}"
+          if [ "$FIREBASE_HOSTING_SITE" = "$PRODUCTION_FIREBASE_HOSTING_SITE" ]; then
+            echo "::error::Give staging and production sites of their own."
+            missing=1
+          fi
+          [ -z "${missing:-}" ] || exit 1
+          echo "site=$site" >> "$GITHUB_OUTPUT"
         env:
           FIREBASE_HOSTING_SITE: ${{ vars.FIREBASE_HOSTING_SITE }}
+          PRODUCTION_FIREBASE_HOSTING_SITE: ${{ vars.PRODUCTION_FIREBASE_HOSTING_SITE }}
           GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -56,8 +75,8 @@ jobs:
         run: npm run coverage
       - name: Type-check and build
         run: npm run build
-      - name: Keep the build for the staging deploy
-        if: github.ref == 'refs/heads/dev' && vars.FIREBASE_PROJECT_ID != ''
+      - name: Keep the build for the deploy
+        if: steps.site.outputs.site != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist
@@ -105,17 +124,28 @@ jobs:
         run: npm run e2e
 
   # Only this job can get Google credentials, and it runs no build tooling:
-  # it deploys the dist/ that the check job built.
-  deploy-staging:
-    name: Deploy staging
+  # it deploys the dist/ that the check job built, from dev to staging and from
+  # main to production.
+  deploy:
+    name: Deploy ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
     needs: [check, e2e, zizmor]
-    if: github.ref == 'refs/heads/dev' && vars.FIREBASE_PROJECT_ID != ''
+    if: needs.check.outputs.site != ''
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
       id-token: write # exchanged for Google credentials through Workload Identity Federation
     steps:
+      - name: Deploy only the branch's latest commit
+        # A re-run of an older run would put its older build back.
+        run: |
+          head=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq .sha)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "::error::$GITHUB_REF_NAME has moved on since this run, whose build is older."
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -132,10 +162,10 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - name: Deploy to the staging site on Firebase Hosting
+      - name: Deploy to the branch's site on Firebase Hosting
         run: |
           npm exec --no -- firebase target:apply hosting app "$FIREBASE_HOSTING_SITE" --project "$FIREBASE_PROJECT_ID"
           npm run deploy -- --project "$FIREBASE_PROJECT_ID"
         env:
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
-          FIREBASE_HOSTING_SITE: ${{ vars.FIREBASE_HOSTING_SITE }}
+          FIREBASE_HOSTING_SITE: ${{ needs.check.outputs.site }}

@@ -25,7 +25,7 @@ describe("Firebase Hosting", () => {
   });
 
   it("names a deploy target rather than a site", () => {
-    // CI maps the target to FIREBASE_HOSTING_SITE, so no site ID is committed.
+    // CI maps the target to the branch's site, so no site ID is committed.
     expect(hosting.target).toBe("app");
     expect("site" in hosting).toBe(false);
   });

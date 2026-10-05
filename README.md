@@ -55,7 +55,7 @@ Write the failing test first, then the code that makes it pass. CI runs the chec
 
 `npm run e2e` builds the app and serves it with the headers Firebase Hosting sends, its security policy included. It then drives the app with Playwright in Chromium, as a desktop, and in WebKit, as an iPad and an iPhone held upright and sideways. Google's sign-in script and the Drive API are replaced by made-up ones (`e2e/fake-google.ts`), so the tests need no account and never reach Google. A test fails on any page error and on anything the security policy blocks.
 
-Before the first run, download the browsers once with `npx playwright install chromium webkit`: they go to `~/.cache/ms-playwright`, shared by every project on the machine. WebKit also needs system libraries, which `sudo npx playwright install-deps webkit` installs. CI installs both on every run, and staging deploys only once the tests pass. The tests record no traces, screenshots or videos, which would keep the requests the app makes.
+Before the first run, download the browsers once with `npx playwright install chromium webkit`: they go to `~/.cache/ms-playwright`, shared by every project on the machine. WebKit also needs system libraries, which `sudo npx playwright install-deps webkit` installs. CI installs both on every run, and CI deploys only once the tests pass. The tests record no traces, screenshots or videos, which would keep the requests the app makes.
 
 ## Configuration
 
@@ -92,20 +92,21 @@ The app's access token can read and write the user's whole Drive, so the reposit
 
 ## Deployment
 
-Once CI passes, every push to `dev` deploys staging, https://md-staging.corp.edgeweave.tech, to the `FIREBASE_HOSTING_SITE` site of the `FIREBASE_PROJECT_ID` project: `firebase.json` names the deploy target `app`, and CI maps it to that site. The deploy job only runs firebase-tools on the `dist/` that the check job built, and it authenticates through Workload Identity Federation, so no service account key exists. The job is skipped while `FIREBASE_PROJECT_ID` is unset; once it is set, CI stops before building if any other variable below is missing:
+Once CI passes, every push to `dev` deploys staging, https://md-staging.corp.edgeweave.tech, to the `FIREBASE_HOSTING_SITE` site of the `FIREBASE_PROJECT_ID` project, and every push to `main` deploys production, https://md.corp.edgeweave.tech, to the `PRODUCTION_FIREBASE_HOSTING_SITE` site of the same project: `firebase.json` names the deploy target `app`, and CI maps it to the site. The deploy job only runs firebase-tools on the `dist/` that the check job built, and it authenticates through Workload Identity Federation, so no service account key exists. The job is skipped while `FIREBASE_PROJECT_ID` is unset, and for `main` while `PRODUCTION_FIREBASE_HOSTING_SITE` is too; once they are set, CI stops before building if any other variable below is missing:
 
-| Variable                         | Value                                                                               |
-| -------------------------------- | ----------------------------------------------------------------------------------- |
-| `FIREBASE_PROJECT_ID`            | The Google Cloud project that hosts staging                                         |
-| `FIREBASE_HOSTING_SITE`          | The Hosting site that serves staging, such as `<project>-staging`                   |
-| `VITE_GOOGLE_CLIENT_ID`          | The OAuth client ID that the build embeds, as in Configuration                      |
-| `GCP_WORKLOAD_IDENTITY_PROVIDER` | `projects/<number>/locations/global/workloadIdentityPools/github/providers/drivemd` |
-| `GCP_SERVICE_ACCOUNT`            | `github-deploy@<project>.iam.gserviceaccount.com`                                   |
+| Variable                           | Value                                                                               |
+| ---------------------------------- | ----------------------------------------------------------------------------------- |
+| `FIREBASE_PROJECT_ID`              | The Google Cloud project that hosts both sites                                      |
+| `FIREBASE_HOSTING_SITE`            | The Hosting site that serves staging, such as `<project>-staging`                   |
+| `PRODUCTION_FIREBASE_HOSTING_SITE` | The Hosting site that serves production, such as the project's default, `<project>` |
+| `VITE_GOOGLE_CLIENT_ID`            | The OAuth client ID that the build embeds, as in Configuration                      |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER`   | `projects/<number>/locations/global/workloadIdentityPools/github/providers/drivemd` |
+| `GCP_SERVICE_ACCOUNT`              | `github-deploy@<project>.iam.gserviceaccount.com`                                   |
 
 One-time setup, by an owner of the project:
 
-1. Add Firebase to the project, start Hosting, add the staging site (`FIREBASE_HOSTING_SITE`), and connect the custom domain `md-staging.corp.edgeweave.tech` to that site.
-2. Create the deploy account, which can only manage Firebase Hosting, and let only the CI workflow of this repository, on `dev`, use it:
+1. Add Firebase to the project, start Hosting, add the staging site (`FIREBASE_HOSTING_SITE`), and connect the custom domain `md-staging.corp.edgeweave.tech` to that site, and `md.corp.edgeweave.tech` to the production site (`PRODUCTION_FIREBASE_HOSTING_SITE`, the project's default one or another), adding the DNS records Firebase gives to the `corp.edgeweave.tech` zone.
+2. Create the deploy account, which can only manage Firebase Hosting, and let only the CI workflow of this repository, on `dev` and `main`, use it:
 
 ```sh
 PROJECT_ID=<project-id>
@@ -114,7 +115,7 @@ REPO_ID=$(gh api repos/edgeweave-loom/drivemd --jq .id)
 SA="github-deploy@$PROJECT_ID.iam.gserviceaccount.com"
 
 gcloud services enable iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com --project "$PROJECT_ID"
-gcloud iam service-accounts create github-deploy --project "$PROJECT_ID" --display-name "GitHub staging deploy"
+gcloud iam service-accounts create github-deploy --project "$PROJECT_ID" --display-name "GitHub deploy"
 sleep 60  # IAM takes up to a minute before a new account can be granted roles.
 for role in roles/firebasehosting.admin roles/serviceusage.apiKeysViewer; do
   gcloud projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$SA" --role "$role" --condition=None
@@ -123,17 +124,20 @@ gcloud iam workload-identity-pools create github --project "$PROJECT_ID" --locat
 gcloud iam workload-identity-pools providers create-oidc drivemd --project "$PROJECT_ID" --location global \
   --workload-identity-pool github --issuer-uri https://token.actions.githubusercontent.com \
   --attribute-mapping "google.subject=assertion.sub,attribute.repository_id=assertion.repository_id" \
-  --attribute-condition "assertion.repository_id == '$REPO_ID' && assertion.ref == 'refs/heads/dev' && assertion.workflow_ref == 'edgeweave-loom/drivemd/.github/workflows/ci.yml@refs/heads/dev'"
+  --attribute-condition "assertion.repository_id == '$REPO_ID' && assertion.event_name in ['push', 'workflow_dispatch'] && assertion.ref in ['refs/heads/dev', 'refs/heads/main'] && assertion.workflow_ref == 'edgeweave-loom/drivemd/.github/workflows/ci.yml@' + assertion.ref"
 gcloud iam service-accounts add-iam-policy-binding "$SA" --project "$PROJECT_ID" --role roles/iam.workloadIdentityUser \
   --member "principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository_id/$REPO_ID"
 
 gh variable set FIREBASE_PROJECT_ID --body "$PROJECT_ID"
 gh variable set FIREBASE_HOSTING_SITE --body "<staging-site-id>"
+gh variable set PRODUCTION_FIREBASE_HOSTING_SITE --body "<production-site-id>"
 gh variable set GCP_SERVICE_ACCOUNT --body "$SA"
 gh variable set GCP_WORKLOAD_IDENTITY_PROVIDER --body "projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/drivemd"
 ```
 
-The deploy account can manage every Hosting site of its project, so production (milestone 7) belongs in a project of its own.
+A run deploys only its branch's latest commit: re-running an older one fails rather than putting its older build back, and Hosting's release history, in the Firebase console, rolls a site back.
+
+Both sites belong to one project, which also holds the OAuth client, the Drive UI integration and the Marketplace listing. Firebase grants Hosting rights on a whole project, not on a site, so the deploy account can deploy either site: whatever reaches `dev` must be trusted as much as what reaches `main`.
 
 CI deploys by itself. To deploy by hand, map the target to a site first, which writes a `.firebaserc` that git ignores: `npm exec --no -- firebase target:apply hosting app <site-id> --project <project-id>`, then `npm run deploy -- --project <project-id>`.
 
