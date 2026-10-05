@@ -202,7 +202,7 @@ A private Google Workspace Marketplace listing puts the app in Drive's **Open wi
 **Drive UI integration (Cloud console > Google Drive API > Drive UI integration)**
 
 1. Name the application **DriveMD** and give it the short and long descriptions below, which Drive shows among the user's apps.
-2. Upload the app icons, PNG images with a transparent background: `docs/listing/icon-16.png`, `icon-32.png`, `icon-128.png` and `icon-256.png`, drawn from `public/icon.svg`. Drive may take 24 hours to show them.
+2. Upload the app icons, PNG images with a transparent background: `docs/listing/icon-16.png`, `icon-32.png`, `icon-64.png`, `icon-128.png` and `icon-256.png`, drawn from `public/icon.svg`. Drive may take 24 hours to show them.
 3. Set the **Open URL** to `https://md.corp.edgeweave.tech/open`. Leave the automatic OAuth consent screen unticked: Google deprecated it, and the app starts every authorization itself.
 4. Set the default MIME types `text/markdown` and `text/x-markdown`, which .md files carry in Drive (see Risks), so that Drive offers DriveMD first for them, the default file extension `md`, and the secondary file extension `markdown`.
 5. Tick **Creating files** and set the **New URL** to `https://md.corp.edgeweave.tech/new`; leave **Document name** empty, which Google no longer uses.
