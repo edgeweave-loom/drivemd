@@ -127,7 +127,7 @@ jobs:
   # it deploys the dist/ that the check job built, from dev to staging and from
   # main to production.
   deploy:
-    name: Deploy ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+    name: Deploy
     needs: [check, e2e, zizmor]
     if: needs.check.outputs.site != ''
     runs-on: ubuntu-latest
