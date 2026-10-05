@@ -295,7 +295,7 @@ Build in eight milestones, each ending with something that runs; give Claude Cod
    - Carried over from milestone 3, and settled: link resolution and search say when Drive answers that its search was incomplete (`incompleteSearch`), rather than calling a link broken; a note's vault cannot be found past a folder out of the user's reach, since Drive names no such folder (see Obsidian vaults).
 6. **Routing and links.** `/edit?id=` with resource keys, paste a Drive link, `/open?state=` and `/new?state=` handlers.
    - Done when: each URL opens the right file after sign-in.
-   - Carried over from milestone 3: breadcrumbs rebuilt from parents read each parent without its resource key, which the app does not know; check how Drive answers for a parent shared by link, and end the path cleanly there.
+   - Carried over from milestone 3, and settled: breadcrumbs rebuilt from parents read each parent without its resource key, which the app does not know. Only some old items shared by link carry one, "a subset of old files" that Google's 2021 security update keyed, so no test item can be made. Google's 2021 notice to developers says that a request for such an item without its key "may result in a 404 Not Found error": the path then ends there, at Shared with me, as at any parent out of reach, which a unit test pins.
 7. **Drive integration and Marketplace.** Manual console steps from the Open with section; deploy to `md.corp.edgeweave.tech` once the domain is verified.
    - Done when: right-click > Open with in Drive on the web opens the file in the app.
    - Carried over from milestone 6: check the `state` Drive really sends to Open with and New, such as an empty `folderResourceKey`, and that Google shows its account chooser for a token request with `login_hint` and `prompt: select_account`; the fake Google of the end-to-end tests only records them.
@@ -352,6 +352,8 @@ Every stage is tested on a real iPhone first, then an Android phone, with our me
 - [Google: configure the OAuth consent screen (Marketplace)](https://developers.google.com/gsuite/marketplace/configure-oauth-consent-screen)
 - [Google: OAuth production readiness](https://developers.google.com/identity/protocols/oauth2/production-readiness/overview)
 - [Google: configure a Drive UI integration](https://developers.google.com/workspace/drive/api/guides/enable-sdk)
+- [Google: access link-shared files using resource keys](https://developers.google.com/workspace/drive/api/guides/resource-keys)
+- [Google Workspace Updates: Drive file link updates (2021)](https://workspaceupdates.googleblog.com/2021/06/drive-file-link-updates.html), and Google's notice to developers, quoted in [GNOME gvfs#576](https://gitlab.gnome.org/GNOME/gvfs/-/issues/576)
 - [Obsidian: Obsidian Flavored Markdown](https://obsidian.md/help/obsidian-flavored-markdown)
 - [Obsidian: Basic formatting syntax](https://obsidian.md/help/syntax)
 - [Obsidian: Callouts](https://obsidian.md/help/callouts)
