@@ -1,0 +1,699 @@
+/* Code highlighting as on GitHub, in the system's theme. */
+@import "highlight.js/styles/github.css" (prefers-color-scheme: light);
+@import "highlight.js/styles/github-dark.css" (prefers-color-scheme: dark);
+
+:root {
+  --text: light-dark(#1f2328, #f0f6fc);
+  --muted: light-dark(#59636e, #9198a1);
+  --background: light-dark(#ffffff, #0d1117);
+  --surface: light-dark(#f6f8fa, #212830);
+  --border: light-dark(#d1d9e0, #3d444d);
+  --accent: light-dark(#0969da, #1f6feb);
+  --link: light-dark(#0969da, #4493f8);
+  --monospace: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  color-scheme: light dark;
+  color: var(--text);
+  background: var(--background);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+a {
+  color: var(--link);
+}
+
+.app {
+  display: grid;
+  gap: 1rem;
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.app h1 {
+  margin: 0;
+}
+
+.app p,
+.page p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+button {
+  min-height: 44px;
+  padding: 0 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: #ffffff;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.hint,
+.message {
+  color: var(--muted);
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--background);
+}
+
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+}
+
+.bar h1 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.bar h1 a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.search {
+  flex: 1 1 12rem;
+}
+
+.search input,
+.stack input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  /* Safari zooms in on a field whose text is smaller. */
+  font-size: max(16px, 1rem);
+}
+
+@media (width < 768px), (pointer: coarse) and (height < 500px) {
+  .search {
+    flex-basis: 100%;
+    order: 1;
+  }
+}
+
+dialog.card {
+  max-width: min(28rem, calc(100% - 2rem));
+  padding: 1.5rem 1rem 1rem;
+  color: inherit;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 40%);
+}
+
+.card h2 {
+  margin: 0 0 1rem;
+  font-size: 1.25rem;
+}
+
+.stack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.stack label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.heading {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.picker {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+button.entry {
+  width: 100%;
+  border-width: 0 0 1px;
+  border-radius: 0;
+  background: none;
+  text-align: start;
+}
+
+button.link {
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--link);
+}
+
+.split,
+.main {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.pane {
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+}
+
+@media (width >= 1024px) {
+  .page:has(.pane) {
+    max-width: 72rem;
+  }
+
+  .split:has(.pane) {
+    grid-template-columns: minmax(14rem, 20rem) minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+}
+
+dialog.drawer {
+  width: min(22rem, 85vw);
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 1rem;
+  border: none;
+  border-right: 1px solid var(--border);
+  background: var(--background);
+  color: inherit;
+}
+
+.bar .account {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page {
+  display: grid;
+  gap: 1rem;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.page h2,
+.page h3 {
+  margin: 0;
+}
+
+.page h3 {
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.crumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+  margin: 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  list-style: none;
+}
+
+.crumbs li + li::before {
+  margin-right: 0.5rem;
+  content: "›" / "";
+}
+
+.crumbs a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.entries {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.5rem 0.25rem;
+  border-bottom: 1px solid var(--border);
+  color: inherit;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.entry .name {
+  min-width: 0;
+}
+
+.entry.folder:not(.broken)::after {
+  margin-left: auto;
+  color: var(--muted);
+  content: "›" / "";
+}
+
+.badge {
+  padding: 0 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.warning {
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid light-dark(#9a6700, #d29922);
+  background: light-dark(#fff8c5, #272115);
+}
+
+.failure {
+  color: light-dark(#d1242f, #f85149);
+}
+
+.entry.broken {
+  color: var(--muted);
+}
+
+.entry.broken .reason,
+.entry .when {
+  margin-left: auto;
+  font-size: 0.875rem;
+  text-align: end;
+}
+
+.entry .when {
+  color: var(--muted);
+}
+
+.entry .lines {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+  color: var(--muted);
+}
+
+.entry .lines small {
+  font-size: 0.875rem;
+}
+
+.entry > button {
+  flex: none;
+  margin-left: auto;
+}
+
+.read-only {
+  justify-self: start;
+  white-space: normal;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* A note, rendered as GitHub renders Markdown. */
+.markdown {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown :is(p, blockquote, ul, ol, table, pre, hr) {
+  margin: 0 0 1rem;
+}
+
+.markdown :is(h1, h2, h3, h4, h5, h6) {
+  margin: 1.5rem 0 1rem;
+  color: inherit;
+  font-weight: 600;
+  line-height: 1.25;
+  text-transform: none;
+}
+
+.markdown :is(h1, h2) {
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border);
+}
+
+.markdown h1 {
+  font-size: 2em;
+}
+
+.markdown h2 {
+  font-size: 1.5em;
+}
+
+.markdown h3 {
+  font-size: 1.25em;
+}
+
+.markdown h4 {
+  font-size: 1em;
+}
+
+.markdown h5 {
+  font-size: 0.875em;
+}
+
+.markdown h6 {
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+.markdown :is(ul, ol) {
+  padding-left: 2em;
+}
+
+.markdown :is(ul, ol) :is(ul, ol) {
+  margin-bottom: 0;
+}
+
+.markdown li + li {
+  margin-top: 0.25em;
+}
+
+.markdown .task-list-item {
+  list-style: none;
+}
+
+.markdown .task-list-item input {
+  margin: 0 0.35em 0.25em -1.4em;
+  vertical-align: middle;
+}
+
+/* In a vault, as in Obsidian, a checked task is struck through. */
+.markdown.obsidian
+  .task-list-item:is(
+    :has(> input:checked),
+    :has(> p:first-child > input:checked)
+  ) {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.markdown blockquote {
+  padding: 0 1em;
+  border-left: 0.25em solid var(--border);
+  color: var(--muted);
+}
+
+/* Obsidian's callouts, in the colors of its light and dark themes. */
+.markdown .callout {
+  --callout: light-dark(rgb(8 109 221), rgb(2 122 255));
+  padding: 0.75rem 1rem;
+  border-left: 0.25em solid var(--callout);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--callout) 10%, transparent);
+}
+
+/* Below the rule that takes the margin off a note's last block. */
+.markdown :where(.callout) {
+  margin: 0 0 1rem;
+}
+
+.markdown .callout:is([data-callout="abstract"], [data-callout="tip"]) {
+  --callout: light-dark(rgb(0 191 188), rgb(83 223 221));
+}
+
+.markdown .callout[data-callout="success"] {
+  --callout: light-dark(rgb(8 185 78), rgb(68 207 110));
+}
+
+.markdown .callout:is([data-callout="question"], [data-callout="warning"]) {
+  --callout: light-dark(rgb(236 117 0), rgb(233 151 63));
+}
+
+.markdown
+  .callout:is(
+    [data-callout="failure"],
+    [data-callout="danger"],
+    [data-callout="bug"]
+  ) {
+  --callout: light-dark(rgb(233 49 71), rgb(251 70 76));
+}
+
+.markdown .callout[data-callout="example"] {
+  --callout: light-dark(rgb(120 82 238), rgb(168 130 255));
+}
+
+.markdown .callout[data-callout="quote"] {
+  --callout: rgb(158 158 158);
+}
+
+.markdown .callout-title {
+  color: var(--callout);
+  font-weight: 600;
+}
+
+/* A tap target of 44 px, which takes no more room than the title. */
+.markdown .callout > summary.callout-title {
+  margin-block: -0.625rem;
+  padding-block: 0.625rem;
+  cursor: pointer;
+}
+
+.markdown .callout-content {
+  margin-top: 0.5rem;
+}
+
+.markdown .callout-content > :last-child {
+  margin-bottom: 0;
+}
+
+/* A note an Obsidian embed shows, within the note that embeds it. */
+.markdown .embed {
+  margin: 0 0 1rem;
+  padding: 0.25rem 0 0.25rem 1rem;
+  border-left: 0.25em solid var(--border);
+}
+
+.markdown .embed-title {
+  margin-bottom: 0.5rem;
+  font-size: 0.875em;
+}
+
+/* Obsidian's highlights and tags. */
+.markdown mark {
+  background: rgb(255 208 0 / 40%);
+  color: inherit;
+}
+
+.markdown .tag {
+  padding: 0.1em 0.5em;
+  border-radius: 1em;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--link);
+  font-size: 0.875em;
+}
+
+.markdown :is(code, pre) {
+  font-family: var(--monospace);
+  font-size: 85%;
+}
+
+.markdown code {
+  padding: 0.2em 0.4em;
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.markdown pre {
+  padding: 1rem;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--surface);
+  line-height: 1.45;
+}
+
+.markdown pre code,
+.markdown pre code.hljs {
+  padding: 0;
+  background: none;
+  font-size: 100%;
+}
+
+.markdown table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow: auto;
+  border-collapse: collapse;
+}
+
+.markdown :is(th, td) {
+  padding: 6px 13px;
+  border: 1px solid var(--border);
+}
+
+.markdown tr:nth-child(2n) {
+  background: var(--surface);
+}
+
+.markdown hr {
+  height: 0.25em;
+  padding: 0;
+  border: 0;
+  background: var(--border);
+}
+
+.markdown .footnotes {
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.875em;
+}
+
+.source {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.markdown .unresolved {
+  color: var(--muted);
+  text-decoration: underline dotted;
+}
+
+/* An image keeps its proportions, whatever size an embed gives it. */
+.markdown img {
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.markdown .image-pending {
+  display: inline-block;
+  min-width: 3rem;
+  min-height: 3rem;
+}
+
+.note-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.note-bar .read-only {
+  margin-right: auto;
+}
+
+.editing {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.conflict {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid light-dark(#9a6700, #d29922);
+  border-radius: 0.5rem;
+  background: light-dark(#fff8c5, #272115);
+}
+
+.page .conflict h3 {
+  color: inherit;
+  font-size: 1.125rem;
+  text-transform: none;
+}
+
+.conflict .actions {
+  justify-content: flex-start;
+}
+
+.restore {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.restore .actions {
+  justify-content: flex-start;
+}
