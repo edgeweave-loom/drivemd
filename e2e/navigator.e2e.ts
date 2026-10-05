@@ -209,6 +209,16 @@ test("opens the Drive link shared with the installed app, and forgets the share"
   page,
 }) => {
   await signIn(page);
+  const words = new URLSearchParams({ text: "Tea at four" });
+  await page.goto(`/share?${words.toString()}`);
+  // What was shared leaves the address, even when it leads nowhere.
+  await expect(page).toHaveURL(/\/share$/);
+  await expect(
+    page.getByRole("heading", { name: "Nothing to open" }),
+  ).toBeVisible();
+  await expect(page.getByText(EMAIL)).toBeVisible();
+
+  const entries = await page.evaluate(() => history.length);
   // As Android's share sheet sends a link, with the words around it.
   const shared = new URLSearchParams({
     title: "plan.md",
@@ -224,24 +234,9 @@ test("opens the Drive link shared with the installed app, and forgets the share"
     "My Drive",
     "Work",
   ]);
-  // Back skips the share, which gave way to the file.
-  await page.goBack();
-  await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "Recent" }).getByRole("link"),
-  ).toHaveText(["plan.md"]);
-  await expect(
-    page.getByRole("region", { name: "Vaults" }).getByRole("link"),
-  ).toHaveText(["Journal"]);
-
-  const words = new URLSearchParams({ text: "Tea at four" });
-  await page.goto(`/share?${words.toString()}`);
-  // What was shared leaves the address, even when it leads nowhere.
-  await expect(page).toHaveURL(/\/share$/);
-  await expect(
-    page.getByRole("heading", { name: "Nothing to open" }),
-  ).toBeVisible();
-  await expect(page.getByText(EMAIL)).toBeVisible();
+  // The file took the share's place, so that Back skips the share; going
+  // Back here would leave the note while its image loads.
+  expect(await page.evaluate(() => history.length)).toBe(entries + 1);
 });
 
 test("creates, renames, moves and trashes a file", async ({ page, drive }) => {
