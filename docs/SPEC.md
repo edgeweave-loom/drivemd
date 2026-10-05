@@ -202,7 +202,7 @@ A private Google Workspace Marketplace listing puts the app in Drive's **Open wi
 **Drive UI integration (Cloud console > Google Drive API > Drive UI integration)**
 
 1. Name the application **DriveMD** and give it the short and long descriptions below, which Drive shows among the user's apps.
-2. Upload the app icons, PNG images with a transparent background: `docs/listing/icon-16.png`, `icon-32.png`, `icon-128.png` and `icon-256.png`, drawn from `public/icon.svg`. Drive may take 24 hours to show them.
+2. Upload the app icons, PNG images with a transparent background: `docs/listing/icon-16.png`, `icon-32.png`, `icon-64.png`, `icon-128.png` and `icon-256.png`, drawn from `public/icon.svg`. Drive may take 24 hours to show them.
 3. Set the **Open URL** to `https://md.corp.edgeweave.tech/open`. Leave the automatic OAuth consent screen unticked: Google deprecated it, and the app starts every authorization itself.
 4. Set the default MIME types `text/markdown` and `text/x-markdown`, which .md files carry in Drive (see Risks), so that Drive offers DriveMD first for them, the default file extension `md`, and the secondary file extension `markdown`.
 5. Tick **Creating files** and set the **New URL** to `https://md.corp.edgeweave.tech/new`; leave **Document name** empty, which Google no longer uses.
@@ -211,8 +211,8 @@ A private Google Workspace Marketplace listing puts the app in Drive's **Open wi
 **Marketplace listing (Cloud console > Google Workspace Marketplace SDK)**
 
 1. Enable the Marketplace SDK in the same project, whose billing is enabled, as Google may require.
-2. In the app configuration, choose **Private** visibility, which can never change once saved, and **Admin Only Install**; tick the **Drive app** integration only, since a **Web app** one would also need 48 and 96 pixel icons; list the scopes the app requests, `https://www.googleapis.com/auth/drive` and `https://www.googleapis.com/auth/drive.install`; and give the developer's name, website and email, and its trader status, which the admin decides: DriveMD is not sold to anyone.
-3. In the store listing, give the name **DriveMD**, as on the OAuth consent screen, the descriptions below and a Productivity category; upload `docs/listing/icon-32.png` and `icon-128.png`, the card banner `docs/listing/banner.png` (220 × 140) and the screenshot `docs/listing/screenshot.png` (1280 × 800); and link the terms of service, privacy policy and support to the about page's parts: `https://md.corp.edgeweave.tech/about.html#terms`, `#privacy` and `#support`.
+2. In the app configuration, choose **Private** visibility, which can never change once saved, and **Admin Only Install**; tick the **Drive app** integration only; list the scopes the app requests, `https://www.googleapis.com/auth/drive` and `https://www.googleapis.com/auth/drive.install`; and give the developer's name, website and email, and its trader status, which the admin decides: DriveMD is not sold to anyone.
+3. In the store listing, give the name **DriveMD**, as on the OAuth consent screen, the descriptions below and a Productivity category; upload `docs/listing/icon-32.png`, `icon-48.png`, `icon-96.png` and `icon-128.png`, as the listing asks for all four, the card banner `docs/listing/banner.png` (220 × 140) and the screenshot `docs/listing/screenshot.png` (1280 × 800); and link the terms of service, privacy policy and support to the about page's parts: `https://md.corp.edgeweave.tech/about.html#terms`, `#privacy` and `#support`.
 4. Publish. A private listing is published at once, without Google's review, among the organization's internal apps.
 5. As a super administrator, install it from the Admin console (Apps > Google Workspace Marketplace apps > Apps list > Install app > Admin install), for a group or an organizational unit first to try it, then for everyone. Google says the change takes up to 24 hours.
 
