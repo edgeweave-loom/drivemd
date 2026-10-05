@@ -147,4 +147,4 @@ To see the headers and cache rules as Hosting serves them, run `npm run build`, 
 
 ## Drive integration
 
-Drive's **Open with** and **New** menus open production once a private Google Workspace Marketplace listing is installed, which the spec's [Drive integration section](docs/SPEC.md#drive-open-with-integration-via-private-marketplace) sets up step by step in the Google Cloud and Admin consoles. `docs/listing/` holds the images it uploads: the icons, `public/icon.svg` rendered at 16, 32, 64, 128 and 256 pixels on a transparent background, the card banner and a screenshot taken on made-up data.
+Drive's **Open with** and **New** menus open production once a private Google Workspace Marketplace listing is installed, which the spec's [Drive integration section](docs/SPEC.md#drive-open-with-integration-via-private-marketplace) sets up step by step in the Google Cloud and Admin consoles. `docs/listing/` holds the images it uploads: the icons, `public/icon.svg` rendered at 16, 32, 48, 64, 96, 128 and 256 pixels on a transparent background, the card banner and a screenshot taken on made-up data.
