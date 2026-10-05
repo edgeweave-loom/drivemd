@@ -192,21 +192,24 @@ function fragmentOf({ hash }: URL): string | undefined {
 export function navigate(
   href: string,
   trail?: Crumb[],
-  /** The user already chose to leave, as when they trash the file shown. */
-  { asked = false } = {},
+  {
+    /** The user already chose to leave, as when they trash the file shown. */
+    asked = false,
+    /** The page shown gives way to this one, which Back then skips. */
+    replace = false,
+  } = {},
 ): void {
   if (!asked && !mayLeave(href)) return;
   const url = new URL(href, window.location.origin);
   const page = canonical(url);
   const target = page + url.hash;
-  if (page === getPlace().href) {
-    const state: unknown = trail === undefined ? history.state : { trail };
-    history.replaceState(state, "", target);
-  } else {
-    history.pushState(trail === undefined ? null : { trail }, "", target);
-    // Back returns to where the page was left, as the browser keeps it.
-    window.scrollTo(0, 0);
-  }
+  const same = page === getPlace().href;
+  const kept: unknown = same ? history.state : null;
+  const state = trail === undefined ? kept : { trail };
+  if (same || replace) history.replaceState(state, "", target);
+  else history.pushState(state, "", target);
+  // Back returns to where the page was left, as the browser keeps it.
+  if (!same) window.scrollTo(0, 0);
   changed();
 }
 

@@ -164,6 +164,20 @@ describe("the place shown", () => {
     ]);
   });
 
+  it("replaces the entry when asked, as a page that gives way to another", () => {
+    const scrollTo = vi.spyOn(window, "scrollTo");
+    navigate("/shortcuts");
+    const entries = history.length;
+
+    const trail = [...MY_DRIVE, { name: "plan.md", href: `/edit?id=${ID}` }];
+    navigate(`/edit?id=${ID}`, trail, { replace: true });
+    expect(history.length).toBe(entries);
+    expect(getPlace()).toMatchObject({ href: `/edit?id=${ID}`, trail });
+    expect(scrollTo).toHaveBeenCalledTimes(2);
+    navigate("/shortcuts", undefined, { replace: true });
+    expect(getPlace().trail).toBeUndefined();
+  });
+
   it("keeps the URL of a page that does not exist", () => {
     visit("/nowhere?x=1", null);
 
