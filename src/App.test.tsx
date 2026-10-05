@@ -74,6 +74,14 @@ describe("App", () => {
     expect(session.signIn).toHaveBeenCalledOnce();
   });
 
+  it("leads from the Sign in screen to what DriveMD does with data", () => {
+    render(<App session={fakeSession().session} />);
+
+    expect(
+      screen.getByRole("link", { name: "Privacy, terms and support" }),
+    ).toHaveAttribute("href", "/about.html");
+  });
+
   it("disables Sign in until Google's script is ready", () => {
     render(<App session={fakeSession({ google: "loading" }).session} />);
 

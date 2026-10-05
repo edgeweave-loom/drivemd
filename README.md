@@ -19,6 +19,8 @@ Milestones 1 to 6 are done, and milestone 7, Drive integration and the Marketpla
 
 **Sign in with Google** opens Google's window, so the browser must allow pop-ups for the site. The session then lasts about an hour for the tab: a reload keeps it, while a new tab or a relaunch of the Home Screen app asks for **Continue**, which renews it for the account remembered on the device, usually with a window that closes by itself. Once the hour is up, the next tap that opens a page renews the session in the same way, and a page that loads without a tap asks for **Continue**. A tab that Drive's **Open with** or **New** opens asks to **Sign in** rather than **Continue**, with Google's account chooser starting from the account Drive used, and the account picked becomes the one remembered on the device. **Sign out** forgets the session on the device, in every open tab, without revoking DriveMD's access to the Google account. It also discards the unsaved changes kept on the device for the account, after saying how many notes have some.
 
+The sign-in screen links to `/about.html`, which says what DriveMD does with your data, its terms of use and where to report a problem, without signing in.
+
 ## Stack
 
 Vite, React and TypeScript; Google Identity Services and the Drive REST API v3, with TanStack Query caching Drive's answers; CodeMirror 6 for editing and react-markdown for rendering; Firebase Hosting. The spec explains each choice.

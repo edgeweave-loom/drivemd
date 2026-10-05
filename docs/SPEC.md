@@ -47,7 +47,7 @@ The interface is in English and follows the system's light or dark theme.
 
 ## Functional requirements
 
-1. **Sign-in.** Users sign in with their Google account. Only accounts in our Workspace organization are accepted.
+1. **Sign-in.** Users sign in with their Google account. Only accounts in our Workspace organization are accepted. The sign-in screen links to the about page, `/about.html`, which says what DriveMD reads, changes and keeps on the device, its terms of use, and where to report a problem (the repository's GitHub issues). It is a page of its own, without script, readable without signing in.
 2. **Home.** After sign-in, the app opens on Home, which shows in order:
    - **Unsaved changes:** the notes whose unsaved changes the device keeps for the signed-in account (see Save), the latest first, each with when they were kept; shown only when there are some, and never behind **Continue**, before Google has given the tab a token for the account. The list reads the device afresh each time Home shows, with or without a connection, and names each note as it was when its changes were kept until Drive gives its current name. A tap opens the note, which offers the changes back. A note that no longer opens there (deleted, no longer shared, in the trash, not downloadable, over 1 MB, or no longer named as a Markdown file) says why instead, and offers **Discard**, once the user confirms, since its page cannot. Home decides from Drive's answer since it showed, never from its cache.
    - **Recent:** the Markdown files the user opened most recently, newest first. The list comes from Drive's `viewedByMeTime`, which the app sets when it opens a file, so it is the same on every device. It keeps the Markdown files among the 100 files with content the user viewed last. Drive accepts it even for files the user can only view, and shows the new time a few seconds later (checked live).
@@ -61,7 +61,7 @@ The interface is in English and follows the system's light or dark theme.
    - The **Shortcuts** root lists the shortcuts the user owns, that is the ones they created outside shared drives, wherever they sit, for one-tap access. Shortcuts in shared drives are left out: the whole team creates them, and Drive cannot tell which ones the user made.
    - A broken shortcut (target deleted, in the trash, or no access) is shown greyed out with a short reason.
    - Breadcrumbs show the path the user took, including through a shortcut. When there is no such path (deep link, **Open with**, reloaded folder URL), they are rebuilt from the parents up to My Drive, the shared drive or Shared with me; a parent the user cannot access ends the path.
-   - Every page has its own URL: `/` for Home; `/my-drive`, `/shortcuts`, `/shared-drives` and `/shared-with-me` for the roots; `/folder/<id>` for a folder; `/search?q=<text>` for search; and `/edit?id=<id>` for a file, with `#<part>` to open it at a heading or a block, unfolding the callouts around it. Drive's **Open with** and **New** open `/open?state=…` and `/new?state=…` (see Handling the redirect). `resourcekey=<key>` is added when the item needs one. The browser's history keeps the path the user took, so Back and a reload keep the breadcrumbs. A URL whose ID or key is not shaped like Drive's opens nothing.
+   - Every page has its own URL: `/` for Home; `/my-drive`, `/shortcuts`, `/shared-drives` and `/shared-with-me` for the roots; `/folder/<id>` for a folder; `/search?q=<text>` for search; and `/edit?id=<id>` for a file, with `#<part>` to open it at a heading or a block, unfolding the callouts around it. The about page, `/about.html`, is a page of its own, outside the app (see Sign-in). Drive's **Open with** and **New** open `/open?state=…` and `/new?state=…` (see Handling the redirect). `resourcekey=<key>` is added when the item needs one. The browser's history keeps the path the user took, so Back and a reload keep the breadcrumbs. A URL whose ID or key is not shaped like Drive's opens nothing.
    - A search box finds Markdown files by name across all drives. Drive matches the start of words, not any substring: "plan" finds `planning.md` but not `myplan.md`, and every word typed must match. It shows the Markdown files among the first 100 matches, the most recently modified first, and says so when Drive answers that it left some drives out of the search (`incompleteSearch`). A Drive link pasted in it opens instead (see Deep links).
 4. **Viewer.** Files open in the viewer by default, on every screen, with an **Edit** button.
    - Renders Markdown with GitHub-style extras: tables, task lists, strikethrough, autolinks and footnotes. Code blocks are syntax-highlighted. Math and Mermaid are not rendered; they show as written.
@@ -208,7 +208,7 @@ A private Google Workspace Marketplace listing puts the app in Drive's **Open wi
 **Marketplace listing**
 
 1. Enable the Google Workspace Marketplace SDK in the same project.
-2. Configure the app with the Drive extension and publish it with **Private** visibility.
+2. Configure the app with the Drive extension and publish it with **Private** visibility. The listing's terms of service, privacy policy and support links lead to the about page's parts: `/about.html#terms`, `#privacy` and `#support`.
 3. The admin installs it for the whole domain, so no user has to add it.
 
 **Handling the redirect**
