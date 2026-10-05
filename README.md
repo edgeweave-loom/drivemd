@@ -24,7 +24,7 @@ The sign-in screen links to `/about.html`, which says what DriveMD does with you
 
 ## On a phone
 
-On an iPhone, Safari's **Share > Add to Home Screen** puts DriveMD on the Home Screen, with its icon; on Android, Chrome offers **Install app** (or **Add to Home screen**). DriveMD then opens on Home, in a window of its own, from whatever page it was added. Its web app manifest is `public/manifest.webmanifest`; its icons are `public/icon.svg` and, for launchers that round or cut icons to their own shape, `public/icon-maskable.svg`, rendered as PNG files beside them.
+On an iPhone, Safari's **Share > Add to Home Screen** puts DriveMD on the Home Screen, with its icon; on Android, Chrome offers **Install app** (or **Add to Home screen**). DriveMD then opens on Home, in a window of its own, from whatever page of the app it was added. Its web app manifest is `public/manifest.webmanifest`; its icons are `public/icon.svg` and, for launchers that round or cut icons to their own shape, `public/icon-maskable.svg`, rendered as PNG files beside them.
 
 ## Stack
 
