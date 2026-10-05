@@ -41,3 +41,37 @@ test("leads there from the sign-in screen", async ({ page }) => {
     page.getByRole("heading", { level: 1, name: "About DriveMD" }),
   ).toBeVisible();
 });
+
+test("shows DriveMD's icon in the browser's tab, on both pages", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
+    "href",
+    "/icon.svg",
+  );
+  // Once Google's sign-in script has loaded, so that nothing is left loading.
+  await expect(
+    page.getByRole("button", { name: "Sign in with Google" }),
+  ).toBeEnabled();
+  await page.goto("/about.html");
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
+    "href",
+    "/icon.svg",
+  );
+  // Drawn as an image, under the policy's img-src.
+  const width = await page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const icon = new Image();
+        icon.onload = () => {
+          resolve(icon.naturalWidth);
+        };
+        icon.onerror = () => {
+          resolve(0);
+        };
+        icon.src = "/icon.svg";
+      }),
+  );
+  expect(width).toBeGreaterThan(0);
+});

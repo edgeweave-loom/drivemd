@@ -144,3 +144,7 @@ Both sites belong to one project, which also holds the OAuth client, the Drive U
 CI deploys by itself. To deploy by hand, map the target to a site first, which writes a `.firebaserc` that git ignores: `npm exec --no -- firebase target:apply hosting app <site-id> --project <project-id>`, then `npm run deploy -- --project <project-id>`.
 
 To see the headers and cache rules as Hosting serves them, run `npm run build`, map the target once with `npm exec --no -- firebase target:apply hosting app demo-drivemd --project demo-drivemd`, then run `npm exec --no -- firebase emulators:start --only hosting --project demo-drivemd` and open http://127.0.0.1:5000 (sign-in does not work on that origin).
+
+## Drive integration
+
+Drive's **Open with** and **New** menus open production once a private Google Workspace Marketplace listing is installed, which the spec's [Drive integration section](docs/SPEC.md#drive-open-with-integration-via-private-marketplace) sets up step by step in the Google Cloud and Admin consoles. `docs/listing/` holds the images it uploads: the icons, `public/icon.svg` rendered at 16, 32, 128 and 256 pixels on a transparent background, the card banner and a screenshot taken on made-up data.

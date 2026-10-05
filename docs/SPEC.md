@@ -162,7 +162,7 @@ Set the OAuth app's audience to **Internal**: apps used only inside our Workspac
 
 1. Create the Google Cloud project inside our Workspace organization, not under a personal Gmail account.
 2. Enable the Google Drive API.
-3. In Google Auth Platform, set Audience to **Internal**.
+3. In Google Auth Platform, set Audience to **Internal**, and the app name to **DriveMD** under Branding, as the Marketplace listing names it.
 4. Create an OAuth client of type **Web application**. Add `https://md.corp.edgeweave.tech`, `https://md-staging.corp.edgeweave.tech` and `http://localhost:5173` (for development) as authorized JavaScript origins. Origins must match exactly, with no wildcards, and a phone cannot reach `localhost`: the staging domain is needed from milestone 1 to test on a real iPhone.
 5. For the live Drive checks, create a second OAuth client of type **Desktop app**. Only a test account of the organization signs in with it, never a person's account, and its Drive holds nothing but what the checks create (see the README).
 
@@ -195,31 +195,41 @@ Every call on files must pass `supportsAllDrives=true`; the calls on shared driv
 
 ## Drive "Open with" integration via private Marketplace
 
-A private Google Workspace Marketplace listing puts the app in Drive's **Open with** menu for .md files, installed for the whole organization by our admin. The setup follows [Google: configure a Drive UI integration](https://developers.google.com/workspace/drive/api/guides/enable-sdk).
+A private Google Workspace Marketplace listing puts the app in Drive's **Open with** menu for .md files, and in its **New** menu, installed for the whole organization by our admin. The setup follows [Google: configure a Drive UI integration](https://developers.google.com/workspace/drive/api/guides/enable-sdk) and [Google: create a store listing](https://developers.google.com/workspace/marketplace/create-listing). The integration and the listing belong to the project that holds the OAuth client and both sites (see Domains). A project has one Open URL and one New URL, so Drive opens production only; staging is checked at the addresses Drive would open, `/open?state=…` and `/new?state=…`, as `npm run live-check:ui` does.
+
+**Domain ownership.** Google requires owning the domain of the Open and New URLs before listing the app. A Domain property for `corp.edgeweave.tech` in Google Search Console, verified by a DNS TXT record in that zone, covers both subdomains ([Google: verify your site ownership](https://support.google.com/webmasters/answer/9008080)). Verify it with an account that owns the project, as Google's other domain checks ask.
 
 **Drive UI integration (Cloud console > Google Drive API > Drive UI integration)**
 
-1. Upload app icons (PNG, transparent background).
-2. Set the **Open URL** to `https://md.corp.edgeweave.tech/open`. It must be a real domain (`localhost` is not accepted), and we must verify we own it before listing, for example with a DNS TXT record in the `corp.edgeweave.tech` zone through Google Search Console.
-3. Set default file extension `md` (secondary: `markdown`), and MIME types `text/markdown` and `text/x-markdown`.
-4. Tick **Creating files** and set the **New URL** to `https://md.corp.edgeweave.tech/new`.
-5. Tick **Shared drive support**.
+1. Name the application **DriveMD** and give it the short and long descriptions below, which Drive shows among the user's apps.
+2. Upload the app icons, PNG images with a transparent background: `docs/listing/icon-16.png`, `icon-32.png`, `icon-128.png` and `icon-256.png`, drawn from `public/icon.svg`. Drive may take 24 hours to show them.
+3. Set the **Open URL** to `https://md.corp.edgeweave.tech/open`. Leave the automatic OAuth consent screen unticked: Google deprecated it, and the app starts every authorization itself.
+4. Set the default MIME types `text/markdown` and `text/x-markdown`, which .md files carry in Drive (see Risks), so that Drive offers DriveMD first for them, the default file extension `md`, and the secondary file extension `markdown`.
+5. Tick **Creating files** and set the **New URL** to `https://md.corp.edgeweave.tech/new`; leave **Document name** empty, which Google no longer uses.
+6. Leave **Importing** unticked, since the app does not open Google's documents, and tick **Shared drives support**.
 
-**Marketplace listing**
+**Marketplace listing (Cloud console > Google Workspace Marketplace SDK)**
 
-1. Enable the Google Workspace Marketplace SDK in the same project.
-2. Configure the app with the Drive extension and publish it with **Private** visibility. The listing's terms of service, privacy policy and support links lead to the about page's parts: `/about.html#terms`, `#privacy` and `#support`.
-3. The admin installs it for the whole domain, so no user has to add it.
+1. Enable the Marketplace SDK in the same project, whose billing is enabled, as Google may require.
+2. In the app configuration, choose **Private** visibility, which can never change once saved, and **Admin Only Install**; tick the **Drive app** integration only, since a **Web app** one would also need 48 and 96 pixel icons; list the scopes the app requests, `https://www.googleapis.com/auth/drive` and `https://www.googleapis.com/auth/drive.install`; and give the developer's name, website and email, and its trader status, which the admin decides: DriveMD is not sold to anyone.
+3. In the store listing, give the name **DriveMD**, as on the OAuth consent screen, the descriptions below and a Productivity category; upload `docs/listing/icon-32.png` and `icon-128.png`, the card banner `docs/listing/banner.png` (220 × 140) and the screenshot `docs/listing/screenshot.png` (1280 × 800); and link the terms of service, privacy policy and support to the about page's parts: `https://md.corp.edgeweave.tech/about.html#terms`, `#privacy` and `#support`.
+4. Publish. A private listing is published at once, without Google's review, among the organization's internal apps.
+5. As a super administrator, install it from the Admin console (Apps > Google Workspace Marketplace apps > Apps list > Install app > Admin install), for a group or an organizational unit first to try it, then for everyone. Google says the change takes up to 24 hours.
+
+**Descriptions**
+
+- Short (200 characters at most): "Browse, view and edit the Markdown files in your Google Drive, Obsidian vaults included, on a computer or a phone. DriveMD never changes a byte you did not edit."
+- Long: "DriveMD opens the Markdown files in your Google Drive, renders them as GitHub does, or as Obsidian does inside a vault, and lets you edit their source and save them back. It keeps line breaks and encodings as they were, warns when someone else changed a file since you opened it, and keeps your unsaved text on your device. Open a .md file from Drive with Open with, create one with New, or browse your drives in the app. DriveMD has no server of its own: your browser talks to Google Drive directly."
 
 **Handling the redirect**
 
-Drive opens our URL with a URL-encoded JSON `state` parameter. The app decodes it, gets a token (without a backend, after a tap on **Continue**), then loads the file(s).
+Drive opens our URL with a URL-encoded JSON `state` parameter. The app decodes it, gets a token (without a backend, after a tap on **Sign in**, as below), then loads the file or asks for the new one's name.
 
 ```json
 // Open URL
 { "ids": ["FILE_ID"], "resourceKeys": {}, "action": "open", "userId": "USER_ID" }
 // New URL
-{ "action": "create", "folderId": "FOLDER_ID", "userId": "USER_ID" }
+{ "action": "create", "folderId": "FOLDER_ID", "folderResourceKey": "FOLDER_RESOURCE_KEY", "userId": "USER_ID" }
 ```
 
 For `open`, redirect to `/edit?id=<first id>`, adding its resource key from `resourceKeys` when there is one, before the app starts, so that a reload or a copied address names the file; `exportIds`, which Drive sends for Google's own documents, open nothing, since the app is listed for Markdown files only. For `create`, the page shows the folder's path and, once the tab has signed in and Drive says the user may add files there, asks for the file name (prefilled with `Untitled`), saying which folder it goes in, since a link chose it, then creates the file in `folderId` (My Drive when Drive names none), with `folderResourceKey`, and gives way to its `/edit` URL, so that Back does not ask again; cancelling gives way to the folder. A folder the user cannot add files to, or an item that is no folder, says so. A state not shaped as Drive writes it, or with an ID or a key not shaped like Drive's, opens nothing; an empty key counts as none.
@@ -228,7 +238,7 @@ For `open`, redirect to `/edit?id=<first id>`, adding its resource key from `res
 
 **Phone limit**
 
-As far as we know, **Open with** for web apps works only in Drive on the web, not in the Drive iOS or Android apps; this needs checking on a real device. On phones, the app's own navigator and deep links are the entry points.
+Google's Drive help, on its iPhone and Android pages too, sends users to drive.google.com on a computer to use Drive apps: "To use Google Drive apps, download apps from the Google Workspace Marketplace and go to drive.google.com on your computer" ([Google: use Google Drive apps](https://support.google.com/drive/answer/2500820?co=GENIE.Platform%3DiOS)). So **Open with** is not expected in the Drive iOS and Android apps, which a real phone confirms once the listing is installed. On phones, the app's own navigator and deep links are the entry points.
 
 ## Mobile requirements (iPhone first, Android too)
 
@@ -344,14 +354,18 @@ Every stage is tested on a real iPhone first, then an Android phone, with our me
 ## Open questions
 
 - [x] Token backend or not: no backend, since sign-in passed the milestone 1 test on a real iPhone (see Tokens).
-- [ ] Which icon does DriveMD get? The Drive UI integration needs it at milestone 7, and the Home Screen at milestone 8.
-- [ ] Do the Drive iOS and Android apps show web apps under Open with? To check on real phones, for example with a web app already integrated with Drive in our domain, such as diagrams.net.
+- [x] Which icon does DriveMD get? The Markdown mark, which its author dedicated to the public domain, in white on a teal plate: `public/icon.svg`, also the browser tab's icon. The Home Screen's, at milestone 8, starts from it.
+- [ ] Do the Drive iOS and Android apps show web apps under Open with? Google's Drive help says no (see Phone limit); a real phone confirms it once the listing is installed.
 
 ## Sources
 
 - [Google: configure the OAuth consent screen (Marketplace)](https://developers.google.com/gsuite/marketplace/configure-oauth-consent-screen)
 - [Google: OAuth production readiness](https://developers.google.com/identity/protocols/oauth2/production-readiness/overview)
 - [Google: configure a Drive UI integration](https://developers.google.com/workspace/drive/api/guides/enable-sdk)
+- [Google: configure the Marketplace SDK](https://developers.google.com/workspace/marketplace/enable-configure-sdk), [create a store listing](https://developers.google.com/workspace/marketplace/create-listing) and [publish an app](https://developers.google.com/workspace/marketplace/how-to-publish)
+- [Google: install Marketplace apps for your organization](https://knowledge.workspace.google.com/admin/apps/install-marketplace-apps-for-your-organization)
+- [Google Search Console: verify your site ownership](https://support.google.com/webmasters/answer/9008080)
+- [Google Drive help: use Google Drive apps](https://support.google.com/drive/answer/2500820)
 - [Google: access link-shared files using resource keys](https://developers.google.com/workspace/drive/api/guides/resource-keys)
 - [Google Workspace Updates: Drive file link updates (2021)](https://workspaceupdates.googleblog.com/2021/06/drive-file-link-updates.html), and Google's notice to developers, quoted in [GNOME gvfs#576](https://gitlab.gnome.org/GNOME/gvfs/-/issues/576)
 - [Obsidian: Obsidian Flavored Markdown](https://obsidian.md/help/obsidian-flavored-markdown)
