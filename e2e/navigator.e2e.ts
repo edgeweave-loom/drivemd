@@ -114,6 +114,26 @@ test("searches Markdown files by name", async ({ page }) => {
   await expect(search).toBeFocused();
 });
 
+test("opens a Drive link pasted in the search box", async ({ page }) => {
+  await signIn(page);
+  const search = page.getByRole("searchbox", {
+    name: "Search Markdown files by name",
+  });
+  await search.fill("https://drive.google.com/drive/folders/work?usp=sharing");
+  await search.press("Enter");
+  await expect(page).toHaveURL(/\/folder\/work$/);
+  await expect(page.getByRole("link", { name: "Archive" })).toBeVisible();
+  await expect(crumbs(page).getByRole("link")).toHaveText(["Home", "My Drive"]);
+
+  await search.fill("https://drive.google.com/file/d/plan/view?usp=sharing");
+  await search.press("Enter");
+  await expect(page).toHaveURL(/\/edit\?id=plan$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "The plan" }),
+  ).toBeVisible();
+  await expect(search).toHaveValue("");
+});
+
 test("creates, renames, moves and trashes a file", async ({ page, drive }) => {
   await openWork(page);
 
