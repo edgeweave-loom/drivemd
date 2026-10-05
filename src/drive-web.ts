@@ -44,3 +44,21 @@ export function linkedPage(text: string): string | undefined {
   const file = fileRef(id, searchParams);
   return file && hrefOf({ name: "file", file });
 }
+
+// Marks that often wrap or end a link in a message.
+const AROUND = /^[<(["']+|[>)\]"'.,;:!?]+$/g;
+
+/**
+ * The page a share with the installed app leads to, if any (Web Share
+ * Target): the first link that opens a page, in the shared address, then its
+ * text, then its title, where apps put a link with words around it.
+ */
+export function sharedPage({ searchParams }: URL): string | undefined {
+  for (const field of ["url", "text", "title"]) {
+    for (const word of (searchParams.get(field) ?? "").split(/\s+/)) {
+      const page = linkedPage(word.replace(AROUND, ""));
+      if (page !== undefined) return page;
+    }
+  }
+  return undefined;
+}

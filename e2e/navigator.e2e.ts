@@ -205,6 +205,45 @@ test("opens a Drive link pasted in the search box", async ({ page }) => {
   await expect(search).toHaveValue("");
 });
 
+test("opens the Drive link shared with the installed app, and forgets the share", async ({
+  page,
+}) => {
+  await signIn(page);
+  // As Android's share sheet sends a link, with the words around it.
+  const shared = new URLSearchParams({
+    title: "plan.md",
+    text: "Have a look: https://drive.google.com/file/d/plan/view?usp=sharing",
+  });
+  await page.goto(`/share?${shared.toString()}`);
+  await expect(page).toHaveURL(/\/edit\?id=plan$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "The plan" }),
+  ).toBeVisible();
+  await expect(crumbs(page).getByRole("link")).toHaveText([
+    "Home",
+    "My Drive",
+    "Work",
+  ]);
+  // Back skips the share, which gave way to the file.
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Recent" }).getByRole("link"),
+  ).toHaveText(["plan.md"]);
+  await expect(
+    page.getByRole("region", { name: "Vaults" }).getByRole("link"),
+  ).toHaveText(["Journal"]);
+
+  const words = new URLSearchParams({ text: "Tea at four" });
+  await page.goto(`/share?${words.toString()}`);
+  // What was shared leaves the address, even when it leads nowhere.
+  await expect(page).toHaveURL(/\/share$/);
+  await expect(
+    page.getByRole("heading", { name: "Nothing to open" }),
+  ).toBeVisible();
+  await expect(page.getByText(EMAIL)).toBeVisible();
+});
+
 test("creates, renames, moves and trashes a file", async ({ page, drive }) => {
   await openWork(page);
 

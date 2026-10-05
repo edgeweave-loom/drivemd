@@ -86,6 +86,8 @@ function Page() {
       return <FileView file={route.file} trail={trail} />;
     case "new":
       return <NewPage folder={route.folder} />;
+    case "share":
+      return <NothingShared />;
     case "not-found":
       return <NotFound />;
   }
@@ -140,6 +142,21 @@ function SearchBox() {
         autoComplete="off"
       />
     </form>
+  );
+}
+
+function NothingShared() {
+  return (
+    <>
+      <h2>Nothing to open</h2>
+      <p>
+        DriveMD opens links to Google Drive files and folders, and to its own
+        pages.
+      </p>
+      <p>
+        <Link to={HOME}>Go to Home</Link>
+      </p>
+    </>
   );
 }
 

@@ -218,6 +218,21 @@ describe("Navigator", () => {
     expect(getPlace().href).toBe("/");
   });
 
+  it("says when what was shared with the app leads nowhere, and leads back Home", () => {
+    open("/share");
+
+    expect(
+      screen.getByRole("heading", { name: "Nothing to open" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "DriveMD opens links to Google Drive files and folders, and to its own pages.",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("link", { name: "Go to Home" }));
+    expect(getPlace().href).toBe("/");
+  });
+
   it("goes Home from the app's name", () => {
     open("/nowhere");
 

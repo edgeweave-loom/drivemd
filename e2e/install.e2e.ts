@@ -52,6 +52,20 @@ test("names DriveMD as an app that opens on Home, on its own", async ({
   });
 });
 
+test("takes the links Android's share sheet sends, in the address of a page", async ({
+  page,
+  request,
+}) => {
+  await signInScreen(page);
+  // A static host serves the page: only a GET share needs no server.
+  expect((await manifestOf(page, request)).share_target).toEqual({
+    action: "/share",
+    method: "GET",
+    enctype: "application/x-www-form-urlencoded",
+    params: { title: "title", text: "text", url: "url" },
+  });
+});
+
 test("gives icons of the sizes they claim, one of them for a mask", async ({
   page,
   request,
