@@ -6,6 +6,7 @@ import { FileView } from "./FilePage.tsx";
 import { FolderPage } from "./FolderPage.tsx";
 import { Home } from "./Home.tsx";
 import { Link } from "./Link.tsx";
+import { NewPage } from "./NewPage.tsx";
 import { createQueryClient, refreshSearches } from "./queries.ts";
 import {
   SharedDrivesPage,
@@ -83,6 +84,8 @@ function Page() {
       return <SearchPage text={route.text} />;
     case "file":
       return <FileView file={route.file} trail={trail} />;
+    case "new":
+      return <NewPage folder={route.folder} />;
     case "not-found":
       return <NotFound />;
   }

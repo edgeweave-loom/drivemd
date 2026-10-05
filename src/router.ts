@@ -12,6 +12,8 @@ export type Route =
   | { name: "folder"; folder: FileRef }
   | { name: "search"; text: string }
   | { name: "file"; file: FileRef }
+  /** Drive's New, which creates a Markdown file in the folder. */
+  | { name: "new"; folder: FileRef }
   | { name: "not-found" };
 
 /** A step of the path the user took, as the breadcrumbs show it. */
@@ -60,10 +62,13 @@ export function routeOf(url: URL): Route {
       const file = fileRef(searchParams.get("id"), searchParams);
       return file ? { name: "file", file } : NOT_FOUND;
     }
-    case "/open": {
-      // Drive's Open with, whose file has its own page.
+    case "/open":
+    case "/new": {
+      // Drive's Open with, whose file has its own page, and Drive's New.
       const request = requestFromDrive(url);
-      return request ? { name: "file", file: request.file } : NOT_FOUND;
+      if (request?.action === "open")
+        return { name: "file", file: request.file };
+      return request ? { name: "new", folder: request.folder } : NOT_FOUND;
     }
   }
   const [, id] = /^\/folder\/([^/]+)$/.exec(pathname) ?? [];
@@ -93,6 +98,16 @@ export function hrefOf(route: Exclude<Route, { name: "not-found" }>): string {
     case "file": {
       const { id, resourceKey } = route.file;
       return withKey("/edit", new URLSearchParams({ id }), resourceKey);
+    }
+    case "new": {
+      // As Drive's New writes it, without the account it acted as.
+      const { id, resourceKey } = route.folder;
+      const state = JSON.stringify({
+        action: "create",
+        folderId: id,
+        ...(resourceKey !== undefined && { folderResourceKey: resourceKey }),
+      });
+      return `/new?${new URLSearchParams({ state }).toString()}`;
     }
   }
 }

@@ -10,16 +10,21 @@ import { fakeDrive } from "./fake-drive.ts";
 export const ACCOUNT = "ada@example.com";
 
 /**
- * Renders a page with a made-up Drive. Failed calls are not tried again, so
- * that tests need not wait; queries.test.ts covers when the app does.
+ * Renders a page with a made-up Drive, signed in unless the tab waits for
+ * Continue. Failed calls are not tried again, so that tests need not wait;
+ * queries.test.ts covers when the app does.
  */
-export function renderWithDrive(ui: ReactNode, drive = fakeDrive()) {
+export function renderWithDrive(
+  ui: ReactNode,
+  drive = fakeDrive(),
+  { signedIn = true } = {},
+) {
   const client = createQueryClient();
   client.setDefaultOptions({ queries: { retry: false } });
   const renew = vi.fn();
   const within = (page: ReactNode) => (
     <QueryClientProvider client={client}>
-      <DriveContext value={{ drive, renew, account: ACCOUNT, signedIn: true }}>
+      <DriveContext value={{ drive, renew, account: ACCOUNT, signedIn }}>
         {page}
       </DriveContext>
     </QueryClientProvider>

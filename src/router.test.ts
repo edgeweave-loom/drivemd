@@ -79,10 +79,31 @@ describe("routes", () => {
     });
   });
 
+  it("asks for a new file's name in the folder Drive's New names", () => {
+    const state = JSON.stringify({
+      action: "create",
+      folderId: ID,
+      folderResourceKey: KEY,
+      userId: "104857600000000000001",
+    });
+    const expected = {
+      name: "new",
+      folder: { id: ID, resourceKey: KEY },
+    } as const;
+
+    expect(route(`/new?state=${encodeURIComponent(state)}`)).toEqual(expected);
+    expect(route(hrefOf(expected))).toEqual(expected);
+    expect(route(hrefOf({ name: "new", folder: { id: ID } }))).toEqual({
+      name: "new",
+      folder: { id: ID },
+    });
+  });
+
   it.each([
     "/nowhere",
     "/open",
     "/open?state=%7B",
+    "/new",
     "/folder",
     "/folder/",
     `/folder/${ID}/more`,
