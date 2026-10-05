@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { requestFromDrive } from "./drive-ui.ts";
 import { isDriveId, MY_DRIVE, type FileRef } from "./drive.ts";
 import { isRecord } from "./is-record.ts";
 
@@ -58,6 +59,11 @@ export function routeOf(url: URL): Route {
     case "/edit": {
       const file = fileRef(searchParams.get("id"), searchParams);
       return file ? { name: "file", file } : NOT_FOUND;
+    }
+    case "/open": {
+      // Drive's Open with, whose file has its own page.
+      const request = requestFromDrive(url);
+      return request ? { name: "file", file: request.file } : NOT_FOUND;
     }
   }
   const [, id] = /^\/folder\/([^/]+)$/.exec(pathname) ?? [];

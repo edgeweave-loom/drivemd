@@ -13,12 +13,14 @@ const SCOPE =
  * Google's sign-in script, as far as the app uses it: a token request made
  * within a tap gets a new token at once, as the popup would once the user
  * picked the account; one made without a tap fails, as browsers block the
- * popup then.
+ * popup then. `tokenRequests` keeps what each request asked Google.
  */
 const FAKE_GIS = `
 let issued = 0;
+window.tokenRequests = [];
 window.google = { accounts: { oauth2: { initTokenClient: (config) => ({
-  requestAccessToken: () => {
+  requestAccessToken: (overrides) => {
+    window.tokenRequests.push(overrides);
     if (!navigator.userActivation.isActive) {
       setTimeout(() => config.error_callback({ type: "popup_failed_to_open" }));
       return;

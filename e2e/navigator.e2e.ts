@@ -69,6 +69,40 @@ test("rebuilds the breadcrumbs of a page opened by its address", async ({
   ]);
 });
 
+test("opens the file that Drive's Open with names, the user picking the account", async ({
+  page,
+}) => {
+  await signIn(page);
+  // A new tab, as Drive opens: the device remembers the account.
+  await page.evaluate(() => {
+    sessionStorage.clear();
+  });
+  const account = "104857600000000000001";
+  const state = {
+    ids: ["plan"],
+    resourceKeys: {},
+    action: "open",
+    userId: account,
+  };
+  await page.goto(`/open?state=${encodeURIComponent(JSON.stringify(state))}`);
+  await expect(page).toHaveURL(/\/edit\?id=plan$/);
+
+  await page.getByRole("button", { name: "Sign in with Google" }).click();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "The plan" }),
+  ).toBeVisible();
+  await expect(crumbs(page).getByRole("link")).toHaveText([
+    "Home",
+    "My Drive",
+    "Work",
+  ]);
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { tokenRequests: unknown[] }).tokenRequests,
+    ),
+  ).toEqual([{ prompt: "select_account", login_hint: account }]);
+});
+
 test("follows a shortcut, and greys out one whose target is gone", async ({
   page,
 }) => {

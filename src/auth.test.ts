@@ -195,6 +195,18 @@ describe("requestAccessToken", () => {
     await expect(request).resolves.toBe(TOKEN);
   });
 
+  it("lets the user pick the account, from a hinted one, when asked", async () => {
+    const auth = await loadAuth();
+    const request = auth.requestAccessToken(EMAIL, { choose: true });
+
+    expect(requestAccessToken).toHaveBeenCalledWith({
+      prompt: "select_account",
+      login_hint: EMAIL,
+    });
+    tokenClient().callback(tokenResponse(DRIVE));
+    await expect(request).resolves.toBe(TOKEN);
+  });
+
   async function rejection(settle: () => void): Promise<unknown> {
     const auth = await loadAuth();
     const request = auth.requestAccessToken();
