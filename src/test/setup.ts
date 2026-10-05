@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, configure } from "@testing-library/react";
 import { afterEach } from "vitest";
-import { holdScreen, installScreen } from "./screen.ts";
+import { holdScreen, holdTouch, installScreen } from "./screen.ts";
 
 // The viewer and the editor load as chunks of their own, which a busy
 // machine may take more than the default second to render.
@@ -49,4 +49,5 @@ if ("window" in globalThis) {
 afterEach(() => {
   cleanup();
   holdScreen("phone");
+  holdTouch(false);
 });

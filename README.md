@@ -22,6 +22,10 @@ Milestones 1 to 7 are done, and milestone 8, mobile polish, comes next. The prod
 
 The sign-in screen links to `/about.html`, which says what DriveMD does with your data, its terms of use and where to report a problem, without signing in.
 
+## Editing on a touch screen
+
+On a phone or a tablet, a row of keys sits above the keyboard while the note's source has the focus: **Undo**, **Redo**, **Heading** (`#`, `##`, `###`, then text again), **Bold**, **List**, **Checkbox** (an open task, a done one, then a plain list item again), **Link**, **Indent** and **Outdent** (two spaces, which the iPhone keyboard's lack of a Tab key otherwise leaves out of reach), and **Find in note**. The row scrolls sideways when it does not fit, and its keys keep the keyboard up. With a mouse, the row does not show.
+
 ## Stack
 
 Vite, React and TypeScript; Google Identity Services and the Drive REST API v3, with TanStack Query caching Drive's answers; CodeMirror 6 for editing and react-markdown for rendering; Firebase Hosting. The spec explains each choice.
