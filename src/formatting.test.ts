@@ -10,7 +10,15 @@ import {
   type Transaction,
 } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
-import { cycleHeading, cycleTask, toggleList } from "./formatting.ts";
+import {
+  cycleHeading,
+  cycleTask,
+  indentLines,
+  insertLink,
+  outdentLines,
+  toggleBold,
+  toggleList,
+} from "./formatting.ts";
 
 /**
  * A state from text marked with its selection: `|` for a cursor, `«…»` for
@@ -92,6 +100,31 @@ describe("cycleHeading", () => {
   });
 });
 
+describe("toggleBold", () => {
+  it.each([
+    ["a «word» b", "a **«word»** b"],
+    ["a « word » b", "a  **«word»**  b"],
+    ["a |b", "a **|**b"],
+    ["a **|**b", "a |b"],
+    ["a **wo|rd** b", "a wo|rd b"],
+    ["a **|word** b", "a |word b"],
+    ["a |**word** b", "a |word b"],
+    ["a **word|** b", "a **word**| b"],
+    ["a **«word»** b", "a «word» b"],
+    ["a «**word**» b", "a «word» b"],
+    ["**wo«rd** b»", "**wo**«rd** b»**"],
+    ["a **so «me» word** b", "a so «me» word b"],
+    ["a __wo|rd__ b", "a wo|rd b"],
+    ["a **word**| b", "a **word****|** b"],
+  ])("turns %j into %j", (before, after) => {
+    expect(run(toggleBold, before).text).toBe(after);
+  });
+
+  it("bolds each selected range", () => {
+    expect(run(toggleBold, "«a» b «c»").text).toBe("**«a»** b **«c»**");
+  });
+});
+
 describe("toggleList", () => {
   it.each([
     ["te|a", "- te|a"],
@@ -152,8 +185,56 @@ describe("cycleTask", () => {
   });
 });
 
+describe("insertLink", () => {
+  it.each([
+    ["a «word» b", "a [word](|) b"],
+    ["a |b", "a [|]()b"],
+    [
+      "see «https://example.com/a?b=c» now",
+      "see [|](https://example.com/a?b=c) now",
+    ],
+    ["«https://example.com/a b»", "[https://example.com/a b](|)"],
+  ])("turns %j into %j", (before, after) => {
+    expect(run(insertLink, before).text).toBe(after);
+  });
+});
+
+describe("indentLines", () => {
+  it.each([
+    ["te|a", "  te|a"],
+    ["|", "  |"],
+    ["- te|a", "  - te|a"],
+    ["> - te|a", ">   - te|a"],
+    ["«one\n\ntwo»", "  «one\n\n  two»"],
+  ])("turns %j into %j", (before, after) => {
+    expect(run(indentLines, before).text).toBe(after);
+  });
+});
+
+describe("outdentLines", () => {
+  it.each([
+    ["  te|a", "te|a"],
+    ["   te|a", " te|a"],
+    ["\tte|a", "te|a"],
+    ["te|a", "te|a"],
+    [">   - te|a", "> - te|a"],
+    ["> - te|a", "> - te|a"],
+    ["«  one\n  \n  two»", "«one\n  \ntwo»"],
+  ])("turns %j into %j", (before, after) => {
+    expect(run(outdentLines, before).text).toBe(after);
+  });
+});
+
 describe("the formatting commands", () => {
-  const commands = { cycleHeading, toggleList, cycleTask };
+  const commands = {
+    cycleHeading,
+    toggleBold,
+    toggleList,
+    cycleTask,
+    insertLink,
+    indentLines,
+    outdentLines,
+  };
 
   it.each(Object.entries(commands))(
     "%s keeps the file's line breaks and adds none",
