@@ -261,7 +261,17 @@ test("asks to Continue over an open dialog when Drive refuses the token", async 
   drive.expireToken();
   await create.getByRole("button", { name: "Create" }).click();
   const prompt = page.getByRole("dialog", { name: "Welcome back" });
-  await prompt.getByRole("button", { name: "Continue" }).click();
+  await expect(prompt).toBeVisible();
+  // Escape closes neither, pressed again and again: browsers let a page
+  // refuse it only once without a tap in between, then close both at once.
+  const renew = prompt.getByRole("button", { name: "Continue" });
+  for (let presses = 0; presses < 6; presses += 1) {
+    await page.keyboard.press("Escape");
+    // Continue stays on top, where a tap reaches it.
+    await renew.click({ trial: true, timeout: 2_000 });
+  }
+  await expect(create).toBeVisible();
+  await renew.click();
   await expect(
     page.getByRole("heading", { level: 2, name: "Untitled.md" }),
   ).toBeVisible();
