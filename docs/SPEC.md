@@ -95,7 +95,7 @@ The interface is in English and follows the system's light or dark theme.
    - **Rename**, **Move** (with a folder picker) and **Move to trash** (after a confirmation; the file stays restorable from Drive's trash). Each action is hidden when the user's rights do not allow it.
    - Inside a vault, renaming or moving warns that links pointing to the file will not be updated: Obsidian updates them only when it renames the file itself. No other file is changed.
 8. **Deep links.** Every file has its own URL, `/edit?id=FILE_ID`, plus `&resourcekey=KEY` when the file has a resource key. A Drive link pasted in the search box opens its file or folder instead of searching, with the link's resource key: the links Drive and Google's documents give (`/file/d/<id>`, `/drive/folders/<id>`, `/document/d/<id>` and the like, `/open?id=` and `/uc?id=`, with or without the `/u/<n>` that picks one of several signed-in accounts or the `/a/<domain>` of older links). The file's page then says it does not open Google's documents, and leads to the folder that an `/open?id=` link names, since such a link does not say which it is. A document published to the web (`/d/e/<code>`) names no item. An address of the app opens its page.
-9. **Open with (desktop).** Opening a .md file from Drive on the web with **Open with** loads it in the app. **New** in Drive asks for a name, then creates the file in that folder.
+9. **Open with.** Opening a .md file from Drive on the web, on a computer or in a phone's browser, with **Open with** loads it in the app, and so does a double click once the user makes DriveMD the default app in Drive's settings (Manage apps); Google Docs, which now edits .md files itself, opens them otherwise. Drive's **New** does not offer DriveMD: for a Markdown app, Drive creates the file itself, named as Docs names its documents, and opens it in Docs, without calling the app's New URL (checked on 2026-10-05). Notes are created with DriveMD's own **New**, and its `/new?state=…` page, which asks for a name and creates the file in the folder the state names, stays for the day Drive calls it.
 
 **Shortcut implementation notes.** Shortcuts have MIME type `application/vnd.google-apps.shortcut`. Every listing requests `shortcutDetails(targetId,targetMimeType,targetResourceKey)` in its `fields`. The Shortcuts root queries `mimeType='application/vnd.google-apps.shortcut' and 'me' in owners and trashed=false`. Opening or listing always uses `targetId`, never the shortcut's own ID. Folder shortcuts are recognized by `targetMimeType`; file shortcuts by a name ending in .md or .markdown. A 404 on the target, or a target with `trashed=true`, marks the shortcut as broken. Checking targets costs one request per shortcut, so show the list at once, check the targets in parallel, and grey out each broken shortcut as its check returns; a check that fails leaves the shortcut as it is.
 
@@ -195,7 +195,7 @@ Every call on files must pass `supportsAllDrives=true`; the calls on shared driv
 
 ## Drive "Open with" integration via private Marketplace
 
-A private Google Workspace Marketplace listing puts the app in Drive's **Open with** menu for .md files, and in its **New** menu, installed for the whole organization by our admin. The setup follows [Google: configure a Drive UI integration](https://developers.google.com/workspace/drive/api/guides/enable-sdk) and [Google: create a store listing](https://developers.google.com/workspace/marketplace/create-listing). The integration and the listing belong to the project that holds the OAuth client and both sites (see Domains). A project has one Open URL and one New URL, so Drive opens production only; staging is checked at the addresses Drive would open, `/open?state=…` and `/new?state=…`, as `npm run live-check:ui` does.
+A private Google Workspace Marketplace listing puts the app in Drive's **Open with** menu for .md files, installed for the whole organization by our admin. The setup follows [Google: configure a Drive UI integration](https://developers.google.com/workspace/drive/api/guides/enable-sdk) and [Google: create a store listing](https://developers.google.com/workspace/marketplace/create-listing). The integration and the listing belong to the project that holds the OAuth client and both sites (see Domains). A project has one Open URL and one New URL, so Drive opens production only; staging is checked at the addresses Drive would open, `/open?state=…` and `/new?state=…`, as `npm run live-check:ui` does.
 
 **Domain ownership.** Google requires owning the domain of the Open and New URLs before listing the app. A Domain property for `corp.edgeweave.tech` in Google Search Console, verified by a DNS TXT record in that zone, covers both subdomains ([Google: verify your site ownership](https://support.google.com/webmasters/answer/9008080)). Verify it with an account that owns the project, as Google's other domain checks ask.
 
@@ -204,9 +204,10 @@ A private Google Workspace Marketplace listing puts the app in Drive's **Open wi
 1. Name the application **DriveMD** and give it the short and long descriptions below, which Drive shows among the user's apps.
 2. Upload the app icons, PNG images with a transparent background: `docs/listing/icon-16.png`, `icon-32.png`, `icon-64.png`, `icon-128.png` and `icon-256.png`, drawn from `public/icon.svg`. Drive may take 24 hours to show them.
 3. Set the **Open URL** to `https://md.corp.edgeweave.tech/open`. Leave the automatic OAuth consent screen unticked: Google deprecated it, and the app starts every authorization itself.
-4. Set the default MIME types `text/markdown` and `text/x-markdown`, which .md files carry in Drive (see Risks), so that Drive offers DriveMD first for them, the default file extension `md`, and the secondary file extension `markdown`.
-5. Tick **Creating files** and set the **New URL** to `https://md.corp.edgeweave.tech/new`; leave **Document name** empty, which Google no longer uses.
-6. Leave **Importing** unticked, since the app does not open Google's documents, and tick **Shared drives support**.
+4. Tick the support of mobile browsers, since DriveMD works in them: Drive in Safari on an iPhone opens it (checked). Leave the opening of several files in one instance unticked: a page shows one note, and Drive would send them all for the app to open the first.
+5. Set the default MIME types `text/markdown` and `text/x-markdown`, which .md files carry in Drive (see Risks), so that Drive offers DriveMD first for them, the default file extension `md`, and the secondary file extension `markdown`.
+6. Leave **Creating files** unticked. Drive does not call the New URL for a Markdown app (see requirement 9): ticked, Drive's **New** > DriveMD makes an empty `Untitled document.md`, in the user's language, that Docs then fails to open. Were Drive to call it, the New URL is `https://md.corp.edgeweave.tech/new`, with **Document name** left empty, which Google no longer uses.
+7. Leave **Importing** unticked, since the app does not open Google's documents, and tick **Shared drives support**.
 
 **Marketplace listing (Cloud console > Google Workspace Marketplace SDK)**
 
@@ -219,26 +220,28 @@ A private Google Workspace Marketplace listing puts the app in Drive's **Open wi
 **Descriptions**
 
 - Short (200 characters at most): "Browse, view and edit the Markdown files in your Google Drive, Obsidian vaults included, on a computer or a phone. DriveMD never changes a byte you did not edit."
-- Long: "DriveMD opens the Markdown files in your Google Drive, renders them as GitHub does, or as Obsidian does inside a vault, and lets you edit their source and save them back. It keeps line breaks and encodings as they were, warns when someone else changed a file since you opened it, and keeps your unsaved text on your device. Open a .md file from Drive with Open with, create one with New, or browse your drives in the app. DriveMD has no server of its own: your browser talks to Google Drive directly."
+- Long: "DriveMD opens the Markdown files in your Google Drive, renders them as GitHub does, or as Obsidian does inside a vault, and lets you edit their source and save them back. It keeps line breaks and encodings as they were, warns when someone else changed a file since you opened it, and keeps your unsaved text on your device. Open a .md file from Drive with Open with, or with a double click once DriveMD is your default app, or browse your drives in the app. DriveMD has no server of its own: your browser talks to Google Drive directly."
 
 **Handling the redirect**
 
 Drive opens our URL with a URL-encoded JSON `state` parameter. The app decodes it, gets a token (without a backend, after a tap on **Sign in**, as below), then loads the file or asks for the new one's name.
 
+Drive's templates for them, which its `apps.get` gives with `fields=*` (checked on 2026-10-05), fill in the item's IDs and keys, so that a key the item lacks comes as an empty string:
+
 ```json
 // Open URL
-{ "ids": ["FILE_ID"], "resourceKeys": {}, "action": "open", "userId": "USER_ID" }
+{ "ids": ["{ids}"], "exportIds": ["{exportIds}"], "action": "open", "userId": "USER_ID", "resourceKeys": {resourceKeys} }
 // New URL
-{ "action": "create", "folderId": "FOLDER_ID", "folderResourceKey": "FOLDER_RESOURCE_KEY", "userId": "USER_ID" }
+{ "folderId": "{folderId}", "action": "create", "userId": "USER_ID", "folderResourceKey": "{folderResourceKey}" }
 ```
 
 For `open`, redirect to `/edit?id=<first id>`, adding its resource key from `resourceKeys` when there is one, before the app starts, so that a reload or a copied address names the file; `exportIds`, which Drive sends for Google's own documents, open nothing, since the app is listed for Markdown files only. For `create`, the page shows the folder's path and, once the tab has signed in and Drive says the user may add files there, asks for the file name (prefilled with `Untitled`), saying which folder it goes in, since a link chose it, then creates the file in `folderId` (My Drive when Drive names none), with `folderResourceKey`, and gives way to its `/edit` URL, so that Back does not ask again; cancelling gives way to the folder. A folder the user cannot add files to, or an item that is no folder, says so. A state not shaped as Drive writes it, or with an ID or a key not shaped like Drive's, opens nothing; an empty key counts as none.
 
-`userId` is the Google profile ID of the account Drive acted as, and Google asks apps to sign in as that account when it is not the one signed in. The app cannot compare them: Google gives an account's profile ID only to an app granted the `openid` scope (checked live: `tokeninfo` names no `sub` for the app's token). Drive opens these addresses in a new tab, which has no token yet: there, instead of **Continue** as the account the device remembers, the app shows **Sign in**, whose request passes `userId` as `login_hint` with Google's account chooser, so that the user picks the account, starting from Drive's, rather than a link picking it for them, silently or behind a button that names another account. The account picked replaces the one the device remembers, if another, as any sign-in does. A tab that already has a token, such as one where the address was pasted, acts as its own account, and a reload of Open with's tab before signing in forgets Drive's account, since the file's address no longer holds it.
+`userId` is the Google profile ID of the account Drive acted as, and Google asks apps to sign in as that account when it is not the one signed in. The app cannot compare them: Google gives an account's profile ID only to an app granted the `openid` scope (checked live: `tokeninfo` names no `sub` for the app's token). Drive opens these addresses in a new tab, which has no token yet: there, instead of **Continue** as the account the device remembers, the app shows **Sign in**, whose request passes `userId` as `login_hint` with Google's account chooser, so that the user picks the account, starting from Drive's, rather than a link picking it for them, silently or behind a button that names another account. Google shows its chooser for that request (checked on 2026-10-05). The account picked replaces the one the device remembers, if another, as any sign-in does. A tab that already has a token, such as one where the address was pasted, acts as its own account, and a reload of Open with's tab before signing in forgets Drive's account, since the file's address no longer holds it.
 
 **Phone limit**
 
-Google's Drive help, on its iPhone and Android pages too, sends users to drive.google.com on a computer to use Drive apps: "To use Google Drive apps, download apps from the Google Workspace Marketplace and go to drive.google.com on your computer" ([Google: use Google Drive apps](https://support.google.com/drive/answer/2500820?co=GENIE.Platform%3DiOS)). So **Open with** is not expected in the Drive iOS and Android apps, which a real phone confirms once the listing is installed. On phones, the app's own navigator and deep links are the entry points.
+Google's Drive help, on its iPhone and Android pages too, sends users to drive.google.com on a computer to use Drive apps: "To use Google Drive apps, download apps from the Google Workspace Marketplace and go to drive.google.com on your computer" ([Google: use Google Drive apps](https://support.google.com/drive/answer/2500820?co=GENIE.Platform%3DiOS)). On an iPhone (checked on 2026-10-05), the Drive app neither opens a .md file, an "unsupported file type", nor lists DriveMD under **Open with**, while Drive in Safari opens it in DriveMD, since the integration supports mobile browsers. On phones, the entry points are the app's own navigator, deep links, and Drive in the browser.
 
 ## Mobile requirements (iPhone first, Android too)
 
@@ -308,7 +311,7 @@ Build in eight milestones, each ending with something that runs; give Claude Cod
    - Carried over from milestone 3, and settled: breadcrumbs rebuilt from parents read each parent without its resource key, which the app does not know. Only some old items shared by link carry one, "a subset of old files" that Google's 2021 security update keyed, so no test item can be made. Google's 2021 notice to developers says that a request for such an item without its key "may result in a 404 Not Found error": the path then ends there, at Shared with me, as at any parent out of reach, which a unit test pins.
 7. **Drive integration and Marketplace.** Manual console steps from the Open with section; deploy to `md.corp.edgeweave.tech` once the domain is verified.
    - Done when: right-click > Open with in Drive on the web opens the file in the app.
-   - Carried over from milestone 6: check the `state` Drive really sends to Open with and New, such as an empty `folderResourceKey`, and that Google shows its account chooser for a token request with `login_hint` and `prompt: select_account`; the fake Google of the end-to-end tests only records them.
+   - Carried over from milestone 6, and settled: Drive's templates always send `folderResourceKey`, so empty when the folder has none, and `exportIds` beside `ids`, as the app expects; Google shows its account chooser for a token request with `login_hint` and `prompt: select_account`. Drive's **New** does not call the app (see requirement 9).
 8. **Mobile polish.** Manifest and icons, safe areas, 16 px editor font, keyboard toolbar, Add to Home Screen hint, Android share target, smart punctuation check.
    - Done when: tested on a real iPhone (Safari and Home Screen) first, then on an Android phone (Chrome tab and installed app).
    - Carried over from milestone 3: the move picker opens at the folder the file really sits in, rather than along the path the user took.
@@ -355,7 +358,7 @@ Every stage is tested on a real iPhone first, then an Android phone, with our me
 
 - [x] Token backend or not: no backend, since sign-in passed the milestone 1 test on a real iPhone (see Tokens).
 - [x] Which icon does DriveMD get? The Markdown mark, which its author dedicated to the public domain, in white on a teal plate: `public/icon.svg`, also the browser tab's icon. The Home Screen's, at milestone 8, starts from it.
-- [ ] Do the Drive iOS and Android apps show web apps under Open with? Google's Drive help says no (see Phone limit); a real phone confirms it once the listing is installed.
+- [x] Do the Drive iOS and Android apps show web apps under Open with? No: the iPhone app opens no .md file and lists no web app, as Google's Drive help says of both apps, while Drive in a phone's browser opens DriveMD (see Phone limit).
 
 ## Sources
 
