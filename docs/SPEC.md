@@ -247,7 +247,7 @@ Google's Drive help, on its iPhone and Android pages too, sends users to drive.g
 
 iPhone is the priority and Android must work too. On both, the app runs in the phone's browser, can be added to the home screen, and the built-in navigator is the main way in.
 
-- **Home Screen app.** Add a web app manifest, icons, and `apple-mobile-web-app-capable`. The app's name, also shown under its icon, is **DriveMD**. Respect notch and home-bar areas with `env(safe-area-inset-*)`. Safari never offers to install a web app, so show a one-time hint on iPhone explaining **Share > Add to Home Screen**.
+- **Home Screen app.** A web app manifest, `public/manifest.webmanifest`, and `apple-mobile-web-app-capable`. The app's name, also shown under its icon, is **DriveMD**. The app opens on Home (`/`) in a window of its own (`standalone`), whatever page it was added from. Its icons are `public/icon.svg`, with its PNGs at 192 and 512 px, for install dialogs and launchers that show an icon as drawn, and `public/icon-maskable.svg`, the same mark on a plate that fills the square, for those that cut icons to their own shape: iOS rounds the corners of its `apple-touch-icon.png`, at 180 px and opaque, since iOS fills transparent pixels with black, and Android cuts `icon-maskable-512.png` to its launcher's shape, keeping at least the middle circle, four fifths of the side across, where the mark sits. The browser's bars and the installed app's take the page's background (`theme-color`). Respect notch and home-bar areas with `env(safe-area-inset-*)`. Safari never offers to install a web app, so show a one-time hint on iPhone explaining **Share > Add to Home Screen**.
 - **Sign-in.** Start the GIS popup only from a tap, or Safari blocks it. Sign-in passed the milestone 1 test in Home Screen (standalone) mode, so no token backend is needed (see Tokens).
 - **Layout.**
   - Phone layout: a drill-down folder list with breadcrumbs, and an Edit / Preview toggle. It applies under 768 px wide, and on touch screens less than 500 px tall, so an iPhone in landscape (844 px wide or more) keeps it.
@@ -357,7 +357,7 @@ Every stage is tested on a real iPhone first, then an Android phone, with our me
 ## Open questions
 
 - [x] Token backend or not: no backend, since sign-in passed the milestone 1 test on a real iPhone (see Tokens).
-- [x] Which icon does DriveMD get? The Markdown mark, which its author dedicated to the public domain, in white on a teal plate: `public/icon.svg`, also the browser tab's icon. The Home Screen's, at milestone 8, starts from it.
+- [x] Which icon does DriveMD get? The Markdown mark, which its author dedicated to the public domain, in white on a teal plate: `public/icon.svg`, also the browser tab's icon. The Home Screen and Android's launcher get the mark on a plate that fills the square, `public/icon-maskable.svg`, since they cut it to their own shape.
 - [x] Do the Drive iOS and Android apps show web apps under Open with? No: the iPhone app opens no .md file and lists no web app, as Google's Drive help says of both apps, while Drive in a phone's browser opens DriveMD (see Phone limit).
 
 ## Sources
