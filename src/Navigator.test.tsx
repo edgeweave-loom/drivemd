@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Navigator } from "./Navigator.tsx";
-import { getPlace, navigate } from "./router.ts";
+import { getPlace, guardLeaving, navigate } from "./router.ts";
 import {
   driveItem,
   folderItem,
@@ -27,6 +27,7 @@ function open(path: string, drive = fakeDrive()) {
 }
 
 afterEach(() => {
+  guardLeaving(undefined);
   history.replaceState(null, "", "/");
   window.dispatchEvent(new PopStateEvent("popstate"));
 });
@@ -134,6 +135,53 @@ describe("Navigator", () => {
     fireEvent.submit(screen.getByRole("searchbox"));
     expect(session.renew).not.toHaveBeenCalled();
     expect(getPlace().href).toBe("/shortcuts");
+  });
+
+  it("opens a pasted Drive link, renewing the token within the tap", () => {
+    const session = open("/shortcuts");
+
+    const search = screen.getByRole("searchbox");
+    fireEvent.change(search, {
+      target: {
+        value: "https://drive.google.com/file/d/plan/view?resourcekey=k",
+      },
+    });
+    fireEvent.submit(search);
+    expect(session.renew).toHaveBeenCalledOnce();
+    expect(getPlace().href).toBe("/edit?id=plan&resourcekey=k");
+    expect(session.drive.search).not.toHaveBeenCalled();
+    expect(search).toHaveValue("");
+  });
+
+  it("searches again when the address of the search shown is pasted", async () => {
+    const session = open("/search?q=plan");
+    session.drive.search.mockResolvedValue({ items: [], incomplete: false });
+    await waitFor(() => {
+      expect(session.drive.search).toHaveBeenCalledOnce();
+    });
+
+    const search = screen.getByRole("searchbox");
+    fireEvent.change(search, {
+      target: { value: `${window.location.origin}/search?q=plan` },
+    });
+    fireEvent.submit(search);
+    expect(search).toHaveValue("plan");
+    await waitFor(() => {
+      expect(session.drive.search).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("opens a pasted link only once the page with unsaved changes lets it", () => {
+    const session = open("/shortcuts");
+    guardLeaving(() => false);
+
+    const search = screen.getByRole("searchbox");
+    const link = "https://drive.google.com/drive/folders/work";
+    fireEvent.change(search, { target: { value: link } });
+    fireEvent.submit(search);
+    expect(session.renew).not.toHaveBeenCalled();
+    expect(getPlace().href).toBe("/shortcuts");
+    expect(search).toHaveValue(link);
   });
 
   it("opens a file's page", () => {

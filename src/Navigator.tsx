@@ -1,17 +1,19 @@
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
 import { DriveContext, useDrive } from "./drive-context.ts";
+import { linkedPage } from "./drive-web.ts";
 import { FileView } from "./FilePage.tsx";
 import { FolderPage } from "./FolderPage.tsx";
 import { Home } from "./Home.tsx";
 import { Link } from "./Link.tsx";
+import { NewPage } from "./NewPage.tsx";
 import { createQueryClient, refreshSearches } from "./queries.ts";
 import {
   SharedDrivesPage,
   SharedWithMePage,
   ShortcutsPage,
 } from "./RootPages.tsx";
-import { hrefOf, mayLeave, navigate, usePlace } from "./router.ts";
+import { getPlace, hrefOf, mayLeave, navigate, usePlace } from "./router.ts";
 import { SearchPage } from "./SearchPage.tsx";
 import type { Session } from "./session.ts";
 import { SignOut } from "./SignOut.tsx";
@@ -82,12 +84,17 @@ function Page() {
       return <SearchPage text={route.text} />;
     case "file":
       return <FileView file={route.file} trail={trail} />;
+    case "new":
+      return <NewPage folder={route.folder} />;
     case "not-found":
       return <NotFound />;
   }
 }
 
-/** Searches Markdown files by name, from every page. */
+/**
+ * Searches Markdown files by name, from every page, or opens the file or
+ * folder of a Drive link pasted in it.
+ */
 function SearchBox() {
   const { renew } = useDrive();
   const client = useQueryClient();
@@ -107,13 +114,18 @@ function SearchBox() {
       onSubmit={(event) => {
         event.preventDefault();
         if (typed.trim() === "") return;
-        const href = hrefOf({ name: "search", text: typed });
+        const linked = linkedPage(typed);
+        const href = linked ?? hrefOf({ name: "search", text: typed });
         // Asked first, so that a refusal opens no Google window.
         if (!mayLeave(href)) return;
         renew();
         navigate(href, undefined, { asked: true });
+        const { route } = getPlace();
+        const words = route.name === "search" ? route.text : "";
+        // A link gives way to the words of the search it opens, if any.
+        if (linked !== undefined) setTyped(words);
         // The same search again asks Drive again.
-        refreshSearches(client);
+        if (route.name === "search") refreshSearches(client);
       }}
     >
       <input
@@ -123,7 +135,7 @@ function SearchBox() {
           setTyped(event.target.value);
         }}
         aria-label="Search Markdown files by name"
-        placeholder="Search"
+        placeholder="Search or paste a link"
         enterKeyHint="search"
         autoComplete="off"
       />

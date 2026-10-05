@@ -63,8 +63,47 @@ describe("routes", () => {
     expect(route(path)).toEqual(expected);
   });
 
+  it("opens the first file that Drive's Open with names", () => {
+    const state = JSON.stringify({
+      ids: [ID],
+      resourceKeys: { [ID]: KEY },
+      action: "open",
+      userId: "104857600000000000001",
+    });
+    history.replaceState(null, "", `/open?state=${encodeURIComponent(state)}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+
+    expect(getPlace()).toMatchObject({
+      route: { name: "file", file: { id: ID, resourceKey: KEY } },
+      href: `/edit?id=${ID}&resourcekey=${KEY}`,
+    });
+  });
+
+  it("asks for a new file's name in the folder Drive's New names", () => {
+    const state = JSON.stringify({
+      action: "create",
+      folderId: ID,
+      folderResourceKey: KEY,
+      userId: "104857600000000000001",
+    });
+    const expected = {
+      name: "new",
+      folder: { id: ID, resourceKey: KEY },
+    } as const;
+
+    expect(route(`/new?state=${encodeURIComponent(state)}`)).toEqual(expected);
+    expect(route(hrefOf(expected))).toEqual(expected);
+    expect(route(hrefOf({ name: "new", folder: { id: ID } }))).toEqual({
+      name: "new",
+      folder: { id: ID },
+    });
+  });
+
   it.each([
     "/nowhere",
+    "/open",
+    "/open?state=%7B",
+    "/new",
     "/folder",
     "/folder/",
     `/folder/${ID}/more`,
@@ -144,6 +183,20 @@ describe("the place shown", () => {
     expect(getPlace().trail).toEqual([
       { name: "Shortcuts", href: "/shortcuts" },
     ]);
+  });
+
+  it("replaces the entry when asked, as a page that gives way to another", () => {
+    const scrollTo = vi.spyOn(window, "scrollTo");
+    navigate("/shortcuts");
+    const entries = history.length;
+
+    const trail = [...MY_DRIVE, { name: "plan.md", href: `/edit?id=${ID}` }];
+    navigate(`/edit?id=${ID}`, trail, { replace: true });
+    expect(history.length).toBe(entries);
+    expect(getPlace()).toMatchObject({ href: `/edit?id=${ID}`, trail });
+    expect(scrollTo).toHaveBeenCalledTimes(2);
+    navigate("/shortcuts", undefined, { replace: true });
+    expect(getPlace().trail).toBeUndefined();
   });
 
   it("keeps the URL of a page that does not exist", () => {

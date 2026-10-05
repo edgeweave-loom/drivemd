@@ -65,7 +65,14 @@ const AUTH_MESSAGES: Record<AuthErrorReason, string | undefined> = {
   failed: "Google sign-in failed. Try again.",
 };
 
-export function createSession(): Session {
+/**
+ * `driveAccount` is the account Drive acted as, when its Open with or New
+ * opened the tab. Without a token, such a tab signs in afresh rather than
+ * continuing as the account the device remembers, which may be another: the
+ * user picks the account in Google's chooser, from Drive's, so that a link
+ * never picks it for them.
+ */
+export function createSession(driveAccount?: string): Session {
   const listeners = new Set<() => void>();
   // Each user action starts a new epoch; results from an older one are dropped.
   let epoch = 0;
@@ -78,6 +85,8 @@ export function createSession(): Session {
   };
   // Drive calls waiting for a token that only a tap can bring.
   const waiters = new Set<Waiter>();
+  // The account Drive acted as, until the tab has signed in.
+  let requested = driveAccount;
 
   function update(changes: Partial<SessionState>): void {
     state = { ...state, ...changes };
@@ -86,7 +95,7 @@ export function createSession(): Session {
 
   function signedOutScreen(): Screen {
     const email = auth.getRememberedAccount();
-    return email === undefined
+    return email === undefined || requested !== undefined
       ? { name: "sign-in" }
       : { name: "continue", email };
   }
@@ -143,6 +152,7 @@ export function createSession(): Session {
         return;
       }
       auth.rememberAccount(email);
+      requested = undefined;
       update({
         screen: { name: "home", email },
         waiting: false,
@@ -247,7 +257,11 @@ export function createSession(): Session {
     },
     getSnapshot: () => state,
     signIn() {
-      start(auth.requestAccessToken());
+      start(
+        requested === undefined
+          ? auth.requestAccessToken()
+          : auth.requestAccessToken(requested, { choose: true }),
+      );
     },
     continueSession() {
       const { screen } = state;
@@ -260,6 +274,7 @@ export function createSession(): Session {
     },
     signOut() {
       epoch += 1;
+      requested = undefined;
       auth.signOut();
       failWaiters("The user signed out");
       update({

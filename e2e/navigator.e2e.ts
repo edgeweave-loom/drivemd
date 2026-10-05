@@ -69,6 +69,77 @@ test("rebuilds the breadcrumbs of a page opened by its address", async ({
   ]);
 });
 
+test("opens the file that Drive's Open with names, the user picking the account", async ({
+  page,
+}) => {
+  await signIn(page);
+  // A new tab, as Drive opens: the device remembers the account.
+  await page.evaluate(() => {
+    sessionStorage.clear();
+  });
+  const account = "104857600000000000001";
+  const state = {
+    ids: ["plan"],
+    resourceKeys: {},
+    action: "open",
+    userId: account,
+  };
+  await page.goto(`/open?state=${encodeURIComponent(JSON.stringify(state))}`);
+  await expect(page).toHaveURL(/\/edit\?id=plan$/);
+
+  await page.getByRole("button", { name: "Sign in with Google" }).click();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "The plan" }),
+  ).toBeVisible();
+  await expect(crumbs(page).getByRole("link")).toHaveText([
+    "Home",
+    "My Drive",
+    "Work",
+  ]);
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { tokenRequests: unknown[] }).tokenRequests,
+    ),
+  ).toEqual([{ prompt: "select_account", login_hint: account }]);
+});
+
+test("creates a file where Drive's New asks, then opens it in its place", async ({
+  page,
+  drive,
+}) => {
+  await signIn(page);
+  // A new tab, as Drive opens: the device remembers the account.
+  await page.evaluate(() => {
+    sessionStorage.clear();
+  });
+  const account = "104857600000000000001";
+  const state = { action: "create", folderId: "work", userId: account };
+  await page.goto(`/new?state=${encodeURIComponent(JSON.stringify(state))}`);
+  await page.getByRole("button", { name: "Sign in with Google" }).click();
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { tokenRequests: unknown[] }).tokenRequests,
+    ),
+  ).toEqual([{ prompt: "select_account", login_hint: account }]);
+
+  const create = page.getByRole("dialog", { name: "New Markdown file" });
+  const name = create.getByRole("textbox", { name: "Name" });
+  await expect(name).toHaveValue("Untitled");
+  await expect(create.getByText("My Drive › Work")).toBeVisible();
+  await name.fill("ideas");
+  await create.getByRole("button", { name: "Create" }).click();
+  await expect(
+    page.getByRole("heading", { level: 2, name: "ideas.md" }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/edit\?id=created-1$/);
+  await expect(crumbs(page).getByRole("link")).toHaveText([
+    "Home",
+    "My Drive",
+    "Work",
+  ]);
+  expect(drive.writes).toEqual(["create ideas.md"]);
+});
+
 test("follows a shortcut, and greys out one whose target is gone", async ({
   page,
 }) => {
@@ -112,6 +183,26 @@ test("searches Markdown files by name", async ({ page }) => {
   ).toBeVisible();
   await expect(entries(page).getByRole("link")).toHaveText(["plan.md"]);
   await expect(search).toBeFocused();
+});
+
+test("opens a Drive link pasted in the search box", async ({ page }) => {
+  await signIn(page);
+  const search = page.getByRole("searchbox", {
+    name: "Search Markdown files by name",
+  });
+  await search.fill("https://drive.google.com/drive/folders/work?usp=sharing");
+  await search.press("Enter");
+  await expect(page).toHaveURL(/\/folder\/work$/);
+  await expect(page.getByRole("link", { name: "Archive" })).toBeVisible();
+  await expect(crumbs(page).getByRole("link")).toHaveText(["Home", "My Drive"]);
+
+  await search.fill("https://drive.google.com/file/d/plan/view?usp=sharing");
+  await search.press("Enter");
+  await expect(page).toHaveURL(/\/edit\?id=plan$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "The plan" }),
+  ).toBeVisible();
+  await expect(search).toHaveValue("");
 });
 
 test("creates, renames, moves and trashes a file", async ({ page, drive }) => {
