@@ -80,6 +80,8 @@ describe("the page a pasted link leads to", () => {
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vTmAdEuP/pubhtml",
     `https://drive.google.com/a/file/d/${ID}/view`,
     `${window.location.origin}/nowhere`,
+    // A share leads to the page its link does, if any, as it is opened.
+    `${window.location.origin}/share?text=weekly+plan`,
   ])("leaves %s to search", (text) => {
     expect(linkedPage(text)).toBeUndefined();
   });
@@ -114,6 +116,11 @@ describe("the page a share leads to", () => {
     expect(shared({ title: LINK, text: `${other} ${folder}` })).toBe(
       `/edit?id=${KEY}`,
     );
+  });
+
+  it("looks past an address of the share page, to the next link", () => {
+    const again = `${window.location.origin}/share?text=Tea`;
+    expect(shared({ text: `${again} ${LINK}` })).toBe(`/edit?id=${ID}`);
   });
 
   it("opens a page of the app that was shared", () => {

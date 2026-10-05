@@ -31,7 +31,9 @@ export function linkedPage(text: string): string | undefined {
   const url = new URL(pasted);
   if (url.origin === window.location.origin) {
     const route = routeOf(url);
-    return route.name === "not-found" ? undefined : hrefOf(route) + url.hash;
+    // The share page leads nowhere of its own, as the app opens it.
+    if (route.name === "not-found" || route.name === "share") return;
+    return hrefOf(route) + url.hash;
   }
   if (url.protocol !== "https:" || !GOOGLE.has(url.hostname)) return;
   const { searchParams } = url;
