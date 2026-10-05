@@ -65,6 +65,9 @@ export function App({ session }: { session: Session }) {
               >
                 Sign in with Google
               </GoogleButton>
+              <p>
+                <a href="/about.html">Privacy, terms and support</a>
+              </p>
             </>
           )}
           {status}

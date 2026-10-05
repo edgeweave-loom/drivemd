@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <title>About DriveMD</title>
+    <link rel="stylesheet" href="/src/index.css" />
+  </head>
+  <body>
+    <!-- The Marketplace listing links to each part: needs no sign-in, and no
+         script. -->
+    <main class="page about">
+      <h1>About DriveMD</h1>
+      <p>
+        DriveMD lets people at Edgeweave browse, view and edit the Markdown
+        files in their Google Drive, on a computer or a phone. It is an internal
+        tool: only accounts of our Google Workspace organization can sign in.
+      </p>
+      <p><a href="/">Open DriveMD</a></p>
+
+      <section id="privacy">
+        <h2>Privacy</h2>
+        <p>
+          DriveMD has no server of its own. It runs in your browser, which talks
+          to Google directly: what your notes hold goes between your browser and
+          Google Drive, and nowhere else.
+        </p>
+        <ul>
+          <li>
+            <strong>What it reads.</strong> DriveMD can reach everything you can
+            in Google Drive, shared drives and files shared with you included,
+            which it needs to edit files that other tools made. It lists what
+            you browse: the files you viewed last, your folders, shared drives,
+            files shared with you and shortcuts. It reads the notes you open,
+            the images and notes they show or link to, the settings of an
+            Obsidian vault, and your account's email address, to show who is
+            signed in. It searches Drive by name when you search or follow a
+            link, and for Obsidian vaults.
+          </li>
+          <li>
+            <strong>What it changes.</strong> Only what you ask: it saves a
+            note, and creates, renames, moves or trashes a file. It also marks
+            the files you open as viewed, so that they show among your recent
+            ones. Before it saves over a version it did not write, such as the
+            one you opened, it keeps that version in the note's version history
+            until someone deletes it there, even if you then remove text from
+            the note.
+          </li>
+          <li>
+            <strong>What stays on your device.</strong> The tab's sign-in, which
+            lasts about an hour, for that tab only; your account's email
+            address, so that it can offer Continue next time; and the text you
+            have not saved yet, with the note's name, until you save or discard
+            it. Signing out removes them for your account, in that browser. Your
+            browser's history keeps the addresses of the pages you opened, which
+            can name a Drive file or folder.
+          </li>
+          <li>
+            <strong>What it does not do.</strong> DriveMD sets no cookies of its
+            own, has no analytics or ads, and shares nothing with anyone.
+            Firebase Hosting, Google's web host, serves the app's files: it sees
+            the address of each page you load, which can name a Drive file or
+            folder, and your browser's network address, as any web host does,
+            but never what your notes hold.
+          </li>
+        </ul>
+        <p>
+          Signing out does not remove DriveMD's access to your Google account.
+          Our Google Workspace administrator installs DriveMD for the
+          organization and can remove it.
+        </p>
+      </section>
+
+      <section id="terms">
+        <h2>Terms of service</h2>
+        <p>
+          Edgeweave provides DriveMD to its people for their work, as is,
+          without any warranty. Your use of it, and of the files it opens,
+          follows Edgeweave's policies and our Google Workspace terms.
+        </p>
+        <p>
+          DriveMD never rewrites a file you did not edit, and it keeps the
+          version it saves over. Google Drive's version history is the place to
+          check or undo a change.
+        </p>
+      </section>
+
+      <section id="support">
+        <h2>Support</h2>
+        <p>
+          Report a problem or ask for a change in DriveMD's
+          <a href="https://github.com/edgeweave-loom/drivemd/issues"
+            >GitHub issues</a
+          >. Say what you did and what you saw, but leave out page addresses,
+          file and folder names and what your notes hold: the project may become
+          public.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

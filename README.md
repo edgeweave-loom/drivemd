@@ -19,6 +19,8 @@ Milestones 1 to 6 are done, and milestone 7, Drive integration and the Marketpla
 
 **Sign in with Google** opens Google's window, so the browser must allow pop-ups for the site. The session then lasts about an hour for the tab: a reload keeps it, while a new tab or a relaunch of the Home Screen app asks for **Continue**, which renews it for the account remembered on the device, usually with a window that closes by itself. Once the hour is up, the next tap that opens a page renews the session in the same way, and a page that loads without a tap asks for **Continue**. A tab that Drive's **Open with** or **New** opens asks to **Sign in** rather than **Continue**, with Google's account chooser starting from the account Drive used, and the account picked becomes the one remembered on the device. **Sign out** forgets the session on the device, in every open tab, without revoking DriveMD's access to the Google account. It also discards the unsaved changes kept on the device for the account, after saying how many notes have some.
 
+The sign-in screen links to `/about.html`, which says what DriveMD does with your data, its terms of use and where to report a problem, without signing in.
+
 ## Stack
 
 Vite, React and TypeScript; Google Identity Services and the Drive REST API v3, with TanStack Query caching Drive's answers; CodeMirror 6 for editing and react-markdown for rendering; Firebase Hosting. The spec explains each choice.
@@ -142,3 +144,7 @@ Both sites belong to one project, which also holds the OAuth client, the Drive U
 CI deploys by itself. To deploy by hand, map the target to a site first, which writes a `.firebaserc` that git ignores: `npm exec --no -- firebase target:apply hosting app <site-id> --project <project-id>`, then `npm run deploy -- --project <project-id>`.
 
 To see the headers and cache rules as Hosting serves them, run `npm run build`, map the target once with `npm exec --no -- firebase target:apply hosting app demo-drivemd --project demo-drivemd`, then run `npm exec --no -- firebase emulators:start --only hosting --project demo-drivemd` and open http://127.0.0.1:5000 (sign-in does not work on that origin).
+
+## Drive integration
+
+Drive's **Open with** and **New** menus open production once a private Google Workspace Marketplace listing is installed, which the spec's [Drive integration section](docs/SPEC.md#drive-open-with-integration-via-private-marketplace) sets up step by step in the Google Cloud and Admin consoles. `docs/listing/` holds the images it uploads: the icons, `public/icon.svg` rendered at 16, 32, 128 and 256 pixels on a transparent background, the card banner and a screenshot taken on made-up data.

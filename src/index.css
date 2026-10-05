@@ -272,6 +272,17 @@ dialog.drawer {
   text-transform: uppercase;
 }
 
+/* The about page, which the Marketplace listing links to. */
+.about h1,
+.about ul {
+  margin: 0;
+}
+
+.about section {
+  display: grid;
+  gap: 0.75rem;
+}
+
 .crumbs ol {
   display: flex;
   flex-wrap: wrap;
