@@ -112,6 +112,10 @@ The app's access token can read and write the user's whole Drive, so the reposit
 - Dependabot proposes npm and GitHub Actions updates weekly, for releases at least 7 days old.
 - Workflows pin every action to a commit SHA, start from no permissions and grant each job only what it needs; zizmor audits them in CI, and gitleaks scans the full history on every push. The zizmor and gitleaks versions are pinned in the workflows and bumped by hand.
 
+## Contributing
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) says how to propose a change, and [`SECURITY.md`](SECURITY.md) how to report a vulnerability, privately. Issues and pull requests are public: leave out real file names, addresses and notes. Everyone who takes part follows the [code of conduct](CODE_OF_CONDUCT.md).
+
 ## Deployment
 
 Once CI passes, every push to `dev` deploys staging to the `FIREBASE_HOSTING_SITE` site of the `FIREBASE_PROJECT_ID` project, and every push to `main` deploys production to the `PRODUCTION_FIREBASE_HOSTING_SITE` site of the same project: `firebase.json` names the deploy target `app`, and CI maps it to the site. The deploy job only runs firebase-tools on the `dist/` that the check job built, and it authenticates through Workload Identity Federation, so no service account key exists. In this repository, staging is Edgeweave's https://md-staging.corp.edgeweave.tech, and production https://md.corp.edgeweave.tech. The job is skipped while `FIREBASE_PROJECT_ID` is unset, so a fork deploys nothing until it sets its own, and for `main` while `PRODUCTION_FIREBASE_HOSTING_SITE` is too; once they are set, CI stops before building if any other variable below is missing:
