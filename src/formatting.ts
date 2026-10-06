@@ -455,15 +455,9 @@ function shifted(state: EditorState, line: Prefix, width: number): string {
   return line.indent.slice(0, kept) + " ".repeat(Math.max(0, target - column));
 }
 
-/** Gives the line `indent` in place of its own, changing only where they differ. */
+/** Gives the line `indent` in place of its own. */
 function reindent(line: Prefix, indent: string): ChangeSpec {
-  let same = 0;
-  while (same < indent.length && indent[same] === line.indent[same]) same += 1;
-  return {
-    from: line.at - line.indent.length + same,
-    to: line.at,
-    insert: indent.slice(same),
-  };
+  return { from: line.at - line.indent.length, to: line.at, insert: indent };
 }
 
 /**
