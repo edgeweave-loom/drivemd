@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import type { Climb } from "./climb.ts";
 import { ConfirmDialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
 import {
@@ -11,6 +12,7 @@ import {
 import { describeError } from "./errors.ts";
 import { entriesOf } from "./listing.ts";
 import { Loaded } from "./Loaded.tsx";
+import { crumbsOf, useClimb } from "./path.ts";
 import {
   childrenQuery,
   metadataQuery,
@@ -46,6 +48,12 @@ type Spot =
 /** Where the picker stands: above every drive, or at a spot. */
 type Stop = { kind: "all-drives" } | Spot;
 
+/** The places above the picker's, and the one it shows. */
+interface Place {
+  above: Stop[];
+  here: Stop;
+}
+
 const ALL_DRIVES: Stop = { kind: "all-drives" };
 const ROOT_SPOTS: Spot[] = [
   {
@@ -63,12 +71,10 @@ const ROOT_SPOTS: Spot[] = [
 export function Move({
   file,
   page,
-  path,
 }: {
   file: FileMetadata;
   /** The file as the page's address names it. */
   page: FileRef;
-  path: Crumb[] | undefined;
 }) {
   const [asking, setAsking] = useState(false);
   return (
@@ -85,7 +91,6 @@ export function Move({
         <MoveDialog
           file={file}
           page={page}
-          path={path}
           onClose={() => {
             setAsking(false);
           }}
@@ -98,26 +103,22 @@ export function Move({
 function MoveDialog({
   file,
   page,
-  path,
   onClose,
 }: {
   file: FileMetadata;
   page: FileRef;
-  path: Crumb[] | undefined;
   onClose: () => void;
 }) {
   const { drive, renew } = useDrive();
   const client = useQueryClient();
-  // Where the file sits, along the path taken, to start from.
-  const [{ above, here }, setPlace] = useState(() => {
-    const spots: Stop[] = path?.slice(0, -1).flatMap(spotOf) ?? [];
-    const last = spots.pop();
-    return last
-      ? { above: [ALL_DRIVES, ...spots], here: last }
-      : { above: [], here: ALL_DRIVES };
-  });
+  // The folder the file sits in, as its parents give it, whatever path the
+  // user took: a shortcut, a search or a link leads elsewhere.
+  const climb = useClimb(page, true);
+  const [chosen, setPlace] = useState<Place>();
+  const place = chosen ?? (climb.data && startOf(climb.data));
   const vault = useVaultCheck(page, true);
-  const folder = here.kind === "folder" ? here.folder : undefined;
+  const here = place?.here;
+  const folder = here?.kind === "folder" ? here.folder : undefined;
   const target = useQuery(metadataQuery(drive, folder));
   const move = useMutation({
     mutationFn: (to: FileRef) => drive.moveFile(file, to),
@@ -128,23 +129,27 @@ function MoveDialog({
       refreshAfterChange(client, file);
     },
   });
-  const go = (place: { above: Stop[]; here: Stop }) => {
+  const go = (next: Place) => {
     move.reset();
-    setPlace(place);
+    setPlace(next);
   };
   const refusal =
-    folder === undefined
-      ? "Choose a folder."
-      : target.error
-        ? describeError(
-            target.error,
-            "This folder does not exist, or it is not shared with you.",
-          )
-        : target.data && refusalOf(file, target.data);
+    here === undefined
+      ? undefined
+      : folder === undefined
+        ? "Choose a folder."
+        : target.error
+          ? describeError(
+              target.error,
+              "This folder does not exist, or it is not shared with you.",
+            )
+          : target.data && refusalOf(file, target.data);
   const note = vaultNote(vault, "moves");
   // Where the file may go, once Drive has said whether it may.
   const destination =
     target.data && !refusal && vault !== "checking" ? folder : undefined;
+  // The path to the folder through the picker, which the page then shows.
+  const trail = place && [...place.above, place.here].flatMap(crumbsOfStop);
 
   return (
     <ConfirmDialog
@@ -160,10 +165,7 @@ function MoveDialog({
           move.mutate(destination, {
             onSuccess: () => {
               const href = hrefOf({ name: "file", file: page });
-              const trail = [...above, here].flatMap((stop) =>
-                stop.kind === "all-drives" ? [] : [stop.crumb],
-              );
-              navigate(href, [...trail, { name: file.name, href }]);
+              navigate(href, trail && [...trail, { name: file.name, href }]);
               onClose();
             },
           });
@@ -171,34 +173,39 @@ function MoveDialog({
       }
       onClose={onClose}
     >
-      {/* Where the file goes stays put while Drive moves it. */}
-      <fieldset className="picker" disabled={move.isPending}>
-        <nav aria-label="Folders above" className="crumbs">
-          <ol>
-            {above.map((stop, index) => (
-              // A path cut short can hold the same folder twice.
-              <li key={index}>
-                <button
-                  type="button"
-                  className="link"
-                  onClick={() => {
-                    go({ above: above.slice(0, index), here: stop });
-                  }}
-                >
-                  {nameOf(stop)}
-                </button>
-              </li>
-            ))}
-          </ol>
-        </nav>
-        <h3>{nameOf(here)}</h3>
-        <SpotList
-          spot={here}
-          onOpen={(next) => {
-            go({ above: [...above, here], here: next });
-          }}
-        />
-      </fieldset>
+      {place ? (
+        // Where the file goes stays put while Drive moves it.
+        <fieldset className="picker" disabled={move.isPending}>
+          <nav aria-label="Folders above" className="crumbs">
+            <ol>
+              {place.above.map((stop, index) => (
+                // A path cut short can hold the same folder twice.
+                <li key={index}>
+                  <button
+                    type="button"
+                    className="link"
+                    onClick={() => {
+                      go({ above: place.above.slice(0, index), here: stop });
+                    }}
+                  >
+                    {nameOf(stop)}
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </nav>
+          <h3>{nameOf(place.here)}</h3>
+          <SpotList
+            spot={place.here}
+            onOpen={(next) => {
+              go({ above: [...place.above, place.here], here: next });
+            }}
+          />
+        </fieldset>
+      ) : (
+        // Until Drive says where the file sits, or why it could not.
+        <Loaded query={climb}>{() => null}</Loaded>
+      )}
       {refusal && <p className="hint">{refusal}</p>}
       {note && (
         <p className={vault === "checking" ? "hint" : "warning"}>{note}</p>
@@ -229,6 +236,18 @@ function refusalOf(
 
 function nameOf(stop: Stop): string {
   return stop.kind === "all-drives" ? "All drives" : stop.crumb.name;
+}
+
+function crumbsOfStop(stop: Stop): Crumb[] {
+  return stop.kind === "all-drives" ? [] : [stop.crumb];
+}
+
+/** The folder the file sits in, below the places that lead to it. */
+function startOf(climb: Climb): Place {
+  // The path from a root ends with the file itself.
+  const stops = [ALL_DRIVES, ...crumbsOf(climb).slice(0, -1).flatMap(spotOf)];
+  const here = stops.pop() ?? ALL_DRIVES;
+  return { above: stops, here };
 }
 
 /** The folders, or roots, the picker can open from where it stands. */
@@ -337,7 +356,7 @@ function foldersOf(items: DriveItem[]): Spot[] {
     }));
 }
 
-/** The picker's spot for a step of the path taken, if it is a place. */
+/** The picker's spot for a step of the path to the file, if it is a place. */
 function spotOf(crumb: Crumb): Spot[] {
   const route = routeOf(new URL(crumb.href, window.location.origin));
   switch (route.name) {
