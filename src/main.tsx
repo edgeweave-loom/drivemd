@@ -2,8 +2,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
 import { requestFromDrive } from "./drive-ui.ts";
+import { sharedPage } from "./drive-web.ts";
 import "./index.css";
-import { hrefOf } from "./router.ts";
+import { hrefOf, routeOf } from "./router.ts";
 import { createSession } from "./session.ts";
 
 const root = document.getElementById("root");
@@ -19,6 +20,12 @@ if (fromDrive?.action === "open") {
     "",
     hrefOf({ name: "file", file: fromDrive.file }),
   );
+}
+// A share with the installed app gives way to the page its link leads to,
+// and what was shared leaves the address and the history either way.
+const url = new URL(window.location.href);
+if (routeOf(url).name === "share") {
+  history.replaceState(null, "", sharedPage(url) ?? hrefOf({ name: "share" }));
 }
 const session = createSession(fromDrive?.account);
 

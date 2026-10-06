@@ -28,7 +28,7 @@ export function FileActions({
   return (
     <div className="actions">
       {canRename && <Rename file={file} page={page} path={path} />}
-      {canMove && <Move file={file} page={page} path={path} />}
+      {canMove && <Move file={file} page={page} />}
       {canTrash && <Trash file={file} path={path} />}
     </div>
   );
