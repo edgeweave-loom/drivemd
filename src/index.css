@@ -708,3 +708,37 @@ dialog.drawer {
 .restore .actions {
   justify-content: flex-start;
 }
+
+/* Pinned above a touch screen's keyboard, at the height the editor keeps
+   clear of the cursor (TOOLBAR_HEIGHT); it scrolls sideways on phones. */
+.keyboard-toolbar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  height: 48px;
+  overflow-x: auto;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  scrollbar-width: none;
+}
+
+.keyboard-toolbar button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.keyboard-toolbar svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}

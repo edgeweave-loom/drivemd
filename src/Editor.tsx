@@ -33,11 +33,14 @@ import {
   useEffectEvent,
   useImperativeHandle,
   useRef,
+  useState,
   type Ref,
 } from "react";
 import { mountIn, THEME } from "./codemirror.ts";
 import { withFrontmatter } from "./frontmatter.ts";
+import { KeyboardToolbar, TOOLBAR_HEIGHT } from "./KeyboardToolbar.tsx";
 import { commandKey } from "./keys.ts";
+import { useTouch } from "./layout.ts";
 import { linkAt } from "./source-links.ts";
 import type { LineBreak } from "./text.ts";
 
@@ -171,6 +174,7 @@ function extensions(
   lineBreak: LineBreak,
   changed: (update: ViewUpdate) => void,
   follow: (href: string) => void,
+  clearance: () => { bottom: number } | null,
 ): Extension[] {
   return [
     // Lines join with the file's own break, whatever the browser sends.
@@ -195,6 +199,9 @@ function extensions(
     EditorView.contentAttributes.of({ "aria-label": "Markdown source" }),
     EditorView.updateListener.of(changed),
     followLinks(follow),
+    // The cursor stays clear of the keyboard toolbar when the editor
+    // scrolls to it.
+    EditorView.scrollMargins.of(clearance),
   ];
 }
 
@@ -229,10 +236,16 @@ export function Editor({
 }) {
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
+  const [focused, setFocused] = useState(false);
+  const toolbar = useTouch() && focused;
   const opening = useEffectEvent(() => initial);
   const edited = useEffectEvent((update: ViewUpdate) => {
     if (update.docChanged) onChange(update.state.sliceDoc());
+    if (update.focusChanged) setFocused(update.view.hasFocus);
   });
+  const clearance = useEffectEvent(() =>
+    toolbar ? { bottom: TOOLBAR_HEIGHT } : null,
+  );
   const followed = useEffectEvent((href: string) => {
     onFollow(href);
   });
@@ -244,7 +257,7 @@ export function Editor({
       element,
       EditorState.create({
         doc: opening(),
-        extensions: extensions(lineBreak, edited, followed),
+        extensions: extensions(lineBreak, edited, followed, clearance),
       }),
     );
     editor.current = view;
@@ -266,7 +279,18 @@ export function Editor({
     [lineBreak],
   );
 
-  return <div className="editor" ref={host} />;
+  return (
+    <>
+      <div className="editor" ref={host} />
+      {toolbar && (
+        <KeyboardToolbar
+          onCommand={(command) => {
+            if (editor.current) command(editor.current);
+          }}
+        />
+      )}
+    </>
+  );
 }
 
 /**

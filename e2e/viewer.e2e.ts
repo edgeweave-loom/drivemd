@@ -188,6 +188,41 @@ test("keeps one kind of line break whatever an input method types", async ({
   expect(String(drive.files.get("notes")?.content)).toBe("oneA\nB\nC\ntwo\n");
 });
 
+test("formats the source from the keyboard toolbar on touch screens", async ({
+  page,
+  drive,
+}, info) => {
+  const notes = drive.files.get("notes");
+  if (notes) notes.content = "one\ntwo\n";
+  await signIn(page);
+  await page.goto("/edit?id=notes");
+
+  await page.getByRole("button", { name: "Edit" }).click();
+  const source = page.getByRole("textbox", { name: "Markdown source" });
+  await source.locator(".cm-line").nth(1).click();
+  const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+  if (info.project.name === "desktop-chromium") {
+    await expect(source).toBeFocused();
+    await expect(toolbar).toHaveCount(0);
+    return;
+  }
+  await expect(toolbar).toBeVisible();
+  // Along the screen's bottom edge, where the keyboard would rise.
+  const bar = await toolbar.boundingBox();
+  expect((bar?.y ?? 0) + (bar?.height ?? 0)).toBe(page.viewportSize()?.height);
+  const checkbox = toolbar.getByRole("button", { name: "Checkbox" });
+  expect((await checkbox.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+
+  await checkbox.tap();
+  await expect(source.locator(".cm-line").nth(1)).toHaveText("- [ ] two");
+  // The key left the focus, and the keyboard, with the editor.
+  await expect(source).toBeFocused();
+  await page.getByRole("button", { name: "Save" }).click();
+
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  expect(String(drive.files.get("notes")?.content)).toBe("one\n- [ ] two\n");
+});
+
 test("saves with Ctrl+S, and follows a link with Ctrl+click in the source", async ({
   page,
   drive,
