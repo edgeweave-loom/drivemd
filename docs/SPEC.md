@@ -10,6 +10,8 @@ We are building **DriveMD**, a web app to browse, view and edit Markdown (.md) f
 
 The recommended approach is a static single-page app (Vite + React + TypeScript). It signs in with Google Identity Services, calls the Drive REST API v3 directly, edits with CodeMirror 6 and renders with react-markdown. The app has no backend: sign-in passed the milestone 1 test on a real iPhone, so v1 needs no token backend (see Tokens). Users reach files through a built-in file navigator, and on desktop also through Drive's own **Open with** menu, via a private Google Workspace Marketplace listing.
 
+DriveMD is open source, under the GNU Affero General Public License, version 3 or later, so that other Google Workspace organizations can run it, and so that a modified version served to users stays open. This spec describes Edgeweave's own deployment, for Edgeweave's organization; the README explains how another organization runs its own.
+
 ## Users, platforms and scope
 
 Users are employees signed in with an account in our Workspace organization. Accounts outside the organization cannot sign in. Most users are technical and comfortable with Markdown syntax.
@@ -47,7 +49,7 @@ The interface is in English and follows the system's light or dark theme.
 
 ## Functional requirements
 
-1. **Sign-in.** Users sign in with their Google account. Only accounts in our Workspace organization are accepted. The sign-in screen links to the about page, `/about.html`, which says what DriveMD reads, changes and keeps on the device, its terms of use, and where to report a problem (the repository's GitHub issues). It is a page of its own, without script, readable without signing in.
+1. **Sign-in.** Users sign in with their Google account. Only accounts in our Workspace organization are accepted. The sign-in screen links to the about page, `/about.html`, which says what DriveMD reads, changes and keeps on the device, its terms of use, where to report a problem (the repository's GitHub issues), and where its source code is, as the AGPL asks of a modified version served to users. It is a page of its own, without script, readable without signing in.
 2. **Home.** After sign-in, the app opens on Home, which shows in order:
    - **Unsaved changes:** the notes whose unsaved changes the device keeps for the signed-in account (see Save), the latest first, each with when they were kept; shown only when there are some, and never behind **Continue**, before Google has given the tab a token for the account. The list reads the device afresh each time Home shows, with or without a connection, and names each note as it was when its changes were kept until Drive gives its current name. A tap opens the note, which offers the changes back. A note that no longer opens there (deleted, no longer shared, in the trash, not downloadable, over 1 MB, or no longer named as a Markdown file) says why instead, and offers **Discard**, once the user confirms, since its page cannot. Home decides from Drive's answer since it showed, never from its cache.
    - **Recent:** the Markdown files the user opened most recently, newest first. The list comes from Drive's `viewedByMeTime`, which the app sets when it opens a file, so it is the same on every device. It keeps the Markdown files among the 100 files with content the user viewed last. Drive accepts it even for files the user can only view, and shows the new time a few seconds later (checked live).
