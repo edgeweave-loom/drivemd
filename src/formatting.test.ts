@@ -209,6 +209,47 @@ describe("indentLines", () => {
   ])("turns %j into %j", (before, after) => {
     expect(run(indentLines, before).text).toBe(after);
   });
+
+  it.each([
+    // Under the item above, at its text, as Markdown nests a list item.
+    ["- a\n- |b", "- a\n  - |b"],
+    ["* a\n\n* |b", "* a\n\n  * |b"],
+    ["- [ ] a\n- [ ] |b", "- [ ] a\n  - [ ] |b"],
+    ["1. a\n2. |b", "1. a\n   2. |b"],
+    ["1) a\n- |b", "1) a\n   - |b"],
+    ["10. a\n11. |b", "10. a\n    11. |b"],
+    ["1.   a\n2. |b", "1.   a\n     2. |b"],
+    // One past the marker when nothing, or code, follows it.
+    ["-   \n- |b", "-   \n  - |b"],
+    ["-      a\n- |b", "-      a\n  - |b"],
+    // Past the lines nested under it.
+    ["1. a\n   - b\n2. |c", "1. a\n   - b\n   2. |c"],
+    ["- a\n  - b\n  - |c", "- a\n  - b\n    - |c"],
+    // In a quote or a callout, after its markers.
+    ["> [!note]\n> 1. a\n> 2. |b", "> [!note]\n> 1. a\n>    2. |b"],
+    // One indent unit when no item sits above at the same indent.
+    ["text\n1. |a", "text\n  1. |a"],
+    ["1. a\ntext\n2. |b", "1. a\ntext\n  2. |b"],
+    ["- a\n> - |b", "- a\n>   - |b"],
+  ])("nests %j as %j", (before, after) => {
+    expect(run(indentLines, before).text).toBe(after);
+  });
+
+  it.each([
+    // As Obsidian indents its lists, by default.
+    ["- a\n\t- b\n- |c", "- a\n\t- b\n\t- |c"],
+    ["\t- a\n\t- |b", "\t- a\n\t\t- |b"],
+    ["- a\n\t- |b", "- a\n\t\t- |b"],
+    ["\t- a\n      - b\n    - |c", "\t- a\n      - b\n    \t- |c"],
+  ])("indents with a tab a list that has tabs: %j", (before, after) => {
+    expect(run(indentLines, before).text).toBe(after);
+  });
+
+  it("moves every selected line as far as the first, keeping their nesting", () => {
+    expect(run(indentLines, "1. a\n«2. b\n   - c»").text).toBe(
+      "1. a\n   «2. b\n      - c»",
+    );
+  });
 });
 
 describe("outdentLines", () => {
@@ -222,6 +263,28 @@ describe("outdentLines", () => {
     ["«  one\n  \n  two»", "«one\n  \ntwo»"],
   ])("turns %j into %j", (before, after) => {
     expect(run(outdentLines, before).text).toBe(after);
+  });
+
+  it.each([
+    // Back to the item it is nested under, past its siblings.
+    ["1. a\n   2. |b", "1. a\n2. |b"],
+    ["10. a\n    11. |b", "10. a\n11. |b"],
+    ["- a\n  - b\n\n    - |c", "- a\n  - b\n\n  - |c"],
+    ["- a\n  - b\n  - c\n    - d\n  - |e", "- a\n  - b\n  - c\n    - d\n- |e"],
+    ["- a\n\t- b\n\t\t- |c", "- a\n\t- b\n\t- |c"],
+    ["> 1. a\n>    2. |b", "> 1. a\n> 2. |b"],
+    // One level when no item sits above it.
+    ["text\n    |more", "text\n  |more"],
+  ])("outdents %j as %j", (before, after) => {
+    expect(run(outdentLines, before).text).toBe(after);
+  });
+
+  it("moves every selected line back as far as the first, never past its start", () => {
+    expect(run(outdentLines, "1. a\n   «2. b\n      - c»").text).toBe(
+      "1. a\n«2. b\n   - c»",
+    );
+    expect(run(outdentLines, "- a\n  «- b\nc»").text).toBe("- a\n«- b\nc»");
+    expect(run(outdentLines, "- a\n    «- b\n\tc»").text).toBe("- a\n«- b\nc»");
   });
 });
 

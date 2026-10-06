@@ -34,14 +34,23 @@ function prefix(line: Line) {
   const heading = HEADING.exec(rest);
   const item = ITEM.exec(rest);
   return {
+    number: line.number,
     /** Where the line's own Markdown starts. */
     at: line.from + lead,
     blank: rest === "",
+    /** How deep in quotes the line sits: its `>`, one each. */
+    quotes: line.text
+      .slice(0, line.text.length - quoted.length)
+      .replace(/[^>]/g, ""),
     /** The line's indent, after any quote markers. */
     indent: quoted.slice(0, quoted.length - rest.length),
     heading: heading?.[1]?.length ?? 0,
     headingLength: heading?.[0].length ?? 0,
     marker: item?.[1],
+    /** The spaces after a list item's marker. */
+    gap: item?.[2] ?? "",
+    /** Whether nothing follows a list item's marker. */
+    bare: item?.[0].length === rest.length && item[3] === undefined,
     /** Where a task box starts, or would. */
     boxAt:
       line.from + lead + (item?.[1]?.length ?? 0) + (item?.[2]?.length ?? 0),
@@ -279,25 +288,108 @@ export const insertLink: StateCommand = ({ state, dispatch }) => {
   return true;
 };
 
-/**
- * Indents the lines' text by an indent unit, two spaces unless set, after
- * any quote marker, as a nested list item needs.
- */
-export const indentLines: StateCommand = ({ state, dispatch }) =>
-  formatLines(state, dispatch, (lines) =>
-    lines.map((line) => ({ from: line.at, insert: state.facet(indentUnit) })),
-  );
+/** The column `text` ends at from `start`, a tab stopping every four. */
+function columns(text: string, start = 0): number {
+  let column = start;
+  for (const char of text) {
+    column = char === "\t" ? column + 4 - (column % 4) : column + 1;
+  }
+  return column;
+}
 
 /**
- * Takes an indent unit's worth of spaces, or else a tab, from the end of
- * the lines' indent, after any quote marker.
+ * The column where a list item's text starts, which the lines nested under
+ * it reach, as CommonMark nests them: one past its marker when nothing, or
+ * code (five spaces or more), follows it.
+ */
+function textColumn(item: Prefix): number {
+  const marker = columns(item.indent) + (item.marker?.length ?? 0);
+  const gap = columns(item.gap, marker) - marker;
+  return item.bare || gap > 4 ? marker + 1 : marker + gap;
+}
+
+/** The lines above `line` in its quote, nearest first, blank ones left out. */
+function* linesAbove(state: EditorState, line: Prefix): Generator<Prefix> {
+  for (let number = line.number - 1; number > 0; number--) {
+    const above = prefix(state.doc.line(number));
+    if (above.quotes !== line.quotes) return;
+    if (!above.blank) yield above;
+  }
+}
+
+/**
+ * The list item right above `line`, past the lines nested deeper: its
+ * previous sibling when `sibling`, at its indent, or else its parent,
+ * indented less. Any other line there ends the search.
+ */
+function itemAbove(
+  state: EditorState,
+  line: Prefix,
+  sibling: boolean,
+): Prefix | undefined {
+  const column = columns(line.indent);
+  for (const above of linesAbove(state, line)) {
+    const at = columns(above.indent);
+    if (at > column || (!sibling && at === column)) continue;
+    return above.marker !== undefined && (at === column) === sibling
+      ? above
+      : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * What indents the line one level: up to the text of the list item above
+ * it at its indent, as a nested item needs, or else an indent unit; a tab
+ * where the list already indents with tabs, as Obsidian does.
+ */
+function indentStep(state: EditorState, line: Prefix): string {
+  const sibling = itemAbove(state, line, true);
+  const [above] = linesAbove(state, line);
+  if ([line, sibling, above].some((other) => other?.indent.startsWith("\t")))
+    return "\t";
+  if (!sibling) return state.facet(indentUnit);
+  return " ".repeat(textColumn(sibling) - columns(line.indent));
+}
+
+/**
+ * How many columns take the line back one level: to the indent of the list
+ * item it is nested under, or else an indent unit's worth of spaces, or a
+ * tab, from the end of its indent.
+ */
+function outdentWidth(state: EditorState, line: Prefix): number {
+  const column = columns(line.indent);
+  const parent = itemAbove(state, line, false);
+  if (parent) return column - columns(parent.indent);
+  const spaces = line.indent.length - line.indent.replace(/ +$/, "").length;
+  if (spaces > 0) return Math.min(spaces, state.facet(indentUnit).length);
+  return column - columns(line.indent.replace(/\t$/, ""));
+}
+
+/**
+ * Indents the lines one level, after any quote markers: the first line
+ * nests under the list item above it, and the others move as far, keeping
+ * their nesting.
+ */
+export const indentLines: StateCommand = ({ state, dispatch }) =>
+  formatLines(state, dispatch, (lines) => {
+    const step = lines[0] ? indentStep(state, lines[0]) : "";
+    return lines.map((line) => ({ from: line.at, insert: step }));
+  });
+
+/**
+ * Takes the lines back one level, after any quote markers: the first line
+ * to the indent of the list item it is nested under, and the others as
+ * far, as far as their indent goes.
  */
 export const outdentLines: StateCommand = ({ state, dispatch }) =>
-  formatLines(state, dispatch, (lines) =>
-    lines.map(({ at, indent }) => {
-      const spaces = indent.length - indent.replace(/ +$/, "").length;
-      const unit = state.facet(indentUnit).length;
-      const tab = indent.endsWith("\t") ? 1 : 0;
-      return { from: at - (spaces > 0 ? Math.min(spaces, unit) : tab), to: at };
-    }),
-  );
+  formatLines(state, dispatch, (lines) => {
+    const width = lines[0] ? outdentWidth(state, lines[0]) : 0;
+    return lines.map(({ at, indent }) => {
+      let kept = indent;
+      while (kept !== "" && columns(indent) - columns(kept) < width) {
+        kept = kept.slice(0, -1);
+      }
+      return { from: at - (indent.length - kept.length), to: at };
+    });
+  });
