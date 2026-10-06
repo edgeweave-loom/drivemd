@@ -156,6 +156,16 @@ describe("Editor", () => {
     expect(onChange).toHaveBeenLastCalledWith("Tea");
   });
 
+  it("indents and outdents a list item by its level from the keyboard, as the toolbar does", () => {
+    const { view, onChange } = open("1. Tea\n2. Milk");
+    view.dispatch({ selection: { anchor: view.state.doc.length } });
+
+    press(view, "]", { ctrlKey: true });
+    expect(onChange).toHaveBeenLastCalledWith("1. Tea\n   2. Milk");
+    press(view, "[", { ctrlKey: true });
+    expect(onChange).toHaveBeenLastCalledWith("1. Tea\n2. Milk");
+  });
+
   it("takes a task tapped in the preview as one edit, if it still holds the text shown", () => {
     const { view, onChange, handle } = open(
       "- [ ] Boil\r\n- [ ] Pour\r\n",

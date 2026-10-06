@@ -37,6 +37,7 @@ import {
   type Ref,
 } from "react";
 import { mountIn, THEME } from "./codemirror.ts";
+import { indentLines, outdentLines } from "./formatting.ts";
 import { withFrontmatter } from "./frontmatter.ts";
 import { KeyboardToolbar, TOOLBAR_HEIGHT } from "./KeyboardToolbar.tsx";
 import { commandKey } from "./keys.ts";
@@ -194,7 +195,14 @@ function extensions(
     // The browser's own find misses lines the editor has not drawn.
     search({ top: true }),
     highlightSelectionMatches(),
-    keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+    keymap.of([
+      // A list item nests from the keyboard as from the toolbar's keys.
+      { key: "Mod-]", run: indentLines },
+      { key: "Mod-[", run: outdentLines },
+      ...defaultKeymap,
+      ...historyKeymap,
+      ...searchKeymap,
+    ]),
     EditorView.lineWrapping,
     EditorView.contentAttributes.of({ "aria-label": "Markdown source" }),
     EditorView.updateListener.of(changed),

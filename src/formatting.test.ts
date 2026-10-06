@@ -229,8 +229,9 @@ describe("indentLines", () => {
     ["> [!note]\n> 1. a\n> 2. |b", "> [!note]\n> 1. a\n>    2. |b"],
     // One indent unit when no item sits above at the same indent.
     ["text\n1. |a", "text\n  1. |a"],
+    ["- a\n  - |b", "- a\n    - |b"],
     ["1. a\ntext\n2. |b", "1. a\ntext\n  2. |b"],
-    ["- a\n> - |b", "- a\n>   - |b"],
+    ["1. a\n> - |b", "1. a\n>   - |b"],
   ])("nests %j as %j", (before, after) => {
     expect(run(indentLines, before).text).toBe(after);
   });
@@ -269,6 +270,7 @@ describe("outdentLines", () => {
     // Back to the item it is nested under, past its siblings.
     ["1. a\n   2. |b", "1. a\n2. |b"],
     ["10. a\n    11. |b", "10. a\n11. |b"],
+    ["1. a\n   - b\n   - |c", "1. a\n   - b\n- |c"],
     ["- a\n  - b\n\n    - |c", "- a\n  - b\n\n  - |c"],
     ["- a\n  - b\n  - c\n    - d\n  - |e", "- a\n  - b\n  - c\n    - d\n- |e"],
     ["- a\n\t- b\n\t\t- |c", "- a\n\t- b\n\t- |c"],
