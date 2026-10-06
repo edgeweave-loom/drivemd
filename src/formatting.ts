@@ -430,7 +430,9 @@ function outdented(state: EditorState, line: Prefix): string {
   // Text running on at a smaller indent than its item's is not nested.
   if (indent !== null && columns(indent, start) < columns(line.indent, start))
     return indent;
-  const spaces = / +$/.exec(line.indent)?.[0].length ?? 0;
+  // Counted from the end: a regex would try each start in turn.
+  let spaces = 0;
+  while (line.indent[line.indent.length - 1 - spaces] === " ") spaces += 1;
   const unit = state.facet(indentUnit).length;
   return spaces > 0
     ? line.indent.slice(0, -Math.min(spaces, unit))

@@ -220,6 +220,7 @@ describe("indentLines", () => {
     ["* a\n\n* |b", "* a\n\n  * |b"],
     ["- [ ] a\n- [ ] |b", "- [ ] a\n  - [ ] |b"],
     ["1) a\n- |b", "1) a\n   - |b"],
+    ["> 1) a\n> - |b", "> 1) a\n>    - |b"],
     ["1. a\nlazy\n- |b", "1. a\nlazy\n   - |b"],
     // One past the marker when nothing, or code, follows it.
     ["-   \n- |b", "-   \n  - |b"],
@@ -276,6 +277,13 @@ describe("indentLines", () => {
     ["- a\n\t- b\n- |c", "- a\n\t- b\n\t- |c"],
     ["- a\n\t- b\n\t- |c", "- a\n\t- b\n\t\t- |c"],
     ["- a\n\t- |b", "- a\n\t\t- |b"],
+    ["- a\n\t|more", "- a\n\t\t|more"],
+    // Tab stops count from the line's start, quote markers included.
+    ["> 1.  a\n> \t- |b", "> 1.  a\n> \t\t- |b"],
+    [
+      "- x\n\t- p\n      - a\n      - |b",
+      "- x\n\t- p\n      - a\n      \t- |b",
+    ],
     // As many as reach the text of a wide item above.
     ["1. p\n\t100. a\n\t- |b", "1. p\n\t100. a\n\t\t\t- |b"],
     ["1. p\n\t100. a\n\t101. |b", "1. p\n\t100. a\n\t\t\t1. |b"],
@@ -321,6 +329,7 @@ describe("outdentLines", () => {
     ["> 1. a\n>    2. |b", "> 1. a\n> 2. |b"],
     // Text in an item goes back to the item's indent.
     ["- a\n  |more", "- a\n|more"],
+    ["1. a\n   |more", "1. a\n|more"],
     // One level when no item holds it.
     ["text\n    |more", "text\n  |more"],
     ["  - a\n|lazy", "  - a\n|lazy"],
@@ -344,7 +353,7 @@ describe("outdentLines", () => {
     // Without the Markdown parser, which takes long over such an indent when
     // the note opens: only the command is timed.
     const spaces = " ".repeat(100_000);
-    const doc = `${spaces}a\n${spaces}\tb`;
+    const doc = `${spaces}\ta\n${spaces}b\n${spaces}\tc`;
     const state = EditorState.create({
       doc,
       selection: { anchor: 0, head: doc.length },
@@ -355,7 +364,7 @@ describe("outdentLines", () => {
 
     expect(performance.now() - started).toBeLessThan(1000);
     // Compared as a whole: a failure would diff 200,000 characters.
-    expect(text === `«${spaces.slice(2)}a\n${spaces}  b»`).toBe(true);
+    expect(text === `«${spaces}a\n${spaces.slice(4)}b\n${spaces}c»`).toBe(true);
   });
 });
 

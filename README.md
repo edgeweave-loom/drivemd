@@ -28,7 +28,7 @@ On an iPhone, Safari's **Share > Add to Home Screen** puts DriveMD on the Home S
 
 ## Editing on a touch screen
 
-On a phone or a tablet, a row of keys sits above the keyboard while the note's source has the focus: **Undo**, **Redo**, **Heading** (`#`, `##`, `###`, then text again), **Bold**, **List**, **Checkbox** (an open task, a done one, then a plain list item again), **Link**, **Indent** and **Outdent** (one level of a list, lined up with the text of the item above, with a tab where the list already uses tabs, as Obsidian's do; the iPhone keyboard has no Tab key, and Cmd/Ctrl+] and Cmd/Ctrl+[ do the same on a computer), and **Find in note**. The row scrolls sideways when it does not fit, and its keys keep the keyboard up. With a mouse, the row does not show.
+On a phone or a tablet, a row of keys sits above the keyboard while the note's source has the focus: **Undo**, **Redo**, **Heading** (`#`, `##`, `###`, then text again), **Bold**, **List**, **Checkbox** (an open task, a done one, then a plain list item again), **Link**, **Indent** and **Outdent** (one level of a list, lined up with the text of the item above, with tabs where the list already uses tabs, as Obsidian's do; a numbered item that starts a new nested list becomes `1.`, the only character other than spaces and tabs they change, since Markdown nests no list that starts at another number; the iPhone keyboard has no Tab key, and Cmd/Ctrl+] and Cmd/Ctrl+[ do the same on a computer), and **Find in note**. The row scrolls sideways when it does not fit, and its keys keep the keyboard up. With a mouse, the row does not show.
 
 ## Stack
 
