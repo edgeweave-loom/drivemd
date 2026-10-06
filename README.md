@@ -157,3 +157,11 @@ To see the headers and cache rules as Hosting serves them, run `npm run build`, 
 ## Drive integration
 
 Drive's **Open with** menu opens production through a private Google Workspace Marketplace listing, installed for the organization, which the spec's [Drive integration section](docs/SPEC.md#drive-open-with-integration-via-private-marketplace) sets up step by step in the Google Cloud and Admin consoles. In Drive's settings, under Manage apps, each user can make DriveMD the default app for .md files, so that a double click opens it rather than Google Docs. Drive's **New** menu does not offer DriveMD, as the spec's requirement 9 explains. `docs/listing/` holds the images the listing uploads: the icons, `public/icon.svg` rendered at 16, 32, 48, 64, 96, 128 and 256 pixels on a transparent background, the card banner and a screenshot taken on made-up data.
+
+## License
+
+Copyright 2026 Edgeweave.
+
+DriveMD is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. DriveMD is distributed in the hope that it will be useful, but without any warranty; without even the implied warranty of merchantability or fitness for a particular purpose. See [`LICENSE`](LICENSE) for the full terms.
+
+The app's icon draws the Markdown mark by Dustin Curtis, which he dedicated to the public domain. The keyboard toolbar's icons are Google's [Material Symbols](https://github.com/google/material-design-icons), under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).

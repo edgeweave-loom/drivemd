@@ -10,6 +10,8 @@ We are building **DriveMD**, a web app to browse, view and edit Markdown (.md) f
 
 The recommended approach is a static single-page app (Vite + React + TypeScript). It signs in with Google Identity Services, calls the Drive REST API v3 directly, edits with CodeMirror 6 and renders with react-markdown. The app has no backend: sign-in passed the milestone 1 test on a real iPhone, so v1 needs no token backend (see Tokens). Users reach files through a built-in file navigator, and on desktop also through Drive's own **Open with** menu, via a private Google Workspace Marketplace listing.
 
+DriveMD is open source, under the GNU Affero General Public License, version 3 or later, so that other Google Workspace organizations can run it, and so that a modified version served to users stays open. This spec describes Edgeweave's own deployment, for Edgeweave's organization; the README explains how another organization runs its own.
+
 ## Users, platforms and scope
 
 Users are employees signed in with an account in our Workspace organization. Accounts outside the organization cannot sign in. Most users are technical and comfortable with Markdown syntax.
