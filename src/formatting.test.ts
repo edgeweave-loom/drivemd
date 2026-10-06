@@ -9,6 +9,10 @@ import {
   type StateCommand,
   type Transaction,
 } from "@codemirror/state";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { describe, expect, it } from "vitest";
 import {
   cycleHeading,
@@ -215,40 +219,79 @@ describe("indentLines", () => {
     ["- a\n- |b", "- a\n  - |b"],
     ["* a\n\n* |b", "* a\n\n  * |b"],
     ["- [ ] a\n- [ ] |b", "- [ ] a\n  - [ ] |b"],
-    ["1. a\n2. |b", "1. a\n   2. |b"],
     ["1) a\n- |b", "1) a\n   - |b"],
-    ["10. a\n11. |b", "10. a\n    11. |b"],
-    ["1.   a\n2. |b", "1.   a\n     2. |b"],
+    ["1. a\nlazy\n- |b", "1. a\nlazy\n   - |b"],
     // One past the marker when nothing, or code, follows it.
     ["-   \n- |b", "-   \n  - |b"],
     ["-      a\n- |b", "-      a\n  - |b"],
     // Past the lines nested under it.
-    ["1. a\n   - b\n2. |c", "1. a\n   - b\n   2. |c"],
     ["- a\n  - b\n  - |c", "- a\n  - b\n    - |c"],
-    // In a quote or a callout, after its markers.
-    ["> [!note]\n> 1. a\n> 2. |b", "> [!note]\n> 1. a\n>    2. |b"],
-    // One indent unit when no item sits above at the same indent.
+    // One indent unit when no item sits above it in its list.
     ["text\n1. |a", "text\n  1. |a"],
     ["- a\n  - |b", "- a\n    - |b"],
-    ["1. a\ntext\n2. |b", "1. a\ntext\n  2. |b"],
     ["1. a\n> - |b", "1. a\n>   - |b"],
+    ["- a\n```\n- foo\n```\n- |b", "- a\n```\n- foo\n```\n  - |b"],
   ])("nests %j as %j", (before, after) => {
     expect(run(indentLines, before).text).toBe(after);
   });
 
   it.each([
-    // As Obsidian indents its lists, by default.
-    ["- a\n\t- b\n- |c", "- a\n\t- b\n\t- |c"],
-    ["\t- a\n\t- |b", "\t- a\n\t\t- |b"],
-    ["- a\n\t- |b", "- a\n\t\t- |b"],
-    ["\t- a\n      - b\n    - |c", "\t- a\n      - b\n    \t- |c"],
-  ])("indents with a tab a list that has tabs: %j", (before, after) => {
+    // A new numbered list starts at 1, or it would be text of the item above.
+    ["1. a\n2. |b", "1. a\n   1. |b"],
+    ["1) a\n2) |b", "1) a\n   1) |b"],
+    ["10. a\n11. |b", "10. a\n    1. |b"],
+    ["1.   a\n2. |b", "1.   a\n     1. |b"],
+    ["1. a\n   - x\n2. |b", "1. a\n   - x\n   1. |b"],
+    ["1. a\n   1) x\n2. |b", "1. a\n   1) x\n   1. |b"],
+    ["> [!note]\n> 1. a\n> 2. |b", "> [!note]\n> 1. a\n>    1. |b"],
+    // Joining the numbered list the item above holds, it keeps its number.
+    ["1. a\n   1. x\n2. |b", "1. a\n   1. x\n   2. |b"],
+  ])("numbers %j as %j", (before, after) => {
     expect(run(indentLines, before).text).toBe(after);
+  });
+
+  it.each([
+    "1. a\n2. |b",
+    "10. a\n11. |b",
+    "1) a\n2) |b",
+    "> [!note]\n> 1. a\n> 2. |b",
+  ])("nests %j as a list in the item above, as Markdown renders it", (text) => {
+    const html = renderToStaticMarkup(
+      createElement(Markdown, { remarkPlugins: [remarkGfm] }, text),
+    );
+    const nested = renderToStaticMarkup(
+      createElement(
+        Markdown,
+        { remarkPlugins: [remarkGfm] },
+        run(indentLines, text).state.sliceDoc(),
+      ),
+    );
+
+    expect(html).not.toMatch(/<li>a\s*<ol>/);
+    expect(nested).toMatch(/<li>a\s*<ol>\s*<li>b<\/li>\s*<\/ol>\s*<\/li>/);
+  });
+
+  it.each([
+    // As Obsidian indents its lists, by default: with tabs.
+    ["- a\n\t- b\n- |c", "- a\n\t- b\n\t- |c"],
+    ["- a\n\t- b\n\t- |c", "- a\n\t- b\n\t\t- |c"],
+    ["- a\n\t- |b", "- a\n\t\t- |b"],
+    // As many as reach the text of a wide item above.
+    ["1. p\n\t100. a\n\t- |b", "1. p\n\t100. a\n\t\t\t- |b"],
+    ["1. p\n\t100. a\n\t101. |b", "1. p\n\t100. a\n\t\t\t1. |b"],
+  ])("indents with tabs a list that has some: %j", (before, after) => {
+    expect(run(indentLines, before).text).toBe(after);
+  });
+
+  it("indents with spaces a list whose text alone has a tab", () => {
+    expect(run(indentLines, "- a\n\n\tmore\n- |b").text).toBe(
+      "- a\n\n\tmore\n  - |b",
+    );
   });
 
   it("moves every selected line as far as the first, keeping their nesting", () => {
     expect(run(indentLines, "1. a\n«2. b\n   - c»").text).toBe(
-      "1. a\n   «2. b\n      - c»",
+      "1. a\n   «1. b\n      - c»",
     );
   });
 });
@@ -274,9 +317,13 @@ describe("outdentLines", () => {
     ["- a\n  - b\n\n    - |c", "- a\n  - b\n\n  - |c"],
     ["- a\n  - b\n  - c\n    - d\n  - |e", "- a\n  - b\n  - c\n    - d\n- |e"],
     ["- a\n\t- b\n\t\t- |c", "- a\n\t- b\n\t- |c"],
+    ["- a\n  - b\n\t- |c", "- a\n  - b\n  - |c"],
     ["> 1. a\n>    2. |b", "> 1. a\n> 2. |b"],
-    // One level when no item sits above it.
+    // Text in an item goes back to the item's indent.
+    ["- a\n  |more", "- a\n|more"],
+    // One level when no item holds it.
     ["text\n    |more", "text\n  |more"],
+    ["  - a\n|lazy", "  - a\n|lazy"],
   ])("outdents %j as %j", (before, after) => {
     expect(run(outdentLines, before).text).toBe(after);
   });
@@ -287,6 +334,28 @@ describe("outdentLines", () => {
     );
     expect(run(outdentLines, "- a\n  «- b\nc»").text).toBe("- a\n«- b\nc»");
     expect(run(outdentLines, "- a\n    «- b\n\tc»").text).toBe("- a\n«- b\nc»");
+    // A tab cut part way leaves the spaces before the column reached.
+    expect(run(outdentLines, "- a\n  - b\n    «- c\n\td»").text).toBe(
+      "- a\n  - b\n  «- c\n  d»",
+    );
+  });
+
+  it("outdents lines of any indent at once", () => {
+    // Without the Markdown parser, which takes long over such an indent when
+    // the note opens: only the command is timed.
+    const spaces = " ".repeat(100_000);
+    const doc = `${spaces}a\n${spaces}\tb`;
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: 0, head: doc.length },
+    });
+    const started = performance.now();
+
+    const { text } = run(outdentLines, state);
+
+    expect(performance.now() - started).toBeLessThan(1000);
+    // Compared as a whole: a failure would diff 200,000 characters.
+    expect(text === `«${spaces.slice(2)}a\n${spaces}  b»`).toBe(true);
   });
 });
 
