@@ -156,6 +156,21 @@ describe("Editor", () => {
     expect(onChange).toHaveBeenLastCalledWith("Tea");
   });
 
+  it("indents and outdents a list item by its level from the keyboard, as the toolbar does", () => {
+    // Below front matter, which the editor parses apart from the Markdown.
+    const { view, onChange } = open("---\nowner: Ada\n---\n1. Tea\n2. Milk");
+    view.dispatch({ selection: { anchor: view.state.doc.length } });
+
+    press(view, "]", { ctrlKey: true });
+    expect(onChange).toHaveBeenLastCalledWith(
+      "---\nowner: Ada\n---\n1. Tea\n   1. Milk",
+    );
+    press(view, "[", { ctrlKey: true });
+    expect(onChange).toHaveBeenLastCalledWith(
+      "---\nowner: Ada\n---\n1. Tea\n1. Milk",
+    );
+  });
+
   it("takes a task tapped in the preview as one edit, if it still holds the text shown", () => {
     const { view, onChange, handle } = open(
       "- [ ] Boil\r\n- [ ] Pour\r\n",
