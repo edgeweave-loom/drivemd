@@ -30,7 +30,7 @@ On an iPhone, Safari's **Share > Add to Home Screen** puts DriveMD on the Home S
 
 ## Editing on a touch screen
 
-On a phone or a tablet, a row of keys sits above the keyboard while the note's source has the focus: **Undo**, **Redo**, **Heading** (`#`, `##`, `###`, then text again), **Bold**, **List**, **Checkbox** (an open task, a done one, then a plain list item again), **Link**, **Indent** and **Outdent** (two spaces, which the iPhone keyboard's lack of a Tab key otherwise leaves out of reach), and **Find in note**. The row scrolls sideways when it does not fit, and its keys keep the keyboard up. With a mouse, the row does not show. The source keeps what you type as typed: the phone neither corrects, capitalizes nor curls quotes there. An iPhone still turns two spaces after a word into a period, unless its "." Shortcut is off in Settings > General > Keyboard ([#119](https://github.com/edgeweave-loom/drivemd/issues/119)).
+On a phone or a tablet, a row of keys sits above the keyboard while the note's source has the focus: **Undo**, **Redo**, **Heading** (`#`, `##`, `###`, then text again), **Bold**, **List**, **Checkbox** (an open task, a done one, then a plain list item again), **Link**, **Indent** and **Outdent** (two spaces, which the iPhone keyboard's lack of a Tab key otherwise leaves out of reach), and **Find in note**. The row scrolls sideways when it does not fit, and its keys keep the keyboard up. With a mouse, the row does not show. In the source, the phone neither corrects words, adds capitals nor curls quotes. An iPhone does still turn two spaces after a word into a period, unless its "." Shortcut is off in Settings > General > Keyboard ([#119](https://github.com/edgeweave-loom/drivemd/issues/119)).
 
 ## Stack
 
