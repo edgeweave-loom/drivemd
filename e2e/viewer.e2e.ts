@@ -188,6 +188,42 @@ test("keeps one kind of line break whatever an input method types", async ({
   expect(String(drive.files.get("notes")?.content)).toBe("oneA\nB\nC\ntwo\n");
 });
 
+test("keeps two spaces typed after a word, which iOS makes a period", async ({
+  page,
+  drive,
+}) => {
+  const notes = drive.files.get("notes");
+  if (notes) notes.content = "one\ntwo\n";
+  await signIn(page);
+  await page.goto("/edit?id=notes");
+
+  await page.getByRole("button", { name: "Edit" }).click();
+  const source = page.getByRole("textbox", { name: "Markdown source" });
+  const line = source.locator(".cm-line").first();
+  await line.click();
+  await page.keyboard.press("End");
+  await page.keyboard.type("  ");
+  const shown = () => line.evaluate((element) => element.textContent);
+  await expect.poll(shown).toBe("one  ");
+  // As iOS does after the second space, whatever the editor asks of its
+  // corrections: a period in place of the first.
+  await line.evaluate((element) => {
+    // Markdown's line break, which the two spaces make, has a span.
+    const texts = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let spaces: Text | undefined;
+    for (let node = texts.nextNode(); node; node = texts.nextNode()) {
+      if (node instanceof Text && node.data.endsWith("  ")) spaces = node;
+    }
+    if (!spaces) throw new Error("No spaces typed");
+    spaces.replaceData(spaces.length - 2, 1, ".");
+  });
+
+  await expect.poll(shown).toBe("one  ");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  expect(String(drive.files.get("notes")?.content)).toBe("one  \ntwo\n");
+});
+
 test("formats the source from the keyboard toolbar on touch screens", async ({
   page,
   drive,

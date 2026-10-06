@@ -97,6 +97,15 @@ describe("Rename", () => {
     ]);
   });
 
+  it("takes the name as typed, without the phone's capitals or corrections", async () => {
+    openPlan();
+
+    await openDialog();
+    expect(nameBox()).toHaveAttribute("autocapitalize", "none");
+    expect(nameBox()).toHaveAttribute("autocorrect", "off");
+    expect(nameBox()).toHaveAttribute("spellcheck", "false");
+  });
+
   it("warns that links to a note in a vault will not follow", async () => {
     openPlan(plan(), [WORK]);
 
