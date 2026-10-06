@@ -24,16 +24,14 @@ test("says how DriveMD treats data, its terms, where to get help and its source,
   await expect(
     page.locator("#support").getByRole("link", { name: "GitHub issues" }),
   ).toHaveAttribute("href", "https://github.com/edgeweave-loom/drivemd/issues");
-  // The offer of the source that the AGPL asks of a version served to users.
+  // The offer of the source that the AGPL asks of a modified version served
+  // to users.
   await expect(
     page.locator("#source").getByRole("link", { name: "source code" }),
   ).toHaveAttribute("href", "https://github.com/edgeweave-loom/drivemd");
   await expect(
     page.locator("#source").getByRole("link", { name: "license" }),
-  ).toHaveAttribute(
-    "href",
-    "https://github.com/edgeweave-loom/drivemd/blob/main/LICENSE",
-  );
+  ).toHaveAttribute("href", "https://www.gnu.org/licenses/agpl-3.0.html");
   // Styled by the app's own stylesheet, which the policy allows, and
   // running no script.
   await expect(page.getByRole("main")).toHaveCSS("max-width", "768px");
