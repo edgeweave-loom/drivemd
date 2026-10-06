@@ -158,6 +158,21 @@ function defineChecks(auth: DriveAuth): void {
     expect(ids(lower.items), "the file found in small letters").toContain(id);
   });
 
+  it("searches names whatever their case, accented letters included", async () => {
+    // The search box takes no capital from a phone, but Drive's search would
+    // find the note either way, unlike its exact name match.
+    const id = await make({
+      name: `${RUN} élan.md`,
+      mimeType: "text/markdown",
+    });
+
+    await eventually("the file by a word of its name", async () =>
+      ids((await drive.search(`${RUN} élan`)).items).includes(id),
+    );
+    const capital = await drive.search(`${RUN} Élan`);
+    expect(ids(capital.items), "the file found with a capital").toContain(id);
+  });
+
   it.each(["text/markdown", "text/plain", "application/octet-stream"])(
     "keeps the type of a file saved as %s, and its exact bytes",
     async (mimeType) => {

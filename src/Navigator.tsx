@@ -140,6 +140,10 @@ function SearchBox() {
         placeholder="Search or paste a link"
         enterKeyHint="search"
         autoComplete="off"
+        // Phones would capitalize or correct the words of a file's name.
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
       />
     </form>
   );
