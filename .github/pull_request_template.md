@@ -1,6 +1,6 @@
 <!-- This pull request is squashed into one commit: write its title as the
 commit's subject, type(scope): subject, and this body as the commit's body,
-saying why the change exists. -->
+saying why the change exists. Delete these comments. -->
 
 <!-- Before asking for a review:
 - the failing test came first, and lint, format, coverage, build and e2e pass;

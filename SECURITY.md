@@ -4,7 +4,7 @@ DriveMD's access token can read and write everything the user can reach in Googl
 
 ## Reporting a vulnerability
 
-Report it privately through GitHub: on the repository's **Security** tab, choose **Report a vulnerability**, or open [a new advisory](https://github.com/edgeweave-loom/drivemd/security/advisories/new). Do not open an issue or a pull request, which anyone can read.
+Report it privately through GitHub: on the repository's **Security** tab, choose **Report a vulnerability**, or open [a new advisory](https://github.com/edgeweave-loom/drivemd/security/advisories/new). If that option is not offered, write to germain@edgeweave.tech. Do not open an issue or a pull request, which anyone can read.
 
 Say what an attacker can do, and how: the steps, the browser and the device, and a made-up note or link that shows it. Leave out real file names, addresses and note contents, yours or anyone's.
 
