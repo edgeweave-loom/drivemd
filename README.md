@@ -1,8 +1,10 @@
 # DriveMD
 
-Browse, view and edit the Markdown files in our Google Drive, on desktop and on phones (iPhone first, Android too), including notes in Obsidian vaults.
+Browse, view and edit the Markdown files in Google Drive, on desktop and on phones (iPhone first, Android too), including notes in Obsidian vaults.
 
-DriveMD is a static web app for our Google Workspace organization. It signs in with Google, calls the Drive API straight from the browser, and never rewrites a file it did not change.
+![A note in DriveMD, its source beside its preview, on made-up data](docs/listing/screenshot.png)
+
+DriveMD is a static web app for a Google Workspace organization. It signs in with Google, calls the Drive API straight from the browser, with no server of its own, and never rewrites a file it did not change. Edgeweave builds it in the open and runs it for its own organization; another organization runs its own copy, as [Running your own](#running-your-own) explains.
 
 ## Status
 
@@ -34,6 +36,15 @@ On a phone or a tablet, a row of keys sits above the keyboard while the note's s
 
 Vite, React and TypeScript; Google Identity Services and the Drive REST API v3, with TanStack Query caching Drive's answers; CodeMirror 6 for editing and react-markdown for rendering; Firebase Hosting. The spec explains each choice.
 
+## Running your own
+
+DriveMD serves one Google Workspace organization. It asks for Google's `drive` scope, to edit files that other tools made: an app whose audience is **Internal**, the organization's own accounts, may use that restricted scope without Google's verification, while one open to other accounts must pass it, a security assessment included. Each organization therefore runs its own copy, from a Google Cloud project of its own.
+
+1. In a Google Cloud project of your organization, enable the Google Drive API, set the audience to **Internal** in Google Auth Platform, and create an OAuth client of type **Web application** whose authorized JavaScript origins are your app's addresses, and `http://localhost:5173` for development. The spec's [Google Cloud setup](docs/SPEC.md#google-auth-scopes-and-workspace-setup) gives each step, with Edgeweave's addresses.
+2. Replace Edgeweave's privacy policy, terms and support in `about.html` with yours, and point its source code link at your copy's source, in `e2e/about.e2e.ts` too: the AGPL asks whoever serves a modified version to its users to offer them its source.
+3. Build with your client's ID, `VITE_GOOGLE_CLIENT_ID=<client-id> npm run build`, and serve `dist/` over HTTPS. Firebase Hosting serves it as `firebase.json` says, and [Deployment](#deployment) has CI deploy it. Another host must send the same headers, the Content Security Policy above all, which keeps script in a note from reaching the user's token, and serve `index.html` for every path outside `/assets/`.
+4. To open .md files from Drive's **Open with**, list the app as the spec's [Drive integration](docs/SPEC.md#drive-open-with-integration-via-private-marketplace) section does, with your own addresses.
+
 ## Development
 
 You need Node.js 22.22.2 or later on the 22 line (`.nvmrc`), or 24.15.0 or later on the 24 line, and npm.
@@ -43,7 +54,7 @@ npm ci
 npm run dev
 ```
 
-Open http://localhost:5173, not `127.0.0.1`: it is the only local origin the OAuth client authorizes, so the dev server refuses to start on another port.
+Open http://localhost:5173, not `127.0.0.1`: it is the only local origin the OAuth client authorizes, so the dev server refuses to start on another port. Signing in needs an OAuth client's ID (see Configuration), but the tests do not: they replace Google with made-up answers.
 
 | Command                    | What it does                                                    |
 | -------------------------- | --------------------------------------------------------------- |
@@ -72,13 +83,13 @@ Before the first run, download the browsers once with `npx playwright install ch
 
 The app reads its settings from `VITE_*` environment variables when it is built. For development, copy `.env.example` to `.env.local` and fill it in; git ignores `.env` and `.env.local`.
 
-| Variable                | Value                                                                                                                                     |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `VITE_GOOGLE_CLIENT_ID` | ID of the OAuth client of type Web application, from the spec's [Google Cloud setup](docs/SPEC.md#google-auth-scopes-and-workspace-setup) |
+| Variable                | Value                                                                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `VITE_GOOGLE_CLIENT_ID` | ID of the OAuth client of type Web application, from [Running your own](#running-your-own); sign-in stays disabled while it is empty |
 
 ## Live Drive checks
 
-The unit tests replace Google Drive with mocked answers, so a few behaviors can only be checked against the real Drive. The live checks do it as a test account of our organization, never with a person's account: its Drive holds nothing but what the checks create, a made-up file `drivemd-live-view-only.md` that another account shares with it as a viewer, and a shared drive named `DriveMD live check` where it is a content manager, holding a made-up file `drivemd-live-from-another.md` that another member added. Nothing about the account enters the repository. Its credentials stay in `~/.config/drivemd-live/`, or in the absolute path set in `DRIVEMD_LIVE_DIR`: the desktop OAuth client as `client.json` and the account's grant as `grant.json`. The scripts read them only when they are yours and nobody else can read them, and check with Drive that the grant belongs to the account it names before they act.
+The unit tests replace Google Drive with mocked answers, so a few behaviors can only be checked against the real Drive. The live checks do it as a test account of the organization, never with a person's account: its Drive holds nothing but what the checks create, a made-up file `drivemd-live-view-only.md` that another account shares with it as a viewer, and a shared drive named `DriveMD live check` where it is a content manager, holding a made-up file `drivemd-live-from-another.md` that another member added. Nothing about the account enters the repository. Its credentials stay in `~/.config/drivemd-live/`, or in the absolute path set in `DRIVEMD_LIVE_DIR`: the desktop OAuth client as `client.json` and the account's grant as `grant.json`. The scripts read them only when they are yours and nobody else can read them, and check with Drive that the grant belongs to the account it names before they act.
 
 To set up, once:
 
@@ -103,7 +114,7 @@ The app's access token can read and write the user's whole Drive, so the reposit
 
 ## Deployment
 
-Once CI passes, every push to `dev` deploys staging, https://md-staging.corp.edgeweave.tech, to the `FIREBASE_HOSTING_SITE` site of the `FIREBASE_PROJECT_ID` project, and every push to `main` deploys production, https://md.corp.edgeweave.tech, to the `PRODUCTION_FIREBASE_HOSTING_SITE` site of the same project: `firebase.json` names the deploy target `app`, and CI maps it to the site. The deploy job only runs firebase-tools on the `dist/` that the check job built, and it authenticates through Workload Identity Federation, so no service account key exists. The job is skipped while `FIREBASE_PROJECT_ID` is unset, and for `main` while `PRODUCTION_FIREBASE_HOSTING_SITE` is too; once they are set, CI stops before building if any other variable below is missing:
+Once CI passes, every push to `dev` deploys staging to the `FIREBASE_HOSTING_SITE` site of the `FIREBASE_PROJECT_ID` project, and every push to `main` deploys production to the `PRODUCTION_FIREBASE_HOSTING_SITE` site of the same project: `firebase.json` names the deploy target `app`, and CI maps it to the site. The deploy job only runs firebase-tools on the `dist/` that the check job built, and it authenticates through Workload Identity Federation, so no service account key exists. In this repository, staging is Edgeweave's https://md-staging.corp.edgeweave.tech, and production https://md.corp.edgeweave.tech. The job is skipped while `FIREBASE_PROJECT_ID` is unset, so a fork deploys nothing until it sets its own, and for `main` while `PRODUCTION_FIREBASE_HOSTING_SITE` is too; once they are set, CI stops before building if any other variable below is missing:
 
 | Variable                           | Value                                                                               |
 | ---------------------------------- | ----------------------------------------------------------------------------------- |
@@ -116,13 +127,14 @@ Once CI passes, every push to `dev` deploys staging, https://md-staging.corp.edg
 
 One-time setup, by an owner of the project:
 
-1. Add Firebase to the project, start Hosting, add the staging site (`FIREBASE_HOSTING_SITE`), and connect the custom domain `md-staging.corp.edgeweave.tech` to that site, and `md.corp.edgeweave.tech` to the production site (`PRODUCTION_FIREBASE_HOSTING_SITE`, the project's default one or another), adding the DNS records Firebase gives to the `corp.edgeweave.tech` zone.
-2. Create the deploy account, which can only manage Firebase Hosting, and let only the CI workflow of this repository, on `dev` and `main`, use it:
+1. Add Firebase to the project, start Hosting, add the staging site (`FIREBASE_HOSTING_SITE`), and connect your staging domain to that site and your production domain to the production site (`PRODUCTION_FIREBASE_HOSTING_SITE`, the project's default one or another), adding the DNS records Firebase gives. Make the staging domain a sibling of production's, not a subdomain of it, as the spec's Domains explains.
+2. Create the deploy account, which can only manage Firebase Hosting, and let only the CI workflow of your repository, `<owner>/<repo>`, on `dev` and `main`, use it:
 
 ```sh
 PROJECT_ID=<project-id>
+REPO=<owner>/<repo>
 PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
-REPO_ID=$(gh api repos/edgeweave-loom/drivemd --jq .id)
+REPO_ID=$(gh api "repos/$REPO" --jq .id)
 SA="github-deploy@$PROJECT_ID.iam.gserviceaccount.com"
 
 gcloud services enable iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com --project "$PROJECT_ID"
@@ -135,15 +147,16 @@ gcloud iam workload-identity-pools create github --project "$PROJECT_ID" --locat
 gcloud iam workload-identity-pools providers create-oidc drivemd --project "$PROJECT_ID" --location global \
   --workload-identity-pool github --issuer-uri https://token.actions.githubusercontent.com \
   --attribute-mapping "google.subject=assertion.sub,attribute.repository_id=assertion.repository_id" \
-  --attribute-condition "assertion.repository_id == '$REPO_ID' && assertion.event_name in ['push', 'workflow_dispatch'] && assertion.ref in ['refs/heads/dev', 'refs/heads/main'] && assertion.workflow_ref == 'edgeweave-loom/drivemd/.github/workflows/ci.yml@' + assertion.ref"
+  --attribute-condition "assertion.repository_id == '$REPO_ID' && assertion.event_name in ['push', 'workflow_dispatch'] && assertion.ref in ['refs/heads/dev', 'refs/heads/main'] && assertion.workflow_ref == '$REPO/.github/workflows/ci.yml@' + assertion.ref"
 gcloud iam service-accounts add-iam-policy-binding "$SA" --project "$PROJECT_ID" --role roles/iam.workloadIdentityUser \
   --member "principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository_id/$REPO_ID"
 
-gh variable set FIREBASE_PROJECT_ID --body "$PROJECT_ID"
-gh variable set FIREBASE_HOSTING_SITE --body "<staging-site-id>"
-gh variable set PRODUCTION_FIREBASE_HOSTING_SITE --body "<production-site-id>"
-gh variable set GCP_SERVICE_ACCOUNT --body "$SA"
-gh variable set GCP_WORKLOAD_IDENTITY_PROVIDER --body "projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/drivemd"
+gh variable set VITE_GOOGLE_CLIENT_ID --repo "$REPO" --body "<client-id>"
+gh variable set FIREBASE_PROJECT_ID --repo "$REPO" --body "$PROJECT_ID"
+gh variable set FIREBASE_HOSTING_SITE --repo "$REPO" --body "<staging-site-id>"
+gh variable set PRODUCTION_FIREBASE_HOSTING_SITE --repo "$REPO" --body "<production-site-id>"
+gh variable set GCP_SERVICE_ACCOUNT --repo "$REPO" --body "$SA"
+gh variable set GCP_WORKLOAD_IDENTITY_PROVIDER --repo "$REPO" --body "projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/drivemd"
 ```
 
 A run deploys only its branch's latest commit: re-running an older one fails rather than putting its older build back, and Hosting's release history, in the Firebase console, rolls a site back.

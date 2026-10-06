@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Public-readiness
 
-The repository is private but may become public by switching its visibility, which exposes its whole history, pull request branches included.
+The repository is public: anyone can read its whole history, pull request branches included, and its issues and pull requests.
 
 - Never commit secrets, tokens, credentials or private keys, even briefly: deleting them later does not remove them from history. The `Secrets` workflow runs gitleaks on every push.
 - Configuration comes from environment variables (`VITE_*` at build time), with placeholders in `.env.example`; never commit a `.env` file.
