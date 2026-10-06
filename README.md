@@ -182,4 +182,4 @@ Copyright 2026 Edgeweave.
 
 DriveMD is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. DriveMD is distributed in the hope that it will be useful, but without any warranty; without even the implied warranty of merchantability or fitness for a particular purpose. See [`LICENSE`](LICENSE) for the full terms.
 
-The app's icon draws the Markdown mark by Dustin Curtis, which he dedicated to the public domain. The keyboard toolbar's icons are Google's [Material Symbols](https://github.com/google/material-design-icons), under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
+The app's icon draws the Markdown mark by Dustin Curtis, which he dedicated to the public domain. The keyboard toolbar's icons are Google's [Material Symbols](https://github.com/google/material-design-icons), under the [Apache License 2.0](LICENSES/Apache-2.0.txt), whose text `LICENSES/Apache-2.0.txt` holds.
