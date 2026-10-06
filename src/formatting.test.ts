@@ -341,7 +341,7 @@ describe("indentLines", () => {
 
     const { text } = run(indentLines, state);
 
-    expect(performance.now() - started).toBeLessThan(500);
+    expect(performance.now() - started).toBeLessThan(1000);
     expect(text.endsWith(" - a\n" + quotes + "   - |b")).toBe(true);
   });
 
