@@ -274,6 +274,38 @@ iPhone is the priority and Android must work too. On both, the app runs in the p
 - **Keyboard.** Test the keyboard toolbar with Gboard and the Samsung keyboard; `visualViewport` works in Chrome on Android.
 - **Browsers.** Test Chrome first; also Samsung Internet if people in the organization use it.
 
+## Interface redesign (milestone 9)
+
+Milestone 9 gives DriveMD the look and the habits of Google's own Workspace apps, Docs and Slides above all, rather than GitHub's: Material Design 3, Google Sans Flex, Material Symbols and Google Drive's neutral greys, with the teal of DriveMD's icon as its one accent. It never uses Google's logos or product icons, nor a name that could pass for a Google product, as the Google Workspace Marketplace branding guidelines require. [`docs/DESIGN.md`](DESIGN.md) holds the visual rules, the tokens and the mockups; this section holds what the interface does. Until each step of the milestone lands, the requirements above describe the app as it is, and each step rewrites the requirements it changes, in its own pull request.
+
+**Three contexts.** The interface follows the screen and the way the tab was opened.
+
+- Phones and wide screens are told apart as the layouts are (see Mobile requirements), wide screens from 768 to 1023 px being tablets. Touch is told by the pointer (`pointer: coarse`), never by the browser's name, and the app added to a home screen by `display-mode: standalone`, where iOS shows no Back button.
+- A tab opened from Drive is known only by the `/open?state=…` address that Drive opens, which the app replaces with the note's own before it starts (see Handling the redirect). The app therefore marks the tab then, in `sessionStorage`, which a reload keeps and other tabs do not share; an address of the app typed in the tab ends the mode.
+
+**A tab opened from Drive** holds one note, as a Docs tab holds one document.
+
+- Nothing in it leads elsewhere in the app: no search, breadcrumbs, folder pane, navigation or Back, and DriveMD's mark is not a link. **Move**, whose picker leaves the note open, and **Move to trash** stay; once the note is in the trash, the page says so and offers nothing more. The user returns to Drive in Drive's own tab.
+- The note opens in Editing on a wide screen, the source beside the preview, and in reading on a phone, as Docs opens a document on a computer and in its phone app.
+- A link to another note opens it in a new tab, in the same mode, as Docs opens links, and a link to a heading of the note scrolls to it. The new tab should not ask the user to sign in again: how the opening tab hands it the token waits for a written security review (see Open questions), and until then the new tab asks for **Continue**.
+- Before sign-in, the tab's screen says that Google Drive asked DriveMD to open a note, whose name the app cannot know yet.
+
+**Reading and editing**, in every context:
+
+- On a wide screen, a mode menu, as Docs's, takes the place of **Edit** and **Done**: **Editing** shows the source beside the preview, **Viewing** the note alone. Choosing **Viewing** saves first: nothing is written when nothing changed, and when someone else changed the file, or the save fails, the note stays in Editing with the banner that says why. On a phone, a floating **Edit** button starts editing, and a check at the start of the app bar saves and returns to reading, under the same rules.
+- A checkbox ticked while viewing saves at once, as GitHub's task lists do, so that a note being read never holds unsaved changes.
+- Saving stays explicit, without autosave. **Save** shows wherever the note can be edited, always in the same place and at the same width: "Saved" when nothing is left to save, "Save" while changes are unsaved, "Saving…" while it writes. While changes are unsaved, the browser tab's title starts with "• ".
+- The note's name in the app bar renames the file when clicked, as in Docs, its extension kept out of the field; **Move** is an icon beside it, and **Move to trash** is in a More actions menu. Inside a vault, renaming warns as it does today.
+- After a conflict, the choices go by risk: saving the user's version as a copy first, then overwriting Drive's version, then keeping Drive's, which asks again.
+- On a wide screen, a note is read on a sheet, as Docs shows a page.
+
+**File navigator:**
+
+- On a wide screen, a navigation drawer, as Google Drive's, lists Home, My Drive, Shortcuts, Shared drives, Shared with me and the vaults beside Home, folders and search; from 768 to 1023 px, a navigation rail does. Their lists are tables: the name, then when and by whom the item was last modified; Recent and search results also give the folder each note sits in, which costs one request per note, filled in as Drive answers. Home then shows the notes with unsaved changes and Recent, the roots and vaults being in the drawer.
+- On a phone, Home keeps its four lists; search is a button that opens a full-screen search; a folder shows Back, its name, its breadcrumbs and a floating **New note** button.
+- A note opened from the navigator shows its folder's list beside it on a wide screen, in a drawer on a tablet, headed by the folder, which leads back to it, and opens in reading, as today. Breadcrumbs show on folder pages only.
+- The account is a round button with its initial, since Google gives DriveMD no photo, which opens a menu: the account's email, **About DriveMD**, so that the offer of the source that the AGPL asks for stays one tap away once signed in, and **Sign out**.
+
 ## Risks and gotchas
 
 The biggest risk is damaging files other tools depend on, so the app must never rewrite a file it did not change.
@@ -300,7 +332,7 @@ The biggest risk is damaging files other tools depend on, so the app must never 
 
 ## Build plan for Claude Code
 
-Build in eight milestones, each ending with something that runs; give Claude Code this doc plus one milestone at a time.
+Build in nine milestones, each ending with something that runs; give Claude Code this doc plus one milestone at a time.
 
 1. **Scaffold, sign-in and iPhone test.** Vite + React + TypeScript project; client ID in `VITE_GOOGLE_CLIENT_ID`; GIS token helper in one module, requesting tokens only from user gestures; sign-in, **Continue** and sign-out screens; deployment to `md-staging.corp.edgeweave.tech` on Firebase Hosting.
    - Done when: an org account signs in and the app shows the user's email, on desktop and on a real iPhone (Safari tab and Home Screen), and the token backend decision is recorded in this spec.
@@ -320,9 +352,24 @@ Build in eight milestones, each ending with something that runs; give Claude Cod
 7. **Drive integration and Marketplace.** Manual console steps from the Open with section; deploy to `md.corp.edgeweave.tech` once the domain is verified.
    - Done when: right-click > Open with in Drive on the web opens the file in the app.
    - Carried over from milestone 6, and settled: Drive's templates always send `folderResourceKey`, so empty when the folder has none, and `exportIds` beside `ids`, as the app expects; Google shows its account chooser for a token request with `login_hint` and `prompt: select_account`. Drive's **New** does not call the app (see requirement 9).
-8. **Mobile polish.** Manifest and icons, safe areas, 16 px editor font, keyboard toolbar, Add to Home Screen hint, Android share target, smart punctuation check.
+8. **Mobile polish.** Manifest and icons, 16 px editor font, keyboard toolbar, Android share target, smart punctuation check. Safe areas and the Add to Home Screen hint move to milestone 9, whose layout they need.
    - Done when: tested on a real iPhone (Safari and Home Screen) first, then on an Android phone (Chrome tab and installed app).
    - Carried over from milestone 3, and settled: the move picker opens at the folder the file really sits in, rather than along the path the user took, which may end where a shortcut to the file sits (see requirement 7).
+9. **Interface redesign.** The look of Google's Workspace apps and the three contexts of Interface redesign, after `docs/DESIGN.md`, in steps that each land alone, in this order:
+   1. Two defects found while reviewing the interface: a broken shortcut's name breaks mid-word on a phone, and the conflict's folded unchanged lines show almost white in the dark theme.
+   2. Google Sans Flex and Google Sans Code served by the app, as woff2 subsets, with their license in `LICENSES/`.
+   3. The tokens of `docs/design/tokens.css` in `src/index.css`, in place of GitHub's colors, the editor and highlighted code included.
+   4. Material Symbols as inline SVG wherever the app shows an icon, and the buttons' emphases.
+   5. The file navigator's app bar: the search bar, the account button and its menu, and the full-screen search on a phone.
+   6. The navigation drawer and rail, the file tables and their Location column.
+   7. The note's app bar: renaming by the name, **Move**, More actions, **Save**'s three states and the tab title's mark.
+   8. The mode menu and its saving rules, the checkbox that saves while viewing, and on a phone the floating **Edit** button and the Done check.
+   9. The note's sheet and type.
+   10. The tab opened from Drive: the marked tab, no way out, Editing on a wide screen, and its sign-in screen.
+   11. The conflict's banner and the order of its choices.
+   12. The security review of a token handed to a new tab, then links to other notes opening in new tabs from a tab opened from Drive.
+   13. Carried over from milestone 8: safe areas, the Add to Home Screen hint, and the keyboard toolbar no longer covering the end of the note.
+   - Done when: the app shows each screen of `docs/design/mockups/` on a computer, an iPad and an iPhone, in both themes; a note opened from Drive offers no way into the rest of the app; switching to Viewing saves; and the end-to-end tests and live checks pass.
 
 ## v2: Obsidian-style live preview
 
@@ -367,6 +414,7 @@ Every stage is tested on a real iPhone first, then an Android phone, with our me
 - [x] Token backend or not: no backend, since sign-in passed the milestone 1 test on a real iPhone (see Tokens).
 - [x] Which icon does DriveMD get? The Markdown mark, which its author dedicated to the public domain, in white on a teal plate: `public/icon.svg`, also the browser tab's icon. The Home Screen and Android's launcher get the mark on a plate that fills the square, `public/icon-maskable.svg`, since they cut it to their own shape.
 - [x] Do the Drive iOS and Android apps show web apps under Open with? No: the iPhone app opens no .md file and lists no web app, as Google's Drive help says of both apps, while Drive in a phone's browser opens DriveMD (see Phone limit).
+- [ ] How does a tab that a tab opened from Drive opens get its token, so that the user does not sign in again? The token lives in `sessionStorage`, which a new tab does not share, so a new tab now asks for **Continue**. A written security review of the handoff comes first (milestone 9, step 12).
 
 ## Sources
 
@@ -385,3 +433,5 @@ Every stage is tested on a real iPhone first, then an Android phone, with our me
 - [Obsidian: Internal links](https://obsidian.md/help/links)
 - [Obsidian: Embed files](https://obsidian.md/help/embeds)
 - [Obsidian: Properties](https://obsidian.md/help/properties)
+- [Material Design 3](https://m3.material.io)
+- [Google Workspace Marketplace branding guidelines](https://developers.google.com/workspace/marketplace/terms/branding)
