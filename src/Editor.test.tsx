@@ -173,6 +173,19 @@ describe("Editor", () => {
     });
   });
 
+  it("keeps a period put in place of a space while text is selected", () => {
+    const { view } = open("Tea  ");
+    view.dispatch({ selection: { anchor: 4, head: 5 } });
+    const insert = vi.fn();
+
+    // As an input method might, away from the selection.
+    const handled = view.state
+      .facet(EditorView.inputHandler)
+      .some((handler) => handler(view, 3, 4, ".", insert));
+
+    expect(handled).toBe(false);
+  });
+
   it("continues a list, and a task list, on Enter", () => {
     const { view, onChange } = open("- [ ] Boil");
     view.dispatch({ selection: { anchor: view.state.doc.length } });

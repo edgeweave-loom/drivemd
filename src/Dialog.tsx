@@ -172,6 +172,7 @@ export function NameDialog({
           }}
           autoComplete="off"
           autoCapitalize="none"
+          autoCorrect="off"
           spellCheck={false}
         />
       </label>
