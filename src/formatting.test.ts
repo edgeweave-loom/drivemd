@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { history, undo } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { ensureSyntaxTree } from "@codemirror/language";
 import {
   EditorSelection,
   EditorState,
@@ -247,6 +248,8 @@ describe("indentLines", () => {
     ["> [!note]\n> 1. a\n> 2. |b", "> [!note]\n> 1. a\n>    1. |b"],
     // Joining the numbered list the item above holds, it keeps its number.
     ["1. a\n   1. x\n2. |b", "1. a\n   1. x\n   2. |b"],
+    // As does a number that Markdown already reads as 1.
+    ["1. a\n01. |b", "1. a\n   01. |b"],
   ])("numbers %j as %j", (before, after) => {
     expect(run(indentLines, before).text).toBe(after);
   });
@@ -280,15 +283,42 @@ describe("indentLines", () => {
     ["- a\n\t|more", "- a\n\t\t|more"],
     // Tab stops count from the line's start, quote markers included.
     ["> 1.  a\n> \t- |b", "> 1.  a\n> \t\t- |b"],
-    [
-      "- x\n\t- p\n      - a\n      - |b",
-      "- x\n\t- p\n      - a\n      \t- |b",
-    ],
+    ["- x\n\t- p\n      - a\n      - |b", "- x\n\t- p\n      - a\n\t\t- |b"],
     // As many as reach the text of a wide item above.
     ["1. p\n\t100. a\n\t- |b", "1. p\n\t100. a\n\t\t\t- |b"],
     ["1. p\n\t100. a\n\t101. |b", "1. p\n\t100. a\n\t\t\t1. |b"],
+    // Never after spaces: the indent is tabs alone.
+    ["- a\n\t- x\n  - |b", "- a\n\t- x\n\t\t- |b"],
   ])("indents with tabs a list that has some: %j", (before, after) => {
     expect(run(indentLines, before).text).toBe(after);
+  });
+
+  it.each([
+    // Lines the parser reads apart, which a tap must not break on.
+    [">  -", "* b", ">>  1.", ">   \t> - q"],
+    ["- a", ">  - b", "-", "  1. c"],
+  ])("never fails, wherever the cursor is: %j", (...lines) => {
+    const text = lines.join("\n");
+    for (let at = 0; at <= text.length; at++) {
+      const state = open(`|${text}`).update({
+        selection: { anchor: at },
+      }).state;
+      expect(() => run(indentLines, state)).not.toThrow();
+      expect(() => run(outdentLines, state)).not.toThrow();
+    }
+  });
+
+  it("indents an item deep in quotes at once", () => {
+    // Each line's quote marks sit between the list's items.
+    const quotes = ">".repeat(16_000);
+    const state = open(`${quotes} - a\n${quotes} - |b`);
+    ensureSyntaxTree(state, state.doc.length, 60_000);
+    const started = performance.now();
+
+    const { text } = run(indentLines, state);
+
+    expect(performance.now() - started).toBeLessThan(500);
+    expect(text.endsWith(" - a\n" + quotes + "   - |b")).toBe(true);
   });
 
   it("indents with spaces a list whose text alone has a tab", () => {
@@ -301,6 +331,16 @@ describe("indentLines", () => {
     expect(run(indentLines, "1. a\n«2. b\n   - c»").text).toBe(
       "1. a\n   «1. b\n      - c»",
     );
+  });
+
+  it.each([
+    // Each line keeps its own kind of indent, tabs first.
+    ["- a\n\t«- b\n  text»", "- a\n\t\t«- b\n      text»"],
+    ["1. a\n«2. b\n\tmore»", "1. a\n   «1. b\n\t   more»"],
+    // A line without one takes the list's.
+    ["- a\n\t- x\n«- b\n- c»", "- a\n\t- x\n\t«- b\n\t- c»"],
+  ])("moves the other lines as many columns: %j", (before, after) => {
+    expect(run(indentLines, before).text).toBe(after);
   });
 });
 
@@ -327,12 +367,18 @@ describe("outdentLines", () => {
     ["- a\n\t- b\n\t\t- |c", "- a\n\t- b\n\t- |c"],
     ["- a\n  - b\n\t- |c", "- a\n  - b\n  - |c"],
     ["> 1. a\n>    2. |b", "> 1. a\n> 2. |b"],
-    // Text in an item goes back to the item's indent.
+    // Any other line, one level: an indent unit, or a tab.
     ["- a\n  |more", "- a\n|more"],
-    ["1. a\n   |more", "1. a\n|more"],
-    // One level when no item holds it.
+    ["1. a\n   |more", "1. a\n |more"],
+    ["10. a\n\n    |para", "10. a\n\n  |para"],
+    [
+      "- a\n  ```\n      |code\n  ```\nafter",
+      "- a\n  ```\n    |code\n  ```\nafter",
+    ],
     ["text\n    |more", "text\n  |more"],
     ["  - a\n|lazy", "  - a\n|lazy"],
+    // From the first selected line that has an indent.
+    ["«- a\n  - b\n  - c»", "«- a\n- b\n- c»"],
   ])("outdents %j as %j", (before, after) => {
     expect(run(outdentLines, before).text).toBe(after);
   });
@@ -346,6 +392,9 @@ describe("outdentLines", () => {
     // A tab cut part way leaves the spaces before the column reached.
     expect(run(outdentLines, "- a\n  - b\n    «- c\n\td»").text).toBe(
       "- a\n  - b\n  «- c\n  d»",
+    );
+    expect(run(outdentLines, "- a\n\t- b\n\t\t«- c\n\t\t\td»").text).toBe(
+      "- a\n\t- b\n\t«- c\n\t\td»",
     );
   });
 
@@ -363,8 +412,10 @@ describe("outdentLines", () => {
     const { text } = run(outdentLines, state);
 
     expect(performance.now() - started).toBeLessThan(1000);
-    // Compared as a whole: a failure would diff 200,000 characters.
-    expect(text === `«${spaces}a\n${spaces.slice(4)}b\n${spaces}c»`).toBe(true);
+    // Compared as a whole: a failure would diff 200,000 characters. The line
+    // with a tab is rebuilt in tabs.
+    const tabs = "\t".repeat(25_000);
+    expect(text === `«${spaces}a\n${spaces.slice(4)}b\n${tabs}c»`).toBe(true);
   });
 });
 

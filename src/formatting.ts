@@ -1,6 +1,7 @@
 import { isolateHistory } from "@codemirror/commands";
 import { ensureSyntaxTree, indentUnit, syntaxTree } from "@codemirror/language";
 import {
+  countColumn,
   EditorSelection,
   type ChangeSpec,
   type EditorState,
@@ -37,6 +38,8 @@ function prefix(line: Line) {
     /** Where the line's own Markdown starts. */
     at: line.from + lead,
     blank: rest === "",
+    /** The line's quote markers, as written. */
+    quotes: line.text.slice(0, line.text.length - quoted.length),
     /** The line's indent, after any quote markers. */
     indent: quoted.slice(0, quoted.length - rest.length),
     heading: heading?.[1]?.length ?? 0,
@@ -279,19 +282,34 @@ export const insertLink: StateCommand = ({ state, dispatch }) => {
   return true;
 };
 
-/** The column `text` ends at from `start`, a tab stopping every four. */
-function columns(text: string, start = 0): number {
-  let column = start;
-  for (const char of text) {
-    column = char === "\t" ? column + 4 - (column % 4) : column + 1;
-  }
-  return column;
+// Tab stops every four columns, as CommonMark sets them.
+const TAB = 4;
+
+/** The column where the line's own Markdown starts, `>` included. */
+function column(line: Prefix): number {
+  return countColumn(line.quotes + line.indent, TAB);
 }
 
-/** The column of `pos` in its line, from the line's start, `>` included. */
-function columnAt(state: EditorState, pos: number): number {
-  const line = state.doc.lineAt(pos);
-  return columns(line.text.slice(0, pos - line.from));
+/**
+ * An indent after `quotes` that reaches column `target`, none when that
+ * lies within them: spaces, or, with `tabs`, as many tabs as fit, then
+ * spaces; `over`, tabs alone, up to the first tab stop at or past it.
+ */
+function indentTo(
+  quotes: string,
+  target: number,
+  tabs: boolean,
+  over = false,
+): string {
+  const start = countColumn(quotes, TAB);
+  if (target <= start) return "";
+  if (!tabs) return " ".repeat(target - start);
+  const stop = countColumn(`${quotes}\t`, TAB);
+  const count = stop > target ? 0 : 1 + Math.floor((target - stop) / TAB);
+  const fit = "\t".repeat(count);
+  const reached = countColumn(quotes + fit, TAB);
+  if (over) return reached < target ? `${fit}\t` : fit;
+  return fit + " ".repeat(target - reached);
 }
 
 const LISTS = new Set(["BulletList", "OrderedList"]);
@@ -342,33 +360,42 @@ function itemBefore(item: SyntaxNode): SyntaxNode | null {
 function textColumn(state: EditorState, item: SyntaxNode): number {
   const line = state.doc.lineAt(item.from);
   const end = (item.firstChild?.to ?? item.from) - line.from;
-  const marker = columns(line.text.slice(0, end));
-  const after = line.text.slice(end);
-  const gap = INDENT.exec(after)?.[0] ?? "";
-  const text = columns(gap, marker);
-  return gap === after || text - marker > 4 ? marker + 1 : text;
+  const gap = INDENT.exec(line.text.slice(end))?.[0].length ?? 0;
+  const marker = countColumn(line.text, TAB, end);
+  const text = countColumn(line.text, TAB, end + gap);
+  return end + gap === line.length || text - marker > 4 ? marker + 1 : text;
+}
+
+/** The indent of the line that the item's marker opens. */
+function indentOf(state: EditorState, item: SyntaxNode): string {
+  return prefix(state.doc.lineAt(item.from)).indent;
+}
+
+/** The first item of the list nested in `item`, if any. */
+function nestedItem(item: SyntaxNode | null): SyntaxNode | null {
+  for (let child = item?.firstChild; child; child = child.nextSibling) {
+    if (LISTS.has(child.name)) return child.getChild("ListItem");
+  }
+  return null;
 }
 
 /**
- * Whether the lists of these items indent with tabs, as Obsidian's do by
- * default: an item's own line, the item that holds the list, or the first
- * item of a list nested in one.
+ * Whether the item's list indents with tabs, as Obsidian's do by default:
+ * the item before it, the item that holds the list, or the first item
+ * nested in the item or the one before it.
  */
-function tabbed(state: EditorState, items: SyntaxNode[]): boolean {
-  const starts: number[] = [];
-  for (const list of items.map((item) => item.parent)) {
-    if (list?.parent?.name === "ListItem") starts.push(list.parent.from);
-    for (let item = list?.firstChild; item; item = item.nextSibling) {
-      starts.push(item.from);
-      for (let inner = item.firstChild; inner; inner = inner.nextSibling) {
-        if (LISTS.has(inner.name) && inner.firstChild)
-          starts.push(inner.firstChild.from);
-      }
-    }
-  }
-  return starts.some((at) =>
-    prefix(state.doc.lineAt(at)).indent.includes("\t"),
-  );
+function tabbed(
+  state: EditorState,
+  item: SyntaxNode,
+  above: SyntaxNode | null,
+): boolean {
+  const near = [
+    above,
+    enclosing(item.parent),
+    nestedItem(item),
+    nestedItem(above),
+  ];
+  return near.some((node) => node && indentOf(state, node).includes("\t"));
 }
 
 /**
@@ -385,7 +412,8 @@ function restarted(
   const mark = item.firstChild;
   const number =
     mark && /^(\d+)([.)])$/.exec(state.sliceDoc(mark.from, mark.to));
-  if (!number?.[1] || number[1] === "1") return 0;
+  // `01` counts as 1 too.
+  if (!number?.[1] || Number(number[1]) === 1) return 0;
   const nested = above.lastChild;
   const last = nested?.name === "OrderedList" ? nested.lastChild : null;
   const end = last?.firstChild?.to;
@@ -394,42 +422,41 @@ function restarted(
 }
 
 /**
- * How the line nests one level: under the list item before it, at that
- * item's text, as a nested item needs, or else by an indent unit; with tabs
- * where its list indents with tabs. A numbered item that starts a new list
- * there takes the number 1.
+ * The indent that nests the line one level: up to the text of the list item
+ * before it, as a nested item needs, or else an indent unit further; with
+ * tabs where its list indents with tabs. A numbered item that starts a new
+ * list there takes the number 1: `number` is the length of the one it had.
  */
 function nesting(state: EditorState, line: Prefix) {
   const found = itemAt(state, line);
   const item = opens(found, line) ? found : null;
   const above = item && itemBefore(item);
-  const items = [item, above].filter((node) => node !== null);
-  const tabs = line.indent.includes("\t") || tabbed(state, items);
-  if (!item || !above) {
-    return { step: tabs ? "\t" : state.facet(indentUnit), number: 0 };
+  const tabs =
+    line.indent.includes("\t") || (item !== null && tabbed(state, item, above));
+  const from = column(line);
+  const to = above ? textColumn(state, above) : from;
+  // Already at that text, as the parser may read a line, it goes a unit on.
+  if (!item || !above || to <= from) {
+    const indent = tabs
+      ? indentTo(line.quotes, from + 1, true, true)
+      : line.indent + state.facet(indentUnit);
+    return { indent, tabs, number: 0 };
   }
-  const from = columnAt(state, line.at);
-  const to = textColumn(state, above);
-  let step = " ".repeat(to - from);
-  if (tabs) {
-    step = "";
-    for (let at = from; at < to; at += 4 - (at % 4)) step += "\t";
-  }
-  return { step, number: restarted(state, item, above) };
+  const indent = tabs
+    ? indentTo(line.quotes, to, true, true)
+    : line.indent + " ".repeat(to - from);
+  return { indent, tabs, number: restarted(state, item, above) };
 }
 
 /**
- * The indent the line goes back to: the one of the list item that holds
- * it, as written, or else an indent unit's worth of spaces, or a tab, less.
+ * The indent the line goes back to: a list item takes the one, as written,
+ * of the item that holds it; any other line, or an item that none holds,
+ * gives up an indent unit's worth of spaces, or a tab.
  */
 function outdented(state: EditorState, line: Prefix): string {
   const found = itemAt(state, line);
-  const holder = opens(found, line) ? enclosing(found.parent) : found;
-  const start = columnAt(state, line.at - line.indent.length);
-  const indent = holder && prefix(state.doc.lineAt(holder.from)).indent;
-  // Text running on at a smaller indent than its item's is not nested.
-  if (indent !== null && columns(indent, start) < columns(line.indent, start))
-    return indent;
+  const holder = opens(found, line) ? enclosing(found.parent) : null;
+  if (holder) return indentOf(state, holder);
   // Counted from the end: a regex would try each start in turn.
   let spaces = 0;
   while (line.indent[line.indent.length - 1 - spaces] === " ") spaces += 1;
@@ -439,41 +466,33 @@ function outdented(state: EditorState, line: Prefix): string {
     : line.indent.replace(/\t$/, "");
 }
 
-/**
- * The line's indent `width` columns back, never past its start, in one
- * pass: a tab cut part way leaves the spaces before the column reached.
- */
-function shifted(state: EditorState, line: Prefix, width: number): string {
-  const start = columnAt(state, line.at - line.indent.length);
-  const target = columns(line.indent, start) - width;
-  let column = start;
-  let kept = 0;
-  for (const char of line.indent) {
-    const next = char === "\t" ? column + 4 - (column % 4) : column + 1;
-    if (next > target) break;
-    column = next;
-    kept += 1;
-  }
-  return line.indent.slice(0, kept) + " ".repeat(Math.max(0, target - column));
-}
-
 /** Gives the line `indent` in place of its own. */
 function reindent(line: Prefix, indent: string): ChangeSpec {
   return { from: line.at - line.indent.length, to: line.at, insert: indent };
 }
 
+/** Whether the line's own indent, if any, is made of tabs. */
+function ownTabs(line: Prefix, tabs: boolean): boolean {
+  return line.indent === "" ? tabs : line.indent.includes("\t");
+}
+
 /**
  * Indents the lines one level, after any quote markers: the first line
- * nests under the list item before it, and the others move as far, keeping
- * their nesting.
+ * nests under the list item before it, and the others move as many
+ * columns, each in its own kind of indent, keeping their nesting.
  */
 export const indentLines: StateCommand = ({ state, dispatch }) =>
   formatLines(state, dispatch, (lines) => {
     const [first] = lines;
     if (!first) return [];
-    const { step, number } = nesting(state, first);
+    const { indent, tabs, number } = nesting(state, first);
+    const width = countColumn(first.quotes + indent, TAB) - column(first);
+    const moved = (line: Prefix) =>
+      line === first
+        ? indent
+        : indentTo(line.quotes, column(line) + width, ownTabs(line, tabs));
     return [
-      ...lines.map((line) => ({ from: line.at, insert: step })),
+      ...lines.map((line) => reindent(line, moved(line))),
       ...(number > 0
         ? [{ from: first.at, to: first.at + number, insert: "1" }]
         : []),
@@ -482,17 +501,19 @@ export const indentLines: StateCommand = ({ state, dispatch }) =>
 
 /**
  * Takes the lines back one level, after any quote markers: the first line
- * to the indent of the list item that holds it, and the others as many
- * columns back, as far as their indent goes.
+ * with an indent to the indent of the list item that holds it, or an indent
+ * unit back, and the others as many columns, each in its own kind of
+ * indent; lines without one stay.
  */
 export const outdentLines: StateCommand = ({ state, dispatch }) =>
   formatLines(state, dispatch, (lines) => {
-    const [first] = lines;
+    const first = lines.find((line) => line.indent !== "");
     if (!first) return [];
     const indent = outdented(state, first);
-    const start = columnAt(state, first.at - first.indent.length);
-    const width = columns(first.indent, start) - columns(indent, start);
-    return lines.map((line) =>
-      reindent(line, line === first ? indent : shifted(state, line, width)),
-    );
+    const width = column(first) - countColumn(first.quotes + indent, TAB);
+    const moved = (line: Prefix) =>
+      line === first
+        ? indent
+        : indentTo(line.quotes, column(line) - width, ownTabs(line, false));
+    return lines.map((line) => reindent(line, moved(line)));
   });
