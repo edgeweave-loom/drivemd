@@ -8,7 +8,7 @@ DriveMD is a static web app for a Google Workspace organization. It signs in wit
 
 ## Status
 
-Milestones 1 to 7 are done, and milestone 8, mobile polish, comes next. The product spec, [`docs/SPEC.md`](docs/SPEC.md), is the source of truth, and its build plan drives the work one milestone at a time.
+Milestones 1 to 7 are done, and milestone 8, mobile polish, is under way. The product spec, [`docs/SPEC.md`](docs/SPEC.md), is the source of truth, and its build plan drives the work one milestone at a time.
 
 - **Milestone 1, sign-in.** The app signs in with Google and shows the signed-in account's email, CI deploys `dev` to staging, and sign-in passed the test on a real iPhone without a token backend.
 - **Milestone 2, the Drive client.** `src/drive.ts` is the typed Drive client that the next milestones build on, tested against mocked Drive answers.
@@ -41,8 +41,8 @@ Vite, React and TypeScript; Google Identity Services and the Drive REST API v3, 
 DriveMD serves one Google Workspace organization. It asks for Google's `drive` scope, to edit files that other tools made: an app whose audience is **Internal**, the organization's own accounts, may use that restricted scope without Google's verification, while one open to other accounts must pass it, a security assessment included. Each organization therefore runs its own copy, from a Google Cloud project of its own.
 
 1. In a Google Cloud project of your organization, enable the Google Drive API, set the audience to **Internal** in Google Auth Platform, and create an OAuth client of type **Web application** whose authorized JavaScript origins are your app's addresses, and `http://localhost:5173` for development. The spec's [Google Cloud setup](docs/SPEC.md#google-auth-scopes-and-workspace-setup) gives each step, with Edgeweave's addresses.
-2. Replace Edgeweave's privacy policy, terms and support in `about.html` with yours, and point its source code link at your copy's source, in `e2e/about.e2e.ts` too: the AGPL asks whoever serves a modified version to its users to offer them its source.
-3. Build with your client's ID, `VITE_GOOGLE_CLIENT_ID=<client-id> npm run build`, and serve `dist/` over HTTPS. Firebase Hosting serves it as `firebase.json` says, and [Deployment](#deployment) has CI deploy it. Another host must send the same headers, the Content Security Policy above all, which keeps script in a note from reaching the user's token, and serve `index.html` for every path outside `/assets/`.
+2. Rewrite `about.html`, which speaks for Edgeweave, with your own description, privacy policy, terms and support, and point its source code link at your copy's source: the AGPL asks whoever serves a modified version to its users to offer them its source. `e2e/about.e2e.ts` checks the page's links.
+3. Build with your client's ID, `VITE_GOOGLE_CLIENT_ID=<client-id> npm run build`, and serve `dist/` over HTTPS. Firebase Hosting serves it as `firebase.json` says, and [Deployment](#deployment) has CI deploy it. Another host must send the same headers, the Content Security Policy above all, which keeps script in a note from reaching the user's token, and serve the files of `dist/` as they are and `index.html` for any other path.
 4. To open .md files from Drive's **Open with**, list the app as the spec's [Drive integration](docs/SPEC.md#drive-open-with-integration-via-private-marketplace) section does, with your own addresses.
 
 ## Development
@@ -89,7 +89,7 @@ The app reads its settings from `VITE_*` environment variables when it is built.
 
 ## Live Drive checks
 
-The unit tests replace Google Drive with mocked answers, so a few behaviors can only be checked against the real Drive. The live checks do it as a test account of the organization, never with a person's account: its Drive holds nothing but what the checks create, a made-up file `drivemd-live-view-only.md` that another account shares with it as a viewer, and a shared drive named `DriveMD live check` where it is a content manager, holding a made-up file `drivemd-live-from-another.md` that another member added. Nothing about the account enters the repository. Its credentials stay in `~/.config/drivemd-live/`, or in the absolute path set in `DRIVEMD_LIVE_DIR`: the desktop OAuth client as `client.json` and the account's grant as `grant.json`. The scripts read them only when they are yours and nobody else can read them, and check with Drive that the grant belongs to the account it names before they act.
+The unit tests replace Google Drive with mocked answers, so a few behaviors can only be checked against the real Drive. The live checks do it as a test account of your organization, never with a person's account: its Drive holds nothing but what the checks create, a made-up file `drivemd-live-view-only.md` that another account shares with it as a viewer, and a shared drive named `DriveMD live check` where it is a content manager, holding a made-up file `drivemd-live-from-another.md` that another member added. Nothing about the account enters the repository. Its credentials stay in `~/.config/drivemd-live/`, or in the absolute path set in `DRIVEMD_LIVE_DIR`: the desktop OAuth client as `client.json` and the account's grant as `grant.json`. The scripts read them only when they are yours and nobody else can read them, and check with Drive that the grant belongs to the account it names before they act.
 
 To set up, once:
 
@@ -132,7 +132,8 @@ One-time setup, by an owner of the project:
 
 ```sh
 PROJECT_ID=<project-id>
-REPO=<owner>/<repo>
+# GitHub's own spelling of the repository, since the condition below compares it case for case.
+REPO=$(gh repo view <owner>/<repo> --json nameWithOwner --jq .nameWithOwner)
 PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
 REPO_ID=$(gh api "repos/$REPO" --jq .id)
 SA="github-deploy@$PROJECT_ID.iam.gserviceaccount.com"
