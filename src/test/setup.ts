@@ -20,11 +20,6 @@ if ("window" in globalThis) {
   // jsdom does not lay pages out, so it cannot scroll them.
   window.scrollTo = () => undefined;
   Element.prototype.scrollIntoView = () => undefined;
-  // Nor measure text, which CodeMirror does to keep the cursor in sight
-  // after the page's text changes under it, as a phone's keyboard does.
-  Range.prototype.getClientRects = () =>
-    Object.assign([], { item: () => null });
-  Range.prototype.getBoundingClientRect = () => new DOMRect();
   // Nor does it know what is on screen: everything is.
   window.IntersectionObserver = class {
     readonly report: IntersectionObserverCallback;

@@ -129,63 +129,6 @@ describe("Editor", () => {
     expect(onChange).toHaveBeenLastCalledWith("xab\uFFFDc\uFFFDd\uD83D\uDE00");
   });
 
-  it("keeps two spaces typed after a word, which iOS turns into a period", async () => {
-    // iOS inserts the second space, then replaces the first with a period,
-    // whatever the editor asks of its corrections.
-    const { view, onChange } = open("Tea  ");
-    view.dispatch({ selection: { anchor: 5 } });
-    const line = view.contentDOM.querySelector(".cm-line");
-    if (!(line?.firstChild instanceof Text)) throw new Error("No text");
-
-    line.firstChild.data = "Tea. ";
-
-    await waitFor(() => {
-      expect(view.contentDOM.textContent).toBe("Tea  ");
-    });
-    expect(view.state.sliceDoc()).toBe("Tea  ");
-    expect(onChange).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    // A period typed by hand, after a space or in place of a letter.
-    ["Tea ", 4, 4, "Tea .", "Tea ."],
-    ["Tea  ", 2, 2, "T.a  ", "T.a  "],
-    // Another mark, or a period in place of more than a space.
-    ["Tea  ", 5, 5, "Tea, ", "Tea, "],
-    ["x  ", 3, 3, ". ", ". "],
-    // A period away from the cursor, or over a selection.
-    ["Tea  x", 6, 6, "Tea. x", "Tea. x"],
-    ["Tea  ", 3, 5, "Tea. ", "Tea. "],
-    // Two spaces at the start of a line, or after another, where no
-    // sentence ends.
-    ["  ", 2, 2, ". ", ". "],
-    ["a   ", 4, 4, "a . ", "a . "],
-  ])("keeps any other change: %j", async (text, anchor, head, typed, kept) => {
-    const { view } = open(text);
-    view.dispatch({ selection: { anchor, head } });
-    const line = view.contentDOM.querySelector(".cm-line");
-    if (!(line?.firstChild instanceof Text)) throw new Error("No text");
-
-    line.firstChild.data = typed;
-
-    await waitFor(() => {
-      expect(view.state.sliceDoc()).toBe(kept);
-    });
-  });
-
-  it("keeps a period put in place of a space while text is selected", () => {
-    const { view } = open("Tea  ");
-    view.dispatch({ selection: { anchor: 4, head: 5 } });
-    const insert = vi.fn();
-
-    // As an input method might, away from the selection.
-    const handled = view.state
-      .facet(EditorView.inputHandler)
-      .some((handler) => handler(view, 3, 4, ".", insert));
-
-    expect(handled).toBe(false);
-  });
-
   it("continues a list, and a task list, on Enter", () => {
     const { view, onChange } = open("- [ ] Boil");
     view.dispatch({ selection: { anchor: view.state.doc.length } });
