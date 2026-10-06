@@ -17,7 +17,8 @@ import {
 export const TOOLBAR_HEIGHT = 48;
 
 // Icons from Google's Material Symbols (Outlined, weight 400), under the
-// Apache License 2.0: github.com/google/material-design-icons.
+// Apache License 2.0 (LICENSES/Apache-2.0.txt):
+// github.com/google/material-design-icons.
 const KEYS: { name: string; command: Command; icon: string }[] = [
   {
     name: "Undo",

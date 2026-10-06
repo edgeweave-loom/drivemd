@@ -30,8 +30,16 @@ test("says how DriveMD treats data, its terms, where to get help and its source,
     page.locator("#source").getByRole("link", { name: "source code" }),
   ).toHaveAttribute("href", "https://github.com/edgeweave-loom/drivemd");
   await expect(
-    page.locator("#source").getByRole("link", { name: "license" }),
+    page.locator("#source").getByRole("link", { name: "license", exact: true }),
   ).toHaveAttribute("href", "https://www.gnu.org/licenses/agpl-3.0.html");
+  // The keyboard toolbar's icons come under a license of their own, which
+  // asks to be given with them.
+  await expect(
+    page.locator("#source").getByRole("link", { name: "Material Symbols" }),
+  ).toHaveAttribute("href", "https://github.com/google/material-design-icons");
+  await expect(
+    page.locator("#source").getByRole("link", { name: "Apache License 2.0" }),
+  ).toHaveAttribute("href", "https://www.apache.org/licenses/LICENSE-2.0");
   // Styled by the app's own stylesheet, which the policy allows, and
   // running no script.
   await expect(page.getByRole("main")).toHaveCSS("max-width", "768px");
