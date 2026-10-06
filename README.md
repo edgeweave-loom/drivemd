@@ -110,7 +110,7 @@ The app's access token can read and write the user's whole Drive, so the reposit
 - `.npmrc` saves exact versions in `package.json`, turns off dependency install scripts and refuses Node.js versions outside `engines`. After adding a dependency, check that it works without its install script.
 - CI installs from the lockfile with `npm ci`, verifies registry signatures, blocks malware and critical advisories in any dependency, and blocks any advisory in the dependencies that ship.
 - Dependabot proposes npm and GitHub Actions updates weekly, for releases at least 7 days old.
-- Workflows pin every action to a commit SHA, start from no permissions and grant each job only what it needs; zizmor audits them in CI, and gitleaks scans the full history on every push. The zizmor and gitleaks versions are pinned in the workflows and bumped by hand.
+- Workflows pin every action to a commit SHA, start from no permissions and grant each job only what it needs; zizmor audits them in CI, and gitleaks scans the full history on every push and every pull request from a fork. The zizmor and gitleaks versions are pinned in the workflows and bumped by hand.
 
 ## Contributing
 

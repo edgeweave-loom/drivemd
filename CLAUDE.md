@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The repository is public: anyone can read its whole history, pull request branches included, and its issues and pull requests.
 
-- Never commit secrets, tokens, credentials or private keys, even briefly: deleting them later does not remove them from history. The `Secrets` workflow runs gitleaks on every push.
+- Never commit secrets, tokens, credentials or private keys, even briefly: deleting them later does not remove them from history. The `Secrets` workflow runs gitleaks on every push and every pull request from a fork.
 - Configuration comes from environment variables (`VITE_*` at build time), with placeholders in `.env.example`; never commit a `.env` file.
 - Test fixtures and examples use made-up data: no real Drive file IDs, email addresses or note contents.
 
