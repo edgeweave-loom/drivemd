@@ -153,6 +153,24 @@ function writable(lineBreak: LineBreak): Extension {
 }
 
 /**
+ * Keeps two spaces typed after a word as typed: iOS turns them into a period
+ * and a space, whatever the editor asks of its corrections, by inserting the
+ * second space, then putting a period in place of the first. CodeMirror
+ * undoes only the period that a Mac or Android inserts. Two spaces at a
+ * line's end are Markdown's line break.
+ */
+const keepSpaces = EditorView.inputHandler.of((view, from, to, text) => {
+  const { doc, selection } = view.state;
+  return (
+    text === "." &&
+    to === from + 1 &&
+    selection.main.head === to + 1 &&
+    // After a word, not at a line's start nor after another space.
+    /^\S {2}$/.test(doc.sliceString(Math.max(0, from - 1), to + 1))
+  );
+});
+
+/**
  * Cmd or Ctrl+click on a link follows it, as in Obsidian; any other click
  * places the cursor. CodeMirror would add a cursor there instead.
  */
@@ -180,6 +198,7 @@ function extensions(
     // Lines join with the file's own break, whatever the browser sends.
     EditorState.lineSeparator.of(lineBreak),
     writable(lineBreak),
+    keepSpaces,
     history(),
     // GitHub's Markdown, its fences highlighted in their language and its
     // front matter in YAML; Enter continues lists and task lists.

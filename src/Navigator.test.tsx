@@ -208,6 +208,17 @@ describe("Navigator", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("searches what was typed, without the phone's capitals or corrections", () => {
+    open("/");
+
+    const search = screen.getByRole("searchbox", {
+      name: "Search Markdown files by name",
+    });
+    expect(search).toHaveAttribute("autocapitalize", "none");
+    expect(search).toHaveAttribute("autocorrect", "off");
+    expect(search).toHaveAttribute("spellcheck", "false");
+  });
+
   it("says when a URL opens nothing, and leads back Home", () => {
     open("/nowhere");
 
