@@ -253,7 +253,10 @@ iPhone is the priority and Android must work too. On both, the app runs in the p
   - Phone layout: a drill-down folder list with breadcrumbs, and an Edit / Preview toggle. It applies under 768 px wide, and on touch screens less than 500 px tall, so an iPhone in landscape (844 px wide or more) keeps it.
   - Wide layout: tree or list on the left, then the viewer, or the editor and preview side by side. Between 768 and 1024 px wide, as on an iPad in portrait, the tree folds into a drawer so the editor and preview keep enough room.
 - **Editor.** Editor font size at least 16 px, so Safari does not zoom in on focus.
-- **Keyboard toolbar (required on phones).** Pinned above the keyboard with the `visualViewport` API: undo, redo, heading, bold, list, checkbox, link, indent, outdent (the iPhone keyboard has no Tab key) and search in the file.
+- **Keyboard toolbar (required on phones).** Pinned above the keyboard with the `visualViewport` API: undo, redo, heading, bold, list, checkbox, link, indent, outdent (the iPhone keyboard has no Tab key) and search in the file. Each formatting button is one edit, which undo takes back alone, apart from what is typed right after it, and adds or removes only its own Markdown, never a line break. Blank lines in a selection are left as they are, and lines in a quote or a callout keep their `>`.
+  - **Heading** makes the selected lines headings one level below the first line's, up to the third, then text again: `#`, `##`, `###`, none.
+  - **List** puts a `- ` bullet on the selected lines, or takes it off, task box included, when every line has one; a numbered item takes a bullet instead.
+  - **Checkbox** moves the selected lines on from the first line's state: text or a list item becomes an open task (`- [ ]`, keeping the item's marker), an open task a done one (`[x]`), and a done task a list item again.
 - **Smart punctuation.** Test iOS smart punctuation and autocorrect early: they can turn `"` into curly quotes and `--` into a dash, which breaks YAML and code. Decide from the results whether to turn them off in the editor.
 - **Opening files.** Support `/edit?id=FILE_ID` links and pasting a Drive file link, so a file can move between desktop and phone.
 - **Touch.** No hover-only controls; tap targets at least 44 px.
