@@ -22,6 +22,10 @@ Milestones 1 to 7 are done, and milestone 8, mobile polish, comes next. The prod
 
 The sign-in screen links to `/about.html`, which says what DriveMD does with your data, its terms of use and where to report a problem, without signing in.
 
+## On a phone
+
+On an iPhone, Safari's **Share > Add to Home Screen** puts DriveMD on the Home Screen, with its icon; on Android, Chrome offers **Install app** (or **Add to Home screen**). DriveMD then opens on Home, in a window of its own, from whatever page of the app it was added. Once installed on Android, DriveMD is offered in the share sheet: a shared link to a Drive file or folder, or to a page of DriveMD, opens there, even with words around it. Its web app manifest is `public/manifest.webmanifest`; its icons are `public/icon.svg` and, for launchers that round or cut icons to their own shape, `public/icon-maskable.svg`, rendered as PNG files beside them.
+
 ## Stack
 
 Vite, React and TypeScript; Google Identity Services and the Drive REST API v3, with TanStack Query caching Drive's answers; CodeMirror 6 for editing and react-markdown for rendering; Firebase Hosting. The spec explains each choice.

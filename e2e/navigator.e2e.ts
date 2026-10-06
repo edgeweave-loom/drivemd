@@ -153,6 +153,14 @@ test("follows a shortcut, and greys out one whose target is gone", async ({
   await expect(page.getByText("Deleted, or not shared with you")).toBeVisible();
   await page.getByRole("link", { name: /Plan shortcut\.md/ }).click();
   await expect(page).toHaveURL(/\/edit\?id=plan$/);
+
+  // Move opens where the file sits, not where its shortcut does.
+  await page.getByRole("button", { name: "Move", exact: true }).click();
+  const move = page.getByRole("dialog", { name: "Move plan.md" });
+  await expect(move.getByRole("heading", { name: "Work" })).toBeVisible();
+  await expect(move.getByRole("button", { name: "Archive" })).toBeVisible();
+  await expect(move.getByText("plan.md is already here.")).toBeVisible();
+  await move.getByRole("button", { name: "Cancel" }).click();
 });
 
 test("shows Recent, the vaults, and the other roots", async ({ page }) => {
@@ -203,6 +211,40 @@ test("opens a Drive link pasted in the search box", async ({ page }) => {
     page.getByRole("heading", { level: 1, name: "The plan" }),
   ).toBeVisible();
   await expect(search).toHaveValue("");
+});
+
+test("opens the Drive link shared with the installed app, and forgets the share", async ({
+  page,
+}) => {
+  await signIn(page);
+  const words = new URLSearchParams({ text: "Tea at four" });
+  await page.goto(`/share?${words.toString()}`);
+  // What was shared leaves the address, even when it leads nowhere.
+  await expect(page).toHaveURL(/\/share$/);
+  await expect(
+    page.getByRole("heading", { name: "Nothing to open" }),
+  ).toBeVisible();
+  await expect(page.getByText(EMAIL)).toBeVisible();
+
+  const entries = await page.evaluate(() => history.length);
+  // As Android's share sheet sends a link, with the words around it.
+  const shared = new URLSearchParams({
+    title: "plan.md",
+    text: "Have a look: https://drive.google.com/file/d/plan/view?usp=sharing",
+  });
+  await page.goto(`/share?${shared.toString()}`);
+  await expect(page).toHaveURL(/\/edit\?id=plan$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "The plan" }),
+  ).toBeVisible();
+  await expect(crumbs(page).getByRole("link")).toHaveText([
+    "Home",
+    "My Drive",
+    "Work",
+  ]);
+  // The file took the share's place, so that Back skips the share; going
+  // Back here would leave the note while its image loads.
+  expect(await page.evaluate(() => history.length)).toBe(entries + 1);
 });
 
 test("creates, renames, moves and trashes a file", async ({ page, drive }) => {

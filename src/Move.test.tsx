@@ -67,6 +67,13 @@ function openPlan(file = plan(), vaults: FileMetadata[] = []) {
   return { ...rendered, drive };
 }
 
+/** The places above the one the picker shows, which lead back to them. */
+function namesAbove(picker: Awaited<ReturnType<typeof openPicker>>) {
+  return within(picker.getByRole("navigation", { name: "Folders above" }))
+    .queryAllByRole("button")
+    .map((button) => button.textContent);
+}
+
 async function openPicker() {
   fireEvent.click(await screen.findByRole("button", { name: "Move" }));
   return within(screen.getByRole("dialog", { name: "Move plan.md" }));
@@ -92,7 +99,7 @@ describe("Move", () => {
     openPlan();
 
     const picker = await openPicker();
-    expect(picker.getByRole("heading", { name: "Work" })).toBeVisible();
+    expect(await picker.findByRole("heading", { name: "Work" })).toBeVisible();
     expect(
       await picker.findByRole("button", { name: "Archive" }),
     ).toBeVisible();
@@ -133,7 +140,7 @@ describe("Move", () => {
     openPlan(file);
 
     const picker = await openPicker();
-    fireEvent.click(picker.getByRole("button", { name: "All drives" }));
+    fireEvent.click(await picker.findByRole("button", { name: "All drives" }));
     fireEvent.click(picker.getByRole("button", { name: "Shared drives" }));
     fireEvent.click(await picker.findByRole("button", { name: "Team" }));
     expect(
@@ -149,47 +156,106 @@ describe("Move", () => {
 
   it.each([
     [
+      "through a shortcut",
       [
         { name: "Shortcuts", href: "/shortcuts" },
-        { name: "Linked", href: "/folder/work" },
+        { name: "Linked", href: "/folder/linked" },
       ],
-      ["All drives", "Shortcuts"],
     ],
     [
+      "next to a shortcut to the file",
       [
-        { name: "Shared with me", href: "/shared-with-me" },
-        { name: "Work", href: "/folder/work" },
+        { name: "My Drive", href: "/my-drive" },
+        { name: "Elsewhere", href: "/folder/elsewhere" },
       ],
-      ["All drives", "Shared with me"],
     ],
-    [[{ name: "Home", href: "/" }], []],
-  ])("starts along the path taken: %j", async (above, crumbs) => {
+    [
+      "from Shared with me",
+      [{ name: "Shared with me", href: "/shared-with-me" }],
+    ],
+    ["from a search", [{ name: "Search: plan", href: "/search?q=plan" }]],
+    ["from Home", [{ name: "Home", href: "/" }]],
+    ["from its address alone, as Drive opens it", undefined],
+  ])(
+    "opens at the folder the file sits in, reached %s",
+    async (_how, above) => {
+      openPlan();
+      visit("/edit?id=plan", {
+        trail: above && [...above, { name: "plan.md", href: "/edit?id=plan" }],
+      });
+
+      const picker = await openPicker();
+      expect(
+        await picker.findByRole("heading", { name: "Work" }),
+      ).toBeVisible();
+      expect(namesAbove(picker)).toEqual(["All drives", "My Drive"]);
+      expect(picker.getByText("plan.md is already here.")).toBeVisible();
+    },
+  );
+
+  it("opens in the shared drive the file sits in", async () => {
+    const notes = folder("Notes", "notes", "team", { driveId: "team" });
     const { drive } = openPlan();
-    drive.listShortcuts.mockResolvedValue([]);
-    drive.listSharedWithMe.mockResolvedValue([]);
-    visit("/edit?id=plan", {
-      trail: [...above, { name: "plan.md", href: "/edit?id=plan" }],
-    });
+    drive.getMetadata.mockImplementation(
+      metadataOf(TEAM, notes, plan({ parents: ["notes"], driveId: "team" })),
+    );
 
     const picker = await openPicker();
-    const nav = within(
-      picker.getByRole("navigation", { name: "Folders above" }),
+    expect(await picker.findByRole("heading", { name: "Notes" })).toBeVisible();
+    expect(namesAbove(picker)).toEqual(["All drives", "Shared drives", "Team"]);
+  });
+
+  it("opens at Shared with me when no folder above the file is in reach", async () => {
+    const { drive } = openPlan();
+    drive.getMetadata.mockImplementation(
+      metadataOf(plan({ parents: ["hidden"] })),
     );
+    drive.listSharedWithMe.mockResolvedValue([]);
+    drive.listShortcuts.mockResolvedValue([]);
+
+    const picker = await openPicker();
     expect(
-      nav.queryAllByRole("button").map((button) => button.textContent),
-    ).toEqual(crumbs);
-    const last = crumbs.at(-1);
-    if (last !== undefined) {
-      fireEvent.click(nav.getByRole("button", { name: last }));
-      expect(await picker.findByText("No folders here.")).toBeVisible();
-    }
+      await picker.findByRole("heading", { name: "Shared with me" }),
+    ).toBeVisible();
+    expect(namesAbove(picker)).toEqual(["All drives"]);
+    expect(await picker.findByText("No folders here.")).toBeVisible();
+    expect(picker.getByText("Choose a folder.")).toBeVisible();
+    fireEvent.click(picker.getByRole("button", { name: "All drives" }));
+    fireEvent.click(picker.getByRole("button", { name: "Shortcuts" }));
+    expect(await picker.findByText("No folders here.")).toBeVisible();
+    expect(namesAbove(picker)).toEqual(["All drives"]);
+  });
+
+  it("opens at the folder the file went to, once moved", async () => {
+    const { drive, client } = openPlan();
+    // As in the app, where the path stays fresh unless a change says not.
+    client.setDefaultOptions({ queries: { retry: false, staleTime: 30_000 } });
+
+    let picker = await openPicker();
+    fireEvent.click(await picker.findByRole("button", { name: "Archive" }));
+    drive.getMetadata.mockImplementation(
+      metadataOf(MY_ROOT, WORK, ARCHIVE, plan({ parents: ["archive"] })),
+    );
+    await waitFor(() => {
+      expect(picker.getByRole("button", { name: "Move here" })).toBeEnabled();
+    });
+    fireEvent.click(picker.getByRole("button", { name: "Move here" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    picker = await openPicker();
+    expect(
+      await picker.findByRole("heading", { name: "Archive" }),
+    ).toBeVisible();
+    expect(namesAbove(picker)).toEqual(["All drives", "My Drive", "Work"]);
   });
 
   it("moves the file to another drive when Drive allows it", async () => {
     const { drive } = openPlan();
 
     const picker = await openPicker();
-    fireEvent.click(picker.getByRole("button", { name: "All drives" }));
+    fireEvent.click(await picker.findByRole("button", { name: "All drives" }));
     fireEvent.click(picker.getByRole("button", { name: "Shared drives" }));
     fireEvent.click(await picker.findByRole("button", { name: "Team" }));
     await waitFor(() => {
@@ -288,18 +354,39 @@ describe("Move", () => {
     expect(picker.getByRole("button", { name: "Move here" })).toBeDisabled();
   });
 
-  it("starts above every drive while the path is unknown", async () => {
+  it("waits for Drive to say where the file sits", async () => {
     const { drive } = openPlan();
     drive.getMetadata.mockImplementation((ref) =>
       ref.id === "work"
         ? new Promise(() => undefined)
         : metadataOf(MY_ROOT, plan())(ref),
     );
-    visit("/edit?id=plan");
 
     const picker = await openPicker();
-    expect(picker.getByRole("heading", { name: "All drives" })).toBeVisible();
-    expect(picker.getByText("Choose a folder.")).toBeVisible();
+    expect(picker.getByText("Loading…")).toBeVisible();
+    expect(
+      picker.queryByRole("navigation", { name: "Folders above" }),
+    ).toBeNull();
+    expect(picker.queryByText("Choose a folder.")).toBeNull();
+    expect(picker.getByRole("button", { name: "Move here" })).toBeDisabled();
+  });
+
+  it("says why it cannot tell where the file sits, and tries again", async () => {
+    const { drive } = openPlan();
+    drive.getMetadata.mockImplementation((ref) =>
+      ref.id === "work"
+        ? Promise.reject(new DriveError(403, "Access denied."))
+        : metadataOf(MY_ROOT, plan())(ref),
+    );
+
+    const picker = await openPicker();
+    expect(await picker.findByRole("alert")).toHaveTextContent(
+      "Access denied.",
+    );
+    expect(picker.getByRole("button", { name: "Move here" })).toBeDisabled();
+    drive.getMetadata.mockImplementation(metadataOf(MY_ROOT, WORK, plan()));
+    fireEvent.click(picker.getByRole("button", { name: "Try again" }));
+    expect(await picker.findByRole("heading", { name: "Work" })).toBeVisible();
   });
 
   it("offers no folder where the user cannot add files", async () => {
