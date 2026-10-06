@@ -278,6 +278,7 @@ describe("indentLines", () => {
   it.each([
     // As Obsidian indents its lists, by default: with tabs.
     ["- a\n\t- b\n- |c", "- a\n\t- b\n\t- |c"],
+    ["- a\n- |b\n\t- c", "- a\n\t- |b\n\t- c"],
     ["- a\n\t- b\n\t- |c", "- a\n\t- b\n\t\t- |c"],
     ["- a\n\t- |b", "- a\n\t\t- |b"],
     ["- a\n\t|more", "- a\n\t\t|more"],
