@@ -246,12 +246,35 @@ describe("indentLines", () => {
     ["1. a\n   - x\n2. |b", "1. a\n   - x\n   1. |b"],
     ["1. a\n   1) x\n2. |b", "1. a\n   1) x\n   1. |b"],
     ["> [!note]\n> 1. a\n> 2. |b", "> [!note]\n> 1. a\n>    1. |b"],
+    ["1. a\n   > q\n2. |b", "1. a\n   > q\n   1. |b"],
+    ["1. [ ] a\n2. |b", "1. [ ] a\n   1. |b"],
     // Joining the numbered list the item above holds, it keeps its number.
     ["1. a\n   1. x\n2. |b", "1. a\n   1. x\n   2. |b"],
     // As does a number that Markdown already reads as 1.
     ["1. a\n01. |b", "1. a\n   01. |b"],
+    // And one that breaks into no text: after a blank line, a heading, a
+    // fenced block or HTML.
+    ["1. a\n\n2. |b", "1. a\n\n   2. |b"],
+    ["1. # h\n2. |b", "1. # h\n   2. |b"],
+    [
+      "1. a\n   ```\n   x\n   ```\n2. |b",
+      "1. a\n   ```\n   x\n   ```\n   2. |b",
+    ],
+    ["1. <div>\n2. |b", "1. <div>\n   2. |b"],
   ])("numbers %j as %j", (before, after) => {
     expect(run(indentLines, before).text).toBe(after);
+  });
+
+  it("nests a list that keeps its number after a blank line, as Markdown renders it", () => {
+    const nested = renderToStaticMarkup(
+      createElement(
+        Markdown,
+        { remarkPlugins: [remarkGfm] },
+        run(indentLines, "1. a\n\n2. |b").state.sliceDoc(),
+      ),
+    );
+
+    expect(nested).toMatch(/<p>a<\/p>\s*<ol start="2">\s*<li>/);
   });
 
   it.each([
@@ -335,12 +358,13 @@ describe("indentLines", () => {
   });
 
   it.each([
-    // Each line keeps its own kind of indent, tabs first.
-    ["- a\n\t«- b\n  text»", "- a\n\t\t«- b\n      text»"],
-    ["1. a\n«2. b\n\tmore»", "1. a\n   «1. b\n\t   more»"],
-    // A line without one takes the list's.
+    // The first line's step goes before their own indent, which stays as
+    // written, even where a tab then takes up the step.
+    ["- a\n\t«- b\n  text»", "- a\n\t\t«- b\n\t  text»"],
+    ["1. a\n«2. b\n\tmore»", "1. a\n   «1. b\n   \tmore»"],
     ["- a\n\t- x\n«- b\n- c»", "- a\n\t- x\n\t«- b\n\t- c»"],
-  ])("moves the other lines as many columns: %j", (before, after) => {
+    ["«- b\n  ```\n  \tx»\n  ```", "  «- b\n    ```\n    \tx»\n  ```"],
+  ])("moves the other lines by the first one's step: %j", (before, after) => {
     expect(run(indentLines, before).text).toBe(after);
   });
 });
@@ -390,9 +414,12 @@ describe("outdentLines", () => {
     );
     expect(run(outdentLines, "- a\n  «- b\nc»").text).toBe("- a\n«- b\nc»");
     expect(run(outdentLines, "- a\n    «- b\n\tc»").text).toBe("- a\n«- b\nc»");
-    // A tab cut part way leaves the spaces before the column reached.
+    // Whitespace goes from the start of their indent, a tab only whole.
     expect(run(outdentLines, "- a\n  - b\n    «- c\n\td»").text).toBe(
-      "- a\n  - b\n  «- c\n  d»",
+      "- a\n  - b\n  «- c\n\td»",
+    );
+    expect(run(outdentLines, "- a\n  - b\n    «- c\n \t  y»").text).toBe(
+      "- a\n  - b\n  «- c\n\t  y»",
     );
     expect(run(outdentLines, "- a\n\t- b\n\t\t«- c\n\t\t\td»").text).toBe(
       "- a\n\t- b\n\t«- c\n\t\td»",
@@ -413,10 +440,9 @@ describe("outdentLines", () => {
     const { text } = run(outdentLines, state);
 
     expect(performance.now() - started).toBeLessThan(1000);
-    // Compared as a whole: a failure would diff 200,000 characters. The line
-    // with a tab is rebuilt in tabs.
-    const tabs = "\t".repeat(25_000);
-    expect(text === `«${spaces}a\n${spaces.slice(4)}b\n${tabs}c»`).toBe(true);
+    // Compared as a whole: a failure would diff 300,000 characters.
+    const back = spaces.slice(4);
+    expect(text === `«${spaces}a\n${back}b\n${back}\tc»`).toBe(true);
   });
 });
 
