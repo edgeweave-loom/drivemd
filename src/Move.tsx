@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { Climb } from "./climb.ts";
 import { ConfirmDialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
+import { Icon } from "./Icon.tsx";
 import {
   MY_DRIVE,
   type DriveItem,
@@ -181,6 +182,7 @@ function MoveDialog({
               {place.above.map((stop, index) => (
                 // A path cut short can hold the same folder twice.
                 <li key={index}>
+                  {index > 0 && <Icon name="chevron_right" />}
                   <button
                     type="button"
                     className="link"
@@ -336,6 +338,7 @@ function Spots({
             {next.kind === "folder" && next.shortcut && (
               <span className="badge">Shortcut</span>
             )}
+            <Icon name="chevron_right" />
           </button>
         </li>
       ))}

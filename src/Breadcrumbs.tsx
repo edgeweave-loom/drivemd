@@ -1,3 +1,4 @@
+import { Icon } from "./Icon.tsx";
 import { Link } from "./Link.tsx";
 import { hrefOf, type Crumb } from "./router.ts";
 
@@ -18,6 +19,7 @@ export function Breadcrumbs({ path }: { path: Crumb[] | undefined }) {
         {ancestors.map((crumb, index) => (
           // A path cut short can hold the same folder twice.
           <li key={index}>
+            <Icon name="chevron_right" />
             <Link to={crumb.href} trail={ancestors.slice(0, index + 1)}>
               {crumb.name}
             </Link>

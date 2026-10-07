@@ -32,7 +32,7 @@ test("says how DriveMD treats data, its terms, where to get help and its source,
   await expect(
     page.locator("#source").getByRole("link", { name: "license", exact: true }),
   ).toHaveAttribute("href", "https://www.gnu.org/licenses/agpl-3.0.html");
-  // The keyboard toolbar's icons come under a license of their own, which
+  // The icons in the app's pages come under a license of their own, which
   // asks to be given with them.
   await expect(
     page.locator("#source").getByRole("link", { name: "Material Symbols" }),

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useId, type ReactNode } from "react";
 import { useDrive } from "./drive-context.ts";
 import { ItemListing } from "./EntryList.tsx";
+import { Icon } from "./Icon.tsx";
 import { Link } from "./Link.tsx";
 import { draftsQuery, recentQuery, vaultsQuery } from "./queries.ts";
 import { ROOTS } from "./roots.ts";
@@ -41,6 +42,7 @@ export function Home() {
             <li key={root.href}>
               <Link to={root.href} trail={[root]} className="entry folder">
                 {root.name}
+                <Icon name="chevron_right" />
               </Link>
             </li>
           ))}
