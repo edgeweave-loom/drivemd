@@ -1,6 +1,7 @@
 import { useDrive } from "./drive-context.ts";
 import type { FileRef } from "./drive.ts";
 import { ItemListing } from "./EntryList.tsx";
+import { Icon } from "./Icon.tsx";
 import { Link } from "./Link.tsx";
 import { childrenQuery } from "./queries.ts";
 import type { Crumb } from "./router.ts";
@@ -27,6 +28,7 @@ export function FolderPane({
       {crumb && (
         <Link to={crumb.href} trail={path} className="entry folder">
           {crumb.name}
+          <Icon name="chevron_right" />
         </Link>
       )}
       <ItemListing

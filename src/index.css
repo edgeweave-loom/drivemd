@@ -70,6 +70,14 @@ button:disabled {
   opacity: 0.6;
 }
 
+/* Material Symbols, in the text's color. */
+.icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
 .hint,
 .message {
   color: var(--on-surface-variant);
@@ -289,9 +297,15 @@ dialog.drawer {
   list-style: none;
 }
 
-.crumbs li + li::before {
-  margin-right: 0.5rem;
-  content: "›" / "";
+.crumbs li {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.crumbs .icon {
+  width: 18px;
+  height: 18px;
 }
 
 .crumbs a {
@@ -322,10 +336,9 @@ dialog.drawer {
   min-width: 0;
 }
 
-.entry.folder:not(.broken)::after {
+.entry > .icon:last-child {
   margin-left: auto;
   color: var(--on-surface-variant);
-  content: "›" / "";
 }
 
 .badge {
@@ -794,10 +807,4 @@ dialog.drawer {
   padding: 0;
   border: none;
   background: none;
-}
-
-.keyboard-toolbar svg {
-  width: 24px;
-  height: 24px;
-  fill: currentColor;
 }

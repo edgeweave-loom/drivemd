@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { useDrive } from "./drive-context.ts";
 import type { DriveItem, ShortcutTarget } from "./drive.ts";
+import { Icon } from "./Icon.tsx";
 import { Link } from "./Link.tsx";
 import { BROKEN, entriesOf, type Entry } from "./listing.ts";
 import { Loaded } from "./Loaded.tsx";
@@ -107,6 +108,7 @@ function EntryLink({
     >
       <span className="name">{name}</span>
       {target && <span className="badge">Shortcut</span>}
+      {kind === "folder" && <Icon name="chevron_right" />}
     </Link>
   );
 }

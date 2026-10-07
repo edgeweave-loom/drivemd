@@ -213,6 +213,13 @@ test("formats the source from the keyboard toolbar on touch screens", async ({
   expect((bar?.y ?? 0) + (bar?.height ?? 0)).toBe(page.viewportSize()?.height);
   const checkbox = toolbar.getByRole("button", { name: "Checkbox" });
   expect((await checkbox.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  // Each key's icon sits in its middle.
+  for (const key of await toolbar.getByRole("button").all()) {
+    const button = await key.boundingBox();
+    const icon = await key.locator("svg").boundingBox();
+    if (!button || !icon) throw new Error("Not shown");
+    expect(icon.x + icon.width / 2).toBeCloseTo(button.x + button.width / 2, 0);
+  }
 
   await checkbox.tap();
   await expect(source.locator(".cm-line").nth(1)).toHaveText("- [ ] two");
