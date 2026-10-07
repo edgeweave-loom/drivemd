@@ -48,29 +48,87 @@ a {
   overflow-wrap: anywhere;
 }
 
+/* The keyboard's focus, on every control. */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Buttons are pills, outlined unless their weight calls for another
+   emphasis (docs/DESIGN.md, Buttons). */
 button {
-  min-height: 44px;
-  padding: 0 1.25rem;
+  position: relative;
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  min-height: var(--control-height);
+  padding: 0 var(--space-5);
   border: 1px solid var(--outline);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-full);
   background: none;
-  color: inherit;
+  color: var(--primary);
   font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
   cursor: pointer;
 }
 
-button.primary {
+button.filled {
   border-color: transparent;
   background: var(--primary);
   color: var(--on-primary);
 }
 
-button:disabled {
-  cursor: default;
-  opacity: 0.6;
+button.tonal {
+  border-color: transparent;
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
 }
 
-/* Material Symbols, in the text's color. */
+button.danger {
+  border-color: transparent;
+  background: var(--error);
+  color: var(--on-error);
+}
+
+/* The label's color laid over the control: 8% under the mouse, 10% under
+   the keyboard's focus or a press. */
+@media (hover: hover) {
+  button:hover:not(:disabled) {
+    background-image: linear-gradient(
+      color-mix(in srgb, currentColor 8%, transparent) 0 0
+    );
+  }
+}
+
+button:is(:focus-visible, :active):not(:disabled) {
+  background-image: linear-gradient(
+    color-mix(in srgb, currentColor 10%, transparent) 0 0
+  );
+}
+
+button:disabled {
+  border-color: color-mix(in srgb, var(--on-surface) 12%, transparent);
+  color: color-mix(in srgb, var(--on-surface) 38%, transparent);
+  cursor: default;
+}
+
+button:is(.filled, .tonal, .danger):disabled {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--on-surface) 12%, transparent);
+}
+
+/* A touch screen reaches 48 px around a 40 px button. */
+@media (pointer: coarse) {
+  button::after {
+    position: absolute;
+    inset: calc((var(--control-height) - var(--touch-target)) / 2) 0;
+    content: "";
+  }
+}
+
 .icon {
   flex: none;
   width: 24px;
@@ -193,11 +251,24 @@ dialog::backdrop {
   border: none;
 }
 
+/* Buttons that are list rows and links, not pills. */
+button:is(.entry, .link) {
+  justify-content: flex-start;
+  border-radius: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+}
+
+button:is(.entry, .link)::after {
+  content: none;
+}
+
 button.entry {
   width: 100%;
   border-width: 0 0 1px;
-  border-radius: 0;
   background: none;
+  color: inherit;
   text-align: start;
 }
 
@@ -207,6 +278,10 @@ button.link {
   border: none;
   background: none;
   color: var(--primary);
+}
+
+button:is(.entry, .link):disabled {
+  color: color-mix(in srgb, var(--on-surface) 38%, transparent);
 }
 
 .split,
@@ -800,11 +875,15 @@ dialog.drawer {
 
 .keyboard-toolbar button {
   flex: none;
-  display: grid;
-  place-items: center;
   width: 44px;
   height: 44px;
   padding: 0;
   border: none;
+  border-radius: var(--radius-full);
   background: none;
+  color: var(--on-surface-variant);
+}
+
+.keyboard-toolbar button::after {
+  content: none;
 }

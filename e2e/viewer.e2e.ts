@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { contrast, luminance } from "./contrast.ts";
+import { contrast, luminance } from "./color.ts";
 import { expect, signIn, test } from "./fake-google.ts";
 
 /** How many notes have unsaved changes kept on the device. */

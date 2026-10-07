@@ -1,19 +1,5 @@
-import type { Page } from "@playwright/test";
-import { contrast } from "./contrast.ts";
+import { contrast, token } from "./color.ts";
 import { expect, signIn, test } from "./fake-google.ts";
-
-/** A token of src/tokens.css, as the page computes it in its theme. */
-function token(page: Page, name: string): Promise<string> {
-  return page.evaluate((name) => {
-    // Set through the CSSOM, which the security policy allows, where it
-    // refuses a style attribute.
-    const probe = document.body.appendChild(document.createElement("i"));
-    probe.style.color = `var(${name})`;
-    const color = getComputedStyle(probe).color;
-    probe.remove();
-    return color;
-  }, name);
-}
 
 /** A `#rrggbb` color as browsers compute it. */
 function rgb(hex: string | null | undefined): string {
