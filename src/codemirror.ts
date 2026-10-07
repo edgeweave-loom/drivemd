@@ -1,8 +1,42 @@
-import type { EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import {
+  StateEffect,
+  StateField,
+  type EditorState,
+  type Extension,
+} from "@codemirror/state";
+import { EditorView, ViewPlugin } from "@codemirror/view";
 
-/** The editor in the app's colors, light or dark as the system is. */
-export const THEME = EditorView.theme({
+const DARK = "(prefers-color-scheme: dark)";
+
+const turnDark = StateEffect.define<boolean>();
+
+// Whether the system's theme is dark, which CodeMirror cannot tell from
+// the app's colors: its packages, such as @codemirror/merge, otherwise style
+// themselves for a light theme.
+const systemDark = StateField.define<boolean>({
+  create: () => window.matchMedia(DARK).matches,
+  update: (dark, transaction) =>
+    transaction.effects.reduce(
+      (value, effect) => (effect.is(turnDark) ? effect.value : value),
+      dark,
+    ),
+  provide: (field) => EditorView.darkTheme.from(field),
+});
+
+const followSystem = ViewPlugin.define((view) => {
+  const query = window.matchMedia(DARK);
+  const follow = () => {
+    view.dispatch({ effects: turnDark.of(query.matches) });
+  };
+  query.addEventListener("change", follow);
+  return {
+    destroy: () => {
+      query.removeEventListener("change", follow);
+    },
+  };
+});
+
+const COLORS = EditorView.theme({
   "&": {
     border: "1px solid var(--border)",
     borderRadius: "0.5rem",
@@ -24,6 +58,9 @@ export const THEME = EditorView.theme({
     color: "inherit",
   },
 });
+
+/** The editor in the app's colors, light or dark as the system is. */
+export const THEME: Extension = [COLORS, systemDark, followSystem];
 
 /**
  * A CodeMirror view in the element's shadow root. There, CodeMirror styles
