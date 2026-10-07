@@ -8,6 +8,7 @@ import { Link } from "./Link.tsx";
 import { BROKEN, kindOf } from "./listing.ts";
 import { draftsQuery, MAX_CONTENT, metadataQuery } from "./queries.ts";
 import { hrefOf } from "./router.ts";
+import { Icon } from "./Icon.tsx";
 
 const KEPT = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -57,6 +58,7 @@ function UnsavedNote({ draft }: { draft: DraftEntry }) {
   if (reason === undefined) {
     return (
       <Link to={hrefOf({ name: "file", file })} className="entry file">
+        <Icon name="description" />
         <span className="name">{name}</span>
         <time dateTime={draft.keptAt} className="when">
           {KEPT.format(new Date(draft.keptAt))}
@@ -107,6 +109,7 @@ function ClosedNote({
   return (
     <>
       <div className="entry file">
+        <Icon name="description" />
         <span className="lines">
           <span id={`${id}-name`} className="name">
             {name}

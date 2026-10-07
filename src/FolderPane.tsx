@@ -27,6 +27,7 @@ export function FolderPane({
     <>
       {crumb && (
         <Link to={crumb.href} trail={path} className="entry folder">
+          <Icon name="folder_open" />
           {crumb.name}
           <Icon name="chevron_right" />
         </Link>

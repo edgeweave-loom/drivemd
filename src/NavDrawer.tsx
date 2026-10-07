@@ -7,15 +7,8 @@ import type { IconName } from "./icons.ts";
 import { Link } from "./Link.tsx";
 import { entriesOf } from "./listing.ts";
 import { vaultsQuery } from "./queries.ts";
-import { ROOTS } from "./roots.ts";
+import { ROOT_ICONS, ROOTS } from "./roots.ts";
 import { hrefOf, usePlace } from "./router.ts";
-
-const ROOT_ICONS: Record<keyof typeof ROOTS, IconName> = {
-  myDrive: "cloud",
-  shortcuts: "shortcut",
-  sharedDrives: "folder_shared",
-  sharedWithMe: "group",
-};
 
 interface Place {
   key: string;

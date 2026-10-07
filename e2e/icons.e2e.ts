@@ -5,12 +5,15 @@ test("marks what opens a list with an icon, the same everywhere", async ({
   page,
 }, info) => {
   await signIn(page);
-  const chevron = (link: Locator) => link.locator("svg");
-  // Home's roots, a folder's folders but not its notes, and the steps of
-  // the breadcrumbs.
-  await expect(
-    chevron(page.getByRole("link", { name: "My Drive" })),
-  ).toHaveCount(1);
+  const chevron = (link: Locator) =>
+    link.locator('svg[data-icon="chevron_right"]');
+  // Home's roots where a phone shows them, a folder's folders but not its
+  // notes, and the steps of the breadcrumbs.
+  if (info.project.metadata.layout === "phone") {
+    await expect(
+      chevron(page.getByRole("link", { name: "My Drive" })),
+    ).toHaveCount(1);
+  }
   await page.getByRole("link", { name: "My Drive" }).click();
   await page.getByRole("link", { name: "Work", exact: true }).click();
   const main = page.getByRole("main");
@@ -45,4 +48,53 @@ test("marks what opens a list with an icon, the same everywhere", async ({
     "Work",
   ]);
   await expect(above.locator("svg")).toHaveCount(2);
+});
+
+test("shows what each row is by its icon", async ({ page }, info) => {
+  await signIn(page);
+  const phone = info.project.metadata.layout === "phone";
+  const wide = info.project.metadata.layout === "wide";
+  const icon = (row: Locator) => row.locator("svg").first();
+  const main = page.getByRole("main");
+  await expect(
+    icon(main.getByRole("link", { name: "plan.md" })),
+  ).toHaveAttribute("data-icon", "description");
+  if (phone) {
+    // A phone's Home lists the vaults and the roots, each by its own icon.
+    await expect(
+      icon(main.getByRole("link", { name: "Journal" })),
+    ).toHaveAttribute("data-icon", "book");
+    await expect(
+      icon(main.getByRole("link", { name: "My Drive" })),
+    ).toHaveAttribute("data-icon", "cloud");
+    expect(
+      (await main.getByRole("link", { name: "My Drive" }).boundingBox())
+        ?.height,
+    ).toBe(56);
+  }
+
+  await page.getByRole("link", { name: "My Drive" }).first().click();
+  await expect(
+    icon(main.getByRole("link", { name: "Work", exact: true })),
+  ).toHaveAttribute("data-icon", "folder");
+  await expect(
+    icon(main.getByRole("link", { name: /Plan shortcut\.md/ })),
+  ).toHaveAttribute("data-icon", "shortcut");
+  await expect(icon(main.getByRole("link", { name: /^Gone/ }))).toHaveAttribute(
+    "data-icon",
+    "link_off",
+  );
+
+  if (wide) {
+    // The folder pane beside a note fills the note's icon.
+    await main.getByRole("link", { name: "Work", exact: true }).click();
+    await main.getByRole("link", { name: "plan.md" }).click();
+    const pane = page.locator(".pane");
+    await expect(
+      icon(pane.getByRole("link", { name: "plan.md" })),
+    ).toHaveAttribute("data-icon", "description_fill");
+    await expect(
+      icon(pane.getByRole("link", { name: "Work" })),
+    ).toHaveAttribute("data-icon", "folder_open");
+  }
 });

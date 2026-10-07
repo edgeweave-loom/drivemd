@@ -6,7 +6,7 @@ import { ItemListing } from "./EntryList.tsx";
 import { Icon } from "./Icon.tsx";
 import { Link } from "./Link.tsx";
 import { draftsQuery, recentQuery, vaultsQuery } from "./queries.ts";
-import { ROOTS } from "./roots.ts";
+import { ROOT_ICONS, ROOTS } from "./roots.ts";
 import { UnsavedNotes } from "./UnsavedNotes.tsx";
 
 export function Home() {
@@ -38,14 +38,16 @@ export function Home() {
             <ItemListing
               query={vaultsQuery(drive)}
               trail={undefined}
+              folders="book"
               empty="No Obsidian vault in your Drive: a vault is a folder with a .obsidian folder in it."
             />
           </Section>
           <Section title="Browse">
             <ul className="entries">
-              {Object.values(ROOTS).map((root) => (
+              {Object.entries(ROOTS).map(([key, root]) => (
                 <li key={root.href}>
                   <Link to={root.href} trail={[root]} className="entry folder">
+                    <Icon name={ROOT_ICONS[key as keyof typeof ROOTS]} />
                     {root.name}
                     <Icon name="chevron_right" />
                   </Link>

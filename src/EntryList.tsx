@@ -6,6 +6,7 @@ import {
 import { useDrive } from "./drive-context.ts";
 import type { DriveItem, ShortcutTarget } from "./drive.ts";
 import { Icon } from "./Icon.tsx";
+import type { IconName } from "./icons.ts";
 import { Link } from "./Link.tsx";
 import { BROKEN, entriesOf, type Entry } from "./listing.ts";
 import { Loaded } from "./Loaded.tsx";
@@ -20,6 +21,7 @@ export function ItemListing<Answer, Key extends QueryKey>({
   current,
   missing,
   empty,
+  folders,
 }: {
   query: UseQueryOptions<Answer, Error, DriveItem[], Key>;
   /** By name, unless Drive's own order says more, as in search results. */
@@ -30,6 +32,8 @@ export function ItemListing<Answer, Key extends QueryKey>({
   /** What to say when Drive answers that the list's source is not there. */
   missing?: string;
   empty: string;
+  /** How the list's folders show, when they are more than folders. */
+  folders?: IconName;
 }) {
   const items = useQuery(query);
   return (
@@ -40,6 +44,7 @@ export function ItemListing<Answer, Key extends QueryKey>({
           trail={trail}
           current={current}
           empty={empty}
+          folders={folders}
         />
       )}
     </Loaded>
@@ -52,12 +57,14 @@ export function EntryList({
   trail,
   current,
   empty,
+  folders = "folder",
 }: {
   entries: Entry[];
   trail: Crumb[] | undefined;
   current?: string | undefined;
   /** What to say when there is nothing to show. */
   empty: string;
+  folders?: IconName | undefined;
 }) {
   if (entries.length === 0) return <p className="hint">{empty}</p>;
   return (
@@ -76,6 +83,7 @@ export function EntryList({
               entry={entry}
               trail={trail}
               current={entry.opens.id === current}
+              folders={folders}
             />
           )}
         </li>
@@ -88,12 +96,16 @@ function EntryLink({
   entry: { kind, name, opens, target },
   trail,
   current = false,
+  folders = "folder",
 }: {
   entry: Entry;
   trail: Crumb[] | undefined;
   /** Whether the page shows the entry itself. */
   current?: boolean;
+  folders?: IconName;
 }) {
+  const note = current ? "description_fill" : "description";
+  const icon = target ? "shortcut" : kind === "folder" ? folders : note;
   const href = hrefOf(
     kind === "folder"
       ? { name: "folder", folder: opens }
@@ -106,6 +118,7 @@ function EntryLink({
       className={`entry ${kind}`}
       current={current}
     >
+      <Icon name={icon} />
       <span className="name">{name}</span>
       {target && <span className="badge">Shortcut</span>}
       {kind === "folder" && <Icon name="chevron_right" />}
@@ -141,6 +154,7 @@ function ShortcutEntry({
       aria-disabled="true"
       className={`entry ${entry.kind} broken`}
     >
+      <Icon name="link_off" />
       <span className="lines">
         <span>
           <span className="name">{entry.name}</span>{" "}
