@@ -71,10 +71,12 @@ export function EntryList({
   return (
     <ul className="entries">
       {/* The table's head, which each row's name and description say. */}
-      <li className="entries-head" aria-hidden="true">
-        <span>Name</span>
-        <span>Modified</span>
-      </li>
+      {entries.some((entry) => modifiedLine(entry) !== undefined) && (
+        <li className="entries-head" aria-hidden="true">
+          <span>Name</span>
+          <span>Modified</span>
+        </li>
+      )}
       {entries.map((entry) => (
         <li key={entry.id}>
           {entry.target ? (
@@ -133,7 +135,12 @@ function EntryLink({
       <Icon name={icon} />
       <span id={`${ids}-title`} className="title">
         <span className="name">{name}</span>
-        {target && <span className="badge">Shortcut</span>}
+        {target && (
+          <>
+            {" "}
+            <span className="badge">Shortcut</span>
+          </>
+        )}
       </span>
       {when && (
         <span id={`${ids}-when`} className="modified">
@@ -178,7 +185,7 @@ function ShortcutEntry({
     >
       <Icon name="link_off" />
       <span id={`${ids}-title`} className="title">
-        <span className="name">{entry.name}</span>
+        <span className="name">{entry.name}</span>{" "}
         <span className="badge">Shortcut</span>
       </span>
       {/* Why it opens nothing, where its time of change would be. */}

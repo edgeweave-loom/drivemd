@@ -842,10 +842,6 @@ dialog.drawer {
   min-width: 0;
 }
 
-.title > .badge {
-  margin-left: var(--space-2);
-}
-
 .entry > .modified,
 .entries-head > :last-child {
   flex: none;
@@ -875,7 +871,8 @@ dialog.drawer {
   flex: 1;
 }
 
-/* A table's rows need no chevron to open their folders. */
+/* Rows on a wider screen, in a table or the folder pane, open their folders
+   without a chevron, as the mockups show them. */
 @media (width >= 768px) and (not ((pointer: coarse) and (height < 500px))) {
   a.entry > .icon:last-child:not(:first-child) {
     display: none;
@@ -887,7 +884,7 @@ dialog.drawer {
     display: none;
   }
 
-  .entry:has(> .title) {
+  .entry:has(> .modified) {
     display: grid;
     align-content: center;
     grid-template-areas:
@@ -901,7 +898,7 @@ dialog.drawer {
     min-height: 72px;
   }
 
-  .entry:has(> .title) > .icon:first-child {
+  .entry:has(> .modified) > .icon:first-child {
     grid-area: icon;
   }
 
@@ -914,14 +911,26 @@ dialog.drawer {
     width: auto;
   }
 
-  .entry:has(> .title) > .icon:last-child:not(:first-child) {
+  .entry:has(> .modified) > .icon:last-child:not(:first-child) {
     grid-area: chevron;
   }
 }
 
-/* The folder pane, and a tablet's folder drawer, keep to the names. */
-:is(.pane, dialog.drawer) :is(.entries-head, .entry > .modified) {
+/* The folder pane, and a tablet's folder drawer, keep to the names, and
+   to why a shortcut opens nothing, under its name. */
+:is(.pane, dialog.drawer) :is(.entries-head, .entry > .modified:not(.reason)) {
   display: none;
+}
+
+:is(.pane, dialog.drawer) .entry.broken {
+  flex-wrap: wrap;
+  row-gap: 0;
+}
+
+:is(.pane, dialog.drawer) .entry.broken > .reason {
+  flex-basis: 100%;
+  width: auto;
+  padding-left: calc(24px + var(--space-4));
 }
 
 .entry .name {
@@ -962,6 +971,15 @@ dialog.drawer {
   color: var(--on-surface-variant);
   font-size: 0.875rem;
   text-align: end;
+}
+
+/* In line with the times of the lists below it, on a wider screen. */
+@media (width >= 768px) and (not ((pointer: coarse) and (height < 500px))) {
+  .entry > .when {
+    flex: none;
+    width: 16rem;
+    text-align: start;
+  }
 }
 
 .entry .lines {

@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import { AuthError } from "./auth.ts";
 import { DriveError, TooLargeError, type DriveItem } from "./drive.ts";
 import {
+  childrenQuery,
   createQueryClient,
+  recentQuery,
   refreshAfterChange,
+  searchQuery,
+  setDetails,
   vaultLinkQuery,
   vaultSettingsQuery,
 } from "./queries.ts";
@@ -115,5 +119,49 @@ describe("vaultSettingsQuery", () => {
     await expect(
       client.query(vaultSettingsQuery(drive, client, { id: "config" })),
     ).resolves.toEqual({ strictLineBreaks: false });
+  });
+});
+
+describe("setDetails", () => {
+  it("shows a saved file's time of change in the lists that hold it", () => {
+    const client = createQueryClient();
+    const drive = fakeDrive();
+    const plan = driveItem("plan.md", {
+      modifiedTime: "2026-09-01T10:00:00.000Z",
+      lastModifiedBy: "Grace Hopper",
+    });
+    const other = driveItem("other.md");
+    const folder = { id: "parent" };
+    client.setQueryData(childrenQuery(drive, folder).queryKey, [plan, other]);
+    client.setQueryData(recentQuery(drive).queryKey, [plan]);
+    client.setQueryData(searchQuery(drive, "plan").queryKey, {
+      items: [plan],
+      incomplete: false,
+    });
+
+    setDetails(
+      client,
+      metadata(plan, {
+        modifiedTime: "2026-10-07T09:00:00.000Z",
+        lastModifiedBy: "Ada Lovelace",
+        lastModifiedByMe: true,
+      }),
+    );
+
+    const saved = {
+      ...plan,
+      modifiedTime: "2026-10-07T09:00:00.000Z",
+      lastModifiedBy: "Ada Lovelace",
+      lastModifiedByMe: true,
+    };
+    expect(client.getQueryData(childrenQuery(drive, folder).queryKey)).toEqual([
+      saved,
+      other,
+    ]);
+    expect(client.getQueryData(recentQuery(drive).queryKey)).toEqual([saved]);
+    expect(client.getQueryData(searchQuery(drive, "plan").queryKey)).toEqual({
+      items: [saved],
+      incomplete: false,
+    });
   });
 });

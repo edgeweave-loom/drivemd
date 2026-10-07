@@ -44,3 +44,26 @@ test("says when and by whom each item last changed", async ({ page }, info) => {
     ).toBeHidden();
   }
 });
+
+test("says why a broken shortcut opens nothing, in the folder pane too", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.metadata.layout !== "wide",
+    "Only a wide screen shows the folder pane beside a note.",
+  );
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  // In My Drive, beside the broken shortcut.
+  plan.parents = ["my-root"];
+  await signIn(page);
+  await page
+    .getByRole("navigation", { name: "Drive" })
+    .getByRole("link", { name: "My Drive" })
+    .click();
+  await page.getByRole("main").getByRole("link", { name: "plan.md" }).click();
+  const gone = page.locator(".pane").getByRole("link", { name: /^Gone/ });
+  await expect(gone).toHaveAccessibleName("Gone Shortcut");
+  await expect(gone.getByText("Deleted, or not shared with you")).toBeVisible();
+});

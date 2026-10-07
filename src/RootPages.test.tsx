@@ -45,7 +45,7 @@ describe("ShortcutsPage", () => {
       ),
     ).toHaveAttribute("href", "/");
     await screen.findByRole("link", { name: /Notes/ });
-    expect(links()).toEqual(["NotesShortcut", "plan.mdShortcut"]);
+    expect(links()).toEqual(["Notes Shortcut", "plan.md Shortcut"]);
     fireEvent.click(screen.getByRole("link", { name: /Notes/ }));
     expect(getPlace()).toMatchObject({
       href: "/folder/target-Notes?resourcekey=key",
