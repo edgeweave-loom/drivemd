@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useId, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { useDrive } from "./drive-context.ts";
 import type { DriveItem } from "./drive.ts";
 import { Icon } from "./Icon.tsx";
@@ -58,17 +58,18 @@ export function NavDrawer({ rail = false }: { rail?: boolean }) {
   const vaults = useQuery({ ...vaultsQuery(drive), select: vaultEntries });
   const menu = useId();
   const popover = useRef<HTMLDivElement>(null);
-  const places = [
-    ...PLACES,
-    ...(vaults.data ?? []).map((vault) => ({
-      key: vault.id,
-      name: vault.name,
-      href: hrefOf({ name: "folder", folder: vault.opens }),
-      icon: "book" as const,
-    })),
-  ];
-  const roots = places.slice(0, PLACES.length);
-  const vaultPlaces = places.slice(PLACES.length);
+  const vaultPlaces: Place[] = (vaults.data ?? []).map((vault) => ({
+    key: vault.id,
+    name: vault.name,
+    href: hrefOf({ name: "folder", folder: vault.opens }),
+    icon: "book",
+  }));
+  const places = [...PLACES, ...vaultPlaces];
+  // The menu goes once a vault opens, and stays when the user stays.
+  useEffect(() => {
+    const shown = popover.current;
+    if (shown?.matches(":popover-open")) shown.hidePopover();
+  }, [href]);
   const path = [...(trail ?? []).map((crumb) => crumb.href), href].reverse();
   const marked = path
     .map((step) => places.find((place) => place.href === step))
@@ -101,7 +102,7 @@ export function NavDrawer({ rail = false }: { rail?: boolean }) {
     const inVault = marked !== undefined && vaultPlaces.includes(marked);
     return (
       <nav aria-label="Drive" className="drawer-nav rail">
-        <ul>{roots.map(item)}</ul>
+        <ul>{PLACES.map(item)}</ul>
         {(vaultPlaces.length > 0 || failed) && (
           <>
             <button
@@ -120,10 +121,6 @@ export function NavDrawer({ rail = false }: { rail?: boolean }) {
               role="dialog"
               aria-label="Vaults"
               className="menu vaults-menu"
-              // A vault opens with its page, which the menu leaves.
-              onClickCapture={() => {
-                popover.current?.hidePopover();
-              }}
             >
               {failed}
               <ul>{vaultPlaces.map(item)}</ul>
@@ -135,7 +132,7 @@ export function NavDrawer({ rail = false }: { rail?: boolean }) {
   }
   return (
     <nav aria-label="Drive" className="drawer-nav">
-      <ul>{roots.map(item)}</ul>
+      <ul>{PLACES.map(item)}</ul>
       {failed}
       {vaultPlaces.length > 0 && (
         <>

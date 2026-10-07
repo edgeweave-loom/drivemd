@@ -303,8 +303,10 @@ button.account {
   overflow-wrap: anywhere;
 }
 
-.menu > :is(a, button) {
+.menu > :is(a, button),
+.menu li > a {
   display: flex;
+  gap: var(--space-3);
   align-items: center;
   justify-content: flex-start;
   width: 100%;
@@ -325,7 +327,8 @@ button.account {
 }
 
 @media (hover: hover) {
-  .menu > a:hover {
+  .menu > a:hover,
+  .menu li > a:hover {
     background-image: linear-gradient(
       color-mix(in srgb, currentColor 8%, transparent) 0 0
     );
@@ -658,32 +661,25 @@ dialog.drawer {
   }
 }
 
+.drawer-nav.rail > button.vaults:is(:focus-visible, :active) {
+  background-image: none;
+}
+
+.drawer-nav.rail > button.vaults:is(:focus-visible, :active) .indicator {
+  background-image: linear-gradient(
+    color-mix(in srgb, currentColor 10%, transparent) 0 0
+  );
+}
+
 /* The menu sits in the rail, but lists its vaults as the drawer does. */
 .drawer-nav .vaults-menu .indicator {
   display: contents;
 }
 
-.vaults-menu ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.vaults-menu a {
-  display: flex;
-  gap: var(--space-3);
-  align-items: center;
-  min-height: var(--touch-target);
-  padding: 0 var(--space-4);
-  color: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  text-decoration: none;
-}
-
-.vaults-menu a[aria-current] {
-  background: var(--secondary-container);
-  color: var(--on-secondary-container);
+/* However many vaults there are. */
+.vaults-menu {
+  max-height: calc(100dvh - 2 * var(--space-4));
+  overflow-y: auto;
 }
 
 .vaults-menu > .hint {
@@ -699,6 +695,7 @@ dialog.drawer {
 
   .vaults-menu {
     position-anchor: --vaults;
+    position-try-fallbacks: flip-block;
     inset: auto;
     top: anchor(top);
     left: anchor(right);
