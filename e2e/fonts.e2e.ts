@@ -49,13 +49,14 @@ test("sets the app in its own fonts, served under the security policy", async ({
   expect(
     shown.some(
       (face) =>
-        /Google Sans Flex/.test(face.family) &&
+        face.family.includes("Google Sans Flex") &&
         /^oblique 0deg \d+deg$/.test(face.style),
     ),
   ).toBe(true);
   expect(
     shown.some(
-      (face) => /Google Sans Code/.test(face.family) && face.style === "italic",
+      (face) =>
+        face.family.includes("Google Sans Code") && face.style === "italic",
     ),
   ).toBe(true);
   // Every face loads from the app's own files, which the policy allows,
