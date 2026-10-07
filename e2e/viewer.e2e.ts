@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { contrast, luminance } from "./contrast.ts";
 import { expect, signIn, test } from "./fake-google.ts";
 
 /** How many notes have unsaved changes kept on the device. */
@@ -332,24 +333,6 @@ test("folds the lines alike in the theme's colors, as the system's changes", asy
     expect(luminance(background)).toBeGreaterThan(0.5);
   }
 });
-
-/** WCAG's relative luminance of a computed `rgb()` color. */
-function luminance(color: string): number {
-  const channels = /^rgba?\((\d+), (\d+), (\d+)/.exec(color)?.slice(1);
-  if (!channels) throw new Error(`Not an rgb() color: ${color}`);
-  const [r = 0, g = 0, b = 0] = channels.map((channel) => {
-    const c = Number(channel) / 255;
-    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-function contrast(one: string, other: string): number {
-  const [light, dark] = [luminance(one), luminance(other)].sort(
-    (a, b) => b - a,
-  );
-  return ((light ?? 0) + 0.05) / ((dark ?? 0) + 0.05);
-}
 
 test("keeps unsaved changes on the device across a reload", async ({
   page,

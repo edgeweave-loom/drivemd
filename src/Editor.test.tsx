@@ -48,7 +48,8 @@ function looks(view: EditorView) {
       const style = getComputedStyle(text.parentElement ?? line);
       const value = text.textContent ?? "";
       larger ||= style.fontSize !== size;
-      shown += style.color === "var(--muted)" ? `‹${value}›` : value;
+      shown +=
+        style.color === "var(--on-surface-variant)" ? `‹${value}›` : value;
     }
     return shown.replaceAll("›‹", "") + (larger ? " (larger)" : "");
   });

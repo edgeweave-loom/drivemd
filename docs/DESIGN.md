@@ -2,7 +2,7 @@
 
 DriveMD looks and behaves like Google's own Workspace apps, such as Docs or Slides, rather than like GitHub: [Material Design 3](https://m3.material.io), [Google Sans Flex](https://fonts.google.com/specimen/Google+Sans+Flex) and [Material Symbols](https://fonts.google.com/icons). Its own color is the teal of its icon, as Docs has its blue and Sheets its green, on Google Drive's near-neutral greys. It never uses Google's logos or product icons, nor a name that could pass for a Google product, as the [Google Workspace Marketplace branding guidelines](https://developers.google.com/workspace/marketplace/terms/branding) require; it names Drive only to say what it works with.
 
-This file is the reference for milestone 9 of the spec's build plan, which brings the app to it. The spec says what the app does; this file says how it looks. The tokens are in [`design/tokens.css`](design/tokens.css), and the mockups, drawn on made-up data, in [`design/mockups/`](design/mockups/):
+This file is the reference for milestone 9 of the spec's build plan, which brings the app to it. The spec says what the app does; this file says how it looks. The tokens are in [`src/tokens.css`](../src/tokens.css), which the app imports, and the mockups, drawn on made-up data, in [`design/mockups/`](design/mockups/):
 
 | Mockups                                                                                                                                                                                                                            | What they show                                                                                                                                               |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -43,6 +43,7 @@ The tokens are Material Design 3's color roles. Each has a light and a dark valu
 - `attention-container` is for a notice that needs a decision (a conflict, unsaved changes to restore), `error-container` for a failure, and `error` only for actions that lose data. Material 3 has no warning role: the amber attention colors are harmonized toward the teal.
 - What a version adds is underlined on `diff-added`, what it removes struck through on `diff-removed`: never told by color alone.
 - `brand-mark` is the icon's own teal, kept for the icon's plate. No text or control takes it.
+- Highlighted code takes the same roles, with no hue of its own: keywords and types `primary`, strings, numbers and literals `tertiary`, attributes, properties and variables `secondary`, comments `on-surface-variant` in italic, and names of functions, classes and sections the text's color at 600. Each holds 5:1 or more on a code block, `surface-container-high`, in both themes.
 
 ## Type
 
@@ -133,6 +134,6 @@ Measurements are in CSS pixels; colors are tokens.
 
 ## In the app
 
-- The tokens move into `src/index.css`, in place of today's GitHub colors, and the editor's theme takes the same ones through CodeMirror's constructed style sheets.
+- The tokens are `src/tokens.css`, which `src/index.css` imports, and the editor's theme takes the same ones through CodeMirror's constructed style sheets. Obsidian's callouts and highlights keep Obsidian's own colors, as the spec says.
 - The security policy loads nothing from other sites: the fonts ship with the app as woff2 subsets, with their license in `LICENSES/`, and icons are inline SVG rather than an icon font, which would also show its ligature words while it loads.
 - No inline `style` attribute: the policy blocks them.

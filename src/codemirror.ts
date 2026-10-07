@@ -53,24 +53,28 @@ const measureOnFonts = ViewPlugin.define((view) => {
 
 const COLORS = EditorView.theme({
   "&": {
-    border: "1px solid var(--border)",
+    border: "1px solid var(--outline-variant)",
     borderRadius: "0.5rem",
-    background: "var(--background)",
-    color: "var(--text)",
+    background: "var(--surface)",
+    color: "var(--on-surface)",
     // Safari zooms in on a field whose text is smaller.
     fontSize: "max(16px, 1rem)",
   },
-  "&.cm-focused": { outline: "2px solid var(--accent)" },
+  "&.cm-focused": { outline: "2px solid var(--primary)" },
   ".cm-scroller": { fontFamily: "inherit", lineHeight: "1.5" },
-  ".cm-content": { caretColor: "var(--text)" },
-  ".cm-cursor": { borderLeftColor: "var(--text)" },
+  ".cm-content": { caretColor: "var(--on-surface)" },
+  ".cm-cursor": { borderLeftColor: "var(--on-surface)" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground":
-    { background: "color-mix(in srgb, var(--accent) 30%, transparent)" },
-  ".cm-code-line": { fontFamily: "var(--monospace)" },
+    { background: "color-mix(in srgb, var(--primary) 30%, transparent)" },
+  ".cm-code-line": { fontFamily: "var(--font-mono)" },
   ".cm-panels": {
-    borderColor: "var(--border)",
-    background: "var(--surface)",
+    borderColor: "var(--outline-variant)",
+    background: "var(--surface-container)",
     color: "inherit",
+  },
+  ".cm-collapsedLines": {
+    background: "var(--surface-container)",
+    color: "var(--on-surface-variant)",
   },
 });
 

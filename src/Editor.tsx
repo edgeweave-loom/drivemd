@@ -61,9 +61,12 @@ const LIGHT = HighlightStyle.define([
   { tag: tags.strong, fontWeight: "bold" },
   { tag: tags.emphasis, fontStyle: "italic" },
   { tag: tags.strikethrough, textDecoration: "line-through" },
-  { tag: tags.monospace, fontFamily: "var(--monospace)" },
-  { tag: tags.link, color: "var(--link)" },
-  { tag: [tags.processingInstruction, tags.url], color: "var(--muted)" },
+  { tag: tags.monospace, fontFamily: "var(--font-mono)" },
+  { tag: tags.link, color: "var(--primary)" },
+  {
+    tag: [tags.processingInstruction, tags.url],
+    color: "var(--on-surface-variant)",
+  },
 ]);
 
 /**
@@ -74,7 +77,7 @@ const LIGHT_YAML = HighlightStyle.define(
   [
     {
       tag: [tags.propertyName, tags.punctuation, tags.comment],
-      color: "var(--muted)",
+      color: "var(--on-surface-variant)",
     },
   ],
   { scope: yamlLanguage },
