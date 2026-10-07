@@ -9,7 +9,7 @@ export default defineConfig({
   testMatch: "**/*.e2e.ts",
   forbidOnly: Boolean(process.env.CI),
   // Every core of a CI runner, where nothing else runs; half of a computer's.
-  workers: process.env.CI ? "100%" : undefined,
+  workers: process.env.CI ? "100%" : "50%",
   reporter: process.env.CI ? "github" : "list",
   use: {
     baseURL: `http://localhost:${String(port)}`,
