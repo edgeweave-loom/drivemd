@@ -536,6 +536,11 @@ dialog.drawer {
   border-bottom: none;
 }
 
+/* The bar keeps one row, which the drawer stays clear of. */
+:root:has(.shell) .bar {
+  flex-wrap: nowrap;
+}
+
 .shell {
   display: grid;
   grid-template-columns: 256px minmax(0, 1fr);

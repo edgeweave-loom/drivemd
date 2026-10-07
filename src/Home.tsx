@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useId, type ReactNode } from "react";
+import { useDrawer } from "./drawer.ts";
 import { useDrive } from "./drive-context.ts";
 import { ItemListing } from "./EntryList.tsx";
 import { Icon } from "./Icon.tsx";
-import { useLayout } from "./layout.ts";
 import { Link } from "./Link.tsx";
 import { draftsQuery, recentQuery, vaultsQuery } from "./queries.ts";
 import { ROOTS } from "./roots.ts";
@@ -12,7 +12,7 @@ import { UnsavedNotes } from "./UnsavedNotes.tsx";
 export function Home() {
   const { drive, account, signedIn } = useDrive();
   const drafts = useQuery({ ...draftsQuery(account), enabled: signedIn });
-  const wide = useLayout() === "wide";
+  const drawer = useDrawer();
   return (
     <>
       <h2>Home</h2>
@@ -32,7 +32,7 @@ export function Home() {
         />
       </Section>
       {/* A wide screen's drawer holds the vaults and the roots. */}
-      {!wide && (
+      {!drawer && (
         <>
           <Section title="Vaults">
             <ItemListing

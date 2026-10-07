@@ -16,6 +16,7 @@ import { Home } from "./Home.tsx";
 import { Icon } from "./Icon.tsx";
 import { useLayout } from "./layout.ts";
 import { Link } from "./Link.tsx";
+import { useDrawer } from "./drawer.ts";
 import { NavDrawer } from "./NavDrawer.tsx";
 import { NewPage } from "./NewPage.tsx";
 import { createQueryClient, refreshSearches } from "./queries.ts";
@@ -24,14 +25,7 @@ import {
   SharedWithMePage,
   ShortcutsPage,
 } from "./RootPages.tsx";
-import {
-  getPlace,
-  hrefOf,
-  mayLeave,
-  navigate,
-  usePlace,
-  type Route,
-} from "./router.ts";
+import { getPlace, hrefOf, mayLeave, navigate, usePlace } from "./router.ts";
 import { SearchPage } from "./SearchPage.tsx";
 import type { Session } from "./session.ts";
 
@@ -134,25 +128,15 @@ function AppBar({
   );
 }
 
-/** The ways into Drive that a wide screen shows beside Home, folders and search. */
-const BROWSING = new Set<Route["name"]>([
-  "home",
-  "folder",
-  "shortcuts",
-  "shared-drives",
-  "shared-with-me",
-  "search",
-]);
-
 /** The page, beside the navigation drawer where it shows. */
 function Shell({ children }: { children: ReactNode }) {
-  const { route } = usePlace();
-  const drawer = useLayout() === "wide" && BROWSING.has(route.name);
-  if (!drawer) return <main className="page">{children}</main>;
+  const drawer = useDrawer();
+  // The page keeps its place whether the drawer shows or not, so that a
+  // turn or a resize keeps what it holds.
   return (
-    <div className="shell">
-      <NavDrawer />
-      <main className="page panel">{children}</main>
+    <div className={drawer ? "shell" : undefined}>
+      {drawer && <NavDrawer />}
+      <main className={drawer ? "page panel" : "page"}>{children}</main>
     </div>
   );
 }

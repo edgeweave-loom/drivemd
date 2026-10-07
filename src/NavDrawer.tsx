@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useDrive } from "./drive-context.ts";
+import type { DriveItem } from "./drive.ts";
 import { Icon } from "./Icon.tsx";
 import type { IconName } from "./icons.ts";
 import { Link } from "./Link.tsx";
@@ -8,12 +9,27 @@ import { vaultsQuery } from "./queries.ts";
 import { ROOTS } from "./roots.ts";
 import { hrefOf, usePlace } from "./router.ts";
 
-const PLACES: { name: string; href: string; icon: IconName }[] = [
-  { name: "Home", href: hrefOf({ name: "home" }), icon: "home" },
-  { ...ROOTS.myDrive, icon: "cloud" },
-  { ...ROOTS.shortcuts, icon: "shortcut" },
-  { ...ROOTS.sharedDrives, icon: "folder_shared" },
-  { ...ROOTS.sharedWithMe, icon: "group" },
+const ROOT_ICONS: Record<keyof typeof ROOTS, IconName> = {
+  myDrive: "cloud",
+  shortcuts: "shortcut",
+  sharedDrives: "folder_shared",
+  sharedWithMe: "group",
+};
+
+interface Place {
+  key: string;
+  name: string;
+  href: string;
+  icon: IconName;
+}
+
+const PLACES: Place[] = [
+  { key: "home", name: "Home", href: hrefOf({ name: "home" }), icon: "home" },
+  ...Object.entries(ROOTS).map(([key, root]) => ({
+    key,
+    ...root,
+    icon: ROOT_ICONS[key as keyof typeof ROOTS],
+  })),
 ];
 
 const FILLED: Partial<Record<IconName, IconName>> = {
@@ -24,33 +40,45 @@ const FILLED: Partial<Record<IconName, IconName>> = {
   book: "book_fill",
 };
 
+function vaultEntries(items: DriveItem[]) {
+  return entriesOf(items);
+}
+
 /**
  * The ways into Drive, beside Home, folders and search on a wide screen, as
- * Google Drive's drawer: its roots, then the Obsidian vaults. The place the
- * page belongs to stands out, through the path the user took to it.
+ * Google Drive's drawer: its roots, then the Obsidian vaults. The one place
+ * the page sits in stands out: the page itself, or else the deepest of the
+ * places on the path the user took to it.
  */
 export function NavDrawer() {
   const { drive } = useDrive();
   const { href, trail } = usePlace();
-  const vaults = useQuery({
-    ...vaultsQuery(drive),
-    select: (items) => entriesOf(items),
-  });
-  const item = (place: { name: string; href: string; icon: IconName }) => {
-    const shown = place.href === href;
-    const within = !shown && trail?.some((crumb) => crumb.href === place.href);
+  const vaults = useQuery({ ...vaultsQuery(drive), select: vaultEntries });
+  const places = [
+    ...PLACES,
+    ...(vaults.data ?? []).map((vault) => ({
+      key: vault.id,
+      name: vault.name,
+      href: hrefOf({ name: "folder", folder: vault.opens }),
+      icon: "book" as const,
+    })),
+  ];
+  const path = [...(trail ?? []).map((crumb) => crumb.href), href].reverse();
+  const marked = path
+    .map((step) => places.find((place) => place.href === step))
+    .find((place) => place !== undefined);
+  const item = (place: Place) => {
+    const current = place === marked;
     return (
-      <li key={place.href}>
+      <li key={place.key}>
         <Link
           to={place.href}
           trail={[{ name: place.name, href: place.href }]}
-          current={shown}
-          aria-current={within ? "true" : undefined}
+          current={current && place.href === href}
+          aria-current={current ? "true" : undefined}
         >
           <Icon
-            name={
-              shown || within ? (FILLED[place.icon] ?? place.icon) : place.icon
-            }
+            name={current ? (FILLED[place.icon] ?? place.icon) : place.icon}
           />
           {place.name}
         </Link>
@@ -59,19 +87,14 @@ export function NavDrawer() {
   };
   return (
     <nav aria-label="Drive" className="drawer-nav">
-      <ul>{PLACES.map(item)}</ul>
-      {vaults.data && vaults.data.length > 0 && (
+      <ul>{places.slice(0, PLACES.length).map(item)}</ul>
+      {vaults.isError && (
+        <p className="hint">Google Drive did not list the vaults.</p>
+      )}
+      {places.length > PLACES.length && (
         <>
           <h2>Vaults</h2>
-          <ul>
-            {vaults.data.map((vault) =>
-              item({
-                name: vault.name,
-                href: hrefOf({ name: "folder", folder: vault.opens }),
-                icon: "book",
-              }),
-            )}
-          </ul>
+          <ul>{places.slice(PLACES.length).map(item)}</ul>
         </>
       )}
     </nav>
