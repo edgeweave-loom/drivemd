@@ -587,6 +587,125 @@ dialog.drawer {
   }
 }
 
+/* In the drawer, an icon sits beside its label; in the rail, in a pill
+   over it. */
+.drawer-nav .indicator {
+  display: contents;
+}
+
+.shell.rail {
+  grid-template-columns: 80px minmax(0, 1fr);
+}
+
+.drawer-nav.rail {
+  padding: 0 0 var(--space-4);
+}
+
+.drawer-nav.rail > ul > li > a,
+.drawer-nav.rail > button.vaults {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: center;
+  width: 100%;
+  min-height: 56px;
+  margin-bottom: var(--space-3);
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  text-align: center;
+}
+
+.drawer-nav.rail .indicator {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 32px;
+  border-radius: var(--radius-full);
+}
+
+.drawer-nav.rail > ul > li > a[aria-current],
+.drawer-nav.rail > button.vaults[aria-current] {
+  background: none;
+  color: var(--on-surface);
+}
+
+.drawer-nav.rail > ul > li > a[aria-current] .indicator,
+.drawer-nav.rail > button.vaults[aria-current] .indicator {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+.drawer-nav.rail > button.vaults::after {
+  content: none;
+}
+
+@media (hover: hover) {
+  .drawer-nav.rail > ul > li > a:hover,
+  .drawer-nav.rail > button.vaults:hover {
+    background-image: none;
+  }
+
+  .drawer-nav.rail > ul > li > a:hover .indicator,
+  .drawer-nav.rail > button.vaults:hover .indicator {
+    background-image: linear-gradient(
+      color-mix(in srgb, currentColor 8%, transparent) 0 0
+    );
+  }
+}
+
+/* The menu sits in the rail, but lists its vaults as the drawer does. */
+.drawer-nav .vaults-menu .indicator {
+  display: contents;
+}
+
+.vaults-menu ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vaults-menu a {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  min-height: var(--touch-target);
+  padding: 0 var(--space-4);
+  color: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.vaults-menu a[aria-current] {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+.vaults-menu > .hint {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+}
+
+/* Beside the Vaults item, where the browser can place it there. */
+@supports (anchor-name: --vaults) {
+  .drawer-nav.rail > button.vaults {
+    anchor-name: --vaults;
+  }
+
+  .vaults-menu {
+    position-anchor: --vaults;
+    inset: auto;
+    top: anchor(top);
+    left: anchor(right);
+    margin-left: var(--space-2);
+  }
+}
+
 .drawer-nav h2 {
   margin: var(--space-4) 0 var(--space-2);
   padding: 0 var(--space-4);

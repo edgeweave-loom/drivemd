@@ -31,8 +31,8 @@ export function Home() {
           empty="The Markdown files you view, here or in Google Drive, show here."
         />
       </Section>
-      {/* A wide screen's drawer holds the vaults and the roots. */}
-      {!drawer && (
+      {/* The drawer or the rail beside it holds the vaults and the roots. */}
+      {drawer === undefined && (
         <>
           <Section title="Vaults">
             <ItemListing

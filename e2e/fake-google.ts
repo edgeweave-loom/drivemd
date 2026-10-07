@@ -566,10 +566,15 @@ export async function signIn(page: Page): Promise<void> {
   await expect(vault(page)).toBeVisible();
 }
 
-/** The made-up vault: on Home, or in the drawer that a wide screen shows. */
+/**
+ * The made-up vault, on Home or in the drawer that a wide screen shows, or
+ * else the item of a tablet's rail that holds it.
+ */
 export function vault(page: Page) {
+  const drive = page.getByRole("navigation", { name: "Drive" });
   return page
     .getByRole("region", { name: "Vaults" })
-    .or(page.getByRole("navigation", { name: "Drive" }))
-    .getByRole("link", { name: "Journal" });
+    .or(drive)
+    .getByRole("link", { name: "Journal" })
+    .or(drive.getByRole("button", { name: "Vaults" }));
 }
