@@ -16,6 +16,8 @@ import { Home } from "./Home.tsx";
 import { Icon } from "./Icon.tsx";
 import { useLayout } from "./layout.ts";
 import { Link } from "./Link.tsx";
+import { useDrawer } from "./drawer.ts";
+import { NavDrawer } from "./NavDrawer.tsx";
 import { NewPage } from "./NewPage.tsx";
 import { createQueryClient, refreshSearches } from "./queries.ts";
 import {
@@ -57,10 +59,10 @@ export function Navigator({
     <QueryClientProvider client={client}>
       <DriveContext value={access}>
         <AppBar email={email} onSignOut={session.signOut} />
-        <main className="page">
+        <Shell>
           {children}
           <Page />
-        </main>
+        </Shell>
       </DriveContext>
     </QueryClientProvider>
   );
@@ -123,6 +125,19 @@ function AppBar({
       </button>
       <Account email={email} onSignOut={onSignOut} />
     </header>
+  );
+}
+
+/** The page, beside the navigation drawer where it shows. */
+function Shell({ children }: { children: ReactNode }) {
+  const drawer = useDrawer();
+  // The page keeps its place whether the drawer shows or not, so that a
+  // turn or a resize keeps what it holds.
+  return (
+    <div className={drawer ? "shell" : undefined}>
+      {drawer && <NavDrawer />}
+      <main className={drawer ? "page panel" : "page"}>{children}</main>
+    </div>
   );
 }
 

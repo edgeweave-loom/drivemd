@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useId, type ReactNode } from "react";
+import { useDrawer } from "./drawer.ts";
 import { useDrive } from "./drive-context.ts";
 import { ItemListing } from "./EntryList.tsx";
 import { Icon } from "./Icon.tsx";
@@ -11,6 +12,7 @@ import { UnsavedNotes } from "./UnsavedNotes.tsx";
 export function Home() {
   const { drive, account, signedIn } = useDrive();
   const drafts = useQuery({ ...draftsQuery(account), enabled: signedIn });
+  const drawer = useDrawer();
   return (
     <>
       <h2>Home</h2>
@@ -29,25 +31,30 @@ export function Home() {
           empty="The Markdown files you view, here or in Google Drive, show here."
         />
       </Section>
-      <Section title="Vaults">
-        <ItemListing
-          query={vaultsQuery(drive)}
-          trail={undefined}
-          empty="No Obsidian vault in your Drive: a vault is a folder with a .obsidian folder in it."
-        />
-      </Section>
-      <Section title="Browse">
-        <ul className="entries">
-          {Object.values(ROOTS).map((root) => (
-            <li key={root.href}>
-              <Link to={root.href} trail={[root]} className="entry folder">
-                {root.name}
-                <Icon name="chevron_right" />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </Section>
+      {/* A wide screen's drawer holds the vaults and the roots. */}
+      {!drawer && (
+        <>
+          <Section title="Vaults">
+            <ItemListing
+              query={vaultsQuery(drive)}
+              trail={undefined}
+              empty="No Obsidian vault in your Drive: a vault is a folder with a .obsidian folder in it."
+            />
+          </Section>
+          <Section title="Browse">
+            <ul className="entries">
+              {Object.values(ROOTS).map((root) => (
+                <li key={root.href}>
+                  <Link to={root.href} trail={[root]} className="entry folder">
+                    {root.name}
+                    <Icon name="chevron_right" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        </>
+      )}
     </>
   );
 }
