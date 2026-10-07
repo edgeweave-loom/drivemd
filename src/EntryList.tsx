@@ -139,9 +139,13 @@ function ShortcutEntry({
       aria-disabled="true"
       className={`entry ${entry.kind} broken`}
     >
-      <span className="name">{entry.name}</span>
-      <span className="badge">Shortcut</span>
-      <span className="reason">{BROKEN[broken]}</span>
+      <span className="lines">
+        <span>
+          <span className="name">{entry.name}</span>{" "}
+          <span className="badge">Shortcut</span>
+        </span>
+        <small className="reason">{BROKEN[broken]}</small>
+      </span>
     </a>
   );
 }

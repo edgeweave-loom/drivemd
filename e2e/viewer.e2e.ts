@@ -289,6 +289,68 @@ test("shows someone else's change at save, and overwrites it when asked", async 
   );
 });
 
+test("folds the lines alike in the theme's colors, as the system's changes", async ({
+  page,
+  drive,
+}) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  await page.locator(".markdown").getByRole("checkbox").first().check();
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content = `${String(plan.content)}\nTheir line.\n`;
+  plan.revision = 2;
+  await page.getByRole("button", { name: "Save" }).click();
+
+  const folded = page.locator(".differences .cm-collapsedLines").first();
+  await expect(folded).toContainText("unchanged lines");
+  const colors = () =>
+    folded.evaluate((bar) => {
+      const style = getComputedStyle(bar);
+      return {
+        text: style.color,
+        // Its color, or a gradient's, but not what it lets through.
+        backgrounds: [
+          style.backgroundColor,
+          ...(style.backgroundImage.match(/rgba?\([^)]*\)/g) ?? []),
+        ].filter((color) => !color.endsWith(", 0)")),
+      };
+    });
+  const { text, backgrounds } = await colors();
+  expect(backgrounds.length).toBeGreaterThan(0);
+  for (const background of backgrounds) {
+    expect(luminance(background)).toBeLessThan(0.1);
+    expect(contrast(text, background)).toBeGreaterThanOrEqual(4.5);
+  }
+
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect
+    .poll(async () => luminance((await colors()).text))
+    .toBeLessThan(0.1);
+  for (const background of (await colors()).backgrounds) {
+    expect(luminance(background)).toBeGreaterThan(0.5);
+  }
+});
+
+/** WCAG's relative luminance of a computed `rgb()` color. */
+function luminance(color: string): number {
+  const channels = /^rgba?\((\d+), (\d+), (\d+)/.exec(color)?.slice(1);
+  if (!channels) throw new Error(`Not an rgb() color: ${color}`);
+  const [r = 0, g = 0, b = 0] = channels.map((channel) => {
+    const c = Number(channel) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrast(one: string, other: string): number {
+  const [light, dark] = [luminance(one), luminance(other)].sort(
+    (a, b) => b - a,
+  );
+  return ((light ?? 0) + 0.05) / ((dark ?? 0) + 0.05);
+}
+
 test("keeps unsaved changes on the device across a reload", async ({
   page,
   drive,
