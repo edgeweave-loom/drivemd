@@ -186,7 +186,7 @@ function Conflict({
       <p>
         They saved a version since you opened yours, so DriveMD saved nothing.
         Below, what yours removes from theirs is struck through, and what it
-        adds is highlighted.
+        adds is underlined.
       </p>
       <div className="actions">
         <button

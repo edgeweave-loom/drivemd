@@ -72,6 +72,26 @@ const COLORS = EditorView.theme({
     background: "var(--surface-container)",
     color: "inherit",
   },
+  // The differences: what the user's version adds underlined, and what it
+  // removes struck through, never told by color alone, its lines on colors
+  // of their own. The selectors match @codemirror/merge's own, which they
+  // replace.
+  "&.cm-merge-b .cm-changedLine": {
+    background: "var(--diff-added)",
+    color: "var(--on-tertiary-container)",
+  },
+  "&.cm-merge-b .cm-changedText": {
+    background: "none",
+    textDecoration: "underline",
+  },
+  ".cm-deletedChunk": {
+    background: "var(--diff-removed)",
+    color: "var(--on-error-container)",
+  },
+  "&.cm-merge-b .cm-deletedText, .cm-deletedChunk .cm-deletedText": {
+    background: "none",
+    textDecoration: "line-through",
+  },
   ".cm-collapsedLines": {
     background: "var(--surface-container)",
     color: "var(--on-surface-variant)",
