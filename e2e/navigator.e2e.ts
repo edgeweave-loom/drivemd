@@ -257,7 +257,8 @@ test("opens a Drive link pasted in the search box", async ({ page }) => {
   await expect(
     page.getByRole("heading", { level: 1, name: "The plan" }),
   ).toBeVisible();
-  await expect(search).toHaveValue("");
+  // The link leaves no words behind for the next search.
+  await expect(await searchBox(page)).toHaveValue("");
 });
 
 test("opens the Drive link shared with the installed app, and forgets the share", async ({

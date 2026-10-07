@@ -1,5 +1,12 @@
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState, type ReactNode } from "react";
+import {
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
+import { flushSync } from "react-dom";
 import { Account } from "./Account.tsx";
 import { DriveContext, useDrive } from "./drive-context.ts";
 import { linkedPage } from "./drive-web.ts";
@@ -48,22 +55,58 @@ export function Navigator({
   return (
     <QueryClientProvider client={client}>
       <DriveContext value={access}>
-        <header className="bar">
-          <h1>
-            <Link to={HOME}>
-              <img src="/icon.svg" alt="" />
-              DriveMD
-            </Link>
-          </h1>
-          <SearchBox />
-          <Account email={email} onSignOut={session.signOut} />
-        </header>
+        <AppBar email={email} onSignOut={session.signOut} />
         <main className="page">
           {children}
           <Page />
         </main>
       </DriveContext>
     </QueryClientProvider>
+  );
+}
+
+/**
+ * DriveMD's mark and name, which lead Home, the search bar and the account.
+ * On a phone, the search opens full screen from a button.
+ */
+function AppBar({
+  email,
+  onSignOut,
+}: {
+  email: string;
+  onSignOut: () => void;
+}) {
+  const { route } = usePlace();
+  const field = useRef<HTMLInputElement>(null);
+  return (
+    <header className={route.name === "search" ? "bar searching" : "bar"}>
+      <h1>
+        <Link to={HOME}>
+          <img src="/icon.svg" alt="" />
+          DriveMD
+        </Link>
+      </h1>
+      <SearchBox field={field} />
+      <button
+        type="button"
+        className="icon-button open-search"
+        aria-label="Search"
+        title="Search"
+        onClick={() => {
+          const href = hrefOf({ name: "search", text: "" });
+          if (!mayLeave(href)) return;
+          // At once, so that the field takes the focus within the tap,
+          // which alone brings up a phone's keyboard.
+          flushSync(() => {
+            navigate(href, undefined, { asked: true });
+          });
+          field.current?.focus();
+        }}
+      >
+        <Icon name="search" />
+      </button>
+      <Account email={email} onSignOut={onSignOut} />
+    </header>
   );
 }
 
@@ -100,7 +143,7 @@ function Page() {
  * Searches Markdown files by name, from every page, or opens the file or
  * folder of a Drive link pasted in it.
  */
-function SearchBox() {
+function SearchBox({ field }: { field: RefObject<HTMLInputElement | null> }) {
   const { renew } = useDrive();
   const client = useQueryClient();
   const { route } = usePlace();
@@ -133,8 +176,20 @@ function SearchBox() {
         if (route.name === "search") refreshSearches(client);
       }}
     >
+      <button
+        type="button"
+        className="icon-button back"
+        aria-label="Back"
+        title="Back"
+        onClick={() => {
+          history.back();
+        }}
+      >
+        <Icon name="arrow_back" />
+      </button>
       <Icon name="search" />
       <input
+        ref={field}
         type="search"
         value={typed}
         onChange={(event) => {
@@ -149,6 +204,20 @@ function SearchBox() {
         autoCorrect="off"
         spellCheck={false}
       />
+      {typed !== "" && (
+        <button
+          type="button"
+          className="icon-button clear"
+          aria-label="Clear"
+          title="Clear"
+          onClick={() => {
+            setTyped("");
+            field.current?.focus();
+          }}
+        >
+          <Icon name="close" />
+        </button>
+      )}
     </form>
   );
 }

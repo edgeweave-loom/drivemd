@@ -101,7 +101,7 @@ test("searches from a pill, which rises while it has the focus", async ({
     name: "Search Markdown files by name",
   });
   const search = page.getByRole("search");
-  await expect(search.locator("svg")).toHaveCount(1);
+  await expect(search.locator("svg:visible")).toHaveCount(1);
   expect((await field.boundingBox())?.height).toBe(48);
   await expect(field).toHaveCSS(
     "background-color",
