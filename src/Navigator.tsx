@@ -5,6 +5,7 @@ import { linkedPage } from "./drive-web.ts";
 import { FileView } from "./FilePage.tsx";
 import { FolderPage } from "./FolderPage.tsx";
 import { Home } from "./Home.tsx";
+import { Icon } from "./Icon.tsx";
 import { Link } from "./Link.tsx";
 import { NewPage } from "./NewPage.tsx";
 import { createQueryClient, refreshSearches } from "./queries.ts";
@@ -49,7 +50,10 @@ export function Navigator({
       <DriveContext value={access}>
         <header className="bar">
           <h1>
-            <Link to={HOME}>DriveMD</Link>
+            <Link to={HOME}>
+              <img src="/icon.svg" alt="" />
+              DriveMD
+            </Link>
           </h1>
           <SearchBox />
           <span className="account">{email}</span>
@@ -130,6 +134,7 @@ function SearchBox() {
         if (route.name === "search") refreshSearches(client);
       }}
     >
+      <Icon name="search" />
       <input
         type="search"
         value={typed}
