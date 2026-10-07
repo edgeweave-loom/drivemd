@@ -1,3 +1,23 @@
+import type { Page } from "@playwright/test";
+
+/** A CSS color, as the page computes it in its theme. */
+export function computed(page: Page, value: string): Promise<string> {
+  return page.evaluate((value) => {
+    // Set through the CSSOM, which the security policy allows, where it
+    // refuses a style attribute.
+    const probe = document.body.appendChild(document.createElement("i"));
+    probe.style.color = value;
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }, value);
+}
+
+/** A token of src/tokens.css, as the page computes it in its theme. */
+export function token(page: Page, name: string): Promise<string> {
+  return computed(page, `var(${name})`);
+}
+
 /** WCAG's relative luminance of a computed `rgb()` color. */
 export function luminance(color: string): number {
   const channels = /^rgba?\((\d+), (\d+), (\d+)/.exec(color)?.slice(1);

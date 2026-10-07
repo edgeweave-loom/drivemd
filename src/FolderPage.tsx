@@ -64,6 +64,7 @@ function NewFile({
     <>
       <button
         type="button"
+        className="tonal"
         onClick={() => {
           setAsking(true);
         }}

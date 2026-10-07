@@ -65,6 +65,7 @@ export function Dialog({
 export function ConfirmDialog({
   title,
   action,
+  danger = false,
   pending,
   error,
   onConfirm,
@@ -73,6 +74,8 @@ export function ConfirmDialog({
 }: {
   title: string;
   action: string;
+  /** Whether the action loses something, which then shows as a danger. */
+  danger?: boolean;
   pending: boolean;
   error: Error | null;
   /** Does the action; undefined while it may not go ahead yet. */
@@ -101,7 +104,7 @@ export function ConfirmDialog({
           </button>
           <button
             type="submit"
-            className="primary"
+            className={danger ? "danger" : "filled"}
             disabled={pending || !onConfirm}
           >
             {action}
