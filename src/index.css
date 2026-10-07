@@ -232,6 +232,77 @@ button:is(.filled, .tonal, .danger):disabled {
   font-size: max(16px, 1rem);
 }
 
+button.account {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  min-height: 0;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+
+@media (pointer: coarse) {
+  button.account::after {
+    inset: -8px;
+  }
+}
+
+/* A menu that opens from a button, over the page. */
+.menu {
+  min-width: 240px;
+  margin: 0;
+  padding: var(--space-2) 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: var(--surface-container);
+  color: var(--on-surface);
+  box-shadow: var(--elevation-2);
+}
+
+.menu > p {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  color: var(--on-surface-variant);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.menu > :is(a, button) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: 0 var(--space-4);
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  text-decoration: none;
+}
+
+.menu > button::after {
+  content: none;
+}
+
+@media (hover: hover) {
+  .menu > a:hover {
+    background-image: linear-gradient(
+      color-mix(in srgb, currentColor 8%, transparent) 0 0
+    );
+  }
+}
+
+.account-menu {
+  inset: calc(var(--app-bar-height) - var(--space-2)) var(--space-4) auto auto;
+}
+
 @media (width < 768px), (pointer: coarse) and (height < 500px) {
   .bar {
     min-height: var(--app-bar-height-compact);
@@ -246,6 +317,10 @@ button:is(.filled, .tonal, .danger):disabled {
   .search {
     flex-basis: 100%;
     order: 1;
+  }
+
+  .account-menu {
+    top: calc(var(--app-bar-height-compact) - var(--space-2));
   }
 }
 
@@ -365,15 +440,6 @@ dialog.drawer {
   border-right: 1px solid var(--outline-variant);
   background: var(--surface);
   color: inherit;
-}
-
-.bar .account {
-  min-width: 0;
-  margin-left: auto;
-  overflow: hidden;
-  color: var(--on-surface-variant);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .page {

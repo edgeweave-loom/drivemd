@@ -22,7 +22,7 @@ Milestones 1 to 7 are done, and milestone 8, mobile polish, comes next. The prod
 
 **Sign in with Google** opens Google's window, so the browser must allow pop-ups for the site. The session then lasts about an hour for the tab: a reload keeps it, while a new tab or a relaunch of the Home Screen app asks for **Continue**, which renews it for the account remembered on the device, usually with a window that closes by itself. Once the hour is up, the next tap that opens a page renews the session in the same way, and a page that loads without a tap asks for **Continue**. A tab that Drive's **Open with** or **New** opens asks to **Sign in** rather than **Continue**, with Google's account chooser starting from the account Drive used, and the account picked becomes the one remembered on the device. **Sign out** forgets the session on the device, in every open tab, without revoking DriveMD's access to the Google account. It also discards the unsaved changes kept on the device for the account, after saying how many notes have some.
 
-The sign-in screen links to `/about.html`, which says what DriveMD does with your data, its terms of use, where to report a problem and where its source code is, without signing in.
+The sign-in screen links to `/about.html`, which says what DriveMD does with your data, its terms of use, where to report a problem and where its source code is, without signing in. Once signed in, the round button with the account's initial, at the end of the app bar, opens a menu with the account's address, **About DriveMD**, which opens that page in a new tab, and **Sign out**.
 
 ## On a phone
 
