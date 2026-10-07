@@ -16,6 +16,7 @@ import {
   metadataOf,
 } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
+import { holdScreen } from "./test/screen.ts";
 
 const EMAIL = "ada@example.com";
 
@@ -103,7 +104,8 @@ describe("Navigator", () => {
     });
   });
 
-  it("follows Back to another search", async () => {
+  it("follows Back to another search on a wide screen", async () => {
+    holdScreen("wide");
     const session = open("/search?q=plan");
     session.drive.search.mockReturnValue(new Promise(() => undefined));
     fireEvent.change(screen.getByRole("searchbox"), {
@@ -117,6 +119,63 @@ describe("Navigator", () => {
     await waitFor(() => {
       expect(screen.getByRole("searchbox")).toHaveValue("plan");
     });
+  });
+
+  it("opens the search from its button, the field taking the focus within the tap", () => {
+    open("/my-drive");
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(getPlace().href).toBe("/search?q=");
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+  });
+
+  it("clears the words typed, keeping the search shown and the focus", () => {
+    const session = open("/search?q=plan");
+    session.drive.search.mockReturnValue(new Promise(() => undefined));
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+    expect(getPlace().href).toBe("/search?q=plan");
+    expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
+  });
+
+  it("goes back, on a phone, to the page that opened the search, past the searches made there", async () => {
+    const session = open("/my-drive");
+    session.drive.search.mockReturnValue(new Promise(() => undefined));
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    for (const words of ["plan", "plans"]) {
+      fireEvent.change(screen.getByRole("searchbox"), {
+        target: { value: words },
+      });
+      fireEvent.submit(screen.getByRole("searchbox"));
+    }
+    expect(getPlace().href).toBe("/search?q=plans");
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await waitFor(() => {
+      expect(getPlace().href).toBe("/my-drive");
+    });
+    // Words typed there go with the search.
+    expect(screen.getByRole("searchbox", { hidden: true })).toHaveValue("");
+  });
+
+  it("forgets the words typed but not searched once the search is left", async () => {
+    open("/my-drive");
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "half typed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await waitFor(() => {
+      expect(getPlace().href).toBe("/my-drive");
+    });
+    expect(screen.getByRole("searchbox", { hidden: true })).toHaveValue("");
+  });
+
+  it("goes Home from a search that the app did not open", () => {
+    const session = open("/search?q=plan");
+    session.drive.search.mockReturnValue(new Promise(() => undefined));
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(getPlace().href).toBe("/");
   });
 
   it("asks Drive again when the same search is submitted", async () => {

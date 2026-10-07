@@ -152,8 +152,7 @@ test("searches full screen on a phone, with Back and Clear", async ({
   await expect(field).toBeFocused();
   await expect(page).toHaveURL(/\/search\?q=pla$/);
 
-  await bar.getByRole("button", { name: "Back" }).click();
-  await expect(page).toHaveURL(/\/search\?q=$/);
+  // Back leaves the search at once, to the page that opened it.
   await bar.getByRole("button", { name: "Back" }).click();
   await expect(page).toHaveURL(/\/my-drive$/);
   await expect(field).toBeHidden();

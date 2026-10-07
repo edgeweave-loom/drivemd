@@ -12,8 +12,9 @@ function entries(page: Page) {
 
 /** The search box, opened first where a phone keeps it behind a button. */
 async function searchBox(page: Page) {
-  const open = page.getByRole("button", { name: "Search", exact: true });
-  if (await open.isVisible()) await open.click();
+  if (test.info().project.metadata.layout === "phone") {
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+  }
   return page.getByRole("searchbox", { name: "Search Markdown files by name" });
 }
 
