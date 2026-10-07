@@ -1,6 +1,5 @@
-/* Code highlighting as on GitHub, in the system's theme. */
-@import "highlight.js/styles/github.css" (prefers-color-scheme: light);
-@import "highlight.js/styles/github-dark.css" (prefers-color-scheme: dark);
+/* The design's colors, type and measures (docs/DESIGN.md). */
+@import "./tokens.css";
 /* Google's fonts, served by the app, each script's subset loading only
    when a page shows its letters, with their own slant for emphasis:
    Google Sans Flex's slant axis, and Google Sans Code's italic. */
@@ -9,27 +8,9 @@
 @import "@fontsource-variable/google-sans-code/wght-italic.css";
 
 :root {
-  --text: light-dark(#1f2328, #f0f6fc);
-  --muted: light-dark(#59636e, #9198a1);
-  --background: light-dark(#ffffff, #0d1117);
-  --surface: light-dark(#f6f8fa, #212830);
-  --border: light-dark(#d1d9e0, #3d444d);
-  --accent: light-dark(#0969da, #1f6feb);
-  --link: light-dark(#0969da, #4493f8);
-  --monospace:
-    "Google Sans Code Variable", ui-monospace, SFMono-Regular, Menlo, Consolas,
-    monospace;
-
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--background);
-  font-family:
-    "Google Sans Flex Variable",
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    sans-serif;
+  color: var(--on-surface);
+  background: var(--surface);
+  font-family: var(--font-sans);
   line-height: 1.5;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
@@ -46,7 +27,7 @@ body {
 }
 
 a {
-  color: var(--link);
+  color: var(--primary);
 }
 
 .app {
@@ -70,9 +51,9 @@ a {
 button {
   min-height: 44px;
   padding: 0 1.25rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--outline);
   border-radius: 0.5rem;
-  background: var(--surface);
+  background: none;
   color: inherit;
   font: inherit;
   cursor: pointer;
@@ -80,8 +61,8 @@ button {
 
 button.primary {
   border-color: transparent;
-  background: var(--accent);
-  color: #ffffff;
+  background: var(--primary);
+  color: var(--on-primary);
 }
 
 button:disabled {
@@ -91,13 +72,13 @@ button:disabled {
 
 .hint,
 .message {
-  color: var(--muted);
+  color: var(--on-surface-variant);
 }
 
 .card {
-  border: 1px solid var(--border);
+  border: 1px solid var(--outline-variant);
   border-radius: 0.75rem;
-  background: var(--background);
+  background: var(--surface-container-high);
 }
 
 .bar {
@@ -109,8 +90,8 @@ button:disabled {
   gap: 0.5rem 0.75rem;
   align-items: center;
   padding: 0.5rem 1rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--background);
+  border-bottom: 1px solid var(--outline-variant);
+  background: var(--surface);
 }
 
 .bar h1 {
@@ -135,13 +116,18 @@ button:disabled {
   width: 100%;
   min-height: 44px;
   padding: 0 0.75rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--outline);
   border-radius: 0.5rem;
-  background: var(--surface);
+  background: var(--surface-container-high);
   color: inherit;
   font: inherit;
   /* Safari zooms in on a field whose text is smaller. */
   font-size: max(16px, 1rem);
+}
+
+/* A dialog's field, on the dialog's own color. */
+.stack input {
+  background: none;
 }
 
 @media (width < 768px), (pointer: coarse) and (height < 500px) {
@@ -158,7 +144,7 @@ dialog.card {
 }
 
 dialog::backdrop {
-  background: rgb(0 0 0 / 40%);
+  background: color-mix(in srgb, var(--scrim) 32%, transparent);
 }
 
 .card h2 {
@@ -212,7 +198,7 @@ button.link {
   padding: 0;
   border: none;
   background: none;
-  color: var(--link);
+  color: var(--primary);
 }
 
 .split,
@@ -247,8 +233,8 @@ dialog.drawer {
   margin: 0;
   padding: 1rem;
   border: none;
-  border-right: 1px solid var(--border);
-  background: var(--background);
+  border-right: 1px solid var(--outline-variant);
+  background: var(--surface);
   color: inherit;
 }
 
@@ -256,7 +242,7 @@ dialog.drawer {
   min-width: 0;
   margin-left: auto;
   overflow: hidden;
-  color: var(--muted);
+  color: var(--on-surface-variant);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -275,7 +261,7 @@ dialog.drawer {
 }
 
 .page h3 {
-  color: var(--muted);
+  color: var(--on-surface-variant);
   font-size: 0.875rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -298,7 +284,7 @@ dialog.drawer {
   gap: 0 0.5rem;
   margin: 0;
   padding: 0;
-  color: var(--muted);
+  color: var(--on-surface-variant);
   font-size: 0.875rem;
   list-style: none;
 }
@@ -326,7 +312,7 @@ dialog.drawer {
   align-items: center;
   min-height: 44px;
   padding: 0.5rem 0.25rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--outline-variant);
   color: inherit;
   text-decoration: none;
   overflow-wrap: anywhere;
@@ -338,36 +324,37 @@ dialog.drawer {
 
 .entry.folder:not(.broken)::after {
   margin-left: auto;
-  color: var(--muted);
+  color: var(--on-surface-variant);
   content: "›" / "";
 }
 
 .badge {
   padding: 0 0.5rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--outline-variant);
   border-radius: 1rem;
-  color: var(--muted);
+  color: var(--on-surface-variant);
   font-size: 0.75rem;
   white-space: nowrap;
 }
 
 .warning {
   padding: 0.5rem 0.75rem;
-  border-left: 3px solid light-dark(#9a6700, #d29922);
-  background: light-dark(#fff8c5, #272115);
+  border-left: 3px solid var(--attention);
+  background: var(--attention-container);
+  color: var(--on-attention-container);
 }
 
 .failure {
-  color: light-dark(#d1242f, #f85149);
+  color: var(--error);
 }
 
 .entry.broken {
-  color: var(--muted);
+  color: var(--on-surface-variant);
 }
 
 .entry .when {
   margin-left: auto;
-  color: var(--muted);
+  color: var(--on-surface-variant);
   font-size: 0.875rem;
   text-align: end;
 }
@@ -376,7 +363,7 @@ dialog.drawer {
   display: grid;
   gap: 0.125rem;
   min-width: 0;
-  color: var(--muted);
+  color: var(--on-surface-variant);
 }
 
 .entry .lines small {
@@ -433,7 +420,7 @@ dialog.drawer {
 
 .markdown :is(h1, h2) {
   padding-bottom: 0.3em;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--outline-variant);
 }
 
 .markdown h1 {
@@ -457,7 +444,7 @@ dialog.drawer {
 }
 
 .markdown h6 {
-  color: var(--muted);
+  color: var(--on-surface-variant);
   font-size: 0.85em;
 }
 
@@ -488,14 +475,14 @@ dialog.drawer {
     :has(> input:checked),
     :has(> p:first-child > input:checked)
   ) {
-  color: var(--muted);
+  color: var(--on-surface-variant);
   text-decoration: line-through;
 }
 
 .markdown blockquote {
   padding: 0 1em;
-  border-left: 0.25em solid var(--border);
-  color: var(--muted);
+  border-left: 0.25em solid var(--outline-variant);
+  color: var(--on-surface-variant);
 }
 
 /* Obsidian's callouts, in the colors of its light and dark themes. */
@@ -565,7 +552,7 @@ dialog.drawer {
 .markdown .embed {
   margin: 0 0 1rem;
   padding: 0.25rem 0 0.25rem 1rem;
-  border-left: 0.25em solid var(--border);
+  border-left: 0.25em solid var(--outline-variant);
 }
 
 .markdown .embed-title {
@@ -582,35 +569,101 @@ dialog.drawer {
 .markdown .tag {
   padding: 0.1em 0.5em;
   border-radius: 1em;
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  color: var(--link);
+  background: color-mix(in srgb, var(--primary) 15%, transparent);
+  color: var(--primary);
   font-size: 0.875em;
 }
 
 .markdown :is(code, kbd, pre, samp) {
-  font-family: var(--monospace);
+  font-family: var(--font-mono);
   font-size: 85%;
 }
 
 .markdown code {
   padding: 0.2em 0.4em;
   border-radius: 6px;
-  background: var(--surface);
+  background: var(--surface-container-high);
 }
 
 .markdown pre {
   padding: 1rem;
   overflow: auto;
   border-radius: 6px;
-  background: var(--surface);
+  background: var(--surface-container-high);
   line-height: 1.45;
 }
 
-.markdown pre code,
-.markdown pre code.hljs {
+.markdown pre code {
   padding: 0;
   background: none;
   font-size: 100%;
+}
+
+/* Highlighted code in the design's roles, each 5:1 or more on its block in
+   both themes (docs/DESIGN.md, Color). */
+.markdown .hljs-comment,
+.markdown .hljs-quote {
+  color: var(--on-surface-variant);
+  font-style: italic;
+}
+
+.markdown .hljs-meta,
+.markdown .hljs-bullet {
+  color: var(--on-surface-variant);
+}
+
+.markdown .hljs-keyword,
+.markdown .hljs-selector-tag,
+.markdown .hljs-built_in,
+.markdown .hljs-type,
+.markdown .hljs-doctag,
+.markdown .hljs-template-tag,
+.markdown .hljs-link {
+  color: var(--primary);
+}
+
+.markdown .hljs-string,
+.markdown .hljs-regexp,
+.markdown .hljs-number,
+.markdown .hljs-literal,
+.markdown .hljs-symbol {
+  color: var(--tertiary);
+}
+
+.markdown .hljs-attr,
+.markdown .hljs-attribute,
+.markdown .hljs-property,
+.markdown .hljs-variable,
+.markdown .hljs-template-variable,
+.markdown .hljs-params,
+.markdown .hljs-name,
+.markdown .hljs-selector-id,
+.markdown .hljs-selector-class,
+.markdown .hljs-selector-attr,
+.markdown .hljs-selector-pseudo {
+  color: var(--secondary);
+}
+
+.markdown .hljs-title,
+.markdown .hljs-section,
+.markdown .hljs-strong {
+  font-weight: 600;
+}
+
+.markdown .hljs-emphasis {
+  font-style: italic;
+}
+
+.markdown .hljs-addition {
+  background: var(--diff-added);
+  color: var(--on-tertiary-container);
+  text-decoration: underline;
+}
+
+.markdown .hljs-deletion {
+  background: var(--diff-removed);
+  color: var(--on-error-container);
+  text-decoration: line-through;
 }
 
 .markdown table {
@@ -623,24 +676,24 @@ dialog.drawer {
 
 .markdown :is(th, td) {
   padding: 6px 13px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--outline-variant);
 }
 
 .markdown tr:nth-child(2n) {
-  background: var(--surface);
+  background: var(--surface-container-low);
 }
 
 .markdown hr {
   height: 0.25em;
   padding: 0;
   border: 0;
-  background: var(--border);
+  background: var(--outline-variant);
 }
 
 .markdown .footnotes {
   padding-top: 1rem;
-  border-top: 1px solid var(--border);
-  color: var(--muted);
+  border-top: 1px solid var(--outline-variant);
+  color: var(--on-surface-variant);
   font-size: 0.875em;
 }
 
@@ -651,7 +704,7 @@ dialog.drawer {
 }
 
 .markdown .unresolved {
-  color: var(--muted);
+  color: var(--on-surface-variant);
   text-decoration: underline dotted;
 }
 
@@ -690,9 +743,10 @@ dialog.drawer {
   display: grid;
   gap: 0.75rem;
   padding: 1rem;
-  border: 1px solid light-dark(#9a6700, #d29922);
+  border: 1px solid var(--attention);
   border-radius: 0.5rem;
-  background: light-dark(#fff8c5, #272115);
+  background: var(--attention-container);
+  color: var(--on-attention-container);
 }
 
 .page .conflict h3 {
@@ -726,8 +780,8 @@ dialog.drawer {
   align-items: center;
   height: 48px;
   overflow-x: auto;
-  border-top: 1px solid var(--border);
-  background: var(--surface);
+  border-top: 1px solid var(--outline-variant);
+  background: var(--surface-container);
   scrollbar-width: none;
 }
 
