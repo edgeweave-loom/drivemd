@@ -35,6 +35,9 @@ export default defineConfig({
   server: { port, strictPort: true },
   preview: { port, strictPort: true, headers },
   build: {
+    // The security policy loads nothing from a data: address, which Vite
+    // would otherwise make of a file under 4 KB, such as a font's subset.
+    assetsInlineLimit: 0,
     rolldownOptions: {
       // The about page, which the Marketplace listing links to, is a page of
       // its own, readable without signing in and without script.

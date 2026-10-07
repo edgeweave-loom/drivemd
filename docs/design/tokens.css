@@ -84,8 +84,10 @@
   --fab-size: 56px;
 
   --font-sans:
-    "Google Sans Flex", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    "Google Sans Flex Variable", system-ui, -apple-system, "Segoe UI", Roboto,
+    sans-serif;
   --font-mono:
-    "Google Sans Code", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    "Google Sans Code Variable", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    monospace;
   --font-icons: "Material Symbols Outlined";
 }

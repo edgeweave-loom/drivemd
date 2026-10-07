@@ -36,6 +36,21 @@ const followSystem = ViewPlugin.define((view) => {
   };
 });
 
+// CodeMirror measures its lines again once the fonts loading as it starts
+// are in, but not for a font that loads later, as one does when the text
+// first shows letters of its script or code: lines may then wrap anew.
+const measureOnFonts = ViewPlugin.define((view) => {
+  const measure = () => {
+    view.requestMeasure();
+  };
+  document.fonts.addEventListener("loadingdone", measure);
+  return {
+    destroy: () => {
+      document.fonts.removeEventListener("loadingdone", measure);
+    },
+  };
+});
+
 const COLORS = EditorView.theme({
   "&": {
     border: "1px solid var(--border)",
@@ -59,8 +74,16 @@ const COLORS = EditorView.theme({
   },
 });
 
-/** The editor in the app's colors, light or dark as the system is. */
-export const THEME: Extension = [COLORS, systemDark, followSystem];
+/**
+ * The editor in the app's colors, light or dark as the system is, and in
+ * its fonts.
+ */
+export const THEME: Extension = [
+  COLORS,
+  systemDark,
+  followSystem,
+  measureOnFonts,
+];
 
 /**
  * A CodeMirror view in the element's shadow root. There, CodeMirror styles

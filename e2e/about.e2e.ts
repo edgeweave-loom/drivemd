@@ -40,6 +40,20 @@ test("says how DriveMD treats data, its terms, where to get help and its source,
   await expect(
     page.locator("#source").getByRole("link", { name: "Apache License 2.0" }),
   ).toHaveAttribute("href", "https://www.apache.org/licenses/LICENSE-2.0");
+  // So do its fonts.
+  for (const [name, href] of [
+    ["Google Sans Flex", "https://fonts.google.com/specimen/Google+Sans+Flex"],
+    ["Google Sans Code", "https://github.com/googlefonts/googlesans-code"],
+  ] as const) {
+    await expect(
+      page.locator("#source").getByRole("link", { name }),
+    ).toHaveAttribute("href", href);
+  }
+  await expect(
+    page
+      .locator("#source")
+      .getByRole("link", { name: "SIL Open Font License" }),
+  ).toHaveAttribute("href", "https://openfontlicense.org");
   // Styled by the app's own stylesheet, which the policy allows, and
   // running no script.
   await expect(page.getByRole("main")).toHaveCSS("max-width", "768px");
