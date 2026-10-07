@@ -129,6 +129,21 @@ button:is(.filled, .tonal, .danger):disabled {
   }
 }
 
+/* Icon buttons: 40 px circles, named by a label and a tooltip. */
+button.icon-button {
+  flex: none;
+  width: var(--control-height);
+  padding: 0;
+  border: none;
+  color: var(--on-surface-variant);
+}
+
+@media (pointer: coarse) {
+  button.icon-button::after {
+    inset: calc((var(--control-height) - var(--touch-target)) / 2);
+  }
+}
+
 .icon {
   flex: none;
   width: 24px;
@@ -190,7 +205,7 @@ button:is(.filled, .tonal, .danger):disabled {
   max-width: 720px;
 }
 
-.search .icon {
+.search > .icon {
   position: absolute;
   top: 50%;
   left: var(--space-4);
@@ -202,7 +217,7 @@ button:is(.filled, .tonal, .danger):disabled {
 .search input {
   width: 100%;
   min-height: 48px;
-  padding: 0 var(--space-4) 0 56px;
+  padding: 0 52px 0 56px;
   border: none;
   border-radius: var(--radius-full);
   background: var(--surface-container-high);
@@ -217,6 +232,24 @@ button:is(.filled, .tonal, .danger):disabled {
 .search input:focus {
   background: var(--sheet);
   box-shadow: var(--elevation-1);
+}
+
+/* Clear does what the browser's own button would. */
+.search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search .clear {
+  position: absolute;
+  top: 50%;
+  right: var(--space-1);
+  translate: 0 -50%;
+}
+
+/* The search's Back, and the phone's button that opens it. */
+.search .back,
+.open-search {
+  display: none;
 }
 
 /* A dialog's field, on the dialog's own color. */
@@ -306,7 +339,6 @@ button.account {
 @media (width < 768px), (pointer: coarse) and (height < 500px) {
   .bar {
     min-height: var(--app-bar-height-compact);
-    padding-block: var(--space-2);
   }
 
   .bar h1 img {
@@ -314,9 +346,60 @@ button.account {
     height: 32px;
   }
 
-  .search {
-    flex-basis: 100%;
-    order: 1;
+  /* The search opens full screen. */
+  .bar .search {
+    display: none;
+  }
+
+  button.open-search {
+    display: inline-flex;
+    margin-left: auto;
+  }
+
+  .bar button.account {
+    margin-left: 0;
+  }
+
+  :root:has(.bar.searching),
+  .bar.searching {
+    background: var(--surface-container-high);
+  }
+
+  .bar.searching > :not(.search) {
+    display: none;
+  }
+
+  .bar.searching .search {
+    display: flex;
+    flex: 1;
+    gap: var(--space-1);
+    align-items: center;
+    max-width: none;
+    margin-left: calc(-1 * var(--space-2));
+  }
+
+  .bar.searching .search > .icon {
+    display: none;
+  }
+
+  .bar.searching .search .back {
+    display: inline-flex;
+  }
+
+  .bar.searching .search input {
+    padding-left: var(--space-2);
+    background: none;
+    box-shadow: none;
+  }
+
+  /* The field names the search, as its heading would. */
+  :root:has(.bar.searching) .page > h2 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .account-menu {

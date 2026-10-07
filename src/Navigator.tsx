@@ -1,5 +1,12 @@
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState, type ReactNode } from "react";
+import {
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
+import { flushSync } from "react-dom";
 import { Account } from "./Account.tsx";
 import { DriveContext, useDrive } from "./drive-context.ts";
 import { linkedPage } from "./drive-web.ts";
@@ -7,6 +14,7 @@ import { FileView } from "./FilePage.tsx";
 import { FolderPage } from "./FolderPage.tsx";
 import { Home } from "./Home.tsx";
 import { Icon } from "./Icon.tsx";
+import { useLayout } from "./layout.ts";
 import { Link } from "./Link.tsx";
 import { NewPage } from "./NewPage.tsx";
 import { createQueryClient, refreshSearches } from "./queries.ts";
@@ -48,22 +56,73 @@ export function Navigator({
   return (
     <QueryClientProvider client={client}>
       <DriveContext value={access}>
-        <header className="bar">
-          <h1>
-            <Link to={HOME}>
-              <img src="/icon.svg" alt="" />
-              DriveMD
-            </Link>
-          </h1>
-          <SearchBox />
-          <Account email={email} onSignOut={session.signOut} />
-        </header>
+        <AppBar email={email} onSignOut={session.signOut} />
         <main className="page">
           {children}
           <Page />
         </main>
       </DriveContext>
     </QueryClientProvider>
+  );
+}
+
+/**
+ * DriveMD's mark and name, which lead Home, the search bar and the account.
+ * On a phone, the search opens full screen from a button.
+ */
+function AppBar({
+  email,
+  onSignOut,
+}: {
+  email: string;
+  onSignOut: () => void;
+}) {
+  const { route } = usePlace();
+  const field = useRef<HTMLInputElement>(null);
+  // The page that opened the search, which its Back returns to.
+  const opener = useRef<string>(undefined);
+  return (
+    <header className={route.name === "search" ? "bar searching" : "bar"}>
+      <h1>
+        <Link to={HOME}>
+          <img src="/icon.svg" alt="" />
+          DriveMD
+        </Link>
+      </h1>
+      <SearchBox
+        field={field}
+        onBack={() => {
+          // Home, when the app did not open the search: from a link, a
+          // reload, or a Home Screen app that opens on it.
+          if (opener.current === undefined) {
+            navigate(HOME);
+            return;
+          }
+          opener.current = undefined;
+          history.back();
+        }}
+      />
+      <button
+        type="button"
+        className="icon-button open-search"
+        aria-label="Search"
+        title="Search"
+        onClick={() => {
+          const href = hrefOf({ name: "search", text: "" });
+          if (!mayLeave(href)) return;
+          opener.current = getPlace().href;
+          // At once, so that the field takes the focus within the tap,
+          // which alone brings up a phone's keyboard.
+          flushSync(() => {
+            navigate(href, undefined, { asked: true });
+          });
+          field.current?.focus();
+        }}
+      >
+        <Icon name="search" />
+      </button>
+      <Account email={email} onSignOut={onSignOut} />
+    </header>
   );
 }
 
@@ -100,16 +159,25 @@ function Page() {
  * Searches Markdown files by name, from every page, or opens the file or
  * folder of a Drive link pasted in it.
  */
-function SearchBox() {
+function SearchBox({
+  field,
+  onBack,
+}: {
+  field: RefObject<HTMLInputElement | null>;
+  onBack: () => void;
+}) {
   const { renew } = useDrive();
   const client = useQueryClient();
   const { route } = usePlace();
+  const phone = useLayout() === "phone";
   const searched = route.name === "search" ? route.text : "";
   const [typed, setTyped] = useState(searched);
-  // Another search, from Back or a link, shows its own words.
-  const [shown, setShown] = useState(searched);
-  if (shown !== searched) {
-    setShown(searched);
+  // Another search, from Back or a link, shows its own words, and words
+  // typed in a search go with it.
+  const page = route.name === "search" ? `search ${route.text}` : "";
+  const [shown, setShown] = useState(page);
+  if (shown !== page) {
+    setShown(page);
     setTyped(searched);
   }
   return (
@@ -124,17 +192,32 @@ function SearchBox() {
         // Asked first, so that a refusal opens no Google window.
         if (!mayLeave(href)) return;
         renew();
-        navigate(href, undefined, { asked: true });
-        const { route } = getPlace();
-        const words = route.name === "search" ? route.text : "";
+        navigate(href, undefined, {
+          asked: true,
+          // A phone's search page shows one search at a time, which its
+          // Back leaves at once.
+          replace: phone && route.name === "search" && linked === undefined,
+        });
+        const { route: next } = getPlace();
+        const words = next.name === "search" ? next.text : "";
         // A link gives way to the words of the search it opens, if any.
         if (linked !== undefined) setTyped(words);
         // The same search again asks Drive again.
-        if (route.name === "search") refreshSearches(client);
+        if (next.name === "search") refreshSearches(client);
       }}
     >
+      <button
+        type="button"
+        className="icon-button back"
+        aria-label="Back"
+        title="Back"
+        onClick={onBack}
+      >
+        <Icon name="arrow_back" />
+      </button>
       <Icon name="search" />
       <input
+        ref={field}
         type="search"
         value={typed}
         onChange={(event) => {
@@ -149,6 +232,20 @@ function SearchBox() {
         autoCorrect="off"
         spellCheck={false}
       />
+      {typed !== "" && (
+        <button
+          type="button"
+          className="icon-button clear"
+          aria-label="Clear"
+          title="Clear"
+          onClick={() => {
+            setTyped("");
+            field.current?.focus();
+          }}
+        >
+          <Icon name="close" />
+        </button>
+      )}
     </form>
   );
 }

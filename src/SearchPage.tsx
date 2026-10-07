@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { Breadcrumbs } from "./Breadcrumbs.tsx";
 import { useDrive } from "./drive-context.ts";
 import { ItemListing } from "./EntryList.tsx";
 import { searchQuery } from "./queries.ts";
@@ -13,7 +12,6 @@ export function SearchPage({ text }: { text: string }) {
       : `words starting with ${words.map((word) => `“${word}”`).join(" and ")}`;
   return (
     <>
-      <Breadcrumbs path={undefined} />
       <h2>{text === "" ? "Search" : `Search: ${text}`}</h2>
       {text === "" ? (
         <p className="hint">Type words from a file's name to find it.</p>
