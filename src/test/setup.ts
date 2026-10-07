@@ -17,6 +17,26 @@ if ("window" in globalThis) {
     this.open = false;
     this.dispatchEvent(new Event("close"));
   };
+  // Nor does it open popovers, which it hides: the button that names one
+  // shows it, or hides it again.
+  HTMLElement.prototype.showPopover = function (this: HTMLElement) {
+    this.style.display = "block";
+  };
+  HTMLElement.prototype.hidePopover = function (this: HTMLElement) {
+    this.style.removeProperty("display");
+  };
+  document.addEventListener("click", (event) => {
+    const invoker =
+      event.target instanceof Element
+        ? event.target.closest("[popovertarget]")
+        : null;
+    const popover = document.getElementById(
+      invoker?.getAttribute("popovertarget") ?? "",
+    );
+    if (!popover) return;
+    if (popover.style.display === "block") popover.hidePopover();
+    else popover.showPopover();
+  });
   // jsdom does not lay pages out, so it cannot scroll them.
   window.scrollTo = () => undefined;
   Element.prototype.scrollIntoView = () => undefined;

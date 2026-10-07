@@ -1,5 +1,6 @@
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
+import { Account } from "./Account.tsx";
 import { DriveContext, useDrive } from "./drive-context.ts";
 import { linkedPage } from "./drive-web.ts";
 import { FileView } from "./FilePage.tsx";
@@ -17,7 +18,6 @@ import {
 import { getPlace, hrefOf, mayLeave, navigate, usePlace } from "./router.ts";
 import { SearchPage } from "./SearchPage.tsx";
 import type { Session } from "./session.ts";
-import { SignOut } from "./SignOut.tsx";
 
 const HOME = hrefOf({ name: "home" });
 
@@ -56,8 +56,7 @@ export function Navigator({
             </Link>
           </h1>
           <SearchBox />
-          <span className="account">{email}</span>
-          <SignOut account={email} onSignOut={session.signOut} />
+          <Account email={email} onSignOut={session.signOut} />
         </header>
         <main className="page">
           {children}

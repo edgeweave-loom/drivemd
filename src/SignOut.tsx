@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal, flushSync } from "react-dom";
 import { getRememberedAccount } from "./auth.ts";
 import { hrefOf, mayLeave } from "./router.ts";
 import { ConfirmDialog } from "./Dialog.tsx";
@@ -14,9 +15,12 @@ import { keepPendingDrafts, resumeKeeping, stopKeeping } from "./keep-draft.ts";
 export function SignOut({
   account,
   onSignOut,
+  onStay,
 }: {
   account: string;
   onSignOut: () => void;
+  /** When the user chose to stay signed in, after all. */
+  onStay?: () => void;
 }) {
   const [unsaved, setUnsaved] = useState<number>();
   const [pending, setPending] = useState(false);
@@ -61,35 +65,42 @@ export function SignOut({
       >
         Sign out
       </button>
-      {unsaved !== undefined && (
-        <ConfirmDialog
-          title="Discard unsaved changes?"
-          action="Discard and sign out"
-          danger
-          pending={pending}
-          error={failure}
-          onConfirm={() => {
-            setPending(true);
-            setFailure(null);
-            discard().then(onSignOut, (error: unknown) => {
-              // Signed out, the account would leave them on the device.
-              setPending(false);
-              setFailure(
-                error instanceof Error ? error : new Error(String(error)),
-              );
-            });
-          }}
-          onClose={() => {
-            resumeKeeping();
-            setUnsaved(undefined);
-          }}
-        >
-          <p>
-            {unsaved === 1 ? "1 note has" : `${String(unsaved)} notes have`}{" "}
-            unsaved changes on this device. Signing out discards them.
-          </p>
-        </ConfirmDialog>
-      )}
+      {unsaved !== undefined &&
+        // Outside the account's menu, which closes as the dialog opens.
+        createPortal(
+          <ConfirmDialog
+            title="Discard unsaved changes?"
+            action="Discard and sign out"
+            danger
+            pending={pending}
+            error={failure}
+            onConfirm={() => {
+              setPending(true);
+              setFailure(null);
+              discard().then(onSignOut, (error: unknown) => {
+                // Signed out, the account would leave them on the device.
+                setPending(false);
+                setFailure(
+                  error instanceof Error ? error : new Error(String(error)),
+                );
+              });
+            }}
+            onClose={() => {
+              resumeKeeping();
+              // The modal dialog leaves the page out of reach until it goes.
+              flushSync(() => {
+                setUnsaved(undefined);
+              });
+              onStay?.();
+            }}
+          >
+            <p>
+              {unsaved === 1 ? "1 note has" : `${String(unsaved)} notes have`}{" "}
+              unsaved changes on this device. Signing out discards them.
+            </p>
+          </ConfirmDialog>,
+          document.body,
+        )}
     </>
   );
 }

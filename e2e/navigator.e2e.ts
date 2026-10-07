@@ -23,7 +23,9 @@ test("signs in, browses to a file and back, and keeps the path on reload", async
   page,
 }) => {
   await signIn(page);
-  await expect(page.getByText(EMAIL)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: `Account, ${EMAIL}` }),
+  ).toBeVisible();
 
   await page.getByRole("link", { name: "My Drive" }).click();
   await page.getByRole("link", { name: "Work", exact: true }).click();
@@ -265,7 +267,9 @@ test("opens the Drive link shared with the installed app, and forgets the share"
   await expect(
     page.getByRole("heading", { name: "Nothing to open" }),
   ).toBeVisible();
-  await expect(page.getByText(EMAIL)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: `Account, ${EMAIL}` }),
+  ).toBeVisible();
 
   const entries = await page.evaluate(() => history.length);
   // As Android's share sheet sends a link, with the words around it.

@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Navigator } from "./Navigator.tsx";
@@ -36,8 +37,10 @@ describe("Navigator", () => {
   it("shows the account and signs out", async () => {
     const session = open("/");
 
-    expect(screen.getByText(EMAIL)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    fireEvent.click(screen.getByRole("button", { name: `Account, ${EMAIL}` }));
+    const menu = screen.getByRole("dialog", { name: "Account" });
+    expect(menu).toHaveTextContent(EMAIL);
+    fireEvent.click(within(menu).getByRole("button", { name: "Sign out" }));
     await waitFor(() => {
       expect(session.signOut).toHaveBeenCalledOnce();
     });

@@ -1,5 +1,5 @@
 import { token } from "./color.ts";
-import { expect, signIn, test } from "./fake-google.ts";
+import { EMAIL, expect, signIn, test } from "./fake-google.ts";
 
 test("names the app beside its mark, and leads Home from any page", async ({
   page,
@@ -16,6 +16,75 @@ test("names the app beside its mark, and leads Home from any page", async ({
   await bar.getByRole("link", { name: "DriveMD" }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "Recent" })).toBeVisible();
+});
+
+test("shows the account as its initial, and a menu with its address, the about page and Sign out", async ({
+  page,
+}) => {
+  await signIn(page);
+  const account = page
+    .getByRole("banner")
+    .getByRole("button", { name: `Account, ${EMAIL}` });
+  await expect(account).toHaveText("A");
+  await expect(account).toHaveCSS(
+    "background-color",
+    await token(page, "--primary-container"),
+  );
+  expect((await account.boundingBox())?.width).toBe(32);
+
+  await account.click();
+  const menu = page.getByRole("dialog", { name: "Account" });
+  await expect(menu).toBeVisible();
+  await expect(menu).toContainText(EMAIL);
+  // The offer of the source that the AGPL asks for, one tap away.
+  const about = menu.getByRole("link", { name: "About DriveMD" });
+  await expect(about).toHaveAttribute("href", "/about.html");
+  await expect(about).toHaveAttribute("target", "_blank");
+  await expect(menu.getByRole("button", { name: "Sign out" })).toBeVisible();
+  // It opens under the button, its edge lined up with the button's.
+  const button = await account.boundingBox();
+  const box = await menu.boundingBox();
+  if (!button || !box) throw new Error("Not shown");
+  expect(box.y).toBeGreaterThanOrEqual(button.y + button.height);
+  expect(box.y).toBeLessThanOrEqual(button.y + button.height + 16);
+  expect(box.x + box.width).toBeCloseTo(button.x + button.width, 0);
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+
+  // The about page opens in a tab of its own, and the menu closes.
+  await account.click();
+  const opened = page.context().waitForEvent("page");
+  await about.click();
+  await (await opened).close();
+  await expect(menu).toBeHidden();
+});
+
+test("gives the focus back to the account when the user stays signed in", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  await page.locator(".markdown").getByRole("checkbox").first().check();
+  const account = page.getByRole("button", { name: `Account, ${EMAIL}` });
+  await account.click();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page
+    .getByRole("dialog", { name: "Discard unsaved changes?" })
+    .getByRole("button", { name: "Cancel" })
+    .click();
+  await expect(account).toBeFocused();
+});
+
+test("signs out from the account's menu", async ({ page }) => {
+  await signIn(page);
+  await page.getByRole("button", { name: `Account, ${EMAIL}` }).click();
+  await page
+    .getByRole("dialog", { name: "Account" })
+    .getByRole("button", { name: "Sign out" })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Sign in with Google" }),
+  ).toBeVisible();
 });
 
 test("searches from a pill, which rises while it has the focus", async ({

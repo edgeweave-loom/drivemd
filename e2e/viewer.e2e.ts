@@ -406,6 +406,7 @@ test("signs out once the user agrees to discard unsaved changes", async ({
   await page.locator(".markdown").getByRole("checkbox").first().check();
   await expect.poll(() => draftsKept(page)).toBe(1);
 
+  await page.getByRole("button", { name: /^Account, / }).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(
     page.getByRole("dialog", { name: "Discard unsaved changes?" }),

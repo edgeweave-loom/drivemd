@@ -189,7 +189,7 @@ describe("App", () => {
     render(<App session={session} />);
 
     expect(screen.getByRole("heading", { name: "Home" })).toBeInTheDocument();
-    expect(screen.getByText(EMAIL)).toBeInTheDocument();
+    fireEvent.click(button(`Account, ${EMAIL}`));
     fireEvent.click(button("Sign out"));
     await waitFor(() => {
       expect(session.signOut).toHaveBeenCalledOnce();
