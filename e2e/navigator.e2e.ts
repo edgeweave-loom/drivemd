@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { EMAIL, expect, signIn, test } from "./fake-google.ts";
+import { EMAIL, expect, signIn, test, vault } from "./fake-google.ts";
 
 function crumbs(page: Page) {
   return page.getByRole("navigation", { name: "Breadcrumbs" });
@@ -218,8 +218,7 @@ test("shows Recent, the vaults, and the other roots", async ({ page }) => {
   await signIn(page);
   const recent = page.getByRole("region", { name: "Recent" });
   await expect(recent.getByRole("link", { name: "plan.md" })).toBeVisible();
-  const vaults = page.getByRole("region", { name: "Vaults" });
-  await expect(vaults.getByRole("link", { name: "Journal" })).toBeVisible();
+  await expect(vault(page)).toBeVisible();
 
   await page.getByRole("link", { name: "Shared drives" }).click();
   await page.getByRole("link", { name: "Team" }).click();

@@ -563,7 +563,13 @@ export async function signIn(page: Page): Promise<void> {
   await expect(
     page.getByRole("region", { name: "Recent" }).getByRole("link"),
   ).toHaveText(["plan.md"]);
-  await expect(
-    page.getByRole("region", { name: "Vaults" }).getByRole("link"),
-  ).toHaveText(["Journal"]);
+  await expect(vault(page)).toBeVisible();
+}
+
+/** The made-up vault: on Home, or in the drawer that a wide screen shows. */
+export function vault(page: Page) {
+  return page
+    .getByRole("region", { name: "Vaults" })
+    .or(page.getByRole("navigation", { name: "Drive" }))
+    .getByRole("link", { name: "Journal" });
 }

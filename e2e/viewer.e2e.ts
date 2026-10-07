@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { contrast, luminance } from "./color.ts";
-import { expect, signIn, test } from "./fake-google.ts";
+import { expect, signIn, test, vault } from "./fake-google.ts";
 
 /** How many notes have unsaved changes kept on the device. */
 function draftsKept(page: Page): Promise<number> {
@@ -382,18 +382,14 @@ test("lists a note with unsaved changes first on Home, then offers them back", a
     "Unsaved changes",
   );
   await expect(unsaved.getByRole("link")).toHaveText([/^plan\.md/]);
-  await expect(
-    page.getByRole("region", { name: "Vaults" }).getByRole("link"),
-  ).toHaveText(["Journal"]);
+  await expect(vault(page)).toBeVisible();
   await unsaved.getByRole("link").click();
   await page.getByRole("button", { name: "Restore" }).click();
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 
   await page.getByRole("link", { name: "DriveMD" }).click();
-  await expect(
-    page.getByRole("region", { name: "Vaults" }).getByRole("link"),
-  ).toHaveText(["Journal"]);
+  await expect(vault(page)).toBeVisible();
   await expect(unsaved).toHaveCount(0);
   expect(drive.writes).toEqual(["keep plan revision-1", "save plan"]);
 });

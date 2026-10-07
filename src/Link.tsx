@@ -38,7 +38,7 @@ export function Link({
       {...attributes}
       href={to}
       className={className}
-      aria-current={current ? "page" : undefined}
+      aria-current={current ? "page" : attributes["aria-current"]}
       onClick={open}
     >
       {children}
