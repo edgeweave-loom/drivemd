@@ -7,15 +7,8 @@ import type { IconName } from "./icons.ts";
 import { Link } from "./Link.tsx";
 import { entriesOf } from "./listing.ts";
 import { vaultsQuery } from "./queries.ts";
-import { ROOTS } from "./roots.ts";
+import { ROOT_PLACES } from "./roots.ts";
 import { hrefOf, usePlace } from "./router.ts";
-
-const ROOT_ICONS: Record<keyof typeof ROOTS, IconName> = {
-  myDrive: "cloud",
-  shortcuts: "shortcut",
-  sharedDrives: "folder_shared",
-  sharedWithMe: "group",
-};
 
 interface Place {
   key: string;
@@ -26,10 +19,10 @@ interface Place {
 
 const PLACES: Place[] = [
   { key: "home", name: "Home", href: hrefOf({ name: "home" }), icon: "home" },
-  ...Object.entries(ROOTS).map(([key, root]) => ({
-    key,
+  ...ROOT_PLACES.map(({ root, icon }) => ({
+    key: root.href,
     ...root,
-    icon: ROOT_ICONS[key as keyof typeof ROOTS],
+    icon,
   })),
 ];
 

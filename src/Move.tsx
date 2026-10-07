@@ -4,6 +4,7 @@ import type { Climb } from "./climb.ts";
 import { ConfirmDialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
 import { Icon } from "./Icon.tsx";
+import type { IconName } from "./icons.ts";
 import {
   MY_DRIVE,
   type DriveItem,
@@ -23,7 +24,7 @@ import {
   sharedWithMeQuery,
   shortcutsQuery,
 } from "./queries.ts";
-import { ROOTS } from "./roots.ts";
+import { rootIcon, ROOTS } from "./roots.ts";
 import { hrefOf, navigate, routeOf, type Crumb } from "./router.ts";
 import { useVaultCheck, vaultNote } from "./vaults.ts";
 
@@ -45,6 +46,12 @@ type Spot =
       /** Whether a shortcut, named by whoever made it, leads there. */
       shortcut?: boolean;
     };
+
+/** A spot as the navigator shows it: a root by its own icon. */
+function spotIcon(spot: Spot): IconName {
+  if (spot.kind === "folder" && spot.shortcut) return "shortcut";
+  return rootIcon(spot.crumb.href) ?? "folder";
+}
 
 /** Where the picker stands: above every drive, or at a spot. */
 type Stop = { kind: "all-drives" } | Spot;
@@ -334,6 +341,7 @@ function Spots({
               onOpen(next);
             }}
           >
+            <Icon name={spotIcon(next)} />
             <span className="name">{next.crumb.name}</span>
             {next.kind === "folder" && next.shortcut && (
               <span className="badge">Shortcut</span>
