@@ -218,6 +218,7 @@ function Conflict({
         <ConfirmDialog
           title="Drop your changes?"
           action="Drop my changes"
+          danger
           pending={false}
           error={null}
           onConfirm={onKeep}
@@ -516,7 +517,7 @@ function Restore({
       <div className="actions">
         <button
           type="button"
-          className="primary"
+          className="filled"
           onClick={() => {
             onRestore(draft);
           }}
@@ -666,6 +667,7 @@ function NoteView({
         {editable && (
           <button
             type="button"
+            className="tonal"
             onClick={() => {
               onEditing(!editing);
             }}
@@ -678,7 +680,7 @@ function NoteView({
             <span className="hint">Unsaved changes</span>
             <button
               type="button"
-              className="primary"
+              className="filled"
               disabled={save.isPending}
               onClick={saveNow}
             >

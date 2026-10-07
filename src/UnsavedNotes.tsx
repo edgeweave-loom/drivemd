@@ -131,6 +131,7 @@ function ClosedNote({
         <ConfirmDialog
           title="Discard unsaved changes?"
           action="Discard"
+          danger
           pending={discard.isPending}
           error={discard.error}
           onConfirm={() => {

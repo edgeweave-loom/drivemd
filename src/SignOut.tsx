@@ -65,6 +65,7 @@ export function SignOut({
         <ConfirmDialog
           title="Discard unsaved changes?"
           action="Discard and sign out"
+          danger
           pending={pending}
           error={failure}
           onConfirm={() => {

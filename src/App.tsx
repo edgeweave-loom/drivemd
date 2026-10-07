@@ -118,7 +118,7 @@ function GoogleButton({
 }) {
   if (google === "failed") {
     return (
-      <button type="button" className="primary" onClick={onRetry}>
+      <button type="button" className="filled" onClick={onRetry}>
         Try again
       </button>
     );
@@ -126,7 +126,7 @@ function GoogleButton({
   return (
     <button
       type="button"
-      className="primary"
+      className="filled"
       disabled={google !== "ready"}
       onClick={onClick}
     >
