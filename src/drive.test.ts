@@ -337,10 +337,9 @@ const ITEM_FIELDS =
   "shortcutDetails(targetId,targetMimeType,targetResourceKey)," +
   "capabilities(canAddChildren,canComment,canDownload,canEdit," +
   "canModifyContent,canMoveItemOutOfDrive,canMoveItemWithinDrive," +
-  "canRename,canTrash),contentRestrictions(readOnly,reason)";
-const FILE_FIELDS =
-  `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),` +
-  "md5Checksum,headRevisionId,size,trashed";
+  "canRename,canTrash),contentRestrictions(readOnly,reason)," +
+  "modifiedTime,lastModifyingUser(displayName,me)";
+const FILE_FIELDS = `${ITEM_FIELDS},md5Checksum,headRevisionId,size,trashed`;
 
 describe("getMetadata", () => {
   it("asks for what the viewer shows and the conflict check compares, in any drive", async () => {
@@ -365,7 +364,7 @@ describe("getMetadata", () => {
         driveId: "drive-1",
         capabilities: { canEdit: true, canRename: true, canShare: true },
         modifiedTime: "2026-09-01T10:00:00.000Z",
-        lastModifyingUser: { displayName: "Ada Lovelace" },
+        lastModifyingUser: { displayName: "Ada Lovelace", me: true },
         md5Checksum: "0cc175b9c0f1b6a831c399e269772661",
         headRevisionId: "revision-1",
         size: "1234",
@@ -384,6 +383,7 @@ describe("getMetadata", () => {
       lockReason: undefined,
       modifiedTime: "2026-09-01T10:00:00.000Z",
       lastModifiedBy: "Ada Lovelace",
+      lastModifiedByMe: true,
       md5Checksum: "0cc175b9c0f1b6a831c399e269772661",
       headRevisionId: "revision-1",
       size: 1234,
@@ -422,6 +422,7 @@ describe("getMetadata", () => {
         lockReason: undefined,
         modifiedTime: undefined,
         lastModifiedBy: undefined,
+        lastModifiedByMe: false,
         md5Checksum: undefined,
         headRevisionId: undefined,
         size: undefined,

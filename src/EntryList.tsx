@@ -3,12 +3,13 @@ import {
   type QueryKey,
   type UseQueryOptions,
 } from "@tanstack/react-query";
+import { useId } from "react";
 import { useDrive } from "./drive-context.ts";
 import type { DriveItem, ShortcutTarget } from "./drive.ts";
 import { Icon } from "./Icon.tsx";
 import type { IconName } from "./icons.ts";
 import { Link } from "./Link.tsx";
-import { BROKEN, entriesOf, type Entry } from "./listing.ts";
+import { BROKEN, entriesOf, modifiedLine, type Entry } from "./listing.ts";
 import { Loaded } from "./Loaded.tsx";
 import { shortcutQuery } from "./queries.ts";
 import { hrefOf, type Crumb } from "./router.ts";
@@ -69,6 +70,11 @@ export function EntryList({
   if (entries.length === 0) return <p className="hint">{empty}</p>;
   return (
     <ul className="entries">
+      {/* The table's head, which each row's name and description say. */}
+      <li className="entries-head" aria-hidden="true">
+        <span>Name</span>
+        <span>Modified</span>
+      </li>
       {entries.map((entry) => (
         <li key={entry.id}>
           {entry.target ? (
@@ -93,7 +99,7 @@ export function EntryList({
 }
 
 function EntryLink({
-  entry: { kind, name, opens, target },
+  entry,
   trail,
   current = false,
   folders = "folder",
@@ -104,6 +110,9 @@ function EntryLink({
   current?: boolean;
   folders?: IconName;
 }) {
+  const { kind, name, opens, target } = entry;
+  const ids = useId();
+  const when = modifiedLine(entry);
   const note = current ? "description_fill" : "description";
   const icon = target ? "shortcut" : kind === "folder" ? folders : note;
   const href = hrefOf(
@@ -117,10 +126,20 @@ function EntryLink({
       trail={trail && [...trail, { name, href }]}
       className={`entry ${kind}`}
       current={current}
+      // Named by its name; when it changed, described.
+      aria-labelledby={`${ids}-title`}
+      aria-describedby={when && `${ids}-when`}
     >
       <Icon name={icon} />
-      <span className="name">{name}</span>
-      {target && <span className="badge">Shortcut</span>}
+      <span id={`${ids}-title`} className="title">
+        <span className="name">{name}</span>
+        {target && <span className="badge">Shortcut</span>}
+      </span>
+      {when && (
+        <span id={`${ids}-when`} className="modified">
+          {when}
+        </span>
+      )}
       {kind === "folder" && <Icon name="chevron_right" />}
     </Link>
   );
@@ -142,6 +161,7 @@ function ShortcutEntry({
   current: boolean;
 }) {
   const { drive } = useDrive();
+  const ids = useId();
   const check = useQuery(shortcutQuery(drive, target));
   const broken = check.data;
   if (!broken) {
@@ -153,14 +173,17 @@ function ShortcutEntry({
       role="link"
       aria-disabled="true"
       className={`entry ${entry.kind} broken`}
+      aria-labelledby={`${ids}-title`}
+      aria-describedby={`${ids}-why`}
     >
       <Icon name="link_off" />
-      <span className="lines">
-        <span>
-          <span className="name">{entry.name}</span>{" "}
-          <span className="badge">Shortcut</span>
-        </span>
-        <small className="reason">{BROKEN[broken]}</small>
+      <span id={`${ids}-title`} className="title">
+        <span className="name">{entry.name}</span>
+        <span className="badge">Shortcut</span>
+      </span>
+      {/* Why it opens nothing, where its time of change would be. */}
+      <span id={`${ids}-why`} className="modified reason">
+        {BROKEN[broken]}
       </span>
     </a>
   );

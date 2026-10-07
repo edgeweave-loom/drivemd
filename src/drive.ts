@@ -18,16 +18,17 @@ const CAPABILITIES = [
   "canTrash",
 ] as const;
 
-// What the navigator shows, where shortcuts point, and the actions it offers.
+// What the navigator shows, when and by whom an item last changed among it,
+// where shortcuts point, and the actions it offers.
 const ITEM_FIELDS =
   "id,name,mimeType,resourceKey,parents,driveId," +
   "shortcutDetails(targetId,targetMimeType,targetResourceKey)," +
-  `capabilities(${CAPABILITIES.join(",")}),contentRestrictions(readOnly,reason)`;
+  `capabilities(${CAPABILITIES.join(",")}),contentRestrictions(readOnly,reason),` +
+  "modifiedTime,lastModifyingUser(displayName,me)";
 
-// An opened file also needs what the viewer shows, the conflict check
-// compares, its size before its content is read, and whether it is in the
-// trash.
-const FILE_FIELDS = `${ITEM_FIELDS},modifiedTime,lastModifyingUser(displayName),md5Checksum,headRevisionId,size,trashed`;
+// An opened file also needs what the conflict check compares, its size
+// before its content is read, and whether it is in the trash.
+const FILE_FIELDS = `${ITEM_FIELDS},md5Checksum,headRevisionId,size,trashed`;
 
 const UNREACHABLE = "Google Drive could not be reached";
 
@@ -108,12 +109,14 @@ export interface DriveItem {
   /** A locked item's content cannot change, whatever the capabilities say. */
   locked: boolean;
   lockReason: string | undefined;
+  modifiedTime: string | undefined;
+  /** Who changed the item last, when a signed-in user did. */
+  lastModifiedBy: string | undefined;
+  /** Whether the signed-in user did. */
+  lastModifiedByMe: boolean;
 }
 
 export interface FileMetadata extends DriveItem {
-  modifiedTime: string | undefined;
-  /** Who changed the file last, when a signed-in user did. */
-  lastModifiedBy: string | undefined;
   /** Compared before saving, to detect someone else's change. */
   md5Checksum: string | undefined;
   headRevisionId: string | undefined;
@@ -706,6 +709,7 @@ function parseItem(value: Record<string, unknown>): DriveItem | undefined {
           isRecord(restriction) && restriction.readOnly === true,
       )
     : [];
+  const user = isRecord(value.lastModifyingUser) ? value.lastModifyingUser : {};
   return {
     id,
     name,
@@ -729,6 +733,9 @@ function parseItem(value: Record<string, unknown>): DriveItem | undefined {
     lockReason: locks
       .map((lock) => optionalString(lock.reason))
       .find((reason) => reason !== undefined),
+    modifiedTime: optionalString(value.modifiedTime),
+    lastModifiedBy: optionalString(user.displayName),
+    lastModifiedByMe: user.me === true,
   };
 }
 
@@ -752,11 +759,8 @@ function parseFile(value: unknown): FileMetadata | undefined {
   if (!isRecord(value)) return;
   const item = parseItem(value);
   if (!item) return;
-  const user = isRecord(value.lastModifyingUser) ? value.lastModifyingUser : {};
   return {
     ...item,
-    modifiedTime: optionalString(value.modifiedTime),
-    lastModifiedBy: optionalString(user.displayName),
     md5Checksum: optionalString(value.md5Checksum),
     headRevisionId: optionalString(value.headRevisionId),
     size: parseSize(value.size),

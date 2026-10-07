@@ -26,8 +26,11 @@ test("marks what opens a list with an icon, the same everywhere", async ({
   const crumbs = page.getByRole("navigation", { name: "Breadcrumbs" });
   await expect(crumbs.locator("svg")).toHaveCount(1);
   await expect(crumbs).not.toContainText("›");
-  const size = (await archive.boundingBox())?.width;
-  expect(size).toBe(24);
+  // A table's rows, on a wider screen, need none.
+  const phone = info.project.metadata.layout === "phone";
+  await expect(archive).toBeVisible({ visible: phone });
+  const size = 24;
+  if (phone) expect((await archive.boundingBox())?.width).toBe(size);
 
   await main.getByRole("link", { name: "plan.md" }).click();
   if (info.project.metadata.layout === "wide") {

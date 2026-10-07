@@ -63,10 +63,11 @@ async function unsaved() {
   return within(await screen.findByRole("region", { name: "Unsaved changes" }));
 }
 
+/** The names of the section's links, without when each changed. */
 function linksIn(name: string) {
   return section(name)
     .getAllByRole("link")
-    .map((link) => link.textContent);
+    .map((link) => (link.querySelector(".name") ?? link).textContent);
 }
 
 describe("Home", () => {
