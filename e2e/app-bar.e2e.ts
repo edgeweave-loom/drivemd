@@ -8,8 +8,7 @@ test("names the app beside its mark, and leads Home from any page", async ({
   await page.getByRole("link", { name: "My Drive" }).click();
   const bar = page.getByRole("banner");
   const phone = info.project.metadata.layout === "phone";
-  // On a phone, the search box still takes a row of its own below.
-  if (!phone) expect((await bar.boundingBox())?.height).toBe(64);
+  expect((await bar.boundingBox())?.height).toBe(phone ? 56 : 64);
   const mark = bar.locator('img[src="/icon.svg"]');
   await expect(mark).toHaveAttribute("alt", "");
   expect((await mark.boundingBox())?.width).toBe(phone ? 32 : 40);
@@ -89,8 +88,15 @@ test("signs out from the account's menu", async ({ page }) => {
 
 test("searches from a pill, which rises while it has the focus", async ({
   page,
-}) => {
+}, info) => {
+  test.skip(
+    info.project.metadata.layout === "phone",
+    "A phone searches full screen.",
+  );
   await signIn(page);
+  await expect(
+    page.getByRole("button", { name: "Search", exact: true }),
+  ).toBeHidden();
   const field = page.getByRole("searchbox", {
     name: "Search Markdown files by name",
   });
@@ -109,4 +115,46 @@ test("searches from a pill, which rises while it has the focus", async ({
   await expect(field).not.toHaveCSS("box-shadow", "none");
   // And shows the keyboard's focus as every control does.
   await expect(field).toHaveCSS("outline-style", "solid");
+});
+
+test("searches full screen on a phone, with Back and Clear", async ({
+  page,
+}, info) => {
+  test.skip(
+    info.project.metadata.layout !== "phone",
+    "A wide screen keeps the search bar in the app bar.",
+  );
+  await signIn(page);
+  await page.getByRole("link", { name: "My Drive" }).click();
+  const bar = page.getByRole("banner");
+  const field = page.getByRole("searchbox", {
+    name: "Search Markdown files by name",
+  });
+  await expect(field).toBeHidden();
+  await bar.getByRole("button", { name: "Search", exact: true }).click();
+  // At once, so that the phone's keyboard comes up with the tap.
+  await expect(field).toBeFocused();
+  await expect(page).toHaveURL(/\/search\?q=$/);
+  await expect(bar).toHaveCSS(
+    "background-color",
+    await token(page, "--surface-container-high"),
+  );
+  await expect(bar.getByRole("link", { name: "DriveMD" })).toBeHidden();
+  await expect(bar.getByRole("button", { name: /^Account, / })).toBeHidden();
+
+  await field.fill("pla");
+  await field.press("Enter");
+  await expect(page.getByRole("main").getByRole("link")).toHaveText([
+    "plan.md",
+  ]);
+  await bar.getByRole("button", { name: "Clear" }).click();
+  await expect(field).toHaveValue("");
+  await expect(field).toBeFocused();
+  await expect(page).toHaveURL(/\/search\?q=pla$/);
+
+  await bar.getByRole("button", { name: "Back" }).click();
+  await expect(page).toHaveURL(/\/search\?q=$/);
+  await bar.getByRole("button", { name: "Back" }).click();
+  await expect(page).toHaveURL(/\/my-drive$/);
+  await expect(field).toBeHidden();
 });

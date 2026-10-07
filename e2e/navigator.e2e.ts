@@ -10,6 +10,13 @@ function entries(page: Page) {
   return page.locator(".main .entries, main > .entries").last();
 }
 
+/** The search box, opened first where a phone keeps it behind a button. */
+async function searchBox(page: Page) {
+  const open = page.getByRole("button", { name: "Search", exact: true });
+  if (await open.isVisible()) await open.click();
+  return page.getByRole("searchbox", { name: "Search Markdown files by name" });
+}
+
 async function openWork(page: Page) {
   await signIn(page);
   await page.getByRole("link", { name: "My Drive" }).click();
@@ -224,9 +231,7 @@ test("shows Recent, the vaults, and the other roots", async ({ page }) => {
 
 test("searches Markdown files by name", async ({ page }) => {
   await signIn(page);
-  const search = page.getByRole("searchbox", {
-    name: "Search Markdown files by name",
-  });
+  const search = await searchBox(page);
   await search.fill("pla");
   await search.press("Enter");
   await expect(
@@ -238,15 +243,14 @@ test("searches Markdown files by name", async ({ page }) => {
 
 test("opens a Drive link pasted in the search box", async ({ page }) => {
   await signIn(page);
-  const search = page.getByRole("searchbox", {
-    name: "Search Markdown files by name",
-  });
+  let search = await searchBox(page);
   await search.fill("https://drive.google.com/drive/folders/work?usp=sharing");
   await search.press("Enter");
   await expect(page).toHaveURL(/\/folder\/work$/);
   await expect(page.getByRole("link", { name: "Archive" })).toBeVisible();
   await expect(crumbs(page).getByRole("link")).toHaveText(["Home", "My Drive"]);
 
+  search = await searchBox(page);
   await search.fill("https://drive.google.com/file/d/plan/view?usp=sharing");
   await search.press("Enter");
   await expect(page).toHaveURL(/\/edit\?id=plan$/);
