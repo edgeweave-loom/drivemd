@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DriveItem } from "./drive.ts";
-import { entriesOf } from "./listing.ts";
+import { entriesOf, modifiedLine } from "./listing.ts";
 import {
   driveItem as item,
   FOLDER,
@@ -96,5 +96,44 @@ describe("entriesOf", () => {
       id: "id-a_md",
       resourceKey: "k",
     });
+  });
+});
+
+describe("modifiedLine", () => {
+  const [plan] = entriesOf([
+    item("plan.md", {
+      modifiedTime: "2026-09-01T10:00:00.000Z",
+      lastModifiedBy: "Ada Lovelace",
+    }),
+  ]);
+
+  it("says when and by whom an item last changed", () => {
+    expect(plan && modifiedLine(plan)).toBe("Sep 1, 2026, by Ada Lovelace");
+  });
+
+  it("names the signed-in user as you", () => {
+    const [mine] = entriesOf([
+      item("mine.md", {
+        modifiedTime: "2026-09-01T10:00:00.000Z",
+        lastModifiedBy: "Ada Lovelace",
+        lastModifiedByMe: true,
+      }),
+    ]);
+    expect(mine && modifiedLine(mine)).toBe("Sep 1, 2026, by you");
+  });
+
+  it("gives the day alone when Drive names nobody", () => {
+    const [anyone] = entriesOf([
+      item("anyone.md", { modifiedTime: "2026-09-01T10:00:00.000Z" }),
+    ]);
+    expect(anyone && modifiedLine(anyone)).toBe("Sep 1, 2026");
+  });
+
+  it("says nothing without a time, or with one that is no time", () => {
+    const entries = entriesOf([
+      item("never.md"),
+      item("garbled.md", { modifiedTime: "yesterday" }),
+    ]);
+    expect(entries.map(modifiedLine)).toEqual([undefined, undefined]);
   });
 });

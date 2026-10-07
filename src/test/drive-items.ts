@@ -36,6 +36,9 @@ export function driveItem(
     },
     locked: false,
     lockReason: undefined,
+    modifiedTime: undefined,
+    lastModifiedBy: undefined,
+    lastModifiedByMe: false,
     ...changes,
   };
 }
@@ -62,6 +65,7 @@ export function metadata(
     ...item,
     modifiedTime: "2026-09-01T10:00:00.000Z",
     lastModifiedBy: "Ada Lovelace",
+    lastModifiedByMe: false,
     md5Checksum: "0123456789abcdef0123456789abcdef",
     headRevisionId: "revision-1",
     size: 100,

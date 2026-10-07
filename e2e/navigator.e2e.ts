@@ -153,7 +153,7 @@ test("creates a file where Drive's New asks, then opens it in its place", async 
 test("keeps a broken shortcut's badge after its name, however long", async ({
   page,
   drive,
-}) => {
+}, info) => {
   const gone = drive.files.get("to-gone");
   if (!gone) throw new Error("No shortcut");
   gone.name = "Quarterly planning notes for the whole team, kept since 2019";
@@ -173,14 +173,19 @@ test("keeps a broken shortcut's badge after its name, however long", async ({
   const reason = await entry.locator(".reason").boundingBox();
   if (!name || !badge || !reason) throw new Error("Not shown");
   // On the name's last line, or the one right under it, but never alone
-  // with the reason.
-  expect(badge.y + badge.height).toBeLessThanOrEqual(reason.y + 1);
+  // with the reason, which a phone puts under it and a wider screen in a
+  // column of its own.
   expect(badge.x).toBeGreaterThanOrEqual(name.right - 1);
+  if (info.project.metadata.layout === "phone") {
+    expect(badge.y + badge.height).toBeLessThanOrEqual(reason.y + 1);
+  } else {
+    expect(reason.x).toBeGreaterThan(badge.x + badge.width);
+  }
 });
 
 test("follows a shortcut, and greys out one whose target is gone", async ({
   page,
-}) => {
+}, info) => {
   await signIn(page);
   await page.getByRole("link", { name: "My Drive" }).click();
 
@@ -189,7 +194,8 @@ test("follows a shortcut, and greys out one whose target is gone", async ({
     "true",
   );
   await expect(page.getByText("Deleted, or not shared with you")).toBeVisible();
-  // Its reason goes under its name, which keeps its one word whole.
+  // Its reason goes under its name on a phone, or in a column of its own,
+  // and its name keeps its one word whole.
   const gone = page.getByRole("link", { name: "Gone" });
   const lines = await gone.locator(".name").evaluate((name) => {
     const range = document.createRange();
@@ -200,8 +206,12 @@ test("follows a shortcut, and greys out one whose target is gone", async ({
   const name = await gone.locator(".name").boundingBox();
   const reason = await gone.locator(".reason").boundingBox();
   if (!name || !reason) throw new Error("Not shown");
-  expect(reason.y).toBeGreaterThanOrEqual(name.y + name.height);
-  expect(reason.x).toBeCloseTo(name.x);
+  if (info.project.metadata.layout === "phone") {
+    expect(reason.y).toBeGreaterThanOrEqual(name.y + name.height);
+    expect(reason.x).toBeCloseTo(name.x);
+  } else {
+    expect(reason.x).toBeGreaterThan(name.x + name.width);
+  }
   await page.getByRole("link", { name: /Plan shortcut\.md/ }).click();
   await expect(page).toHaveURL(/\/edit\?id=plan$/);
 
@@ -237,7 +247,9 @@ test("searches Markdown files by name", async ({ page }) => {
   await expect(
     page.getByRole("heading", { level: 2, name: "Search: pla" }),
   ).toBeVisible();
-  await expect(entries(page).getByRole("link")).toHaveText(["plan.md"]);
+  await expect(entries(page).getByRole("link").locator(".name")).toHaveText([
+    "plan.md",
+  ]);
   await expect(search).toBeFocused();
 });
 

@@ -51,6 +51,8 @@ interface FakeFile {
   content?: string | Buffer;
   /** How many times it was saved, from 1. */
   revision?: number;
+  /** Whether the signed-in user changed it last, rather than Ada's double. */
+  changedByMe?: boolean;
 }
 
 /** A small Drive: My Drive, a vault, shortcuts, a shared drive, a share. */
@@ -105,6 +107,7 @@ function seed(): FakeFile[] {
       name: "notes.md",
       mimeType: markdown,
       parents: ["work"],
+      changedByMe: true,
       // Long enough that its last heading starts off the screen.
       content: [
         "# Notes",
@@ -479,7 +482,10 @@ function asJson(file: FakeFile) {
       canTrash: true,
     },
     modifiedTime: "2026-09-01T10:00:00.000Z",
-    lastModifyingUser: { displayName: "Ada Lovelace" },
+    lastModifyingUser: {
+      displayName: "Ada Lovelace",
+      ...(file.changedByMe && { me: true }),
+    },
     md5Checksum: createHash("md5")
       .update(file.content ?? "")
       .digest("hex"),
@@ -561,7 +567,10 @@ export async function signIn(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Sign in with Google" }).click();
   await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
   await expect(
-    page.getByRole("region", { name: "Recent" }).getByRole("link"),
+    page
+      .getByRole("region", { name: "Recent" })
+      .getByRole("link")
+      .locator(".name"),
   ).toHaveText(["plan.md"]);
   await expect(vault(page)).toBeVisible();
 }

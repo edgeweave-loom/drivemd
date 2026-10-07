@@ -15,8 +15,10 @@ import {
   GOOGLE_TYPES,
   TooLargeError,
   type Drive,
+  type DriveItem,
   type FileMetadata,
   type FileRef,
+  type SearchResult,
   type ShortcutTarget,
 } from "./drive.ts";
 
@@ -458,11 +460,31 @@ export function setParents(
   );
 }
 
-/** Shows the file's new details at once, as a save answered them. */
+/**
+ * Shows the file's new details at once, as a save answered them, and its new
+ * time of change in the lists that hold it.
+ */
 export function setDetails(client: QueryClient, file: FileMetadata): void {
   client.setQueriesData<FileMetadata>(
     { queryKey: key("metadata", file.id) },
     file,
+  );
+  const { modifiedTime, lastModifiedBy, lastModifiedByMe } = file;
+  const changed = (items: DriveItem[]) =>
+    items.map((item) =>
+      item.id === file.id
+        ? { ...item, modifiedTime, lastModifiedBy, lastModifiedByMe }
+        : item,
+    );
+  for (const list of [key("children"), key("recent")]) {
+    client.setQueriesData<DriveItem[]>(
+      { queryKey: list },
+      (items) => items && changed(items),
+    );
+  }
+  client.setQueriesData<SearchResult>(
+    { queryKey: key("search") },
+    (found) => found && { ...found, items: changed(found.items) },
   );
 }
 

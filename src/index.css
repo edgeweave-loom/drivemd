@@ -834,6 +834,105 @@ dialog.drawer {
   color: inherit;
 }
 
+/* A row's name, then when it changed: in a column of its own beside it,
+   under a table's head, on a wide screen; on a line under it on a phone
+   (docs/DESIGN.md, File table and List row). */
+.entry > .title {
+  flex: 1;
+  min-width: 0;
+}
+
+.entry > .modified,
+.entries-head > :last-child {
+  flex: none;
+  width: 16rem;
+}
+
+.entry > .modified {
+  color: var(--on-surface-variant);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.entries-head {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  min-height: 48px;
+  padding: var(--space-1);
+  padding-left: calc(var(--space-1) + 24px + var(--space-4));
+  border-bottom: 1px solid var(--outline-variant);
+  color: var(--on-surface-variant);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.entries-head > :first-child {
+  flex: 1;
+}
+
+/* Rows on a wider screen, in a table or the folder pane, open their folders
+   without a chevron, as the mockups show them. */
+@media (width >= 768px) and (not ((pointer: coarse) and (height < 500px))) {
+  a.entry > .icon:last-child:not(:first-child) {
+    display: none;
+  }
+}
+
+@media (width < 768px), (pointer: coarse) and (height < 500px) {
+  .entries-head {
+    display: none;
+  }
+
+  .entry:has(> .modified) {
+    display: grid;
+    align-content: center;
+    grid-template-areas:
+      "icon title chevron"
+      "icon modified chevron";
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    gap: 2px var(--space-4);
+  }
+
+  .entry:has(> .modified) {
+    min-height: 72px;
+  }
+
+  .entry:has(> .modified) > .icon:first-child {
+    grid-area: icon;
+  }
+
+  .entry > .title {
+    grid-area: title;
+  }
+
+  .entry > .modified {
+    grid-area: modified;
+    width: auto;
+  }
+
+  .entry:has(> .modified) > .icon:last-child:not(:first-child) {
+    grid-area: chevron;
+  }
+}
+
+/* The folder pane, and a tablet's folder drawer, keep to the names, and
+   to why a shortcut opens nothing, under its name. */
+:is(.pane, dialog.drawer) :is(.entries-head, .entry > .modified:not(.reason)) {
+  display: none;
+}
+
+:is(.pane, dialog.drawer) .entry.broken {
+  flex-wrap: wrap;
+  row-gap: 0;
+}
+
+:is(.pane, dialog.drawer) .entry.broken > .reason {
+  flex-basis: 100%;
+  width: auto;
+  padding-left: calc(24px + var(--space-4));
+}
+
 .entry .name {
   min-width: 0;
 }
@@ -872,6 +971,15 @@ dialog.drawer {
   color: var(--on-surface-variant);
   font-size: 0.875rem;
   text-align: end;
+}
+
+/* In line with the times of the lists below it, on a wider screen. */
+@media (width >= 768px) and (not ((pointer: coarse) and (height < 500px))) {
+  .entry > .when {
+    flex: none;
+    width: 16rem;
+    text-align: start;
+  }
 }
 
 .entry .lines {

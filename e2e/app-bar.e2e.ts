@@ -144,9 +144,9 @@ test("searches full screen on a phone, with Back and Clear", async ({
 
   await field.fill("pla");
   await field.press("Enter");
-  await expect(page.getByRole("main").getByRole("link")).toHaveText([
-    "plan.md",
-  ]);
+  await expect(
+    page.getByRole("main").getByRole("link").locator(".name"),
+  ).toHaveText(["plan.md"]);
   await bar.getByRole("button", { name: "Clear" }).click();
   await expect(field).toHaveValue("");
   await expect(field).toBeFocused();
