@@ -6,7 +6,7 @@ import { ItemListing } from "./EntryList.tsx";
 import { Icon } from "./Icon.tsx";
 import { Link } from "./Link.tsx";
 import { draftsQuery, recentQuery, vaultsQuery } from "./queries.ts";
-import { ROOT_ICONS, ROOTS } from "./roots.ts";
+import { ROOT_PLACES } from "./roots.ts";
 import { UnsavedNotes } from "./UnsavedNotes.tsx";
 
 export function Home() {
@@ -44,10 +44,10 @@ export function Home() {
           </Section>
           <Section title="Browse">
             <ul className="entries">
-              {Object.entries(ROOTS).map(([key, root]) => (
+              {ROOT_PLACES.map(({ root, icon }) => (
                 <li key={root.href}>
                   <Link to={root.href} trail={[root]} className="entry folder">
-                    <Icon name={ROOT_ICONS[key as keyof typeof ROOTS]} />
+                    <Icon name={icon} />
                     {root.name}
                     <Icon name="chevron_right" />
                   </Link>

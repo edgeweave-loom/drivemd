@@ -1,4 +1,5 @@
 import type { Locator } from "@playwright/test";
+import { token } from "./color.ts";
 import { expect, signIn, test } from "./fake-google.ts";
 
 test("marks what opens a list with an icon, the same everywhere", async ({
@@ -96,5 +97,20 @@ test("shows what each row is by its icon", async ({ page }, info) => {
     await expect(
       icon(pane.getByRole("link", { name: "Work" })),
     ).toHaveAttribute("data-icon", "folder_open");
+    await expect(icon(pane.getByRole("link", { name: "plan.md" }))).toHaveCSS(
+      "color",
+      await token(page, "--on-secondary-container"),
+    );
+  }
+  if (info.project.metadata.layout === "tablet") {
+    // A tablet's folder drawer marks the open note as the pane does.
+    await main.getByRole("link", { name: "Work", exact: true }).click();
+    await main.getByRole("link", { name: "plan.md" }).click();
+    await page.getByRole("button", { name: "Folder" }).click();
+    const drawer = page.getByRole("dialog", { name: "Work" });
+    await expect(drawer.getByRole("link", { name: "plan.md" })).toHaveCSS(
+      "background-color",
+      await token(page, "--secondary-container"),
+    );
   }
 });

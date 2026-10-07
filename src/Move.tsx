@@ -24,7 +24,7 @@ import {
   sharedWithMeQuery,
   shortcutsQuery,
 } from "./queries.ts";
-import { ROOT_ICONS, ROOTS } from "./roots.ts";
+import { rootIcon, ROOTS } from "./roots.ts";
 import { hrefOf, navigate, routeOf, type Crumb } from "./router.ts";
 import { useVaultCheck, vaultNote } from "./vaults.ts";
 
@@ -49,15 +49,8 @@ type Spot =
 
 /** A spot as the navigator shows it: a root by its own icon. */
 function spotIcon(spot: Spot): IconName {
-  if (spot.kind !== "folder") {
-    return {
-      shortcuts: ROOT_ICONS.shortcuts,
-      "shared-drives": ROOT_ICONS.sharedDrives,
-      "shared-with-me": ROOT_ICONS.sharedWithMe,
-    }[spot.kind];
-  }
-  if (spot.shortcut) return "shortcut";
-  return spot.folder.id === MY_DRIVE ? ROOT_ICONS.myDrive : "folder";
+  if (spot.kind === "folder" && spot.shortcut) return "shortcut";
+  return rootIcon(spot.crumb.href) ?? "folder";
 }
 
 /** Where the picker stands: above every drive, or at a spot. */

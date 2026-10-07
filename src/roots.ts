@@ -26,3 +26,13 @@ export const ROOT_ICONS: Record<keyof typeof ROOTS, IconName> = {
   sharedDrives: "folder_shared",
   sharedWithMe: "group",
 };
+
+/** The roots, in the order the navigator lists them, each with its icon. */
+export const ROOT_PLACES = (
+  Object.keys(ROOT_ICONS) as (keyof typeof ROOTS)[]
+).map((key) => ({ root: ROOTS[key], icon: ROOT_ICONS[key] }));
+
+/** The icon of the root a page is, if it is one. */
+export function rootIcon(href: string): IconName | undefined {
+  return ROOT_PLACES.find(({ root }) => root.href === href)?.icon;
+}

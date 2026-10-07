@@ -4,11 +4,11 @@ import { ConfirmDialog } from "./Dialog.tsx";
 import { deleteDraft, type DraftEntry } from "./drafts.ts";
 import { useDrive } from "./drive-context.ts";
 import { notFound, type FileMetadata } from "./drive.ts";
+import { Icon } from "./Icon.tsx";
 import { Link } from "./Link.tsx";
 import { BROKEN, kindOf } from "./listing.ts";
 import { draftsQuery, MAX_CONTENT, metadataQuery } from "./queries.ts";
 import { hrefOf } from "./router.ts";
-import { Icon } from "./Icon.tsx";
 
 const KEPT = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
