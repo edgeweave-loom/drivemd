@@ -1,6 +1,6 @@
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountIn, THEME } from "./codemirror.ts";
 import { installScreen } from "./test/screen.ts";
 
@@ -76,5 +76,18 @@ describe("THEME", () => {
     const view = mount();
     view.destroy();
     expect(listeners.size).toBe(0);
+  });
+});
+
+describe("THEME, as fonts load", () => {
+  it("measures the view again once a font has loaded", () => {
+    const view = mount();
+    const measuring = vi.spyOn(view, "requestMeasure");
+    document.fonts.dispatchEvent(new Event("loadingdone"));
+    expect(measuring).toHaveBeenCalled();
+    view.destroy();
+    measuring.mockClear();
+    document.fonts.dispatchEvent(new Event("loadingdone"));
+    expect(measuring).not.toHaveBeenCalled();
   });
 });

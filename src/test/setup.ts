@@ -43,6 +43,8 @@ if ("window" in globalThis) {
     return `blob:http://localhost:3000/object-${String(objects)}`;
   };
   URL.revokeObjectURL = () => undefined;
+  // Nor does it load fonts: an event target stands for the page's.
+  Object.defineProperty(document, "fonts", { value: new EventTarget() });
   installScreen();
 }
 
