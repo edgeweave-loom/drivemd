@@ -234,6 +234,11 @@ button.icon-button {
   box-shadow: var(--elevation-1);
 }
 
+/* Clear does what the browser's own button would. */
+.search input::-webkit-search-cancel-button {
+  display: none;
+}
+
 .search .clear {
   position: absolute;
   top: 50%;
