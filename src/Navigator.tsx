@@ -134,8 +134,8 @@ function Shell({ children }: { children: ReactNode }) {
   // The page keeps its place whether the drawer shows or not, so that a
   // turn or a resize keeps what it holds.
   return (
-    <div className={drawer ? "shell" : undefined}>
-      {drawer && <NavDrawer />}
+    <div className={drawer && `shell ${drawer}`}>
+      {drawer && <NavDrawer rail={drawer === "rail"} />}
       <main className={drawer ? "page panel" : "page"}>{children}</main>
     </div>
   );

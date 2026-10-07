@@ -55,7 +55,7 @@ The interface is in English and follows the system's light or dark theme.
    - **Recent:** the Markdown files the user opened most recently, newest first. The list comes from Drive's `viewedByMeTime`, which the app sets when it opens a file, so it is the same on every device. It keeps the Markdown files among the 100 files with content the user viewed last. Drive accepts it even for files the user can only view, and shows the new time a few seconds later (checked live).
    - **Vaults:** the Obsidian vaults found in Drive (see Obsidian vaults).
    - **Roots:** My Drive, Shortcuts, Shared drives and Shared with me.
-   - On a wide screen, the vaults and the roots are in the navigation drawer beside Home instead (see Interface redesign).
+   - On a wide screen, the vaults and the roots are in the navigation drawer beside Home instead, and on a tablet in its navigation rail, whose Vaults item opens a menu of them (see Interface redesign).
 3. **File navigator.** Shows four roots: My Drive, Shortcuts, Shared drives and Shared with me.
    - Lists folders, Markdown files (.md, .markdown) and Drive shortcuts that point to a folder or a Markdown file. Folders and folder shortcuts come first, then files, each sorted by name in natural order (`file2` before `file10`).
    - Folders and files whose name starts with a dot, such as `.obsidian` and `.trash`, are hidden.

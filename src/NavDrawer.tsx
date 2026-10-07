@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useId, useRef } from "react";
 import { useDrive } from "./drive-context.ts";
 import type { DriveItem } from "./drive.ts";
 import { Icon } from "./Icon.tsx";
@@ -45,28 +46,39 @@ function vaultEntries(items: DriveItem[]) {
 }
 
 /**
- * The ways into Drive, beside Home, folders and search on a wide screen, as
- * Google Drive's drawer: its roots, then the Obsidian vaults. The one place
- * the page sits in stands out: the page itself, or else the deepest of the
- * places on the path the user took to it.
+ * The ways into Drive, beside Home, folders and search, as Google Drive's
+ * drawer on a wide screen: its roots, then the Obsidian vaults. On a tablet,
+ * its rail holds the same roots, and the vaults behind one item. The one
+ * place the page sits in stands out: the page itself, or else the deepest
+ * of the places on the path the user took to it.
  */
-export function NavDrawer() {
+export function NavDrawer({ rail = false }: { rail?: boolean }) {
   const { drive } = useDrive();
   const { href, trail } = usePlace();
   const vaults = useQuery({ ...vaultsQuery(drive), select: vaultEntries });
-  const places = [
-    ...PLACES,
-    ...(vaults.data ?? []).map((vault) => ({
-      key: vault.id,
-      name: vault.name,
-      href: hrefOf({ name: "folder", folder: vault.opens }),
-      icon: "book" as const,
-    })),
-  ];
+  const menu = useId();
+  const popover = useRef<HTMLDivElement>(null);
+  const vaultPlaces: Place[] = (vaults.data ?? []).map((vault) => ({
+    key: vault.id,
+    name: vault.name,
+    href: hrefOf({ name: "folder", folder: vault.opens }),
+    icon: "book",
+  }));
+  const places = [...PLACES, ...vaultPlaces];
+  // The menu goes once a vault opens, and stays when the user stays.
+  useEffect(() => {
+    const shown = popover.current;
+    if (shown?.matches(":popover-open")) shown.hidePopover();
+  }, [href]);
   const path = [...(trail ?? []).map((crumb) => crumb.href), href].reverse();
   const marked = path
     .map((step) => places.find((place) => place.href === step))
     .find((place) => place !== undefined);
+  const looks = (icon: IconName, current: boolean) => (
+    <span className="indicator">
+      <Icon name={current ? (FILLED[icon] ?? icon) : icon} />
+    </span>
+  );
   const item = (place: Place) => {
     const current = place === marked;
     return (
@@ -77,24 +89,55 @@ export function NavDrawer() {
           current={current && place.href === href}
           aria-current={current ? "true" : undefined}
         >
-          <Icon
-            name={current ? (FILLED[place.icon] ?? place.icon) : place.icon}
-          />
+          {looks(place.icon, current)}
           {place.name}
         </Link>
       </li>
     );
   };
+  const failed = vaults.isError && (
+    <p className="hint">Google Drive did not list the vaults.</p>
+  );
+  if (rail) {
+    const inVault = marked !== undefined && vaultPlaces.includes(marked);
+    return (
+      <nav aria-label="Drive" className="drawer-nav rail">
+        <ul>{PLACES.map(item)}</ul>
+        {(vaultPlaces.length > 0 || failed) && (
+          <>
+            <button
+              type="button"
+              className="vaults"
+              popoverTarget={menu}
+              aria-current={inVault ? "true" : undefined}
+            >
+              {looks("book", inVault)}
+              Vaults
+            </button>
+            <div
+              ref={popover}
+              id={menu}
+              popover="auto"
+              role="dialog"
+              aria-label="Vaults"
+              className="menu vaults-menu"
+            >
+              {failed}
+              <ul>{vaultPlaces.map(item)}</ul>
+            </div>
+          </>
+        )}
+      </nav>
+    );
+  }
   return (
     <nav aria-label="Drive" className="drawer-nav">
-      <ul>{places.slice(0, PLACES.length).map(item)}</ul>
-      {vaults.isError && (
-        <p className="hint">Google Drive did not list the vaults.</p>
-      )}
-      {places.length > PLACES.length && (
+      <ul>{PLACES.map(item)}</ul>
+      {failed}
+      {vaultPlaces.length > 0 && (
         <>
           <h2>Vaults</h2>
-          <ul>{places.slice(PLACES.length).map(item)}</ul>
+          <ul>{vaultPlaces.map(item)}</ul>
         </>
       )}
     </nav>

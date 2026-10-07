@@ -28,7 +28,7 @@ describe("NavDrawer", () => {
     open("/shortcuts");
     const page = screen.getByRole("main");
     act(() => {
-      holdScreen("tablet");
+      holdScreen("phone");
     });
     expect(screen.queryByRole("navigation", { name: "Drive" })).toBeNull();
     expect(screen.getByRole("main")).toBe(page);
@@ -55,6 +55,17 @@ describe("NavDrawer", () => {
       .getAllByRole("link")
       .filter((link) => link.hasAttribute("aria-current"));
     expect(marked.map((link) => link.textContent)).toEqual(["Journal"]);
+  });
+
+  it("holds the vaults behind one item of a tablet's rail, marked when the page is in one", async () => {
+    holdScreen("tablet");
+    const drive = fakeDrive();
+    drive.findVaults.mockResolvedValue([metadata(JOURNAL)]);
+    open(hrefOf({ name: "folder", folder: { id: JOURNAL.id } }), drive);
+    const rail = screen.getByRole("navigation", { name: "Drive" });
+    const vaults = await within(rail).findByRole("button", { name: "Vaults" });
+    expect(vaults).toHaveAttribute("aria-current", "true");
+    expect(within(rail).queryByRole("heading", { name: "Vaults" })).toBeNull();
   });
 
   it("says when Drive did not list the vaults", async () => {

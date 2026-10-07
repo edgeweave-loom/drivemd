@@ -6,7 +6,12 @@ test("leads into Drive from a drawer beside the page, on a wide screen", async (
 }, info) => {
   await signIn(page);
   const drawer = page.getByRole("navigation", { name: "Drive" });
-  if (info.project.metadata.layout !== "wide") {
+  // A tablet shows the rail, which its own test checks, and a phone neither.
+  if (info.project.metadata.layout === "tablet") {
+    await expect(drawer).toHaveClass(/\brail\b/);
+    return;
+  }
+  if (info.project.metadata.layout === "phone") {
     await expect(drawer).toHaveCount(0);
     return;
   }
