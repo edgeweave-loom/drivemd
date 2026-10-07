@@ -7,7 +7,7 @@ import { mountIn, THEME } from "./codemirror.ts";
 /**
  * The user's version against Google Drive's, in one view that reads the
  * same on a phone: what the user's version removes shows struck through in
- * place, and what it adds highlighted. Long stretches alike fold away.
+ * place, and what it adds underlined. Long stretches alike fold away.
  */
 export function Differences({
   theirs,

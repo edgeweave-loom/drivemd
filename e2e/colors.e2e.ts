@@ -84,3 +84,50 @@ for (const scheme of ["light", "dark"] as const) {
     );
   });
 }
+
+test("marks what the user's version adds and removes, not by color alone", async ({
+  page,
+  drive,
+}) => {
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  await page.locator(".markdown").getByRole("checkbox").first().check();
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content = `${String(plan.content)}\nTheir line.\n`;
+  plan.revision = 2;
+  await page.getByRole("button", { name: "Save" }).click();
+
+  const differences = page.locator(".differences");
+  // "- [ ] Boil water" became "- [x] Boil water": only the box changed.
+  const removed = differences
+    .locator(".cm-deletedChunk")
+    .filter({ hasText: "Boil water" });
+  const added = differences
+    .locator(".cm-changedLine")
+    .filter({ hasText: "Boil water" });
+  await expect(removed.locator(".cm-deletedText")).toHaveText(" ");
+  await expect(removed.locator(".cm-deletedText")).toHaveCSS(
+    "text-decoration-line",
+    "line-through",
+  );
+  await expect(added.locator(".cm-changedText")).toHaveText("x");
+  await expect(added.locator(".cm-changedText")).toHaveCSS(
+    "text-decoration-line",
+    "underline",
+  );
+  // The rest of each line is as it was, on the line's color.
+  await expect(removed.locator("del")).toHaveCSS(
+    "text-decoration-line",
+    "none",
+  );
+  await expect(added).toHaveCSS("text-decoration-line", "none");
+  await expect(removed).toHaveCSS(
+    "background-color",
+    await token(page, "--diff-removed"),
+  );
+  await expect(added).toHaveCSS(
+    "background-color",
+    await token(page, "--diff-added"),
+  );
+});
