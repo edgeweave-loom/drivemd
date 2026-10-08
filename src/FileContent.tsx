@@ -353,8 +353,11 @@ function Content({ file }: { file: FileMetadata }) {
   }, [keptAsIs]);
   // Out of the editor, the page shows Drive's latest again once it holds no
   // edits, or once it heard of the revision just saved; in the editor, Drive
-  // never changes the text being typed.
-  if (held && !editing && released(held, file, content.data)) {
+  // never changes the text being typed. A note the user may not edit, which
+  // a tab opened from Drive shows in Editing, has no editor.
+  const inEditor =
+    editing && !(content.data && readOnly(file, content.data) !== undefined);
+  if (held && !inEditor && released(held, file, content.data)) {
     setHeld(undefined);
   }
   const save = useMutation({

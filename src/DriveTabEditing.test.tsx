@@ -64,6 +64,31 @@ describe("A note opened from Drive", () => {
     expect(drive.getContent).toHaveBeenCalledOnce();
   });
 
+  it("follows Drive's newer revision of a note the user may only read", async () => {
+    holdScreen("wide");
+    const drive = fakeDrive();
+    drive.getContent.mockResolvedValue(utf8("# The plan\n"));
+    markTab(true);
+    const viewOnly = metadata(PLAN, {
+      capabilities: { ...PLAN.capabilities, canModifyContent: false },
+    });
+    const { rerender } = renderWithDrive(
+      <FileContent file={viewOnly} />,
+      drive,
+    );
+    await screen.findByRole("heading", { name: "The plan" });
+    drive.getContent.mockResolvedValue(utf8("# Their plan\n"));
+
+    rerender(
+      <FileContent
+        file={metadata(viewOnly, { headRevisionId: "revision-2" })}
+      />,
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Their plan" }),
+    ).toBeVisible();
+  });
+
   it("opens in Viewing in a tab of the app's own", async () => {
     holdScreen("wide");
     markTab(false);
