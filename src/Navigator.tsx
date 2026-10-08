@@ -1,5 +1,6 @@
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -9,6 +10,7 @@ import {
 import { flushSync } from "react-dom";
 import { Account } from "./Account.tsx";
 import { DriveContext, useDrive } from "./drive-context.ts";
+import { leaveNote, openedFromDrive } from "./drive-tab.ts";
 import type { FileRef } from "./drive.ts";
 import { linkedPage } from "./drive-web.ts";
 import { FileView } from "./FilePage.tsx";
@@ -131,7 +133,8 @@ function AppBar({
 /**
  * A note's app bar: DriveMD's mark, or a phone's way up to the note's
  * folder, then the places the note's page fills, and the account but on a
- * phone, which leaves it to Home.
+ * phone, which leaves it to Home. A tab opened from Drive holds the note
+ * alone: the mark leads nowhere, and takes the place of a phone's way up.
  */
 function NoteBar({
   file,
@@ -146,15 +149,23 @@ function NoteBar({
 }) {
   const { trail } = usePlace();
   const phone = useLayout() === "phone";
+  const alone = openedFromDrive();
+  const mark = (
+    <span className="mark">
+      <img src="/icon.svg" alt="DriveMD" />
+    </span>
+  );
   return (
     <header className="bar note">
       {phone ? (
         <>
-          {/* Where a phone's Done takes the place of Back while editing:
-              the CSS hides the Back that comes right after it. */}
+          {/* Where a phone's Done takes the place of Back, or of the mark,
+              while editing: the CSS hides the one right after it. */}
           <span className="slot lead" ref={lead} />
-          <NoteUp file={file} trail={trail} />
+          {alone ? mark : <NoteUp file={file} trail={trail} />}
         </>
+      ) : alone ? (
+        mark
       ) : (
         <Link to={HOME} className="mark" aria-label="DriveMD">
           <img src="/icon.svg" alt="" />
@@ -317,6 +328,10 @@ function Up({ up }: { up: Crumb[] | undefined }) {
 
 function Page() {
   const { route, trail } = usePlace();
+  // A tab opened from Drive holds a note: any other page ends the mode.
+  useEffect(() => {
+    if (route.name !== "file") leaveNote();
+  }, [route.name]);
   switch (route.name) {
     case "home":
       return <Home />;

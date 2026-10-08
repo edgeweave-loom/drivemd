@@ -487,10 +487,16 @@ test("opens what Drive's Open with, New and pasted links name", async ({
   );
   await expect(page).toHaveURL(new RegExp(`/edit\\?id=${run.ids.note}$`));
   await expect(noteName(page, `${RUN} note.md`)).toBeVisible();
-  await expect(folderLink(page, `${RUN} Notes`)).toBeVisible();
+  // The tab holds the note alone: its mark leads nowhere, and no folder or
+  // way up shows.
+  const bar = page.getByRole("banner");
+  await expect(bar.getByRole("img", { name: "DriveMD" })).toBeVisible();
+  await expect(bar.getByRole("link")).toHaveCount(0);
+  await expect(page.getByRole("complementary")).toHaveCount(0);
   await loaded(page);
 
-  // A note's bar holds no search, which Home's does.
+  // An address typed in the tab ends that; a note's bar holds no search,
+  // which Home's does.
   await openHome(page);
   const search = await searchBox(page);
   await search.fill(

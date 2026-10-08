@@ -480,6 +480,14 @@ export function setParents(
   );
 }
 
+/** Puts the file in the trash, before Drive's details say so. */
+export function setTrashed(client: QueryClient, file: FileRef): void {
+  client.setQueriesData<FileMetadata>(
+    { queryKey: key("metadata", file.id) },
+    (before) => before && { ...before, trashed: true },
+  );
+}
+
 /**
  * Shows the file's new details at once, as a save answered them, and its new
  * time of change in the lists that hold it.

@@ -6,7 +6,8 @@ import { useDrive } from "./drive-context.ts";
 import { Icon } from "./Icon.tsx";
 import { MoveDialog } from "./Move.tsx";
 import type { FileMetadata, FileRef } from "./drive.ts";
-import { refreshAfterChange } from "./queries.ts";
+import { openedFromDrive } from "./drive-tab.ts";
+import { refreshAfterChange, setTrashed } from "./queries.ts";
 import { hrefOf, navigate, type Crumb } from "./router.ts";
 
 const HOME = hrefOf({ name: "home" });
@@ -121,7 +122,11 @@ export function ActionDialog({
   );
 }
 
-/** Moves the file to Drive's trash once the user confirms, then leaves it. */
+/**
+ * Moves the file to Drive's trash once the user confirms, then leaves it, but
+ * in a tab opened from Drive, which holds the file alone: its page then says
+ * where the file went.
+ */
 function Trash({
   file,
   path,
@@ -133,10 +138,12 @@ function Trash({
 }) {
   const { drive, renew } = useDrive();
   const client = useQueryClient();
+  const stays = openedFromDrive();
   const trash = useMutation({
     mutationFn: () => drive.trashFile(file),
     onSuccess: () => {
-      refreshAfterChange(client, file, { leaving: true });
+      if (stays) setTrashed(client, file);
+      refreshAfterChange(client, file, { leaving: !stays });
     },
   });
   return (
@@ -150,7 +157,8 @@ function Trash({
         // Only while the page shows: Back takes the user elsewhere.
         trash.mutate(undefined, {
           onSuccess: () => {
-            leave(file, path);
+            if (stays) onClose();
+            else leave(file, path);
           },
         });
       }}

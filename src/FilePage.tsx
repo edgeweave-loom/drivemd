@@ -6,6 +6,7 @@ import {
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { Dialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
+import { openedFromDrive } from "./drive-tab.ts";
 import { mayMove, type FileMetadata, type FileRef } from "./drive.ts";
 import {
   ActionDialog,
@@ -46,7 +47,8 @@ const WHEN = new Intl.DateTimeFormat(undefined, {
 
 /**
  * A file's page, with the folder it sits in beside it on a wide screen or in
- * a drawer on a tablet. The folder stays as another of its files opens.
+ * a drawer on a tablet, but in a tab opened from Drive, which holds the file
+ * alone. The folder stays as another of its files opens.
  */
 export function FileView({
   file,
@@ -64,7 +66,10 @@ export function FileView({
   });
   const path = usePath(file, trail);
   const folder =
-    layout !== "phone" && details.data && opensHere(details.data)
+    layout !== "phone" &&
+    !openedFromDrive() &&
+    details.data &&
+    opensHere(details.data)
       ? folderOf(path)
       : undefined;
   const pane = folder && (
