@@ -316,3 +316,58 @@ describe("Navigator", () => {
     expect(getPlace().href).toBe("/");
   });
 });
+
+describe("Navigator's app bar on a phone", () => {
+  const myDrive = { name: "My Drive", href: "/my-drive" };
+  const work = { name: "Work", href: "/folder/work" };
+
+  it("names a folder and leads up to the one above, along the path taken", () => {
+    const { drive } = open("/");
+    drive.getMetadata.mockReturnValue(new Promise(() => undefined));
+    drive.listChildren.mockReturnValue(new Promise(() => undefined));
+    act(() => {
+      navigate(work.href, [myDrive, work]);
+    });
+    const bar = screen.getByRole("banner");
+    expect(within(bar).getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Work",
+    );
+    const up = within(bar).getByRole("link", { name: "Back to My Drive" });
+    expect(up).toHaveAttribute("href", "/my-drive");
+    fireEvent.click(up);
+    expect(getPlace()).toMatchObject({ href: "/my-drive", trail: [myDrive] });
+  });
+
+  it("names a root, and leads up to Home", () => {
+    open("/shortcuts");
+    const bar = screen.getByRole("banner");
+    expect(within(bar).getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Shortcuts",
+    );
+    expect(
+      within(bar).getByRole("link", { name: "Back to Home" }),
+    ).toHaveAttribute("href", "/");
+  });
+
+  it("says the folder is on its way, and offers no way up until Drive gives its path", () => {
+    const { drive } = open("/folder/work");
+    drive.getMetadata.mockReturnValue(new Promise(() => undefined));
+    const bar = screen.getByRole("banner");
+    expect(within(bar).getByRole("heading", { level: 1 })).toHaveTextContent(
+      "…",
+    );
+    expect(within(bar).queryByRole("link", { name: /^Back to/ })).toBeNull();
+  });
+
+  it("calls a folder Drive does not describe Folder, as its page does", async () => {
+    const drive = fakeDrive();
+    drive.getMetadata.mockRejectedValue(new Error("offline"));
+    open("/folder/work", drive);
+    const bar = screen.getByRole("banner");
+    await waitFor(() => {
+      expect(within(bar).getByRole("heading", { level: 1 })).toHaveTextContent(
+        "Folder",
+      );
+    });
+  });
+});

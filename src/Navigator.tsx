@@ -1,8 +1,4 @@
-import {
-  QueryClientProvider,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import {
   useMemo,
   useRef,
@@ -24,18 +20,14 @@ import { Link } from "./Link.tsx";
 import { useDrawer } from "./drawer.ts";
 import { NavDrawer } from "./NavDrawer.tsx";
 import { NewPage } from "./NewPage.tsx";
-import { usePath } from "./path.ts";
-import {
-  createQueryClient,
-  metadataQuery,
-  refreshSearches,
-} from "./queries.ts";
+import { useFolder } from "./path.ts";
+import { createQueryClient, refreshSearches } from "./queries.ts";
 import {
   SharedDrivesPage,
   SharedWithMePage,
   ShortcutsPage,
 } from "./RootPages.tsx";
-import { ROOTS } from "./roots.ts";
+import { ROOT_PLACES } from "./roots.ts";
 import {
   getPlace,
   hrefOf,
@@ -43,7 +35,6 @@ import {
   navigate,
   usePlace,
   type Crumb,
-  type Route,
 } from "./router.ts";
 import { SearchPage } from "./SearchPage.tsx";
 import type { Session } from "./session.ts";
@@ -98,13 +89,16 @@ function AppBar({
   email: string;
   onSignOut: () => void;
 }) {
-  const { route, trail } = usePlace();
+  const { route, trail, href } = usePlace();
   const phone = useLayout() === "phone";
   const field = useRef<HTMLInputElement>(null);
   // The page that opened the search, which its Back returns to.
   const opener = useRef<string>(undefined);
   // On a phone, a folder or a root names itself in the bar, with a way up.
-  const root = phone ? ROOT_OF[route.name] : undefined;
+  const root =
+    phone && route.name !== "folder"
+      ? ROOT_PLACES.find((place) => place.root.href === href)?.root
+      : undefined;
   const titled = phone && (route.name === "folder" || root !== undefined);
   const looks = route.name === "search" ? "searching" : titled && "titled";
   return (
@@ -171,12 +165,6 @@ function Shell({ children }: { children: ReactNode }) {
   );
 }
 
-const ROOT_OF: Partial<Record<Route["name"], Crumb>> = {
-  shortcuts: ROOTS.shortcuts,
-  "shared-drives": ROOTS.sharedDrives,
-  "shared-with-me": ROOTS.sharedWithMe,
-};
-
 /** A folder's name, from the path the user took or else from Drive. */
 function FolderTitle({
   folder,
@@ -185,34 +173,32 @@ function FolderTitle({
   folder: FileRef;
   trail: Crumb[] | undefined;
 }) {
-  const { drive } = useDrive();
-  const path = usePath(folder, trail);
-  const details = useQuery(metadataQuery(drive, folder));
-  return (
-    <Title
-      name={path?.at(-1)?.name ?? details.data?.name}
-      up={path?.slice(0, -1) ?? []}
-    />
-  );
+  const { path, name } = useFolder(folder, trail);
+  return <Title name={name} up={path?.slice(0, -1)} />;
 }
 
 /**
  * The page's name, and a way up to the place above it: the last step of
- * the path that leads there, or else Home.
+ * the path that leads there, or else Home; none while the path is unknown.
  */
-function Title({ name, up }: { name: string | undefined; up: Crumb[] }) {
-  const above = up.at(-1) ?? { name: "Home", href: HOME };
+function Title({ name, up }: { name: string; up: Crumb[] | undefined }) {
+  const above = up && (up.at(-1) ?? { name: "Home", href: HOME });
   return (
     <>
-      <Link
-        to={above.href}
-        trail={up.length > 0 ? up : undefined}
-        className="icon-button up"
-        aria-label={`Back to ${above.name}`}
-        title={`Back to ${above.name}`}
-      >
-        <Icon name="arrow_back" />
-      </Link>
+      {up && above ? (
+        <Link
+          to={above.href}
+          trail={up.length > 0 ? up : undefined}
+          className="icon-button up"
+          aria-label={`Back to ${above.name}`}
+          title={`Back to ${above.name}`}
+        >
+          <Icon name="arrow_back" />
+        </Link>
+      ) : (
+        // Its place, kept while the path comes.
+        <span className="icon-button up" />
+      )}
       <h1 className="title">{name}</h1>
     </>
   );

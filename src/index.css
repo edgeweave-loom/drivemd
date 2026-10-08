@@ -96,14 +96,16 @@ button.danger {
 /* The label's color laid over the control: 8% under the mouse, 10% under
    the keyboard's focus or a press. */
 @media (hover: hover) {
-  button:hover:not(:disabled) {
+  button:hover:not(:disabled),
+  a.icon-button:hover {
     background-image: linear-gradient(
       color-mix(in srgb, currentColor 8%, transparent) 0 0
     );
   }
 }
 
-button:is(:focus-visible, :active):not(:disabled) {
+button:is(:focus-visible, :active):not(:disabled),
+a.icon-button:is(:focus-visible, :active) {
   background-image: linear-gradient(
     color-mix(in srgb, currentColor 10%, transparent) 0 0
   );
@@ -129,23 +131,9 @@ button:is(.filled, .tonal, .danger):disabled {
   }
 }
 
-/* Icon buttons: 40 px circles, named by a label and a tooltip. */
-button.icon-button {
-  flex: none;
-  width: var(--control-height);
-  padding: 0;
-  border: none;
-  color: var(--on-surface-variant);
-}
-
-@media (pointer: coarse) {
-  button.icon-button::after {
-    inset: calc((var(--control-height) - var(--touch-target)) / 2);
-  }
-}
-
-/* A link that looks like an icon button, such as the bar's way up. */
-a.icon-button {
+/* Icon buttons, and links that look like them such as the bar's way up:
+   40 px circles, named by a label and a tooltip. */
+.icon-button {
   position: relative;
   display: inline-flex;
   flex: none;
@@ -153,20 +141,14 @@ a.icon-button {
   justify-content: center;
   width: var(--control-height);
   height: var(--control-height);
+  padding: 0;
+  border: none;
   border-radius: var(--radius-full);
   color: var(--on-surface-variant);
 }
 
-@media (hover: hover) {
-  a.icon-button:hover {
-    background-image: linear-gradient(
-      color-mix(in srgb, currentColor 8%, transparent) 0 0
-    );
-  }
-}
-
 @media (pointer: coarse) {
-  a.icon-button::after {
+  :is(button, a).icon-button::after {
     position: absolute;
     inset: calc((var(--control-height) - var(--touch-target)) / 2);
     content: "";
@@ -407,8 +389,11 @@ button.account {
     display: contents;
   }
 
+  /* The bar's title, or the search's field, names the page, which its
+     heading then names to the ear only. */
   :root:has(.bar.titled) .page > h2,
-  :root:has(.bar.titled) .page > .heading > h2 {
+  :root:has(.bar.titled) .page > .heading > h2,
+  :root:has(.bar.searching) .page > h2 {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -419,7 +404,7 @@ button.account {
 
   button.new-note {
     position: fixed;
-    right: var(--space-4);
+    right: calc(var(--space-4) + env(safe-area-inset-right));
     bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
     z-index: 1;
     min-height: var(--fab-size);
@@ -437,7 +422,9 @@ button.account {
 
   /* The list's last rows stay clear of it. */
   .page:has(.new-note) {
-    padding-bottom: calc(var(--fab-size) + 2 * var(--space-4));
+    padding-bottom: calc(
+      var(--fab-size) + 2 * var(--space-4) + env(safe-area-inset-bottom)
+    );
   }
 
   /* The search opens full screen. */
@@ -484,16 +471,6 @@ button.account {
     padding-left: var(--space-2);
     background: none;
     box-shadow: none;
-  }
-
-  /* The field names the search, as its heading would. */
-  :root:has(.bar.searching) .page > h2 {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
   }
 
   .account-menu {

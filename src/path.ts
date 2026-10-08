@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Climb } from "./climb.ts";
 import { useDrive } from "./drive-context.ts";
 import { FOLDER, type FileMetadata, type FileRef } from "./drive.ts";
-import { climbQuery } from "./queries.ts";
+import { climbQuery, metadataQuery } from "./queries.ts";
 import { ROOTS } from "./roots.ts";
 import { hrefOf, type Crumb } from "./router.ts";
 
@@ -23,6 +23,24 @@ export function usePath(
 ): Crumb[] | undefined {
   const rebuilt = useClimb(item, trail === undefined);
   return trail ?? (rebuilt.data && crumbsOf(rebuilt.data));
+}
+
+/**
+ * A folder's details, its path, and its name as the page and a phone's bar
+ * give it: from the path, or else from Drive, while Drive is still asked or
+ * once it failed to say.
+ */
+export function useFolder(folder: FileRef, trail: Crumb[] | undefined) {
+  const { drive } = useDrive();
+  // Says whether the user may add files, and names a folder reached without
+  // a path.
+  const details = useQuery(metadataQuery(drive, folder));
+  const path = usePath(folder, trail);
+  const name =
+    path?.at(-1)?.name ??
+    details.data?.name ??
+    (details.isError ? "Folder" : "…");
+  return { details, path, name };
 }
 
 /** The breadcrumbs of a climb, from its root down to the item. */
