@@ -1,4 +1,4 @@
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { vi } from "vitest";
@@ -42,6 +42,17 @@ export function renderWithDrive(
       rerender(within(page));
     },
   };
+}
+
+/** Keeps Drive's answers fresh for as long as the app does. */
+export function keepFresh(client: QueryClient): void {
+  client.setDefaultOptions({
+    ...client.getDefaultOptions(),
+    queries: {
+      ...createQueryClient().getDefaultOptions().queries,
+      retry: false,
+    },
+  });
 }
 
 /** Opens a URL of the app as a fresh page load would. */

@@ -12,7 +12,7 @@ import {
   metadataOf,
 } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
-import { ACCOUNT, renderWithDrive } from "./test/render.tsx";
+import { ACCOUNT, keepFresh, renderWithDrive } from "./test/render.tsx";
 
 const PLAN = metadata(driveItem("plan.md", { id: "plan" }));
 const SHARED = metadata(
@@ -228,10 +228,7 @@ describe("Home", () => {
     await keep(PLAN);
     const { client, rerender } = home(PLAN);
     // Answers stay fresh for half a minute, as in the app.
-    client.setDefaultOptions({
-      ...client.getDefaultOptions(),
-      queries: { retry: false, staleTime: 30_000 },
-    });
+    keepFresh(client);
     await (await unsaved()).findByRole("link", { name: /^plan\.md/ });
     rerender(<p>Elsewhere</p>);
     // Saved or discarded on the note's page.
@@ -342,10 +339,7 @@ describe("Home", () => {
     await keep(PLAN);
     const { drive, client, rerender } = home({ ...PLAN, trashed: true });
     // Drive's answers stay fresh for half a minute, as in the app.
-    client.setDefaultOptions({
-      ...client.getDefaultOptions(),
-      queries: { retry: false, staleTime: 30_000 },
-    });
+    keepFresh(client);
     await (await unsaved()).findByText("In the trash");
     rerender(<p>Elsewhere</p>);
     // Restored from Drive's trash.

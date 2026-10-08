@@ -38,11 +38,15 @@ export interface Session {
   continueSession: () => void;
   signOut: () => void;
   retry: () => void;
-  /** Drive, as the signed-in user: its calls wait for Continue when needed. */
+  /**
+   * Drive, as the signed-in user: its calls wait for Continue when needed,
+   * but fail at once while offline, as an unreachable Drive does.
+   */
   drive: Drive;
   /**
    * Renews an expired token by opening Google's popup, so call it first in a
-   * tap or click handler that leads to Drive calls.
+   * tap or click handler that leads to Drive calls. Offline, it does nothing,
+   * as the popup could not load.
    */
   renew: () => void;
 }
@@ -107,9 +111,9 @@ export function createSession(driveAccount?: string): Session {
     waiters.clear();
   }
 
-  function failWaiters(reason: string): void {
+  function failWaiters(error: AuthError | DriveError): void {
     settleWaiters((waiter) => {
-      waiter.reject(new AuthError("superseded", reason));
+      waiter.reject(error);
     });
   }
 
@@ -213,7 +217,9 @@ export function createSession(driveAccount?: string): Session {
   function signedOutElsewhere(): void {
     epoch += 1;
     auth.clearToken();
-    failWaiters("The user signed out in another tab");
+    failWaiters(
+      new AuthError("superseded", "The user signed out in another tab"),
+    );
     update({
       screen: signedOutScreen(),
       waiting: false,
@@ -257,10 +263,7 @@ export function createSession(driveAccount?: string): Session {
   // would. Listening for as long as the tab lives also keeps the connection
   // known while no page asks Drive anything, as once signed out.
   onlineManager.subscribe((online) => {
-    if (online) return;
-    settleWaiters((waiter) => {
-      waiter.reject(new DriveError(0, UNREACHABLE));
-    });
+    if (!online) failWaiters(new DriveError(0, UNREACHABLE));
   });
 
   return {
@@ -291,7 +294,7 @@ export function createSession(driveAccount?: string): Session {
       epoch += 1;
       requested = undefined;
       auth.signOut();
-      failWaiters("The user signed out");
+      failWaiters(new AuthError("superseded", "The user signed out"));
       update({
         screen: { name: "sign-in" },
         waiting: false,
