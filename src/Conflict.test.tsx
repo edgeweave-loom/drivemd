@@ -118,7 +118,8 @@ describe("a save that finds someone else's change", () => {
     keepTheirs();
 
     expect(await screen.findByText("Serve")).toBeVisible();
-    expect(screen.queryByText("Unsaved changes")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(await screen.findByRole("button", { name: "Saved" })).toBeVisible();
     expect(
       screen.queryByRole("heading", { name: /Someone changed/ }),
     ).toBeNull();
@@ -207,7 +208,7 @@ describe("a save that finds someone else's change", () => {
       "revision-3",
     );
     await waitFor(() => {
-      expect(screen.queryByText("Unsaved changes")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     });
     expect(
       screen.queryByRole("heading", { name: /Someone changed/ }),

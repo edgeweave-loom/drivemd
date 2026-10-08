@@ -87,7 +87,7 @@ describe("leaving a note with unsaved changes", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
-      expect(screen.queryByText("Unsaved changes")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     });
 
     expect(unload()).toBe(false);

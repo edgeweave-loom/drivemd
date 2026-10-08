@@ -21,9 +21,10 @@ test("names the note in the app bar, with what it lets the user do", async ({
   ).toHaveCount(0);
 
   await page.locator(".markdown").getByRole("checkbox").first().check();
-  await expect(bar.getByRole("button", { name: "Save" })).toBeVisible();
+  await expect(
+    bar.getByRole("button", { name: "Save", exact: true }),
+  ).toBeVisible();
   await expect(bar.getByRole("button", { name: "Edit" })).toBeVisible();
-  const unsaved = bar.getByText("Unsaved changes");
 
   if (info.project.metadata.layout === "phone") {
     // A way up to the note's folder, in place of DriveMD's mark, and neither
@@ -32,8 +33,7 @@ test("names the note in the app bar, with what it lets the user do", async ({
     await expect(bar.getByRole("link", { name: "Back to Work" })).toBeVisible();
     await expect(changed).toBeHidden();
     await expect(account).toHaveCount(0);
-    // Save says by showing that changes are unsaved, leaving the name room.
-    await expect(unsaved).toBeHidden();
+    // The name keeps room beside the tools.
     const whole = await bar
       .getByRole("heading", { level: 1 })
       .evaluate((name) => name.scrollWidth <= name.clientWidth);
@@ -42,8 +42,36 @@ test("names the note in the app bar, with what it lets the user do", async ({
     await expect(bar.getByRole("link", { name: "DriveMD" })).toBeVisible();
     await expect(changed).toBeVisible();
     await expect(account).toBeVisible();
-    await expect(unsaved).toBeVisible();
   }
+});
+
+test("keeps Save in one place through its states, and marks the tab while unsaved", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  const bar = page.getByRole("banner");
+  // A status, legible and reachable, rather than a disabled control.
+  const saved = bar.getByRole("button", { name: "Saved" });
+  await expect(saved).toHaveAttribute("aria-disabled", "true");
+  await expect(saved.locator('svg[data-icon="cloud_done"]')).toHaveCount(1);
+  await expect(saved).toHaveCSS(
+    "color",
+    await token(page, "--on-surface-variant"),
+  );
+  await expect(page).toHaveTitle("DriveMD");
+  const before = await saved.boundingBox();
+  expect(before?.width).toBeGreaterThanOrEqual(112);
+
+  await page.locator(".markdown").getByRole("checkbox").first().check();
+  const save = bar.getByRole("button", { name: "Save", exact: true });
+  await expect(save).not.toHaveAttribute("aria-disabled");
+  await expect(page).toHaveTitle("• DriveMD");
+  expect(await save.boundingBox()).toEqual(before);
+
+  await save.click();
+  await expect(saved).toBeVisible();
+  await expect(page).toHaveTitle("DriveMD");
 });
 
 test("offers Move by the note's name and the rest in More actions", async ({
@@ -95,7 +123,7 @@ test("offers Move by the note's name and the rest in More actions", async ({
 test("renames the note by its name, its ending set apart", async ({
   page,
   drive,
-}) => {
+}, info) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
   const bar = page.getByRole("banner");
@@ -111,10 +139,13 @@ test("renames the note by its name, its ending set apart", async ({
   const field = bar.getByRole("textbox", { name: "Name" });
   await expect(field).toBeFocused();
   await expect(field).toHaveValue("plan");
-  // As wide as what it holds.
+  // As wide as what it holds, where the bar has room: a phone's has little
+  // until its Edit floats.
   const short = (await field.boundingBox())?.width ?? 0;
   await field.fill("the plan for the week");
-  expect((await field.boundingBox())?.width).toBeGreaterThan(short);
+  if (info.project.metadata.layout !== "phone") {
+    expect((await field.boundingBox())?.width).toBeGreaterThan(short);
+  }
   await field.press("Escape");
   await expect(name).toBeFocused();
 

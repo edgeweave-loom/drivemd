@@ -27,6 +27,7 @@ import {
   type FileMetadata,
   type FileRef,
 } from "./drive.ts";
+import { Icon } from "./Icon.tsx";
 import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
 import { useLayout } from "./layout.ts";
@@ -534,6 +535,34 @@ function Restore({
 }
 
 /**
+ * Save, always in the same place and at the same width, so that nothing
+ * beside it moves: "Saved", a status that stays legible, "Save", or
+ * "Saving…" while Drive writes. Saved and Saving… stay reachable, to say
+ * where the note stands, but save nothing; a screen reader hears the change.
+ */
+function Save({
+  state,
+  onSave,
+}: {
+  state: "saved" | "save" | "saving";
+  onSave: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`save ${state === "save" ? "filled" : state === "saving" ? "tonal" : "saved"}`}
+      aria-disabled={state === "save" ? undefined : true}
+      aria-live="polite"
+      onClick={onSave}
+    >
+      {state === "saved" && <Icon name="cloud_done" />}
+      {state === "saving" && <span className="spinner" />}
+      {state === "saved" ? "Saved" : state === "saving" ? "Saving…" : "Save"}
+    </button>
+  );
+}
+
+/**
  * The note, as rendered, and its source in the editor once the user taps
  * Edit: beside the preview on a wide screen, or in its place on a phone.
  */
@@ -613,6 +642,15 @@ function NoteView({
       guardLeaving(undefined);
     };
   }, [unsaved, file.id]);
+  // The tab says that the note holds unsaved changes.
+  useEffect(() => {
+    if (!unsaved) return;
+    const title = document.title;
+    document.title = `• ${title}`;
+    return () => {
+      document.title = title;
+    };
+  }, [unsaved]);
   const conflict =
     save.data && "conflict" in save.data ? save.data.conflict : undefined;
   const [folder] = file.parents;
@@ -678,17 +716,14 @@ function NoteView({
             </button>
           </InSlot>
         )}
-        {unsaved && !conflict && (
+        {/* While the page waits for an answer about changes kept on the
+            device, too: nothing is unsaved yet. */}
+        {reason === undefined && !conflict && (
           <InSlot name="save">
-            <span className="hint">Unsaved changes</span>
-            <button
-              type="button"
-              className="filled"
-              disabled={save.isPending}
-              onClick={saveNow}
-            >
-              {save.isPending ? "Saving…" : "Save"}
-            </button>
+            <Save
+              state={save.isPending ? "saving" : unsaved ? "save" : "saved"}
+              onSave={saveNow}
+            />
           </InSlot>
         )}
       </div>

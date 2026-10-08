@@ -33,6 +33,6 @@ describe("editing without the editor's code", () => {
     // Tasks still respond in the preview.
     fireEvent.click(screen.getByRole("checkbox"));
     expect(screen.getByRole("checkbox")).toBeChecked();
-    expect(screen.getByText("Unsaved changes")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
   });
 });

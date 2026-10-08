@@ -119,10 +119,12 @@ test("checks a task and saves that change only", async ({ page, drive }) => {
   await page.goto("/edit?id=plan");
 
   await page.locator(".markdown").getByRole("checkbox").first().check();
-  await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
-  await page.getByRole("button", { name: "Save" }).click();
+  await expect(
+    page.getByRole("button", { name: "Save", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
 
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   await expect(
     page.locator(".markdown").getByRole("checkbox").first(),
   ).toBeChecked();
@@ -167,9 +169,9 @@ test("edits the source and saves it", async ({ page, drive }, info) => {
   await expect(
     page.locator(".markdown p").filter({ hasText: "Green tea." }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
 
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("plan")?.content)).toBe(
     `${before}\nGreen tea.`,
   );
@@ -190,10 +192,12 @@ test("keeps one kind of line break whatever an input method types", async ({
   await page.keyboard.press("End");
   // As an input method, or a phone keyboard typing copied text, inserts it.
   await page.keyboard.insertText("A\r\nB\rC\u0000");
-  await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
-  await page.getByRole("button", { name: "Save" }).click();
+  await expect(
+    page.getByRole("button", { name: "Save", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
 
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("notes")?.content)).toBe("oneA\nB\nC\ntwo\n");
 });
 
@@ -233,9 +237,9 @@ test("formats the source from the keyboard toolbar on touch screens", async ({
   await expect(source.locator(".cm-line").nth(1)).toHaveText("- [ ] two");
   // The key left the focus, and the keyboard, with the editor.
   await expect(source).toBeFocused();
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
 
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("notes")?.content)).toBe("one\n- [ ] two\n");
 });
 
@@ -257,7 +261,7 @@ test("saves with Ctrl+S, and follows a link with Ctrl+click in the source", asyn
   await page.keyboard.type("Tea.");
 
   await page.keyboard.press("ControlOrMeta+s");
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("plan")?.content)).toBe(`${before}Tea.`);
 
   await source.getByText("the notes", { exact: true }).click({
@@ -283,7 +287,7 @@ test("shows someone else's change at save, and overwrites it when asked", async 
   plan.content = `${String(plan.content)}\nTheir line.\n`;
   plan.revision = 2;
 
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(
     page.getByRole("heading", {
       name: "Someone changed this file in Google Drive",
@@ -298,7 +302,7 @@ test("shows someone else's change at save, and overwrites it when asked", async 
   await expect
     .poll(() => drive.writes)
     .toEqual(["keep plan revision-2", "save plan"]);
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("plan")?.content)).not.toContain("Their line.");
   expect(String(drive.files.get("plan")?.content)).toContain(
     "- [x] Boil water",
@@ -317,7 +321,7 @@ test("folds the lines alike in the theme's colors, as the system's changes", asy
   if (!plan) throw new Error("No plan");
   plan.content = `${String(plan.content)}\nTheir line.\n`;
   plan.revision = 2;
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
 
   const folded = page.locator(".differences .cm-collapsedLines").first();
   await expect(folded).toContainText("unchanged lines");
@@ -356,7 +360,9 @@ test("keeps unsaved changes on the device across a reload", async ({
   await signIn(page);
   await page.goto("/edit?id=plan");
   await page.locator(".markdown").getByRole("checkbox").first().check();
-  await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Save", exact: true }),
+  ).toBeVisible();
   // Kept on the device half a second after the last change.
   await expect.poll(() => draftsKept(page)).toBe(1);
 
@@ -368,9 +374,9 @@ test("keeps unsaved changes on the device across a reload", async ({
   await expect(
     page.locator(".markdown").getByRole("checkbox").first(),
   ).toBeChecked();
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
 
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(drive.writes).toEqual(["keep plan revision-1", "save plan"]);
 });
 
@@ -393,8 +399,8 @@ test("lists a note with unsaved changes first on Home, then offers them back", a
   await expect(vault(page)).toBeVisible();
   await unsaved.getByRole("link").click();
   await page.getByRole("button", { name: "Restore" }).click();
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
 
   await goHome(page);
   await expect(vault(page)).toBeVisible();
@@ -444,7 +450,9 @@ test("asks before leaving a note with unsaved changes for another page", async (
   );
   await asked.dismiss();
   await expect(page).toHaveURL(/\/edit\?id=plan$/);
-  await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Save", exact: true }),
+  ).toBeVisible();
 
   page.once("dialog", (dialog) => void dialog.accept());
   await work.click();
