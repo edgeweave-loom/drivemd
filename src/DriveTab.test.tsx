@@ -170,6 +170,13 @@ describe("A tab opened from Drive", () => {
       "Sign out",
     ]);
     expect(menu.getByText(EMAIL)).toBeVisible();
+    // Apart from the note's actions.
+    expect(
+      menu
+        .getByRole("separator")
+        .compareDocumentPosition(menu.getByText(EMAIL)) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(menu.getByRole("link", { name: "About DriveMD" })).toHaveAttribute(
       "href",
       "/about.html",

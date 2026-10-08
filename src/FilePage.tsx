@@ -6,7 +6,7 @@ import {
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { Dialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
-import { openedFromDrive } from "./drive-tab.ts";
+import { openedFromDrive, useNoteAccount } from "./drive-tab.ts";
 import { mayMove, type FileMetadata, type FileRef } from "./drive.ts";
 import {
   ActionDialog,
@@ -170,8 +170,7 @@ export function FilePage({
   // Beside the name, or in More actions on a phone, which has no room there.
   const movable = opens && mayMove(details.data);
   const moveBeside = movable && !phone;
-  // A phone's tab opened from Drive has no Home that holds the account.
-  const account = phone && openedFromDrive();
+  const account = useNoteAccount() === "more-actions";
 
   useEffect(() => {
     if (!opens) return;

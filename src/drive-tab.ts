@@ -1,3 +1,5 @@
+import { useLayout } from "./layout.ts";
+
 // Kept by the tab alone, through reloads.
 const MARK = "drivemd.fromDrive";
 
@@ -51,4 +53,14 @@ function read(): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Where a note's page offers the account: its own button in the bar on a
+ * wider screen, or else More actions in a phone's tab opened from Drive,
+ * which has no Home that holds it, as a phone's other notes leave it to.
+ */
+export function useNoteAccount(): "bar" | "more-actions" | undefined {
+  if (useLayout() !== "phone") return "bar";
+  return marked ? "more-actions" : undefined;
 }

@@ -94,6 +94,7 @@ export function MoreActions({
       >
         {moves && item("move", "Move")}
         {canTrash && item("trash", "Move to trash")}
+        {account && (moves || canTrash) && <hr />}
         {account && (
           <AccountItems
             email={email}

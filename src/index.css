@@ -570,6 +570,12 @@ button.account {
   content: none;
 }
 
+.menu > hr {
+  margin: var(--space-2) 0;
+  border: none;
+  border-top: 1px solid var(--outline-variant);
+}
+
 @media (hover: hover) {
   .menu > a:hover,
   .menu li > a:hover {
