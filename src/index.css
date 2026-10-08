@@ -215,9 +215,50 @@ button.new-note > .icon {
   text-decoration: none;
 }
 
-.bar h1 img {
+.bar h1 img,
+.bar .mark img {
   width: 40px;
   height: 40px;
+}
+
+/* A note's app bar: its name and when it last changed, beside what the
+   user can do with it (docs/DESIGN.md, App bar). */
+.bar.note {
+  flex-wrap: nowrap;
+}
+
+.bar .mark {
+  display: inline-flex;
+  flex: none;
+}
+
+.note-title {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.note-title > * {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-title > .hint {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.note-tools {
+  display: flex;
+  flex: none;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.note-tools > .slot {
+  display: contents;
 }
 
 .search {
@@ -368,6 +409,18 @@ button.account {
   .bar h1 img {
     width: 32px;
     height: 32px;
+  }
+
+  .note-title > .title {
+    font-size: 18px;
+    line-height: 24px;
+  }
+
+  /* As in Google's apps, a phone's bar leaves out when the note changed,
+     and that changes are unsaved, which Save says by showing. */
+  .note-title > .hint,
+  .note-tools .hint {
+    display: none;
   }
 
   /* A folder or a root names itself in the bar, which its page's heading

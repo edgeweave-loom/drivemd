@@ -1,5 +1,5 @@
 import { token } from "./color.ts";
-import { EMAIL, expect, signIn, test } from "./fake-google.ts";
+import { EMAIL, expect, goHome, signIn, test } from "./fake-google.ts";
 
 test("names the app beside its mark, and leads Home from any page", async ({
   page,
@@ -66,6 +66,14 @@ test("gives the focus back to the account when the user stays signed in", async 
   await signIn(page);
   await page.goto("/edit?id=plan");
   await page.locator(".markdown").getByRole("checkbox").first().check();
+  if (test.info().project.metadata.layout === "phone") {
+    // A phone leaves the account to Home.
+    page.once("dialog", (dialog) => void dialog.accept());
+    await goHome(page);
+    await expect(
+      page.getByRole("region", { name: "Unsaved changes" }),
+    ).toBeVisible();
+  }
   const account = page.getByRole("button", { name: `Account, ${EMAIL}` });
   await account.click();
   await page.getByRole("button", { name: "Sign out" }).click();

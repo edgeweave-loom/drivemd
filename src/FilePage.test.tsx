@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { DriveError, type FileMetadata } from "./drive.ts";
 import { FilePage } from "./FilePage.tsx";
@@ -34,10 +34,6 @@ function openFile(trail: Crumb[] | undefined, ...items: FileMetadata[]) {
   return { ...rendered, drive };
 }
 
-function crumbs() {
-  return within(screen.getByRole("navigation", { name: "Breadcrumbs" }));
-}
-
 afterEach(() => {
   visit("/");
 });
@@ -47,7 +43,6 @@ describe("FilePage", () => {
     const { drive } = openFile(TRAIL, PLAN);
 
     expect(screen.getByRole("heading", { name: "plan.md" })).toBeVisible();
-    expect(crumbs().getByRole("link", { name: "Work" })).toBeVisible();
     expect(
       await screen.findByText(/^Last modified by Ada Lovelace on .*2026/),
     ).toBeVisible();
@@ -55,18 +50,6 @@ describe("FilePage", () => {
       await screen.findByRole("heading", { name: "The plan" }),
     ).toBeVisible();
     expect(drive.markViewed).toHaveBeenCalledExactlyOnceWith({ id: "plan" });
-  });
-
-  it("rebuilds the breadcrumbs from Drive when the path is unknown", async () => {
-    openFile(undefined, PLAN);
-
-    expect(
-      await screen.findByRole("heading", { name: "plan.md" }),
-    ).toBeVisible();
-    expect(await crumbs().findByRole("link", { name: "Work" })).toHaveAttribute(
-      "href",
-      "/folder/work",
-    );
   });
 
   it("leaves out who changed it when Drive does not say", async () => {

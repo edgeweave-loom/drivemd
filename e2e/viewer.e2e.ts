@@ -1,6 +1,13 @@
 import type { Page } from "@playwright/test";
 import { contrast, luminance } from "./color.ts";
-import { expect, signIn, test, vault } from "./fake-google.ts";
+import {
+  expect,
+  folderLink,
+  goHome,
+  signIn,
+  test,
+  vault,
+} from "./fake-google.ts";
 
 /** How many notes have unsaved changes kept on the device. */
 function draftsKept(page: Page): Promise<number> {
@@ -89,10 +96,11 @@ test("opens a note a relative link leads to", async ({ page }) => {
   await note.getByText(/^Next:/).scrollIntoViewIfNeeded();
   await note.getByRole("link", { name: "the notes" }).click();
   await expect(
-    page.getByRole("heading", { level: 2, name: "notes.md" }),
+    page.getByRole("heading", { level: 1, name: "notes.md" }),
   ).toBeVisible();
   await expect(page).toHaveURL(/\/edit\?id=notes#later$/);
-  await expect(page.getByText(/^Last modified by/)).toBeVisible();
+  // Drive described it: the line under its name, which a phone leaves out.
+  await expect(page.getByText(/^Last modified by/)).toBeAttached();
   // It opens at the heading the link names, below the app's header.
   const later = page
     .locator(".markdown")
@@ -111,7 +119,7 @@ test("checks a task and saves that change only", async ({ page, drive }) => {
   await page.goto("/edit?id=plan");
 
   await page.locator(".markdown").getByRole("checkbox").first().check();
-  await expect(page.getByText("Unsaved changes")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
   await page.getByRole("button", { name: "Save" }).click();
 
   await expect(page.getByText("Unsaved changes")).toHaveCount(0);
@@ -256,7 +264,7 @@ test("saves with Ctrl+S, and follows a link with Ctrl+click in the source", asyn
     modifiers: ["ControlOrMeta"],
   });
   await expect(
-    page.getByRole("heading", { level: 2, name: "notes.md" }),
+    page.getByRole("heading", { level: 1, name: "notes.md" }),
   ).toBeVisible();
   await expect(page.getByText(/^Last modified by/)).toBeVisible();
   await expect(page.locator(".markdown")).toBeAttached();
@@ -348,7 +356,7 @@ test("keeps unsaved changes on the device across a reload", async ({
   await signIn(page);
   await page.goto("/edit?id=plan");
   await page.locator(".markdown").getByRole("checkbox").first().check();
-  await expect(page.getByText("Unsaved changes")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
   // Kept on the device half a second after the last change.
   await expect.poll(() => draftsKept(page)).toBe(1);
 
@@ -376,7 +384,7 @@ test("lists a note with unsaved changes first on Home, then offers them back", a
   await expect.poll(() => draftsKept(page)).toBe(1);
 
   page.once("dialog", (dialog) => void dialog.accept());
-  await page.getByRole("link", { name: "DriveMD" }).click();
+  await goHome(page);
   const unsaved = page.getByRole("region", { name: "Unsaved changes" });
   await expect(page.getByRole("region").first()).toHaveAccessibleName(
     "Unsaved changes",
@@ -388,7 +396,7 @@ test("lists a note with unsaved changes first on Home, then offers them back", a
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 
-  await page.getByRole("link", { name: "DriveMD" }).click();
+  await goHome(page);
   await expect(vault(page)).toBeVisible();
   await expect(unsaved).toHaveCount(0);
   expect(drive.writes).toEqual(["keep plan revision-1", "save plan"]);
@@ -402,6 +410,11 @@ test("signs out once the user agrees to discard unsaved changes", async ({
   await page.locator(".markdown").getByRole("checkbox").first().check();
   await expect.poll(() => draftsKept(page)).toBe(1);
 
+  if (test.info().project.metadata.layout === "phone") {
+    // A phone leaves the account to Home.
+    page.once("dialog", (dialog) => void dialog.accept());
+    await goHome(page);
+  }
   await page.getByRole("button", { name: /^Account, / }).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(
@@ -421,20 +434,20 @@ test("asks before leaving a note with unsaved changes for another page", async (
   await signIn(page);
   await page.goto("/edit?id=plan");
   await page.locator(".markdown").getByRole("checkbox").first().check();
-  const crumbs = page.getByRole("navigation", { name: "Breadcrumbs" });
+  const work = await folderLink(page, "Work");
 
   const refused = page.waitForEvent("dialog");
-  void crumbs.getByRole("link", { name: "Work" }).click();
+  void work.click();
   const asked = await refused;
   expect(asked.message()).toBe(
     "This note has unsaved changes. Leave it anyway?",
   );
   await asked.dismiss();
   await expect(page).toHaveURL(/\/edit\?id=plan$/);
-  await expect(page.getByText("Unsaved changes")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
 
   page.once("dialog", (dialog) => void dialog.accept());
-  await crumbs.getByRole("link", { name: "Work" }).click();
+  await work.click();
   await expect(
     page.getByRole("heading", { level: 2, name: "Work" }),
   ).toBeVisible();
