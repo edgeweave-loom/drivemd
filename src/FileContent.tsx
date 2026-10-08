@@ -665,18 +665,22 @@ function NoteView({
     toggled.current = false;
     button.focus();
   }, []);
-  /** Saves the note, if anything changed, then does `then` once saved. */
-  function saveThen(then?: () => void) {
-    if (!unsaved || save.isPending) return;
+  /** Writes the text, then does `then` once saved without a conflict. */
+  function write(next: string, then?: () => void) {
     renew();
     save.mutate(
-      { bytes, text },
+      { bytes: encode(next, note), text: next },
       then && {
         onSuccess: (result) => {
           if (!("conflict" in result)) then();
         },
       },
     );
+  }
+  /** Saves the note, if anything changed, then does `then` once saved. */
+  function saveThen(then?: () => void) {
+    if (!unsaved || save.isPending) return;
+    write(text, then);
   }
   function saveNow() {
     saveThen();
@@ -721,6 +725,28 @@ function NoteView({
   const rendered =
     !(editing && editable) || layout !== "phone" || pane === "preview";
   const previewed = source ? deferred : text;
+  // A task ticked in the note shown: while viewing, it saves at once, as on
+  // GitHub, so that a note being read holds no unsaved changes, unless other
+  // edits wait to be saved, which it joins rather than saving them unasked;
+  // the tasks wait while it saves, and while a conflict is to settle. While
+  // editing, it is an edit like any other, which the editor takes beside it.
+  const onTask = !editable
+    ? undefined
+    : editing
+      ? source
+        ? (toggled: string) => {
+            if (editor.current) editor.current.offer(previewed, toggled);
+            else onEdit(toggled);
+          }
+        : onEdit
+      : save.isPending || conflict
+        ? undefined
+        : unsaved
+          ? onEdit
+          : (toggled: string) => {
+              onEdit(toggled);
+              write(toggled);
+            };
   const shown = rendered && vault.state !== "checking";
   // The part of the note the address leads to shows once the note does,
   // each time the address changes, but not as the note changes.
@@ -838,19 +864,7 @@ function NoteView({
             folder={folderOf(file)}
             vault={vault.state === "inside" ? vault.vault : undefined}
             note={file}
-            onEdit={
-              !editable
-                ? undefined
-                : source
-                  ? // The editor, once it shows, holds the text: the tap goes
-                    // through it.
-                    (toggled) => {
-                      if (editor.current)
-                        editor.current.offer(previewed, toggled);
-                      else onEdit(toggled);
-                    }
-                  : onEdit
-            }
+            onEdit={onTask}
           />
         )}
       </div>

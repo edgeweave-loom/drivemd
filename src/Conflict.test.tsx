@@ -5,7 +5,7 @@ import { DriveError } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
 import { getPlace } from "./router.ts";
 import { driveItem, metadata } from "./test/drive-items.ts";
-import { pickMode } from "./test/actions.ts";
+import { editInPreview, pickMode } from "./test/actions.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 import { renderWithDrive, visit } from "./test/render.tsx";
 import { holdScreen } from "./test/screen.ts";
@@ -38,6 +38,7 @@ async function conflict() {
     Promise.resolve(metadata(file, { headRevisionId: "revision-4" })),
   );
   const rendered = renderWithDrive(<FileContent file={PLAN} />, drive);
+  await editInPreview();
   fireEvent.click(await screen.findByRole("checkbox"));
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await screen.findByRole("heading", {
@@ -309,8 +310,8 @@ describe("a save that finds someone else's change", () => {
     drive.getContent.mockResolvedValue(utf8("- [ ] Boil\n"));
     drive.getMetadata.mockResolvedValue({ ...THEIRS, parents: [] });
     renderWithDrive(<FileContent file={alone} />, drive);
+    // Ticked while viewing, the task saves at once, which finds the change.
     fireEvent.click(await screen.findByRole("checkbox"));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await screen.findByRole("heading", { name: /Someone changed/ });
     expect(
