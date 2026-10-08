@@ -62,7 +62,7 @@ function NewFile({
       {/* Tonal beside the folder's name, floating on a phone. */}
       <button
         type="button"
-        className="tonal new-note"
+        className="tonal new-note fab"
         onClick={() => {
           setAsking(true);
         }}

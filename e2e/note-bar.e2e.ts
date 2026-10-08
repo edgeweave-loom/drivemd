@@ -24,7 +24,7 @@ test("names the note in the app bar, with what it lets the user do", async ({
   await expect(
     bar.getByRole("button", { name: "Save", exact: true }),
   ).toBeVisible();
-  await expect(bar.getByRole("button", { name: "Edit" })).toBeVisible();
+  const edit = page.getByRole("button", { name: "Edit" });
 
   if (info.project.metadata.layout === "phone") {
     // A way up to the note's folder, in place of DriveMD's mark, and neither
@@ -33,6 +33,14 @@ test("names the note in the app bar, with what it lets the user do", async ({
     await expect(bar.getByRole("link", { name: "Back to Work" })).toBeVisible();
     await expect(changed).toBeHidden();
     await expect(account).toHaveCount(0);
+    // Edit floats over the note, at the bottom right.
+    await expect(bar.getByRole("button", { name: "Edit" })).toHaveCount(0);
+    await expect(edit).toBeVisible();
+    const box = await edit.boundingBox();
+    const screen = page.viewportSize();
+    if (!box || !screen) throw new Error("Edit has no place on the screen");
+    expect(box.x + box.width).toBeGreaterThan(screen.width - 48);
+    expect(box.y + box.height).toBeGreaterThan(screen.height - 48);
     // The name keeps room beside the tools.
     const whole = await bar
       .getByRole("heading", { level: 1 })
@@ -40,6 +48,7 @@ test("names the note in the app bar, with what it lets the user do", async ({
     expect(whole).toBe(true);
   } else {
     await expect(bar.getByRole("link", { name: "DriveMD" })).toBeVisible();
+    await expect(bar.getByRole("button", { name: "Edit" })).toBeVisible();
     await expect(changed).toBeVisible();
     await expect(account).toBeVisible();
   }
@@ -123,9 +132,11 @@ test("offers Move by the note's name and the rest in More actions", async ({
 test("renames the note by its name, its ending set apart", async ({
   page,
   drive,
-}, info) => {
+}) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
+  // Once the note shows, by when its vault check has answered.
+  await expect(page.locator(".markdown")).toBeAttached();
   const bar = page.getByRole("banner");
   const name = bar.getByRole("button", { name: "plan.md" });
   // It reads as text, its ending dimmer.
@@ -139,13 +150,10 @@ test("renames the note by its name, its ending set apart", async ({
   const field = bar.getByRole("textbox", { name: "Name" });
   await expect(field).toBeFocused();
   await expect(field).toHaveValue("plan");
-  // As wide as what it holds, where the bar has room: a phone's has little
-  // until its Edit floats.
+  // As wide as what it holds.
   const short = (await field.boundingBox())?.width ?? 0;
   await field.fill("the plan for the week");
-  if (info.project.metadata.layout !== "phone") {
-    expect((await field.boundingBox())?.width).toBeGreaterThan(short);
-  }
+  expect((await field.boundingBox())?.width).toBeGreaterThan(short);
   await field.press("Escape");
   await expect(name).toBeFocused();
 
