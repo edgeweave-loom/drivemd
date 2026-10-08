@@ -640,7 +640,7 @@ export async function goHome(page: Page): Promise<void> {
  */
 export async function noteAction(
   page: Page,
-  name: "Rename" | "Move" | "Move to trash",
+  name: "Move" | "Move to trash",
 ): Promise<void> {
   const bar = page.getByRole("banner");
   if (name === "Move" && test.info().project.metadata.layout !== "phone") {
@@ -652,4 +652,16 @@ export async function noteAction(
     .getByRole("dialog", { name: "More actions" })
     .getByRole("button", { name, exact: true })
     .click();
+}
+
+/** Renames a note by its name in the app bar, as a click on it does. */
+export async function renameNote(
+  page: Page,
+  from: string,
+  to: string,
+): Promise<void> {
+  await page.getByRole("banner").getByRole("button", { name: from }).click();
+  const name = page.getByRole("textbox", { name: "Name" });
+  await name.fill(to);
+  await name.press("Enter");
 }

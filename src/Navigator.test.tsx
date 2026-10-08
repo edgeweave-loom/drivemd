@@ -364,7 +364,7 @@ describe("Navigator's note bar", () => {
     expect(bar.queryByRole("button", { name: /^Account, / })).toBeNull();
   });
 
-  it("keeps a phone's Move in More actions, beside Rename and Move to trash", async () => {
+  it("keeps a phone's Move in More actions, beside Move to trash", async () => {
     const bar = openPlan();
 
     const more = await bar.findByRole("button", { name: "More actions" });
@@ -375,7 +375,7 @@ describe("Navigator's note bar", () => {
       within(menu)
         .getAllByRole("button")
         .map((button) => button.textContent),
-    ).toEqual(["Rename", "Move", "Move to trash"]);
+    ).toEqual(["Move", "Move to trash"]);
   });
 
   it("puts Move beside the note's name on a wider screen", async () => {
@@ -391,7 +391,7 @@ describe("Navigator's note bar", () => {
       within(screen.getByRole("dialog", { name: "More actions" }))
         .getAllByRole("button")
         .map((button) => button.textContent),
-    ).toEqual(["Rename", "Move to trash"]);
+    ).toEqual(["Move to trash"]);
   });
 
   it("closes More actions as an action's dialog opens, outside the bar", async () => {
@@ -399,15 +399,17 @@ describe("Navigator's note bar", () => {
 
     fireEvent.click(await bar.findByRole("button", { name: "More actions" }));
     const menu = screen.getByRole("dialog", { name: "More actions" });
-    fireEvent.click(within(menu).getByRole("button", { name: "Rename" }));
+    fireEvent.click(
+      within(menu).getByRole("button", { name: "Move to trash" }),
+    );
     expect(menu).not.toBeVisible();
-    const rename = screen.getByRole("dialog", { name: "Rename" });
-    expect(rename).toBeVisible();
+    const trash = screen.getByRole("dialog", { name: "Move to trash?" });
+    expect(trash).toBeVisible();
     // Outside the bar, whose styles would reach it.
-    expect(screen.getByRole("banner")).not.toContainElement(rename);
+    expect(screen.getByRole("banner")).not.toContainElement(trash);
 
-    fireEvent.click(within(rename).getByRole("button", { name: "Cancel" }));
-    expect(rename).not.toBeInTheDocument();
+    fireEvent.click(within(trash).getByRole("button", { name: "Cancel" }));
+    expect(trash).not.toBeInTheDocument();
     expect(bar.getByRole("button", { name: "More actions" })).toHaveFocus();
   });
 

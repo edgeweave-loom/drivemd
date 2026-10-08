@@ -37,6 +37,8 @@ if ("window" in globalThis) {
     if (popover.style.display === "block") popover.hidePopover();
     else popover.showPopover();
   });
+  // Nor does its window ever have the focus, which a page in use has.
+  document.hasFocus = () => true;
   // jsdom does not lay pages out, so it cannot scroll them.
   window.scrollTo = () => undefined;
   Element.prototype.scrollIntoView = () => undefined;

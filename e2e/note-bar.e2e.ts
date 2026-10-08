@@ -1,3 +1,4 @@
+import { token } from "./color.ts";
 import { expect, signIn, test } from "./fake-google.ts";
 
 test("names the note in the app bar, with what it lets the user do", async ({
@@ -47,7 +48,6 @@ test("names the note in the app bar, with what it lets the user do", async ({
 
 test("offers Move by the note's name and the rest in More actions", async ({
   page,
-  browserName,
 }, info) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
@@ -75,23 +75,52 @@ test("offers Move by the note's name and the rest in More actions", async ({
   await more.click();
   const menu = page.getByRole("dialog", { name: "More actions" });
   await expect(menu.getByRole("button")).toHaveText(
-    phone ? ["Rename", "Move", "Move to trash"] : ["Rename", "Move to trash"],
+    phone ? ["Move", "Move to trash"] : ["Move to trash"],
   );
   const box = await menu.boundingBox();
   expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(
     page.viewportSize()?.width ?? 0,
   );
 
-  // The menu closes as the dialog opens.
-  await menu.getByRole("button", { name: "Rename" }).click();
+  // The menu closes as the dialog opens, which gives the focus back to More
+  // actions once it goes.
+  await menu.getByRole("button", { name: "Move to trash" }).click();
   await expect(menu).toBeHidden();
-  const rename = page.getByRole("dialog", { name: "Rename" });
-  await expect(rename.getByRole("textbox", { name: "Name" })).toHaveValue(
-    "plan.md",
+  const trash = page.getByRole("dialog", { name: "Move to trash?" });
+  await trash.getByRole("button", { name: "Cancel" }).click();
+  await expect(trash).toHaveCount(0);
+  await expect(more).toBeFocused();
+});
+
+test("renames the note by its name, its ending set apart", async ({
+  page,
+  drive,
+}) => {
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  const bar = page.getByRole("banner");
+  const name = bar.getByRole("button", { name: "plan.md" });
+  // It reads as text, its ending dimmer.
+  await expect(name).toHaveCSS("border-top-color", "rgba(0, 0, 0, 0)");
+  await expect(name.locator(".ending")).toHaveCSS(
+    "color",
+    await token(page, "--on-surface-variant"),
   );
-  await rename.getByRole("button", { name: "Cancel" }).click();
-  await expect(rename).toHaveCount(0);
-  // Chromium focuses what a click presses, which then gives the focus back
-  // to More actions once both the menu and the dialog are gone.
-  if (browserName === "chromium") await expect(more).toBeFocused();
+
+  await name.click();
+  const field = bar.getByRole("textbox", { name: "Name" });
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue("plan");
+  // As wide as what it holds.
+  const short = (await field.boundingBox())?.width ?? 0;
+  await field.fill("the plan for the week");
+  expect((await field.boundingBox())?.width).toBeGreaterThan(short);
+  await field.press("Escape");
+  await expect(name).toBeFocused();
+
+  await name.click();
+  await field.fill("roadmap");
+  await field.press("Enter");
+  await expect(bar.getByRole("button", { name: "roadmap.md" })).toBeFocused();
+  expect(drive.writes).toEqual(["rename plan roadmap.md"]);
 });

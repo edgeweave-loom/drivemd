@@ -20,6 +20,7 @@ import { kindOf } from "./listing.ts";
 import { useLayout } from "./layout.ts";
 import { Loaded } from "./Loaded.tsx";
 import { Missing } from "./Missing.tsx";
+import { NoteName } from "./NoteName.tsx";
 import { usePath } from "./path.ts";
 import { metadataQuery, refreshRecent } from "./queries.ts";
 import { hrefOf, routeOf, type Crumb } from "./router.ts";
@@ -180,9 +181,16 @@ export function FilePage({
       <InSlot name="title">
         <div className="name">
           <h1 className="title">
-            {path?.at(-1)?.name ??
-              details.data?.name ??
-              (details.isError ? "File" : "…")}
+            <NoteName
+              name={
+                path?.at(-1)?.name ??
+                details.data?.name ??
+                (details.isError ? "File" : "…")
+              }
+              file={opens ? details.data : undefined}
+              page={file}
+              path={path}
+            />
           </h1>
           {moveBeside && (
             <MoveButton
