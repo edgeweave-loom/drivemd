@@ -551,8 +551,8 @@ test("checks a task in a CRLF note with a byte order mark, saving that byte only
   await expect(note.getByRole("checkbox")).toHaveCount(2);
   await loaded(page);
 
+  // Ticked while viewing, a task saves at once.
   await note.getByRole("checkbox").last().check();
-  await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
 
   const after = before.slice();

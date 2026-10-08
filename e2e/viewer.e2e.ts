@@ -5,6 +5,7 @@ import {
   folderLink,
   goHome,
   startEditing,
+  tickWhileEditing,
   signIn,
   test,
   vault,
@@ -119,12 +120,8 @@ test("checks a task and saves that change only", async ({ page, drive }) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
 
+  // Ticked while viewing, a task saves at once.
   await page.locator(".markdown").getByRole("checkbox").first().check();
-  await expect(
-    page.getByRole("button", { name: "Save", exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   await expect(
     page.locator(".markdown").getByRole("checkbox").first(),
@@ -281,14 +278,16 @@ test("shows someone else's change at save, and overwrites it when asked", async 
 }) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
-  await page.locator(".markdown").getByRole("checkbox").first().check();
-  // Someone else saves the note meanwhile.
+  // Once the note shows, someone else saves it.
+  await expect(
+    page.locator(".markdown").getByRole("checkbox").first(),
+  ).toBeVisible();
   const plan = drive.files.get("plan");
   if (!plan) throw new Error("No plan");
   plan.content = `${String(plan.content)}\nTheir line.\n`;
   plan.revision = 2;
-
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  // Ticked while viewing, a task saves at once, which finds their change.
+  await page.locator(".markdown").getByRole("checkbox").first().check();
   await expect(
     page.getByRole("heading", {
       name: "Someone changed this file in Google Drive",
@@ -317,12 +316,16 @@ test("folds the lines alike in the theme's colors, as the system's changes", asy
   await page.emulateMedia({ colorScheme: "dark" });
   await signIn(page);
   await page.goto("/edit?id=plan");
-  await page.locator(".markdown").getByRole("checkbox").first().check();
+  // Once the note shows, someone else saves it.
+  await expect(
+    page.locator(".markdown").getByRole("checkbox").first(),
+  ).toBeVisible();
   const plan = drive.files.get("plan");
   if (!plan) throw new Error("No plan");
   plan.content = `${String(plan.content)}\nTheir line.\n`;
   plan.revision = 2;
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  // Ticked while viewing, a task saves at once, which finds their change.
+  await page.locator(".markdown").getByRole("checkbox").first().check();
 
   const folded = page.locator(".differences .cm-collapsedLines").first();
   await expect(folded).toContainText("unchanged lines");
@@ -360,7 +363,7 @@ test("keeps unsaved changes on the device across a reload", async ({
 }) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
-  await page.locator(".markdown").getByRole("checkbox").first().check();
+  await tickWhileEditing(page);
   await expect(
     page.getByRole("button", { name: "Save", exact: true }),
   ).toBeVisible();
@@ -387,7 +390,7 @@ test("lists a note with unsaved changes first on Home, then offers them back", a
 }) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
-  await page.locator(".markdown").getByRole("checkbox").first().check();
+  await tickWhileEditing(page);
   await expect.poll(() => draftsKept(page)).toBe(1);
 
   page.once("dialog", (dialog) => void dialog.accept());
@@ -414,7 +417,7 @@ test("signs out once the user agrees to discard unsaved changes", async ({
 }) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
-  await page.locator(".markdown").getByRole("checkbox").first().check();
+  await tickWhileEditing(page);
   await expect.poll(() => draftsKept(page)).toBe(1);
 
   if (test.info().project.metadata.layout === "phone") {
@@ -440,7 +443,7 @@ test("asks before leaving a note with unsaved changes for another page", async (
 }) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
-  await page.locator(".markdown").getByRole("checkbox").first().check();
+  await tickWhileEditing(page);
   const work = await folderLink(page, "Work");
 
   const refused = page.waitForEvent("dialog");

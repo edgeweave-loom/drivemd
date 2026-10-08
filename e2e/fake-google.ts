@@ -686,3 +686,19 @@ export async function startEditing(page: Page): Promise<void> {
     .getByRole("menuitemradio", { name: "Editing" })
     .click();
 }
+
+/**
+ * Ticks the note's first task while editing, which leaves the change to
+ * save, as one ticked while viewing does not: in the preview, which a phone
+ * shows in turn with the source.
+ */
+export async function tickWhileEditing(page: Page): Promise<void> {
+  await startEditing(page);
+  if (test.info().project.metadata.layout === "phone") {
+    await page.getByRole("button", { name: "Preview" }).click();
+  }
+  // Beside the source, the tick shows once the source has it.
+  const task = page.locator(".markdown").getByRole("checkbox").first();
+  await task.click();
+  await expect(task).toBeChecked();
+}

@@ -18,3 +18,20 @@ export async function pickMode(name: "Editing" | "Viewing") {
     ),
   );
 }
+
+/**
+ * Starts editing, where a ticked task waits to be saved, as one ticked while
+ * viewing does not: in a phone's preview, or beside the source on a wider
+ * screen.
+ */
+export async function editInPreview() {
+  const start = await screen.findByRole("button", {
+    name: /^(Edit|Viewing)$/,
+  });
+  if (start.textContent === "Viewing") {
+    await pickMode("Editing");
+    return;
+  }
+  fireEvent.click(start);
+  fireEvent.click(await screen.findByRole("button", { name: "Preview" }));
+}

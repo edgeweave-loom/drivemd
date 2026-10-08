@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { DriveError, type FileMetadata } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
 import { driveItem, metadata } from "./test/drive-items.ts";
+import { editInPreview } from "./test/actions.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 import { renderWithDrive } from "./test/render.tsx";
 
@@ -50,6 +51,7 @@ describe("Save", () => {
     const saved = await screen.findByRole("button", { name: "Saved" });
     expect(saved).toHaveAttribute("aria-disabled", "true");
     expect(saved.querySelector('[data-icon="cloud_done"]')).not.toBeNull();
+    await editInPreview();
     fireEvent.click(await box(0));
     const save = screen.getByRole("button", { name: "Save" });
     expect(save).not.toHaveAttribute("aria-disabled");
@@ -71,6 +73,7 @@ describe("Save", () => {
     document.title = "DriveMD";
     open();
 
+    await editInPreview();
     fireEvent.click(await box(0));
     expect(document.title).toBe("• DriveMD");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -92,17 +95,25 @@ describe("Save", () => {
 });
 
 describe("editing a note in the viewer", () => {
-  it("checks a task with a tap, changing only its mark, and offers to save", async () => {
-    open();
+  it("checks a task with a tap, changing only its mark, and saves it at once", async () => {
+    const { drive, renew } = open();
     fireEvent.click(await box(0));
 
     expect((await boxes()).map((box) => box.checked)).toEqual([true, true]);
-    expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
+    expect(renew).toHaveBeenCalledOnce();
+    await waitFor(() => {
+      expect(drive.saveContent).toHaveBeenCalledExactlyOnceWith(
+        PLAN,
+        utf8("- [x] Boil\n- [x] Pour\n"),
+      );
+    });
+    expect(await screen.findByRole("button", { name: "Saved" })).toBeVisible();
   });
 
   it("has nothing to save once the task is back as it was", async () => {
     open();
 
+    await editInPreview();
     fireEvent.click(await box(1));
     fireEvent.click(await box(1));
 
@@ -113,6 +124,7 @@ describe("editing a note in the viewer", () => {
   it("saves the bytes after checking for others' changes, keeping the first revision", async () => {
     const { drive, renew } = open();
 
+    await editInPreview();
     fireEvent.click(await box(0));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
@@ -148,7 +160,6 @@ describe("editing a note in the viewer", () => {
   it("follows Drive's revisions again once the page hears of the one saved", async () => {
     const { drive, rerender } = open();
     fireEvent.click(await box(0));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     });
@@ -202,6 +213,7 @@ describe("editing a note in the viewer", () => {
     drive.saveContent.mockResolvedValue(SAVED);
     renderWithDrive(<FileContent file={PLAN} />, drive);
 
+    await editInPreview();
     fireEvent.click(await box(0));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
@@ -219,6 +231,7 @@ describe("editing a note in the viewer", () => {
       metadata(PLAN, { md5Checksum: "cccc" }),
     );
 
+    await editInPreview();
     fireEvent.click(await box(0));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
@@ -237,6 +250,7 @@ describe("editing a note in the viewer", () => {
       new DriveError(403, "Rate limit exceeded"),
     );
 
+    await editInPreview();
     fireEvent.click(await box(0));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
@@ -278,6 +292,7 @@ describe("editing a note in the viewer", () => {
 
   it("offers no Save once the user may no longer edit the file", async () => {
     const { rerender } = open();
+    await editInPreview();
     fireEvent.click(await box(0));
 
     rerender(<FileContent file={metadata(PLAN, { locked: true })} />);
@@ -293,7 +308,7 @@ describe("editing a note in the viewer", () => {
     expect(await box(1)).toBeDisabled();
   });
 
-  it("keeps a task ticked while a save runs", async () => {
+  it("keeps the tasks still while a tick saves", async () => {
     const { drive } = open();
     let answer: (saved: typeof SAVED) => void = () => undefined;
     drive.saveContent.mockImplementation(
@@ -303,25 +318,47 @@ describe("editing a note in the viewer", () => {
         }),
     );
     fireEvent.click(await box(0));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await screen.findByRole("button", { name: "Saving…" });
 
-    fireEvent.click(await box(1));
+    for (const one of await boxes()) expect(one).toBeDisabled();
     answer(SAVED);
 
-    await screen.findByRole("button", { name: "Save" });
-    expect((await boxes()).map((one) => one.checked)).toEqual([true, false]);
-    expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
+    expect(await screen.findByRole("button", { name: "Saved" })).toBeVisible();
+    for (const one of await boxes()) expect(one).toBeEnabled();
     expect(drive.saveContent).toHaveBeenCalledExactlyOnceWith(
       PLAN,
       utf8("- [x] Boil\n- [x] Pour\n"),
     );
   });
 
+  it("leaves a task ticked while viewing to save beside other unsaved edits", async () => {
+    const { drive } = open();
+    // Edits left unsaved by a phone's Done.
+    await editInPreview();
+    fireEvent.click(await box(0));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+    fireEvent.click(await box(1));
+    expect((await boxes()).map((one) => one.checked)).toEqual([true, false]);
+    expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
+    expect(drive.saveContent).not.toHaveBeenCalled();
+  });
+
+  it("leaves a task ticked while editing to save", async () => {
+    const { drive } = open();
+    await editInPreview();
+    fireEvent.click(await box(0));
+
+    expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
+    expect(drive.saveContent).not.toHaveBeenCalled();
+  });
+
   it("follows Drive again once the edits are undone by hand", async () => {
     const { drive, rerender } = open();
+    await editInPreview();
     fireEvent.click(await box(0));
     fireEvent.click(await box(0));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
 
     drive.getContent.mockResolvedValue(utf8("- [ ] Serve\n"));
     rerender(<FileContent file={SAVED} />);
@@ -332,7 +369,6 @@ describe("editing a note in the viewer", () => {
   it("keeps the revision someone else made since the last save, before writing over it", async () => {
     const { drive, rerender } = open();
     fireEvent.click(await box(0));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     });
@@ -347,7 +383,6 @@ describe("editing a note in the viewer", () => {
     rerender(<FileContent file={theirs} />);
     await screen.findByText("Serve");
     fireEvent.click(await box(0));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
       expect(drive.saveContent).toHaveBeenCalledTimes(2);

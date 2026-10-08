@@ -4,6 +4,7 @@ import { FileContent } from "./FileContent.tsx";
 import { Link } from "./Link.tsx";
 import { getPlace, navigate } from "./router.ts";
 import { driveItem, metadata } from "./test/drive-items.ts";
+import { editInPreview } from "./test/actions.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 import { renderWithDrive, visit } from "./test/render.tsx";
 
@@ -19,6 +20,7 @@ async function edited() {
     metadata(PLAN, { md5Checksum: "bbbb", headRevisionId: "revision-2" }),
   );
   const rendered = renderWithDrive(<FileContent file={PLAN} />, drive);
+  await editInPreview();
   fireEvent.click(await screen.findByRole("checkbox"));
   return rendered;
 }

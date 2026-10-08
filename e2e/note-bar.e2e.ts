@@ -1,5 +1,5 @@
 import { token } from "./color.ts";
-import { expect, signIn, test } from "./fake-google.ts";
+import { expect, signIn, test, tickWhileEditing } from "./fake-google.ts";
 
 test("names the note in the app bar, with what it lets the user do", async ({
   page,
@@ -20,10 +20,7 @@ test("names the note in the app bar, with what it lets the user do", async ({
     page.getByRole("navigation", { name: "Breadcrumbs" }),
   ).toHaveCount(0);
 
-  await page.locator(".markdown").getByRole("checkbox").first().check();
-  await expect(
-    bar.getByRole("button", { name: "Save", exact: true }),
-  ).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Saved" })).toBeVisible();
   const edit = page.getByRole("button", { name: "Edit" });
 
   if (info.project.metadata.layout === "phone") {
@@ -116,7 +113,7 @@ test("keeps Save in one place through its states, and marks the tab while unsave
   const before = await saved.boundingBox();
   expect(before?.width).toBeGreaterThanOrEqual(112);
 
-  await page.locator(".markdown").getByRole("checkbox").first().check();
+  await tickWhileEditing(page);
   const save = bar.getByRole("button", { name: "Save", exact: true });
   await expect(save).not.toHaveAttribute("aria-disabled");
   await expect(page).toHaveTitle("• DriveMD");

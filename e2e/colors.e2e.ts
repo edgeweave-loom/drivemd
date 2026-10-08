@@ -77,12 +77,16 @@ test("marks what the user's version adds and removes, not by color alone", async
 }) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
-  await page.locator(".markdown").getByRole("checkbox").first().check();
+  // Once the note shows, someone else saves it.
+  await expect(
+    page.locator(".markdown").getByRole("checkbox").first(),
+  ).toBeVisible();
   const plan = drive.files.get("plan");
   if (!plan) throw new Error("No plan");
   plan.content = `${String(plan.content)}\nTheir line.\n`;
   plan.revision = 2;
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  // Ticked while viewing, a task saves at once, which finds their change.
+  await page.locator(".markdown").getByRole("checkbox").first().check();
 
   const differences = page.locator(".differences");
   // "- [ ] Boil water" became "- [x] Boil water": only the box changed.

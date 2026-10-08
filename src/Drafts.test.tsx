@@ -10,7 +10,7 @@ import type { FileMetadata } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
 import { metadataQuery } from "./queries.ts";
 import { driveItem, metadata } from "./test/drive-items.ts";
-import { pickMode } from "./test/actions.ts";
+import { editInPreview, pickMode } from "./test/actions.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 import { ACCOUNT, renderWithDrive } from "./test/render.tsx";
 import { holdScreen } from "./test/screen.ts";
@@ -58,6 +58,7 @@ afterEach(() => {
 describe("unsaved text kept on the device", () => {
   it("is kept as the user edits, with the revision edited and the note's name", async () => {
     open({ ...PLAN, resourceKey: "key-1" });
+    await editInPreview();
     fireEvent.click(await screen.findByRole("checkbox"));
 
     await waitFor(async () => {
@@ -89,6 +90,7 @@ describe("unsaved text kept on the device", () => {
     ["while waiting to be kept", 50],
   ])("is forgotten when the edits are undone by hand, %s", async (_, wait) => {
     const { unmount } = open();
+    await editInPreview();
     fireEvent.click(await screen.findByRole("checkbox"));
     await new Promise((settle) => setTimeout(settle, wait));
     fireEvent.click(screen.getByRole("checkbox"));
@@ -111,6 +113,7 @@ describe("unsaved text kept on the device", () => {
       }),
     );
     const { unmount } = renderWithDrive(<FileContent file={PLAN} />, drive);
+    await editInPreview();
     const [boil] = await screen.findAllByRole("checkbox");
     if (boil) fireEvent.click(boil);
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -344,6 +347,7 @@ describe("unsaved text kept on the device", () => {
     });
     open();
 
+    await editInPreview();
     fireEvent.click(await screen.findByRole("checkbox"));
 
     expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
