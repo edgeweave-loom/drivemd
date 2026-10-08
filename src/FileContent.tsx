@@ -27,6 +27,7 @@ import {
   type FileMetadata,
   type FileRef,
 } from "./drive.ts";
+import { Icon } from "./Icon.tsx";
 import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
 import { useLayout } from "./layout.ts";
@@ -616,6 +617,16 @@ function NoteView({
   const conflict =
     save.data && "conflict" in save.data ? save.data.conflict : undefined;
   const [folder] = file.parents;
+  // A phone reading the note floats Edit over it; Done is in the bar.
+  const floats = editable && layout === "phone" && !editing;
+  // Edit and Done are then two buttons: the focus goes from the one pressed
+  // to the one that takes its place.
+  const toggled = useRef(false);
+  const toggling = useCallback((button: HTMLButtonElement | null) => {
+    if (!button || !toggled.current) return;
+    toggled.current = false;
+    button.focus();
+  }, []);
   function saveNow() {
     if (!unsaved || save.isPending) return;
     renew();
@@ -665,12 +676,15 @@ function NoteView({
             {pane === "source" ? "Preview" : "Source"}
           </button>
         )}
-        {editable && (
+        {editable && !floats && (
           <InSlot name="mode">
             <button
+              ref={toggling}
               type="button"
               className="tonal"
               onClick={() => {
+                // On a phone, Done gives way to the floating Edit.
+                toggled.current = layout === "phone";
                 onEditing(!editing);
               }}
             >
@@ -766,6 +780,22 @@ function NoteView({
           />
         )}
       </div>
+      {floats && (
+        // Floating over the note a phone reads, as in Docs's app, and after
+        // it, where it shows.
+        <button
+          ref={toggling}
+          type="button"
+          className="tonal fab"
+          onClick={() => {
+            toggled.current = true;
+            onEditing(true);
+          }}
+        >
+          <Icon name="edit" />
+          Edit
+        </button>
+      )}
     </>
   );
 }

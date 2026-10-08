@@ -654,12 +654,17 @@ export async function noteAction(
     .click();
 }
 
-/** Renames a note by its name in the app bar, as a click on it does. */
+/**
+ * Renames a note by its name in the app bar, as a click on it does, once the
+ * note shows, as a person would: before the vault check that the note waits
+ * for has answered, renaming asks first.
+ */
 export async function renameNote(
   page: Page,
   from: string,
   to: string,
 ): Promise<void> {
+  await expect(page.locator(".markdown")).toBeAttached();
   await page.getByRole("banner").getByRole("button", { name: from }).click();
   const name = page.getByRole("textbox", { name: "Name" });
   await name.fill(to);

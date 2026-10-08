@@ -546,7 +546,8 @@ button.account {
     white-space: nowrap;
   }
 
-  button.new-note {
+  /* What a phone's page does first floats over it, out of the bar. */
+  button.fab {
     position: fixed;
     right: calc(var(--space-4) + env(safe-area-inset-right));
     bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
@@ -559,13 +560,13 @@ button.account {
     box-shadow: var(--elevation-3);
   }
 
-  button.new-note > .icon {
+  button.fab > .icon {
     width: 24px;
     height: 24px;
   }
 
-  /* The list's last rows stay clear of it. */
-  .page:has(.new-note) {
+  /* The page's last lines stay clear of it. */
+  .page:has(.fab) {
     padding-bottom: calc(
       var(--fab-size) + 2 * var(--space-4) + env(safe-area-inset-bottom)
     );

@@ -338,6 +338,7 @@ describe("Navigator's note bar", () => {
   }
 
   it("names the note and who changed it last, with its tools and no search", async () => {
+    holdScreen("wide");
     const bar = openPlan();
 
     expect(
@@ -352,6 +353,28 @@ describe("Navigator's note bar", () => {
     expect(
       screen.queryByRole("navigation", { name: "Breadcrumbs" }),
     ).toBeNull();
+  });
+
+  it("floats a phone's Edit over the note, leaving the bar Done", async () => {
+    const bar = openPlan();
+
+    const edit = await screen.findByRole("button", { name: "Edit" });
+    expect(screen.getByRole("banner")).not.toContainElement(edit);
+    expect(edit).toHaveClass("fab");
+    // After the note, where it shows.
+    expect(
+      screen
+        .getByRole("heading", { name: "The plan" })
+        .compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    edit.focus();
+    fireEvent.click(edit);
+    // The focus goes along, from one to the other.
+    const done = await bar.findByRole("button", { name: "Done" });
+    expect(done).toHaveFocus();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    fireEvent.click(done);
+    expect(await screen.findByRole("button", { name: "Edit" })).toHaveFocus();
   });
 
   it("leads a phone up to the note's folder, rebuilt from Drive", async () => {
