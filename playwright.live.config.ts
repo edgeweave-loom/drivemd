@@ -18,7 +18,15 @@ export default defineConfig({
     video: "off",
   },
   projects: [
-    { name: "desktop-chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "iphone-webkit", use: { ...devices["iPhone 15"] } },
+    {
+      name: "desktop-chromium",
+      use: { ...devices["Desktop Chrome"] },
+      metadata: { layout: "wide" },
+    },
+    {
+      name: "iphone-webkit",
+      use: { ...devices["iPhone 15"] },
+      metadata: { layout: "phone" },
+    },
   ],
 });
