@@ -89,6 +89,27 @@ describe("A note opened from Drive", () => {
     ).toBeVisible();
   });
 
+  it("stays in Viewing once a note it could not edit becomes editable", async () => {
+    holdScreen("wide");
+    const drive = fakeDrive();
+    drive.getContent.mockResolvedValue(utf8("# The plan\n"));
+    markTab(true);
+    const viewOnly = metadata(PLAN, {
+      capabilities: { ...PLAN.capabilities, canModifyContent: false },
+    });
+    const { rerender } = renderWithDrive(
+      <FileContent file={viewOnly} />,
+      drive,
+    );
+    await screen.findByRole("heading", { name: "The plan" });
+
+    rerender(<FileContent file={PLAN} />);
+    expect(
+      await screen.findByRole("button", { name: "Viewing" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Markdown" })).toBeNull();
+  });
+
   it("opens in Viewing in a tab of the app's own", async () => {
     holdScreen("wide");
     markTab(false);
