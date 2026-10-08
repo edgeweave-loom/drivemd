@@ -4,13 +4,15 @@ import { expect, signIn, startEditing, test } from "./fake-google.ts";
 const NOTE = [
   "# The plan",
   "",
-  "Tea for two, with `cups` warmed first.",
+  "Tea for two, with `cups` warmed first.[^1]",
   "",
   "## Steps",
   "",
   "### Water",
   "",
   "#### Cups",
+  "",
+  "###### Saucers",
   "",
   "| Step | Owner |",
   "| ---- | ----- |",
@@ -26,6 +28,8 @@ const NOTE = [
   "",
   "---",
   "",
+  "[^1]: Brewed hot.",
+  "",
 ].join("\n");
 
 test("sets a note in the design's type", async ({ page, drive }, info) => {
@@ -36,7 +40,8 @@ test("sets a note in the design's type", async ({ page, drive }, info) => {
   await page.goto("/edit?id=plan");
   const note = page.locator(".markdown");
   const phone = info.project.metadata.layout === "phone";
-  const heading = (level: number) => note.getByRole("heading", { level });
+  const heading = (level: number) =>
+    note.getByRole("heading", { level }).first();
   await expect(heading(1)).toBeVisible();
 
   // Headings at 500, a step smaller on a phone, without GitHub's rules.
@@ -51,9 +56,20 @@ test("sets a note in the design's type", async ({ page, drive }, info) => {
     await expect(heading(level)).toHaveCSS("font-weight", "500");
     await expect(heading(level)).toHaveCSS("border-bottom-width", "0px");
   }
+  // The least of them quieter.
+  await expect(heading(6)).toHaveCSS("font-size", "16px");
+  await expect(heading(6)).toHaveCSS(
+    "color",
+    await token(page, "--on-surface-variant"),
+  );
   const paragraph = note.getByText("Tea for two");
   await expect(paragraph).toHaveCSS("font-size", "16px");
   await expect(paragraph).toHaveCSS("line-height", "26px");
+  // Smaller text, as footnotes, on lines in proportion.
+  await expect(note.getByText("Brewed hot.")).toHaveCSS(
+    "line-height",
+    "22.75px",
+  );
   // Code in Google Sans Code at 14 px, its blocks at 22 px a line.
   const code = note.locator("p code");
   await expect(code).toHaveCSS("font-family", /^"?Google Sans Code Variable\b/);
@@ -76,20 +92,33 @@ test("sets a note in the design's type", async ({ page, drive }, info) => {
     "background-color",
     "rgba(0, 0, 0, 0)",
   );
-  // Tasks take the accent.
-  await expect(note.getByRole("checkbox").first()).toHaveCSS(
-    "accent-color",
-    await token(page, "--primary"),
-  );
-  // At most 72 characters a line.
-  const measure = await note.evaluate((element) => {
+  // Tasks take the accent, their text where the list's starts.
+  const task = note.getByRole("checkbox").first();
+  await expect(task).toHaveCSS("accent-color", await token(page, "--primary"));
+  const [box, text] = await Promise.all([
+    task.boundingBox(),
+    note.getByRole("listitem").filter({ hasText: "Boil water" }).boundingBox(),
+  ]);
+  expect((box?.x ?? 0) + 18 + 12).toBeCloseTo(text?.x ?? 0, 0);
+  // At most 72 characters a line, whatever room the screen leaves.
+  const [measure, limit] = await note.evaluate((element) => {
     const probe = element.appendChild(document.createElement("div"));
     probe.style.width = "72ch";
     const width = probe.getBoundingClientRect().width;
     probe.remove();
-    return width;
+    return [width, Number.parseFloat(getComputedStyle(element).maxWidth)];
   });
-  expect((await note.boundingBox())?.width).toBeLessThanOrEqual(measure);
+  expect(limit).toBeCloseTo(measure, 0);
+
+  // In the reader's own size, where they chose another.
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = "20px";
+  });
+  await expect(paragraph).toHaveCSS("font-size", "20px");
+  await expect(heading(1)).toHaveCSS("font-size", phone ? "35px" : "40px");
+  await page.evaluate(() => {
+    document.documentElement.style.removeProperty("font-size");
+  });
 
   // The source, 16 px on 26 px lines.
   await startEditing(page);

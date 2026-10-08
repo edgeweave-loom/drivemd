@@ -57,7 +57,7 @@ const COLORS = EditorView.theme({
     // Safari zooms in on a field whose text is smaller.
     fontSize: "max(16px, 1rem)",
   },
-  ".cm-scroller": { fontFamily: "inherit", lineHeight: "1.5" },
+  ".cm-scroller": { fontFamily: "inherit" },
   ".cm-content": { caretColor: "var(--on-surface)" },
   ".cm-cursor": { borderLeftColor: "var(--on-surface)" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground":

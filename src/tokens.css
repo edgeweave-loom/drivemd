@@ -80,7 +80,7 @@
   --app-bar-height: 64px;
   --app-bar-height-compact: 56px;
   --pane-width: 280px;
-  --note-measure: 760px;
+  --note-measure: 72ch;
   --fab-size: 56px;
 
   --font-sans:

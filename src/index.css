@@ -1349,12 +1349,13 @@ dialog.drawer {
 }
 
 /* A note, rendered as GitHub renders Markdown, in the design's type: 16 px
-   on 26 px lines, at most 72 characters wide (docs/DESIGN.md, Type). */
+   on 26 px lines, at most 72 characters wide (docs/DESIGN.md, Type), in rem
+   so that it follows the reader's own size. */
 .markdown {
-  max-width: 72ch;
+  max-width: var(--note-measure);
   min-width: 0;
-  font-size: 16px;
-  line-height: 26px;
+  font-size: 1rem;
+  line-height: 1.625;
   overflow-wrap: break-word;
 }
 
@@ -1371,41 +1372,45 @@ dialog.drawer {
 }
 
 /* Headings at 500, without GitHub's rules: the smaller ones at the body's
-   size. */
+   size, the least of them quieter. */
 .markdown :is(h1, h2, h3, h4, h5, h6) {
   margin: var(--space-6) 0 var(--space-3);
   color: inherit;
-  font-size: 16px;
+  font-size: 1em;
   font-weight: 500;
-  line-height: 26px;
+  line-height: inherit;
   text-transform: none;
 }
 
 .markdown h1 {
-  font-size: 32px;
-  line-height: 40px;
+  font-size: 2rem;
+  line-height: 2.5rem;
 }
 
 .markdown h2 {
-  font-size: 24px;
-  line-height: 32px;
+  font-size: 1.5rem;
+  line-height: 2rem;
 }
 
 .markdown h3 {
-  font-size: 20px;
-  line-height: 28px;
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+}
+
+.markdown h6 {
+  color: var(--on-surface-variant);
 }
 
 /* A step smaller on a phone. */
 @media (width < 768px), (pointer: coarse) and (height < 500px) {
   .markdown h1 {
-    font-size: 28px;
-    line-height: 36px;
+    font-size: 1.75rem;
+    line-height: 2.25rem;
   }
 
   .markdown h2 {
-    font-size: 22px;
-    line-height: 30px;
+    font-size: 1.375rem;
+    line-height: 1.875rem;
   }
 }
 
@@ -1425,11 +1430,12 @@ dialog.drawer {
   list-style: none;
 }
 
-/* A task's box at the list's edge, in the accent, as in Docs. */
+/* A task's box in the accent, as in Docs, before its text, which starts
+   where the list's does. */
 .markdown .task-list-item input {
   width: 18px;
   height: 18px;
-  margin: 0 var(--space-3) 0 -2em;
+  margin: 0 var(--space-3) 0 calc(-18px - var(--space-3));
   vertical-align: -3px;
   accent-color: var(--primary);
 }
@@ -1557,7 +1563,7 @@ dialog.drawer {
   overflow: auto;
   border-radius: var(--radius-sm);
   background: var(--surface-container-high);
-  line-height: 22px;
+  line-height: 1.375rem;
 }
 
 .markdown pre code {
@@ -1650,9 +1656,9 @@ dialog.drawer {
 
 .markdown th {
   color: var(--on-surface-variant);
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 500;
-  line-height: 20px;
+  line-height: 1.25rem;
 }
 
 .markdown hr {
