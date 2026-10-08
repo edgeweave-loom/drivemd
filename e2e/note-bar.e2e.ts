@@ -48,10 +48,54 @@ test("names the note in the app bar, with what it lets the user do", async ({
     expect(whole).toBe(true);
   } else {
     await expect(bar.getByRole("link", { name: "DriveMD" })).toBeVisible();
-    await expect(bar.getByRole("button", { name: "Edit" })).toBeVisible();
+    // The mode menu takes the place of Edit.
+    await expect(bar.getByRole("button", { name: "Viewing" })).toBeVisible();
     await expect(changed).toBeVisible();
     await expect(account).toBeVisible();
   }
+});
+
+test("switches between Editing and Viewing from the mode menu, saving first", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.metadata.layout === "phone",
+    "a phone floats Edit and keeps Done",
+  );
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  const bar = page.getByRole("banner");
+  const mode = bar.getByRole("button", { name: "Viewing" });
+  await mode.click();
+  const menu = page.getByRole("menu", { name: "Mode" });
+  await expect(menu.getByRole("menuitemradio")).toHaveText([
+    /^Editing\s*Edit the Markdown beside its preview$/,
+    /^Viewing\s*Save, then read the note$/,
+  ]);
+  // It drops from its button.
+  const [button, opened] = await Promise.all([
+    mode.boundingBox(),
+    menu.boundingBox(),
+  ]);
+  if (!button || !opened) throw new Error("The menu has no place");
+  expect(opened.y).toBeGreaterThanOrEqual(button.y + button.height);
+  expect(Math.abs(opened.x - button.x)).toBeLessThan(2);
+  expect(opened.x + opened.width).toBeLessThanOrEqual(
+    page.viewportSize()?.width ?? 0,
+  );
+
+  await menu.getByRole("menuitemradio", { name: "Editing" }).click();
+  const source = page.getByRole("textbox", { name: "Markdown source" });
+  await source.click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type("Tea.");
+  await bar.getByRole("button", { name: "Editing" }).click();
+  await menu.getByRole("menuitemradio", { name: "Viewing" }).click();
+  await expect(bar.getByRole("button", { name: "Viewing" })).toBeVisible();
+  await expect(source).toHaveCount(0);
+  await expect(bar.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(drive.writes).toEqual(["keep plan revision-1", "save plan"]);
 });
 
 test("keeps Save in one place through its states, and marks the tab while unsaved", async ({

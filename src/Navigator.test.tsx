@@ -347,7 +347,7 @@ describe("Navigator's note bar", () => {
     expect(
       await bar.findByText(/^Last modified by Ada Lovelace on /),
     ).toBeVisible();
-    expect(await bar.findByRole("button", { name: "Edit" })).toBeVisible();
+    expect(await bar.findByRole("button", { name: "Viewing" })).toBeVisible();
     expect(bar.queryByRole("searchbox")).toBeNull();
     expect(bar.queryByRole("button", { name: "Search" })).toBeNull();
     expect(

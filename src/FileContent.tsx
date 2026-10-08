@@ -33,6 +33,7 @@ import { commandKey } from "./keys.ts";
 import { useLayout } from "./layout.ts";
 import { Loaded } from "./Loaded.tsx";
 import { Missing } from "./Missing.tsx";
+import { ModeMenu } from "./ModeMenu.tsx";
 import { useFollow } from "./follow.ts";
 import { Rendered } from "./Markdown.tsx";
 import { deleteDraftHolding, type Draft } from "./drafts.ts";
@@ -664,10 +665,39 @@ function NoteView({
     toggled.current = false;
     button.focus();
   }, []);
-  function saveNow() {
+  /** Saves the note, if anything changed, then does `then` once saved. */
+  function saveThen(then?: () => void) {
     if (!unsaved || save.isPending) return;
     renew();
-    save.mutate({ bytes, text });
+    save.mutate(
+      { bytes, text },
+      then && {
+        onSuccess: (result) => {
+          if (!("conflict" in result)) then();
+        },
+      },
+    );
+  }
+  function saveNow() {
+    saveThen();
+  }
+  // The text as it stands, which a save that ends compares with its own.
+  const latest = useRef(text);
+  useEffect(() => {
+    latest.current = text;
+  }, [text]);
+  // Viewing saves first: when someone else changed the note, or the save
+  // fails, the note stays in Editing with the banner that says why, and so
+  // it does when more was typed meanwhile, which is left to save.
+  function view() {
+    if (!unsaved) {
+      onEditing(false);
+      return;
+    }
+    const saving = text;
+    saveThen(() => {
+      if (latest.current === saving) onEditing(false);
+    });
   }
   // Cmd or Ctrl+S saves the note, where the editor or the viewer is, and
   // never the page itself, which would hold none of the note's bytes.
@@ -715,18 +745,28 @@ function NoteView({
         )}
         {editable && !floats && (
           <InSlot name="mode">
-            <button
-              ref={toggling}
-              type="button"
-              className="tonal"
-              onClick={() => {
-                // On a phone, Done gives way to the floating Edit.
-                toggled.current = layout === "phone";
-                onEditing(!editing);
-              }}
-            >
-              {editing ? "Done" : "Edit"}
-            </button>
+            {layout === "phone" ? (
+              <button
+                ref={toggling}
+                type="button"
+                className="tonal"
+                onClick={() => {
+                  // Done gives way to the floating Edit.
+                  toggled.current = true;
+                  onEditing(false);
+                }}
+              >
+                Done
+              </button>
+            ) : (
+              <ModeMenu
+                editing={editing}
+                onPick={(edits) => {
+                  if (edits) onEditing(true);
+                  else view();
+                }}
+              />
+            )}
           </InSlot>
         )}
         {/* While the page waits for an answer about changes kept on the

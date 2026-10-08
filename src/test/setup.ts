@@ -21,6 +21,9 @@ if ("window" in globalThis) {
   // shows it, or hides it again.
   HTMLElement.prototype.showPopover = function (this: HTMLElement) {
     this.style.display = "block";
+    this.dispatchEvent(
+      Object.assign(new Event("toggle"), { newState: "open" }),
+    );
   };
   HTMLElement.prototype.hidePopover = function (this: HTMLElement) {
     this.style.removeProperty("display");

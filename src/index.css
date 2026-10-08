@@ -351,6 +351,53 @@ button.note-name:is(:focus-visible, :active) {
   display: contents;
 }
 
+/* The mode menu, as Docs's: a tonal button naming the mode, and a menu that
+   drops from it where the browser anchors one, or else under the bar
+   (docs/DESIGN.md, Mode menu). */
+button.mode {
+  padding: 0 var(--space-2) 0 var(--space-4);
+  anchor-name: --mode;
+}
+
+.mode-menu {
+  inset: calc(var(--app-bar-height) - var(--space-2)) var(--space-4) auto auto;
+}
+
+@supports (anchor-name: --mode) {
+  .mode-menu {
+    position-anchor: --mode;
+    inset: anchor(bottom) auto auto anchor(left);
+    margin: var(--space-1) 0 0;
+    /* From the button's right edge, where the screen ends first. */
+    position-try-fallbacks: flip-inline;
+  }
+}
+
+.mode-menu > button {
+  min-height: 56px;
+  padding: var(--space-2) var(--space-4);
+}
+
+.mode-menu > button[aria-checked="true"] {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+.mode-label {
+  display: grid;
+  text-align: start;
+}
+
+.mode-label > .hint {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+[aria-checked="true"] > .mode-label > .hint {
+  color: inherit;
+}
+
 /* Save keeps its place and width through its states; Saved is a status,
    legible and without a container, and neither it nor Saving… reacts as a
    control (docs/DESIGN.md, Save). */

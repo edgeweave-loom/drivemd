@@ -4,6 +4,7 @@ import {
   expect,
   folderLink,
   goHome,
+  startEditing,
   signIn,
   test,
   vault,
@@ -139,7 +140,7 @@ test("edits the source and saves it", async ({ page, drive }, info) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
 
-  await page.getByRole("button", { name: "Edit" }).click();
+  await startEditing(page);
   const source = page.getByRole("textbox", { name: "Markdown source" });
   // Front matter shows as YAML at the text's size, its keys dimmed as
   // Markdown's symbols are.
@@ -186,7 +187,7 @@ test("keeps one kind of line break whatever an input method types", async ({
   await signIn(page);
   await page.goto("/edit?id=notes");
 
-  await page.getByRole("button", { name: "Edit" }).click();
+  await startEditing(page);
   const source = page.getByRole("textbox", { name: "Markdown source" });
   await source.locator(".cm-line").first().click();
   await page.keyboard.press("End");
@@ -210,7 +211,7 @@ test("formats the source from the keyboard toolbar on touch screens", async ({
   await signIn(page);
   await page.goto("/edit?id=notes");
 
-  await page.getByRole("button", { name: "Edit" }).click();
+  await startEditing(page);
   const source = page.getByRole("textbox", { name: "Markdown source" });
   await source.locator(".cm-line").nth(1).click();
   const toolbar = page.getByRole("toolbar", { name: "Formatting" });
@@ -254,7 +255,7 @@ test("saves with Ctrl+S, and follows a link with Ctrl+click in the source", asyn
   const before = String(drive.files.get("plan")?.content);
   await signIn(page);
   await page.goto("/edit?id=plan");
-  await page.getByRole("button", { name: "Edit" }).click();
+  await startEditing(page);
   const source = page.getByRole("textbox", { name: "Markdown source" });
   await source.click();
   await page.keyboard.press("ControlOrMeta+End");
