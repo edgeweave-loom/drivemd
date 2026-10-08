@@ -6,7 +6,7 @@ import {
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { Dialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
-import { openedFromDrive } from "./drive-tab.ts";
+import { openedFromDrive, useNoteAccount } from "./drive-tab.ts";
 import { mayMove, type FileMetadata, type FileRef } from "./drive.ts";
 import {
   ActionDialog,
@@ -170,6 +170,7 @@ export function FilePage({
   // Beside the name, or in More actions on a phone, which has no room there.
   const movable = opens && mayMove(details.data);
   const moveBeside = movable && !phone;
+  const account = useNoteAccount() === "more-actions";
 
   useEffect(() => {
     if (!opens) return;
@@ -207,11 +208,12 @@ export function FilePage({
         </div>
         {opens && <Changed file={details.data} />}
       </InSlot>
-      {opens && (
+      {(opens || account) && (
         <InSlot name="more">
           <MoreActions
-            file={details.data}
+            file={opens ? details.data : undefined}
             moves={movable && !moveBeside}
+            account={account}
             onPick={setAction}
           />
         </InSlot>

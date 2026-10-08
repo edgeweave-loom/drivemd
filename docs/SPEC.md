@@ -287,7 +287,7 @@ Milestone 9 gives DriveMD the look and the habits of Google's own Workspace apps
 
 **A tab opened from Drive** holds one note, as a Docs tab holds one document.
 
-- Nothing in it leads elsewhere in the app: no search, breadcrumbs, folder pane, navigation or Back, and DriveMD's mark is not a link, which takes Back's place on a phone. **Move**, whose picker leaves the note open, and **Move to trash** stay; once the note is in the trash, the page says so and offers nothing more. The user returns to Drive in Drive's own tab.
+- Nothing in it leads elsewhere in the app: no search, breadcrumbs, folder pane, navigation or Back, and DriveMD's mark is not a link, which takes Back's place on a phone. **Move**, whose picker leaves the note open, and **Move to trash** stay; once the note is in the trash, the page says so and offers nothing more. On a phone, whose note bar leaves the account to Home, More actions holds the account's email, **About DriveMD** and **Sign out** after the note's actions, even once the note is in the trash. The user returns to Drive in Drive's own tab.
 - The note opens in Editing on a wide screen, the source beside the preview, and in reading on a phone, as Docs opens a document on a computer and in its phone app.
 - A link to another note opens it in a new tab, in the same mode, as Docs opens links, and a link to a heading of the note scrolls to it. The new tab should not ask the user to sign in again: how the opening tab hands it the token waits for a written security review (see Open questions), and until then the new tab asks for **Continue**.
 - Before sign-in, the tab's screen says that Google Drive asked DriveMD to open a note, whose name the app cannot know yet.

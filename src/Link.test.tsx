@@ -13,6 +13,7 @@ function renderLink(renew = vi.fn()) {
       value={{
         drive: fakeDrive(),
         renew,
+        signOut: vi.fn(),
         account: "ada@example.com",
         signedIn: true,
       }}

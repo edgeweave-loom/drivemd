@@ -25,9 +25,12 @@ export function renderWithDrive(
     queries: { retry: false },
   });
   const renew = vi.fn();
+  const signOut = vi.fn();
   const within = (page: ReactNode) => (
     <QueryClientProvider client={client}>
-      <DriveContext value={{ drive, renew, account: ACCOUNT, signedIn }}>
+      <DriveContext
+        value={{ drive, renew, signOut, account: ACCOUNT, signedIn }}
+      >
         {page}
       </DriveContext>
     </QueryClientProvider>
