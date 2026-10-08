@@ -168,6 +168,22 @@ export const MAX_IMAGE = 10_000_000;
 const lookups = pool(4);
 
 /**
+ * The name of a folder that a list gives as a note's location: the folder's
+ * details, which the rest of the app reads too, asked for a few at a time,
+ * as links and images are.
+ */
+export function locationQuery(drive: Drive, folder: string | undefined) {
+  const item = folder === undefined ? undefined : { id: folder };
+  return queryOptions({
+    ...metadataQuery(drive, item),
+    queryFn: item
+      ? ({ signal }) => lookups(() => drive.getMetadata(item), signal)
+      : skipToken,
+    select: (details) => details.name,
+  });
+}
+
+/**
  * A file's bytes, from the revision its details name on. Drive sends the
  * bytes it holds when asked, which may be newer than those details but never
  * older: a save that compares them then sees a change that is not one, and

@@ -67,6 +67,8 @@ describe("entriesOf", () => {
           mimeType: FOLDER,
           resourceKey: "key",
         },
+        // The folder the shortcut itself sits in.
+        parent: "parent",
       },
       {
         kind: "file",
@@ -78,6 +80,8 @@ describe("entriesOf", () => {
           mimeType: "text/markdown",
           resourceKey: "key",
         },
+        // The folder the shortcut itself sits in.
+        parent: "parent",
       },
     ]);
   });

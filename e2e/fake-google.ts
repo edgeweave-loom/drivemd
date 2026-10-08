@@ -566,12 +566,10 @@ export async function signIn(page: Page): Promise<void> {
   );
   await page.getByRole("button", { name: "Sign in with Google" }).click();
   await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
-  await expect(
-    page
-      .getByRole("region", { name: "Recent" })
-      .getByRole("link")
-      .locator(".name"),
-  ).toHaveText(["plan.md"]);
+  const recent = page.getByRole("region", { name: "Recent" }).getByRole("link");
+  await expect(recent.locator(".name")).toHaveText(["plan.md"]);
+  // And the folder it sits in, which Drive names after the list.
+  await expect(recent.locator(".location")).not.toBeEmpty();
   await expect(vault(page)).toBeVisible();
 }
 

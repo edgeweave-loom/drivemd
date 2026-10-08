@@ -63,6 +63,7 @@ import {
   vaultLinkQuery,
 } from "./queries.ts";
 import { hashOf, onTheWeb, relativePath, type Found } from "./resolve.ts";
+import { useSeen } from "./seen.ts";
 import { toggleTask } from "./tasks.ts";
 import { hrefOf } from "./router.ts";
 import { linkPartHash, partHash, showPart, targetOf } from "./parts.ts";
@@ -426,34 +427,6 @@ function PartLink({ href, ...attributes }: LinkAttributes & { href: string }) {
     showPart(href.slice(1));
   };
   return <a {...attributes} href={href} onClick={scroll} />;
-}
-
-/**
- * Whether the element came near the screen, and the ref that watches it.
- * Links and images wait for it before they ask Drive anything, so that a
- * note with thousands of them asks only for those the user scrolls to.
- */
-function useSeen(): [
-  boolean,
-  (element: Element | null) => (() => void) | undefined,
-] {
-  const [seen, setSeen] = useState(false);
-  const near = useCallback((element: Element | null) => {
-    if (!element) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some(({ isIntersecting }) => isIntersecting)) return;
-        observer.disconnect();
-        setSeen(true);
-      },
-      { rootMargin: "50%" },
-    );
-    observer.observe(element);
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
-  return [seen, near];
 }
 
 /** The attributes a link keeps, whatever it leads to. */

@@ -11,8 +11,10 @@ import type { IconName } from "./icons.ts";
 import { Link } from "./Link.tsx";
 import { BROKEN, entriesOf, modifiedLine, type Entry } from "./listing.ts";
 import { Loaded } from "./Loaded.tsx";
-import { shortcutQuery } from "./queries.ts";
+import { locationQuery, shortcutQuery } from "./queries.ts";
+import { ROOTS } from "./roots.ts";
 import { hrefOf, type Crumb } from "./router.ts";
+import { useSeen } from "./seen.ts";
 
 /** The entries among the items the query finds, once Drive has answered. */
 export function ItemListing<Answer, Key extends QueryKey>({
@@ -23,6 +25,7 @@ export function ItemListing<Answer, Key extends QueryKey>({
   missing,
   empty,
   folders,
+  located = false,
 }: {
   query: UseQueryOptions<Answer, Error, DriveItem[], Key>;
   /** By name, unless Drive's own order says more, as in search results. */
@@ -35,6 +38,8 @@ export function ItemListing<Answer, Key extends QueryKey>({
   empty: string;
   /** How the list's folders show, when they are more than folders. */
   folders?: IconName;
+  /** Whether each row gives the folder its item sits in. */
+  located?: boolean;
 }) {
   const items = useQuery(query);
   return (
@@ -46,6 +51,7 @@ export function ItemListing<Answer, Key extends QueryKey>({
           current={current}
           empty={empty}
           folders={folders}
+          located={located}
         />
       )}
     </Loaded>
@@ -59,6 +65,7 @@ export function EntryList({
   current,
   empty,
   folders = "folder",
+  located = false,
 }: {
   entries: Entry[];
   trail: Crumb[] | undefined;
@@ -66,6 +73,7 @@ export function EntryList({
   /** What to say when there is nothing to show. */
   empty: string;
   folders?: IconName | undefined;
+  located?: boolean;
 }) {
   if (entries.length === 0) return <p className="hint">{empty}</p>;
   return (
@@ -74,6 +82,7 @@ export function EntryList({
       {entries.some((entry) => modifiedLine(entry) !== undefined) && (
         <li className="entries-head" aria-hidden="true">
           <span>Name</span>
+          {located && <span>Location</span>}
           <span>Modified</span>
         </li>
       )}
@@ -85,6 +94,7 @@ export function EntryList({
               target={entry.target}
               trail={trail}
               current={entry.opens.id === current}
+              located={located}
             />
           ) : (
             <EntryLink
@@ -92,6 +102,7 @@ export function EntryList({
               trail={trail}
               current={entry.opens.id === current}
               folders={folders}
+              located={located}
             />
           )}
         </li>
@@ -105,12 +116,14 @@ function EntryLink({
   trail,
   current = false,
   folders = "folder",
+  located = false,
 }: {
   entry: Entry;
   trail: Crumb[] | undefined;
   /** Whether the page shows the entry itself. */
   current?: boolean;
   folders?: IconName;
+  located?: boolean;
 }) {
   const { kind, name, opens, target } = entry;
   const ids = useId();
@@ -130,7 +143,11 @@ function EntryLink({
       current={current}
       // Named by its name; when it changed, described.
       aria-labelledby={`${ids}-title`}
-      aria-describedby={when && `${ids}-when`}
+      aria-describedby={
+        [located && `${ids}-where`, when && `${ids}-when`]
+          .filter(Boolean)
+          .join(" ") || undefined
+      }
     >
       <Icon name={icon} />
       <span id={`${ids}-title`} className="title">
@@ -142,9 +159,20 @@ function EntryLink({
           </>
         )}
       </span>
-      {when && (
-        <span id={`${ids}-when`} className="modified">
-          {when}
+      {(located || when) && (
+        <span className="details">
+          {located && (
+            <Location
+              id={`${ids}-where`}
+              entry={entry}
+              followed={when !== undefined}
+            />
+          )}
+          {when && (
+            <span id={`${ids}-when`} className="modified">
+              {when}
+            </span>
+          )}
         </span>
       )}
       {kind === "folder" && <Icon name="chevron_right" />}
@@ -161,18 +189,27 @@ function ShortcutEntry({
   target,
   trail,
   current,
+  located,
 }: {
   entry: Entry;
   target: ShortcutTarget;
   trail: Crumb[] | undefined;
   current: boolean;
+  located: boolean;
 }) {
   const { drive } = useDrive();
   const ids = useId();
   const check = useQuery(shortcutQuery(drive, target));
   const broken = check.data;
   if (!broken) {
-    return <EntryLink entry={entry} trail={trail} current={current} />;
+    return (
+      <EntryLink
+        entry={entry}
+        trail={trail}
+        current={current}
+        located={located}
+      />
+    );
   }
   return (
     // A link without an address: it is there, but opens nothing.
@@ -189,9 +226,50 @@ function ShortcutEntry({
         <span className="badge">Shortcut</span>
       </span>
       {/* Why it opens nothing, where its time of change would be. */}
-      <span id={`${ids}-why`} className="modified reason">
-        {BROKEN[broken]}
+      <span className="details">
+        {/* Where the reason lines up with the times of change. */}
+        {located && <span className="location" />}
+        <span id={`${ids}-why`} className="modified reason">
+          {BROKEN[broken]}
+        </span>
       </span>
     </a>
+  );
+}
+
+/**
+ * The folder an entry sits in, which Drive names once the row comes near
+ * the screen: a call per note, a few at a time. A note whose folder Drive
+ * does not name was shared with the user on its own.
+ */
+function Location({
+  id,
+  entry,
+  followed,
+}: {
+  id: string;
+  entry: Entry;
+  /** Whether the time of change follows, which a phone joins to it. */
+  followed: boolean;
+}) {
+  const { drive } = useDrive();
+  const [seen, near] = useSeen();
+  const folder = useQuery({
+    ...locationQuery(drive, entry.parent),
+    enabled: seen,
+  });
+  const name =
+    entry.parent === undefined ? ROOTS.sharedWithMe.name : folder.data;
+  return (
+    <>
+      <span id={id} ref={near} className="location">
+        {name}
+      </span>
+      {name && followed && (
+        <span className="separator" aria-hidden="true">
+          {" · "}
+        </span>
+      )}
+    </>
   );
 }
