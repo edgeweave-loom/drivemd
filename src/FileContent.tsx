@@ -693,14 +693,18 @@ function NoteView({
   // Viewing saves first: when someone else changed the note, or the save
   // fails, the note stays in Editing with the banner that says why, and so
   // it does when more was typed meanwhile, which is left to save.
-  function view() {
-    if (!unsaved) {
+  function view(leaving?: () => void) {
+    const leave = () => {
+      leaving?.();
       onEditing(false);
+    };
+    if (!unsaved) {
+      leave();
       return;
     }
     const saving = text;
     saveThen(() => {
-      if (latest.current === saving) onEditing(false);
+      if (latest.current === saving) leave();
     });
   }
   // Cmd or Ctrl+S saves the note, where the editor or the viewer is, and
@@ -769,22 +773,34 @@ function NoteView({
             {pane === "source" ? "Preview" : "Source"}
           </button>
         )}
-        {editable && !floats && (
-          <InSlot name="mode">
-            {layout === "phone" ? (
-              <button
-                ref={toggling}
-                type="button"
-                className="tonal"
-                onClick={() => {
-                  // Done gives way to the floating Edit.
-                  toggled.current = true;
-                  onEditing(false);
-                }}
-              >
-                Done
-              </button>
-            ) : (
+        {editable &&
+          !floats &&
+          (layout === "phone" ? (
+            // A check at the start of the bar, which saves first, as Viewing
+            // does, then gives way to the floating Edit. It gives way to
+            // Back, which leaves the note, while a save failed or a conflict
+            // is open, as the note can then neither save nor be read alone.
+            !save.error &&
+            !conflict && (
+              <InSlot name="lead">
+                <button
+                  ref={toggling}
+                  type="button"
+                  className="icon-button"
+                  aria-label="Done"
+                  title="Done"
+                  onClick={() => {
+                    view(() => {
+                      toggled.current = true;
+                    });
+                  }}
+                >
+                  <Icon name="check" />
+                </button>
+              </InSlot>
+            )
+          ) : (
+            <InSlot name="mode">
               <ModeMenu
                 editing={editing}
                 onPick={(edits) => {
@@ -792,9 +808,8 @@ function NoteView({
                   else view();
                 }}
               />
-            )}
-          </InSlot>
-        )}
+            </InSlot>
+          ))}
         {/* While the page waits for an answer about changes kept on the
             device, too: nothing is unsaved yet. */}
         {reason === undefined && !conflict && (

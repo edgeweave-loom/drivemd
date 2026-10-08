@@ -77,6 +77,7 @@ export function Navigator({
       );
     };
     return {
+      lead: place("lead"),
       title: place("title"),
       mode: place("mode"),
       save: place("save"),
@@ -136,7 +137,7 @@ function NoteBar({
   file,
   email,
   onSignOut,
-  places: { title, mode, save, more },
+  places: { lead, title, mode, save, more },
 }: {
   file: FileRef;
   email: string;
@@ -148,7 +149,12 @@ function NoteBar({
   return (
     <header className="bar note">
       {phone ? (
-        <NoteUp file={file} trail={trail} />
+        <>
+          {/* Where a phone's Done takes the place of Back while editing:
+              the CSS hides the Back that comes right after it. */}
+          <span className="slot lead" ref={lead} />
+          <NoteUp file={file} trail={trail} />
+        </>
       ) : (
         <Link to={HOME} className="mark" aria-label="DriveMD">
           <img src="/icon.svg" alt="" />

@@ -347,8 +347,14 @@ button.note-name:is(:focus-visible, :active) {
   align-items: center;
 }
 
-.note-tools > .slot {
+.note-tools > .slot,
+.bar.note > .slot {
   display: contents;
+}
+
+/* A phone's Done takes the place of Back while editing. */
+.bar.note > .lead:not(:empty) + .up {
+  display: none;
 }
 
 /* The mode menu, as Docs's: a tonal button naming the mode, and a menu that

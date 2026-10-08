@@ -369,9 +369,15 @@ describe("Navigator's note bar", () => {
     ).toBeTruthy();
     edit.focus();
     fireEvent.click(edit);
-    // The focus goes along, from one to the other.
+    // The focus goes along, from one to the other, a check at the start of
+    // the bar.
     const done = await bar.findByRole("button", { name: "Done" });
     expect(done).toHaveFocus();
+    expect(done.querySelector('[data-icon="check"]')).not.toBeNull();
+    expect(
+      done.compareDocumentPosition(bar.getByRole("heading", { level: 1 })) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
     fireEvent.click(done);
     expect(await screen.findByRole("button", { name: "Edit" })).toHaveFocus();
