@@ -4,6 +4,7 @@ import {
   expect,
   folderLink,
   noteAction,
+  renameNote,
   signIn,
   test,
   vault,
@@ -313,10 +314,7 @@ test("creates, renames, moves and trashes a file", async ({
     page.getByRole("heading", { level: 1, name: "ideas.md" }),
   ).toBeVisible();
 
-  await noteAction(page, "Rename");
-  const rename = page.getByRole("dialog", { name: "Rename" });
-  await rename.getByRole("textbox", { name: "Name" }).fill("roadmap.md");
-  await rename.getByRole("button", { name: "Rename" }).click();
+  await renameNote(page, "ideas.md", "roadmap");
   await expect(
     page.getByRole("heading", { level: 1, name: "roadmap.md" }),
   ).toBeVisible();

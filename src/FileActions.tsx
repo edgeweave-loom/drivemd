@@ -1,19 +1,18 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useId, useRef } from "react";
 import { createPortal } from "react-dom";
-import { ConfirmDialog, NameDialog } from "./Dialog.tsx";
+import { ConfirmDialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
 import { Icon } from "./Icon.tsx";
 import { MoveDialog } from "./Move.tsx";
-import { isMarkdown, type FileMetadata, type FileRef } from "./drive.ts";
+import type { FileMetadata, FileRef } from "./drive.ts";
 import { refreshAfterChange } from "./queries.ts";
 import { hrefOf, navigate, type Crumb } from "./router.ts";
-import { useVaultCheck, vaultNote } from "./vaults.ts";
 
 const HOME = hrefOf({ name: "home" });
 
 /** What the user may pick to do with a note. */
-export type Action = "rename" | "move" | "trash";
+export type Action = "move" | "trash";
 
 /** Move, as an icon beside the note's name. */
 export function MoveButton({ onPick }: { onPick: () => void }) {
@@ -52,8 +51,8 @@ export function MoreActions({
   const id = useId();
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
-  const { canRename, canTrash } = file.capabilities;
-  if (!canRename && !moves && !canTrash) return null;
+  const { canTrash } = file.capabilities;
+  if (!moves && !canTrash) return null;
   const item = (action: Action, label: string) => (
     <button
       type="button"
@@ -87,7 +86,6 @@ export function MoreActions({
         aria-label="More actions"
         className="menu actions-menu"
       >
-        {canRename && item("rename", "Rename")}
         {moves && item("move", "Move")}
         {canTrash && item("trash", "Move to trash")}
       </div>
@@ -114,74 +112,12 @@ export function ActionDialog({
   onClose: () => void;
 }) {
   return createPortal(
-    action === "rename" ? (
-      <Rename file={file} page={page} path={path} onClose={onClose} />
-    ) : action === "move" ? (
+    action === "move" ? (
       <MoveDialog file={file} page={page} onClose={onClose} />
     ) : (
       <Trash file={file} path={path} onClose={onClose} />
     ),
     document.body,
-  );
-}
-
-/**
- * Renames the file, warning first when links in a vault point to it: the
- * rename waits for the vault check.
- */
-function Rename({
-  file,
-  page,
-  path,
-  onClose,
-}: {
-  file: FileMetadata;
-  /** The file as the page's address names it. */
-  page: FileRef;
-  path: Crumb[] | undefined;
-  onClose: () => void;
-}) {
-  const { drive, renew } = useDrive();
-  const client = useQueryClient();
-  const vault = useVaultCheck(page, true);
-  const rename = useMutation({
-    mutationFn: (name: string) => drive.renameFile(file, name),
-    onSuccess: () => {
-      refreshAfterChange(client, file);
-    },
-  });
-  const note = vaultNote(vault, "renames");
-  return (
-    <NameDialog
-      title="Rename"
-      initial={file.name}
-      hint={(name) =>
-        isMarkdown(name.trim())
-          ? undefined
-          : "Without .md or .markdown at the end, DriveMD will no longer list this file."
-      }
-      action="Rename"
-      pending={rename.isPending}
-      ready={vault !== "checking"}
-      error={rename.error}
-      onSubmit={(name) => {
-        renew();
-        // Only while the page shows: Back takes the user elsewhere.
-        rename.mutate(name, {
-          onSuccess: (renamed) => {
-            const href = hrefOf({ name: "file", file: renamed });
-            const trail = path?.slice(0, -1);
-            navigate(href, trail && [...trail, { name: renamed.name, href }]);
-            onClose();
-          },
-        });
-      }}
-      onClose={onClose}
-    >
-      {note && (
-        <p className={vault === "checking" ? "hint" : "warning"}>{note}</p>
-      )}
-    </NameDialog>
   );
 }
 

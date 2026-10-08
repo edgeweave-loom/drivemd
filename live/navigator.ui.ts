@@ -276,10 +276,7 @@ function folderLink(page: Page, name: string) {
  * Picks one of a note's actions: Move by the note's name, but on a phone,
  * and the others from More actions.
  */
-async function noteAction(
-  page: Page,
-  name: "Rename" | "Move" | "Move to trash",
-) {
+async function noteAction(page: Page, name: "Move" | "Move to trash") {
   const bar = page.getByRole("banner");
   if (name === "Move" && !phone()) {
     await bar.getByRole("button", { name, exact: true }).click();
@@ -290,6 +287,14 @@ async function noteAction(
     .getByRole("dialog", { name: "More actions" })
     .getByRole("button", { name, exact: true })
     .click();
+}
+
+/** Renames a note by its name in the app bar, as a click on it does. */
+async function renameNote(page: Page, from: string, to: string) {
+  await page.getByRole("banner").getByRole("button", { name: from }).click();
+  const name = page.getByRole("textbox", { name: "Name" });
+  await name.fill(to);
+  await name.press("Enter");
 }
 
 /** The search box, opened first where a phone keeps it behind a button. */
@@ -412,7 +417,8 @@ test("finds the vault on Home, and warns before renaming a note in it", async ({
     .getByRole("link", { name: `${RUN} daily.md` })
     .first()
     .click();
-  await noteAction(page, "Rename");
+  // Inside a vault, renaming asks first.
+  await renameNote(page, `${RUN} daily.md`, `${RUN} weekly`);
   const rename = page.getByRole("dialog", { name: "Rename" });
   await expect(
     rename.getByText(/^This note is in an Obsidian vault\./),
@@ -430,10 +436,7 @@ test("creates, renames, moves and trashes a note", async ({ page, run }) => {
   await expect(noteName(page, `${RUN} idea.md`)).toBeVisible();
   const id = new URL(page.url()).searchParams.get("id") ?? "";
 
-  await noteAction(page, "Rename");
-  const rename = page.getByRole("dialog", { name: "Rename" });
-  await rename.getByRole("textbox", { name: "Name" }).fill(`${RUN} plan.md`);
-  await rename.getByRole("button", { name: "Rename" }).click();
+  await renameNote(page, `${RUN} idea.md`, `${RUN} plan`);
   await expect(noteName(page, `${RUN} plan.md`)).toBeVisible();
 
   await noteAction(page, "Move");

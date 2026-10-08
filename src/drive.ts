@@ -223,9 +223,18 @@ interface Change {
   checked?: true;
 }
 
+/** The ending of a Markdown file's name. */
+const MARKDOWN_ENDING = /\.(md|markdown)$/i;
+
 /** Whether a name marks a Markdown file: MIME types are unreliable. */
 export function isMarkdown(name: string): boolean {
-  return /\.(md|markdown)$/i.test(name);
+  return MARKDOWN_ENDING.test(name);
+}
+
+/** A name apart from its Markdown ending, which is empty if it has none. */
+export function splitEnding(name: string): [string, string] {
+  const at = MARKDOWN_ENDING.exec(name)?.index ?? name.length;
+  return [name.slice(0, at), name.slice(at)];
 }
 
 /** Whether Drive lets the user move the file, within its drive or out. */

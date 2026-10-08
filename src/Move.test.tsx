@@ -94,7 +94,7 @@ describe("Move", () => {
     openPlan(file);
 
     const menu = await moreActions();
-    expect(menu.getByRole("button", { name: "Rename" })).toBeVisible();
+    expect(menu.getByRole("button", { name: "Move to trash" })).toBeVisible();
     expect(menu.queryByRole("button", { name: "Move" })).toBeNull();
   });
 

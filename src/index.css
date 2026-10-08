@@ -258,6 +258,83 @@ button.new-note > .icon {
   margin-block: calc((28px - var(--control-height)) / 2);
 }
 
+/* The name reads as text, outlined under the mouse, and renames the note
+   when clicked, in a field as wide as what it holds; the Markdown ending
+   stays out of it (docs/DESIGN.md, Note's name). Their rings sit inside,
+   where the name's row does not cut them. */
+.note-title .ending {
+  color: var(--on-surface-variant);
+}
+
+button.note-name,
+.name-field > input {
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0 var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+
+button.note-name {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+
+@media (hover: hover) {
+  button.note-name:hover {
+    border-color: var(--outline-variant);
+    background-image: none;
+  }
+}
+
+button.note-name:is(:focus-visible, :active) {
+  background-image: none;
+  outline-offset: -2px;
+}
+
+/* A long name scrolls in its field, which leaves the ending in view. */
+.note-title .title:has(> .name-field) {
+  display: flex;
+}
+
+.name-field {
+  display: grid;
+  grid-template-columns: minmax(0, auto);
+  min-width: 0;
+}
+
+.name-field::after,
+.name-field > input {
+  grid-area: 1 / 1;
+}
+
+.name-field::after {
+  overflow: hidden;
+  padding: 0 var(--space-1);
+  border: 1px solid transparent;
+  visibility: hidden;
+  content: attr(data-value) " ";
+  white-space: pre;
+}
+
+.name-field > input {
+  width: 100%;
+}
+
+.name-field > input:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
 .note-title > .hint {
   font-size: 12px;
   line-height: 16px;
