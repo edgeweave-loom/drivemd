@@ -1,8 +1,15 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { markTab } from "./drive-tab.ts";
 import { Navigator } from "./Navigator.tsx";
-import { getPlace, guardLeaving } from "./router.ts";
+import { markTab, openedFromDrive } from "./drive-tab.ts";
+import { getPlace, guardLeaving, navigate } from "./router.ts";
 import {
   driveItem,
   folderItem,
@@ -115,5 +122,29 @@ describe("A tab opened from Drive", () => {
       expect(screen.queryByRole("button", { name })).toBeNull();
     }
     expect(screen.queryByRole("heading", { name: "The plan" })).toBeNull();
+  });
+
+  it("ends the mode once the tab shows another page than a note", async () => {
+    holdScreen("wide");
+    const { bar } = openFromDrive();
+    await bar.findByText(/^Last modified/);
+    act(() => {
+      navigate("/edit?id=notes");
+    });
+    expect(openedFromDrive()).toBe(true);
+
+    act(() => {
+      navigate("/folder/work");
+    });
+    expect(openedFromDrive()).toBe(false);
+    act(() => {
+      history.back();
+    });
+    await waitFor(() => {
+      expect(getPlace().href).toBe("/edit?id=notes");
+    });
+    expect(
+      await screen.findByRole("link", { name: "DriveMD" }),
+    ).toHaveAttribute("href", "/");
   });
 });

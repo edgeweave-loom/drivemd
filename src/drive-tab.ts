@@ -9,7 +9,19 @@ let marked = false;
  * Forward: any other address of the app opened in the tab ends the mode.
  */
 export function markTab(fromDrive: boolean): void {
-  marked = fromDrive || (revisited() && read() !== null);
+  keep(fromDrive || (revisited() && read() !== null));
+}
+
+/**
+ * Ends the mode as the tab shows another page than a note, as a link to a
+ * folder leads to, or Back to a page the tab showed before Drive opened it.
+ */
+export function leaveNote(): void {
+  if (marked) keep(false);
+}
+
+function keep(mark: boolean): void {
+  marked = mark;
   try {
     if (marked) sessionStorage.setItem(MARK, "open");
     else sessionStorage.removeItem(MARK);

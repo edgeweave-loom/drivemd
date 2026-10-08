@@ -1,5 +1,6 @@
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -9,7 +10,7 @@ import {
 import { flushSync } from "react-dom";
 import { Account } from "./Account.tsx";
 import { DriveContext, useDrive } from "./drive-context.ts";
-import { openedFromDrive } from "./drive-tab.ts";
+import { leaveNote, openedFromDrive } from "./drive-tab.ts";
 import type { FileRef } from "./drive.ts";
 import { linkedPage } from "./drive-web.ts";
 import { FileView } from "./FilePage.tsx";
@@ -327,6 +328,10 @@ function Up({ up }: { up: Crumb[] | undefined }) {
 
 function Page() {
   const { route, trail } = usePlace();
+  // A tab opened from Drive holds a note: any other page ends the mode.
+  useEffect(() => {
+    if (route.name !== "file") leaveNote();
+  }, [route.name]);
   switch (route.name) {
     case "home":
       return <Home />;
