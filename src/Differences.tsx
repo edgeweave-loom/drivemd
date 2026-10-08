@@ -11,6 +11,7 @@ const FRAME = EditorView.theme({
     borderRadius: "0.5rem",
     background: "var(--surface)",
   },
+  ".cm-scroller": { lineHeight: "1.5" },
 });
 
 /**

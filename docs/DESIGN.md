@@ -68,6 +68,8 @@ Everything is set in Google Sans Flex (`--font-sans`), and code in [Google Sans 
 | note-code       | 14 / 22           | 400    | Code in the rendered note, in Google Sans Code                                         |
 | editor          | 16 / 26           | 400    | The Markdown source, code in Google Sans Code: never smaller, or Safari zooms on focus |
 
+A note's sizes are set in rem, the table's pixels at the browser's default size, so that a note follows a reader's own text size, as the editor does. Its headings carry no rule under them, as in Docs, and `######` is in `on-surface-variant`. Its tables read as file tables do, a rule in `outline-variant` under each row and none between the columns, their head at body-medium 500 in `on-surface-variant`; a task's box, 18 px, takes `primary`; a thematic break is a 1 px `outline-variant` rule; inline code takes `--radius-xs`.
+
 ## Space, shape and depth
 
 - Everything sits on a 4 px grid, `--space-1` (4 px) to `--space-7` (48 px). Page gutters are 16 px on a phone and 24 px wider.

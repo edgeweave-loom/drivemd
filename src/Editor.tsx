@@ -93,6 +93,8 @@ const LIGHT_YAML = HighlightStyle.define(
  */
 const ON_SHEET = EditorView.theme({
   "&.cm-focused": { outline: "none" },
+  // 26 px lines at 16 px, as the note's own.
+  ".cm-scroller": { lineHeight: "1.625" },
   ".cm-line": { padding: "0 var(--text-inset)" },
   ".cm-activeLine": { backgroundColor: "transparent" },
   "&.cm-focused .cm-activeLine": {
