@@ -93,7 +93,7 @@ test("holds the note alone, through a reload, until another address opens", asyn
 
 test("stays on the note it moves to the trash, which then says so", async ({
   page,
-}) => {
+}, info) => {
   await openFromDrive(page);
 
   await noteAction(page, "Move to trash");
@@ -108,7 +108,19 @@ test("stays on the note it moves to the trash, which then says so", async ({
     ),
   ).toBeVisible();
   await expect(page).toHaveURL(/\/edit\?id=plan$/);
+  // Nothing more for the note: on a phone, More actions holds the account.
+  const more = page
+    .getByRole("banner")
+    .getByRole("button", { name: "More actions" });
+  if (info.project.metadata.layout !== "phone") {
+    await expect(more).toHaveCount(0);
+    return;
+  }
+  await more.click();
   await expect(
-    page.getByRole("banner").getByRole("button", { name: "More actions" }),
+    page
+      .getByRole("dialog", { name: "More actions" })
+      .getByRole("button", { name: "Move to trash" }),
   ).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "About DriveMD" })).toBeVisible();
 });
