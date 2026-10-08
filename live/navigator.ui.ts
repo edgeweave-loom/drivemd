@@ -272,15 +272,20 @@ function folderLink(page: Page, name: string) {
         .getByRole("link", { name, exact: true });
 }
 
-/** Picks one of a note's actions from its More actions menu. */
+/**
+ * Picks one of a note's actions: Move by the note's name, but on a phone,
+ * and the others from More actions.
+ */
 async function noteAction(
   page: Page,
   name: "Rename" | "Move" | "Move to trash",
 ) {
-  await page
-    .getByRole("banner")
-    .getByRole("button", { name: "More actions" })
-    .click();
+  const bar = page.getByRole("banner");
+  if (name === "Move" && !phone()) {
+    await bar.getByRole("button", { name, exact: true }).click();
+    return;
+  }
+  await bar.getByRole("button", { name: "More actions" }).click();
   await page
     .getByRole("dialog", { name: "More actions" })
     .getByRole("button", { name, exact: true })

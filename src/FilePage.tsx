@@ -6,8 +6,13 @@ import {
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { Dialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
-import type { FileMetadata, FileRef } from "./drive.ts";
-import { ActionDialog, MoreActions, type Action } from "./FileActions.tsx";
+import { mayMove, type FileMetadata, type FileRef } from "./drive.ts";
+import {
+  ActionDialog,
+  MoreActions,
+  MoveButton,
+  type Action,
+} from "./FileActions.tsx";
 import { FolderPane } from "./FolderPane.tsx";
 import { InSlot } from "./InSlot.tsx";
 import { Link } from "./Link.tsx";
@@ -155,6 +160,10 @@ export function FilePage({
   const path = usePath(file, trail);
   const opens = details.data !== undefined && opensHere(details.data);
   const [action, setAction] = useState<Action>();
+  const phone = useLayout() === "phone";
+  // Beside the name, or in More actions on a phone, which has no room there.
+  const movable = opens && mayMove(details.data);
+  const moveBeside = movable && !phone;
 
   useEffect(() => {
     if (!opens) return;
@@ -169,16 +178,29 @@ export function FilePage({
     <div className="main">
       {/* In the app bar, which names the note and when it last changed. */}
       <InSlot name="title">
-        <h1 className="title">
-          {path?.at(-1)?.name ??
-            details.data?.name ??
-            (details.isError ? "File" : "…")}
-        </h1>
+        <div className="name">
+          <h1 className="title">
+            {path?.at(-1)?.name ??
+              details.data?.name ??
+              (details.isError ? "File" : "…")}
+          </h1>
+          {moveBeside && (
+            <MoveButton
+              onPick={() => {
+                setAction("move");
+              }}
+            />
+          )}
+        </div>
         {opens && <Changed file={details.data} />}
       </InSlot>
       {opens && (
         <InSlot name="more">
-          <MoreActions file={details.data} onPick={setAction} />
+          <MoreActions
+            file={details.data}
+            moves={movable && !moveBeside}
+            onPick={setAction}
+          />
         </InSlot>
       )}
       {opens && action && (

@@ -364,16 +364,34 @@ describe("Navigator's note bar", () => {
     expect(bar.queryByRole("button", { name: /^Account, / })).toBeNull();
   });
 
-  it("gathers Rename, Move and Move to trash in More actions", async () => {
+  it("keeps a phone's Move in More actions, beside Rename and Move to trash", async () => {
     const bar = openPlan();
 
-    fireEvent.click(await bar.findByRole("button", { name: "More actions" }));
+    const more = await bar.findByRole("button", { name: "More actions" });
+    expect(bar.queryByRole("button", { name: "Move" })).toBeNull();
+    fireEvent.click(more);
     const menu = screen.getByRole("dialog", { name: "More actions" });
     expect(
       within(menu)
         .getAllByRole("button")
         .map((button) => button.textContent),
     ).toEqual(["Rename", "Move", "Move to trash"]);
+  });
+
+  it("puts Move beside the note's name on a wider screen", async () => {
+    holdScreen("wide");
+    const bar = openPlan();
+
+    const name = await bar.findByRole("heading", { level: 1, name: "plan.md" });
+    expect(name.parentElement).toContainElement(
+      bar.getByRole("button", { name: "Move" }),
+    );
+    fireEvent.click(bar.getByRole("button", { name: "More actions" }));
+    expect(
+      within(screen.getByRole("dialog", { name: "More actions" }))
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Rename", "Move to trash"]);
   });
 
   it("closes More actions as an action's dialog opens, outside the bar", async () => {
@@ -391,6 +409,17 @@ describe("Navigator's note bar", () => {
     fireEvent.click(within(rename).getByRole("button", { name: "Cancel" }));
     expect(rename).not.toBeInTheDocument();
     expect(bar.getByRole("button", { name: "More actions" })).toHaveFocus();
+  });
+
+  it("gives the focus back to Move once its picker goes", async () => {
+    holdScreen("wide");
+    const bar = openPlan();
+
+    fireEvent.click(await bar.findByRole("button", { name: "Move" }));
+    const picker = screen.getByRole("dialog", { name: "Move plan.md" });
+    expect(screen.getByRole("banner")).not.toContainElement(picker);
+    fireEvent.click(within(picker).getByRole("button", { name: "Cancel" }));
+    expect(bar.getByRole("button", { name: "Move" })).toHaveFocus();
   });
 
   it("leads a phone Home from a note Drive cannot place", async () => {

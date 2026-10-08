@@ -45,25 +45,38 @@ test("names the note in the app bar, with what it lets the user do", async ({
   }
 });
 
-test("gathers the note's actions in More actions", async ({
+test("offers Move by the note's name and the rest in More actions", async ({
   page,
   browserName,
-}) => {
+}, info) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
   const bar = page.getByRole("banner");
   const name = bar.getByRole("heading", { level: 1, name: "plan.md" });
   await expect(name).toBeVisible();
+  const phone = info.project.metadata.layout === "phone";
+
+  // Beside the name, but on a phone, whose bar has no room for it.
+  const move = bar.getByRole("button", { name: "Move", exact: true });
+  await expect(move).toBeVisible({ visible: !phone });
+  await expect(move.locator('svg[data-icon="drive_file_move"]')).toHaveCount(
+    phone ? 0 : 1,
+  );
+  if (!phone) {
+    const [named, moved] = await Promise.all([
+      name.boundingBox(),
+      move.boundingBox(),
+    ]);
+    expect(moved?.x).toBeGreaterThan((named?.x ?? 0) + (named?.width ?? 0));
+  }
 
   const more = bar.getByRole("button", { name: "More actions" });
   await expect(more.locator('svg[data-icon="more_vert"]')).toHaveCount(1);
   await more.click();
   const menu = page.getByRole("dialog", { name: "More actions" });
-  await expect(menu.getByRole("button")).toHaveText([
-    "Rename",
-    "Move",
-    "Move to trash",
-  ]);
+  await expect(menu.getByRole("button")).toHaveText(
+    phone ? ["Rename", "Move", "Move to trash"] : ["Rename", "Move to trash"],
+  );
   const box = await menu.boundingBox();
   expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(
     page.viewportSize()?.width ?? 0,

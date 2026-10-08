@@ -5,12 +5,7 @@ import { ConfirmDialog, NameDialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
 import { Icon } from "./Icon.tsx";
 import { MoveDialog } from "./Move.tsx";
-import {
-  isMarkdown,
-  mayMove,
-  type FileMetadata,
-  type FileRef,
-} from "./drive.ts";
+import { isMarkdown, type FileMetadata, type FileRef } from "./drive.ts";
 import { refreshAfterChange } from "./queries.ts";
 import { hrefOf, navigate, type Crumb } from "./router.ts";
 import { useVaultCheck, vaultNote } from "./vaults.ts";
@@ -20,22 +15,44 @@ const HOME = hrefOf({ name: "home" });
 /** What the user may pick to do with a note. */
 export type Action = "rename" | "move" | "trash";
 
+/** Move, as an icon beside the note's name. */
+export function MoveButton({ onPick }: { onPick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="icon-button"
+      aria-label="Move"
+      title="Move"
+      onClick={(event) => {
+        // The picker gives the focus back to what had it, which WebKit does
+        // not give a button it presses.
+        event.currentTarget.focus();
+        onPick();
+      }}
+    >
+      <Icon name="drive_file_move" />
+    </button>
+  );
+}
+
 /**
- * What the user may do with the file, as far as Drive allows, in a menu that
- * closes as an action's dialog opens.
+ * The rest of what the user may do with the file, as far as Drive allows, in
+ * a menu that closes as an action's dialog opens; Move among them where the
+ * page says so.
  */
 export function MoreActions({
   file,
+  moves,
   onPick,
 }: {
   file: FileMetadata;
+  moves: boolean;
   onPick: (action: Action) => void;
 }) {
   const id = useId();
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const { canRename, canTrash } = file.capabilities;
-  const moves = mayMove(file);
   if (!canRename && !moves && !canTrash) return null;
   const item = (action: Action, label: string) => (
     <button

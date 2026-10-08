@@ -634,15 +634,20 @@ export async function goHome(page: Page): Promise<void> {
   await page.getByRole("link", { name: "Back to Home" }).click();
 }
 
-/** Picks one of a note's actions from its More actions menu. */
+/**
+ * Picks one of a note's actions: Move by the note's name, but on a phone,
+ * and the others from More actions.
+ */
 export async function noteAction(
   page: Page,
   name: "Rename" | "Move" | "Move to trash",
 ): Promise<void> {
-  await page
-    .getByRole("banner")
-    .getByRole("button", { name: "More actions" })
-    .click();
+  const bar = page.getByRole("banner");
+  if (name === "Move" && test.info().project.metadata.layout !== "phone") {
+    await bar.getByRole("button", { name, exact: true }).click();
+    return;
+  }
+  await bar.getByRole("button", { name: "More actions" }).click();
   await page
     .getByRole("dialog", { name: "More actions" })
     .getByRole("button", { name, exact: true })
