@@ -53,14 +53,10 @@ const measureOnFonts = ViewPlugin.define((view) => {
 
 const COLORS = EditorView.theme({
   "&": {
-    border: "1px solid var(--outline-variant)",
-    borderRadius: "0.5rem",
-    background: "var(--surface)",
     color: "var(--on-surface)",
     // Safari zooms in on a field whose text is smaller.
     fontSize: "max(16px, 1rem)",
   },
-  "&.cm-focused": { outline: "2px solid var(--primary)" },
   ".cm-scroller": { fontFamily: "inherit", lineHeight: "1.5" },
   ".cm-content": { caretColor: "var(--on-surface)" },
   ".cm-cursor": { borderLeftColor: "var(--on-surface)" },

@@ -4,6 +4,15 @@ import { EditorView } from "@codemirror/view";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { mountIn, THEME } from "./codemirror.ts";
 
+// Framed, on the page's surface.
+const FRAME = EditorView.theme({
+  "&": {
+    border: "1px solid var(--outline-variant)",
+    borderRadius: "0.5rem",
+    background: "var(--surface)",
+  },
+});
+
 /**
  * The user's version against Google Drive's, in one view that reads the
  * same on a phone: what the user's version removes shows struck through in
@@ -36,6 +45,7 @@ export function Differences({
             collapseUnchanged: {},
           }),
           THEME,
+          FRAME,
           EditorView.contentAttributes.of({
             "aria-label": "Your version against Google Drive's",
           }),

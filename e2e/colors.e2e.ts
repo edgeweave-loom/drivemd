@@ -13,7 +13,7 @@ for (const scheme of ["light", "dark"] as const) {
   test(`takes the design's colors in the ${scheme} theme`, async ({
     page,
     request,
-  }) => {
+  }, info) => {
     await page.emulateMedia({ colorScheme: scheme });
     await signIn(page);
     await page.goto("/edit?id=plan");
@@ -24,13 +24,20 @@ for (const scheme of ["light", "dark"] as const) {
 
     const surface = await token(page, "--surface");
     const root = page.locator(":root");
-    await expect(root).toHaveCSS("background-color", surface);
+    // A phone runs on the surface; a wider screen raises the note's sheet
+    // over the app's background.
+    await expect(root).toHaveCSS(
+      "background-color",
+      info.project.metadata.layout === "phone"
+        ? surface
+        : await token(page, "--app-background"),
+    );
     await expect(root).toHaveCSS("color", await token(page, "--on-surface"));
     await expect(note.getByRole("link", { name: "the docs" })).toHaveCSS(
       "color",
       await token(page, "--primary"),
     );
-    // The browser's bars, and Android's launch screen, take the page's
+    // The browser's bars, and Android's launch screen, take a phone's
     // background.
     const bar = await page
       .locator(
