@@ -91,6 +91,23 @@ describe("editing a note's source", () => {
     });
   });
 
+  it("names the source and the preview on a wide screen, keeping the note shown", async () => {
+    holdScreen("wide");
+    open();
+    await screen.findByRole("heading", { name: "Tea" });
+    const shown = document.querySelector(".markdown");
+    await pickMode("Editing");
+    await editor();
+
+    // As regions, which leave the note's own headings as they are.
+    const [source, preview] = screen.getAllByRole("region");
+    expect(source).toHaveAccessibleName("Markdown");
+    expect(preview).toHaveAccessibleName("Preview");
+    expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
+    // As it was, its folded parts too, rather than drawn anew.
+    expect(document.querySelector(".markdown")).toBe(shown);
+  });
+
   it("brings a task tapped in the preview into the source", async () => {
     holdScreen("wide");
     open();
@@ -109,6 +126,8 @@ describe("editing a note's source", () => {
     type(await editor(), "\r\nGreen.");
 
     expect(screen.queryByRole("heading", { name: "Tea" })).toBeNull();
+    // The switch names what shows, which needs no label of its own.
+    expect(screen.queryByRole("region", { name: "Markdown" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
     expect(screen.getByText("Green.")).toBeVisible();
     expect(editorShown()).toBe(false);

@@ -15,6 +15,7 @@ import {
   useCallback,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import { useDrive } from "./drive-context.ts";
 import { inDrive } from "./drive-web.ts";
@@ -28,6 +29,7 @@ import {
   type FileRef,
 } from "./drive.ts";
 import { Icon } from "./Icon.tsx";
+import type { IconName } from "./icons.ts";
 import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
 import { useLayout } from "./layout.ts";
@@ -849,38 +851,47 @@ function NoteView({
           {describeError(save.error)}
         </p>
       )}
-      <div className={source && rendered ? "editing" : undefined}>
+      {/* On a sheet, as Docs shows a page on a wide screen, or while
+          editing there, the source and the preview on two, side by side.
+          The note shown keeps its place as editing starts and ends. */}
+      <div className={source && rendered ? "sheets editing" : "sheets"}>
         {source && (
-          <Suspense fallback={<p className="hint">Loading the editor…</p>}>
-            <Editor
-              key={session}
-              ref={editor}
-              initial={text}
-              lineBreak={note.lineBreak}
-              onChange={onEdit}
-              onFollow={follow}
-            />
-          </Suspense>
+          <Sheet label={rendered && "Markdown"} icon="code">
+            <Suspense fallback={<p className="hint">Loading the editor…</p>}>
+              <Editor
+                key={session}
+                ref={editor}
+                initial={text}
+                lineBreak={note.lineBreak}
+                onChange={onEdit}
+                onFollow={follow}
+              />
+            </Suspense>
+          </Sheet>
         )}
-        {rendered && vault.state === "checking" && (
-          // Rendered as Markdown first, a note of a vault would change once
-          // the check answers.
-          <p className="hint">Loading…</p>
-        )}
-        {rendered && vault.state === "unknown" && (
-          <p className="hint">
-            DriveMD could not check whether this note is in an Obsidian vault,
-            so it shows as Markdown, without Obsidian's syntax.
-          </p>
-        )}
-        {shown && (
-          <Rendered
-            text={previewed}
-            folder={folderOf(file)}
-            vault={vault.state === "inside" ? vault.vault : undefined}
-            note={file}
-            onEdit={onTask}
-          />
+        {rendered && (
+          <Sheet label={source && "Preview"} icon="visibility">
+            {vault.state === "checking" && (
+              // Rendered as Markdown first, a note of a vault would change
+              // once the check answers.
+              <p className="hint">Loading…</p>
+            )}
+            {vault.state === "unknown" && (
+              <p className="hint">
+                DriveMD could not check whether this note is in an Obsidian
+                vault, so it shows as Markdown, without Obsidian's syntax.
+              </p>
+            )}
+            {shown && (
+              <Rendered
+                text={previewed}
+                folder={folderOf(file)}
+                vault={vault.state === "inside" ? vault.vault : undefined}
+                note={file}
+                onEdit={onTask}
+              />
+            )}
+          </Sheet>
         )}
       </div>
       {floats && (
@@ -900,6 +911,33 @@ function NoteView({
         </button>
       )}
     </>
+  );
+}
+
+/**
+ * A sheet of the note, named where another shows beside it: a region of the
+ * page, which leaves the note's own headings as they are.
+ */
+function Sheet({
+  label,
+  icon,
+  children,
+}: {
+  label: string | false;
+  icon: IconName;
+  children: ReactNode;
+}) {
+  const id = useId();
+  return (
+    <section className="sheet" aria-labelledby={label ? id : undefined}>
+      {label && (
+        <p className="label" id={id}>
+          <Icon name={icon} />
+          {label}
+        </p>
+      )}
+      {children}
+    </section>
   );
 }
 

@@ -808,14 +808,19 @@ button:is(.entry, .link):disabled {
   align-content: start;
 }
 
+/* The folder's list beside a note, as wide as the navigation drawer. */
 @media (width >= 1024px) {
-  .page:has(.pane) {
-    max-width: 72rem;
+  .page:has(> .split > .pane) {
+    padding-left: 0;
   }
 
   .split:has(.pane) {
-    grid-template-columns: minmax(14rem, 20rem) minmax(0, 1fr);
-    gap: 1.5rem;
+    grid-template-columns: 256px minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .pane {
+    padding: 0 var(--space-3);
   }
 }
 
@@ -1026,12 +1031,15 @@ dialog.drawer {
   background: var(--sheet);
 }
 
+/* How far in the page's text sits, which a note's source, running from
+   edge to edge, keeps too. */
 .page {
+  --text-inset: var(--space-4);
   display: grid;
   gap: 1rem;
   max-width: 48rem;
   margin: 0 auto;
-  padding: 1rem;
+  padding: var(--text-inset);
 }
 
 .page h2,
@@ -1668,6 +1676,10 @@ dialog.drawer {
   min-height: 3rem;
 }
 
+.note-bar:empty {
+  display: none;
+}
+
 .note-bar {
   display: flex;
   flex-wrap: wrap;
@@ -1683,8 +1695,96 @@ dialog.drawer {
 .editing {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 1.5rem;
-  align-items: start;
+  gap: var(--space-4);
+}
+
+/* The source runs from edge to edge of what holds it, a phone's page or
+   its sheet, its lines as far in as the text beside it. */
+.editor {
+  margin-inline: calc(-1 * var(--text-inset));
+}
+
+.sheet > .label {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0 0 var(--space-4);
+  color: var(--on-surface-variant);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.sheet > .label > .icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* On a wide screen, a note shows as Docs shows a page: on a sheet raised
+   over the app's background, and while editing, the source and the
+   preview on two, sharing the width (docs/DESIGN.md). */
+@media (width >= 768px) and (not ((pointer: coarse) and (height < 500px))) {
+  :root:has(.bar.note),
+  .bar.note {
+    background: var(--app-background);
+  }
+
+  .bar.note {
+    border-bottom: none;
+  }
+
+  /* The page fills the window, down to its bottom, which the sheet reaches
+     whatever sits above it. */
+  .page:has(> .split) {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100dvh - var(--app-bar-height));
+    max-width: none;
+    padding: var(--space-3) var(--space-4) 0;
+  }
+
+  .page > .split {
+    flex: 1;
+  }
+
+  .split > .main {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* What heads the note lines up with its sheet, or with both sheets while
+     editing. */
+  .split > .main:not(:has(> .editing)) {
+    width: 100%;
+    max-width: 816px;
+    margin-inline: auto;
+  }
+
+  .main > .sheets {
+    display: grid;
+    flex: 1;
+  }
+
+  .sheet {
+    padding: 64px 72px;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    background: var(--sheet);
+    box-shadow: var(--elevation-1);
+  }
+
+  .editing {
+    --text-inset: var(--space-5);
+  }
+
+  .editing > .sheet {
+    padding: var(--space-5) var(--text-inset);
+  }
+}
+
+@media (width >= 1024px) {
+  .editing {
+    --text-inset: var(--space-6);
+  }
 }
 
 .conflict {

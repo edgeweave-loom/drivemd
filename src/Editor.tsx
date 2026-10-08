@@ -22,6 +22,7 @@ import {
 import {
   Decoration,
   EditorView,
+  highlightActiveLine,
   keymap,
   ViewPlugin,
   type DecorationSet,
@@ -82,6 +83,23 @@ const LIGHT_YAML = HighlightStyle.define(
   ],
   { scope: yamlLanguage },
 );
+
+/**
+ * The source on its sheet, or on a phone's page, without a frame of its
+ * own: its lines run from edge to edge, their text as far in as the text
+ * beside it, and the cursor's line shows where the focus is, as in Docs,
+ * marked at its start in the focus ring's color, which stands out from
+ * any surface where the line's own color does not.
+ */
+const ON_SHEET = EditorView.theme({
+  "&.cm-focused": { outline: "none" },
+  ".cm-line": { padding: "0 var(--text-inset)" },
+  ".cm-activeLine": { backgroundColor: "transparent" },
+  "&.cm-focused .cm-activeLine": {
+    backgroundColor: "var(--surface-container-low)",
+    boxShadow: "inset 2px 0 0 var(--primary)",
+  },
+});
 
 const CODE_LINE = Decoration.line({ class: "cm-code-line" });
 
@@ -195,6 +213,8 @@ function extensions(
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     codeBlocks,
     THEME,
+    ON_SHEET,
+    highlightActiveLine(),
     // The browser's own find misses lines the editor has not drawn.
     search({ top: true }),
     highlightSelectionMatches(),
