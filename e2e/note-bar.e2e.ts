@@ -22,7 +22,7 @@ test("names the note in the app bar, with what it lets the user do", async ({
 
   await page.locator(".markdown").getByRole("checkbox").first().check();
   await expect(bar.getByRole("button", { name: "Save" })).toBeVisible();
-  await expect(bar.getByRole("button", { name: "Edit" })).toBeVisible();
+  const edit = page.getByRole("button", { name: "Edit" });
   const unsaved = bar.getByText("Unsaved changes");
 
   if (info.project.metadata.layout === "phone") {
@@ -32,6 +32,14 @@ test("names the note in the app bar, with what it lets the user do", async ({
     await expect(bar.getByRole("link", { name: "Back to Work" })).toBeVisible();
     await expect(changed).toBeHidden();
     await expect(account).toHaveCount(0);
+    // Edit floats over the note, at the bottom right.
+    await expect(bar.getByRole("button", { name: "Edit" })).toHaveCount(0);
+    await expect(edit).toBeVisible();
+    const box = await edit.boundingBox();
+    const screen = page.viewportSize();
+    if (!box || !screen) throw new Error("Edit has no place on the screen");
+    expect(box.x + box.width).toBeGreaterThan(screen.width - 48);
+    expect(box.y + box.height).toBeGreaterThan(screen.height - 48);
     // Save says by showing that changes are unsaved, leaving the name room.
     await expect(unsaved).toBeHidden();
     const whole = await bar
@@ -40,6 +48,7 @@ test("names the note in the app bar, with what it lets the user do", async ({
     expect(whole).toBe(true);
   } else {
     await expect(bar.getByRole("link", { name: "DriveMD" })).toBeVisible();
+    await expect(bar.getByRole("button", { name: "Edit" })).toBeVisible();
     await expect(changed).toBeVisible();
     await expect(account).toBeVisible();
     await expect(unsaved).toBeVisible();
