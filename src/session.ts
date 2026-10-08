@@ -1,9 +1,11 @@
+import { onlineManager } from "@tanstack/react-query";
 import * as auth from "./auth.ts";
 import { AuthError, type AuthErrorReason } from "./auth.ts";
 import {
   createDrive,
   DriveError,
   getAccountEmail,
+  UNREACHABLE,
   type Drive,
 } from "./drive.ts";
 
@@ -36,11 +38,15 @@ export interface Session {
   continueSession: () => void;
   signOut: () => void;
   retry: () => void;
-  /** Drive, as the signed-in user: its calls wait for Continue when needed. */
+  /**
+   * Drive, as the signed-in user: its calls wait for Continue when needed,
+   * but fail at once while offline, as an unreachable Drive does.
+   */
   drive: Drive;
   /**
    * Renews an expired token by opening Google's popup, so call it first in a
-   * tap or click handler that leads to Drive calls.
+   * tap or click handler that leads to Drive calls. Offline, it does nothing,
+   * as the popup could not load.
    */
   renew: () => void;
 }
@@ -49,7 +55,7 @@ interface Waiter {
   /** The account the call was made for. */
   account: string;
   resolve: (token: string) => void;
-  reject: (error: AuthError) => void;
+  reject: (error: AuthError | DriveError) => void;
 }
 
 const AUTH_MESSAGES: Record<AuthErrorReason, string | undefined> = {
@@ -105,9 +111,9 @@ export function createSession(driveAccount?: string): Session {
     waiters.clear();
   }
 
-  function failWaiters(reason: string): void {
+  function failWaiters(error: AuthError | DriveError): void {
     settleWaiters((waiter) => {
-      waiter.reject(new AuthError("superseded", reason));
+      waiter.reject(error);
     });
   }
 
@@ -124,6 +130,10 @@ export function createSession(driveAccount?: string): Session {
     const checked = screen.name === "home" && !state.waiting;
     const current = checked ? auth.getAccessToken() : undefined;
     if (current !== undefined) return Promise.resolve(current);
+    // Offline, no tap can bring one: the call fails as Drive's would.
+    if (!onlineManager.isOnline()) {
+      return Promise.reject(new DriveError(0, UNREACHABLE));
+    }
     return new Promise((resolve, reject) => {
       waiters.add({ account: screen.email, resolve, reject });
       // Without a renewal under way, only a tap on Continue can bring one.
@@ -207,7 +217,9 @@ export function createSession(driveAccount?: string): Session {
   function signedOutElsewhere(): void {
     epoch += 1;
     auth.clearToken();
-    failWaiters("The user signed out in another tab");
+    failWaiters(
+      new AuthError("superseded", "The user signed out in another tab"),
+    );
     update({
       screen: signedOutScreen(),
       waiting: false,
@@ -247,6 +259,12 @@ export function createSession(driveAccount?: string): Session {
   auth.onSignOutElsewhere(() => {
     if (state.screen.name !== "sign-in" || state.waiting) signedOutElsewhere();
   });
+  // Offline, no token can come: Drive's calls waiting for one fail as Drive's
+  // would. Listening for as long as the tab lives also keeps the connection
+  // known while no page asks Drive anything, as once signed out.
+  onlineManager.subscribe((online) => {
+    if (!online) failWaiters(new DriveError(0, UNREACHABLE));
+  });
 
   return {
     subscribe(listener) {
@@ -276,7 +294,7 @@ export function createSession(driveAccount?: string): Session {
       epoch += 1;
       requested = undefined;
       auth.signOut();
-      failWaiters("The user signed out");
+      failWaiters(new AuthError("superseded", "The user signed out"));
       update({
         screen: { name: "sign-in" },
         waiting: false,
@@ -293,6 +311,8 @@ export function createSession(driveAccount?: string): Session {
     renew() {
       const { screen } = state;
       if (screen.name !== "home" || auth.getAccessToken() !== undefined) return;
+      // Offline, Google's window could not load.
+      if (!onlineManager.isOnline()) return;
       start(auth.requestAccessToken(screen.email), screen.email);
     },
   };

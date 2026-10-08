@@ -30,7 +30,8 @@ const ITEM_FIELDS =
 // before its content is read, and whether it is in the trash.
 const FILE_FIELDS = `${ITEM_FIELDS},md5Checksum,headRevisionId,size,trashed`;
 
-const UNREACHABLE = "Google Drive could not be reached";
+/** What a Drive call says when it cannot reach Drive. */
+export const UNREACHABLE = "Google Drive could not be reached";
 
 /** The alias of My Drive's top folder in Drive's API. */
 export const MY_DRIVE = "root";

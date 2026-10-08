@@ -1,4 +1,4 @@
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { vi } from "vitest";
@@ -11,8 +11,8 @@ export const ACCOUNT = "ada@example.com";
 
 /**
  * Renders a page with a made-up Drive, signed in unless the tab waits for
- * Continue. Failed calls are not tried again, so that tests need not wait;
- * queries.test.ts covers when the app does.
+ * Continue. Failed reads are not tried again, so that tests need not wait;
+ * queries.test.ts covers when the app does. Writes run as in the app.
  */
 export function renderWithDrive(
   ui: ReactNode,
@@ -20,7 +20,10 @@ export function renderWithDrive(
   { signedIn = true } = {},
 ) {
   const client = createQueryClient();
-  client.setDefaultOptions({ queries: { retry: false } });
+  client.setDefaultOptions({
+    ...client.getDefaultOptions(),
+    queries: { retry: false },
+  });
   const renew = vi.fn();
   const within = (page: ReactNode) => (
     <QueryClientProvider client={client}>
@@ -39,6 +42,17 @@ export function renderWithDrive(
       rerender(within(page));
     },
   };
+}
+
+/** Keeps Drive's answers fresh for as long as the app does. */
+export function keepFresh(client: QueryClient): void {
+  client.setDefaultOptions({
+    ...client.getDefaultOptions(),
+    queries: {
+      ...createQueryClient().getDefaultOptions().queries,
+      retry: false,
+    },
+  });
 }
 
 /** Opens a URL of the app as a fresh page load would. */

@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
 import { onlineManager } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteDraft, deleteDrafts, listDrafts, writeDraft } from "./drafts.ts";
 import { DriveError, type FileMetadata } from "./drive.ts";
 import { Home } from "./Home.tsx";
@@ -12,7 +12,7 @@ import {
   metadataOf,
 } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
-import { ACCOUNT, renderWithDrive } from "./test/render.tsx";
+import { ACCOUNT, keepFresh, renderWithDrive } from "./test/render.tsx";
 
 const PLAN = metadata(driveItem("plan.md", { id: "plan" }));
 const SHARED = metadata(
@@ -48,10 +48,6 @@ function home(...files: FileMetadata[]) {
 beforeEach(async () => {
   await deleteDrafts(ACCOUNT);
   await deleteDrafts("grace@example.com");
-});
-
-afterEach(() => {
-  onlineManager.setOnline(true);
 });
 
 function section(name: string) {
@@ -232,7 +228,7 @@ describe("Home", () => {
     await keep(PLAN);
     const { client, rerender } = home(PLAN);
     // Answers stay fresh for half a minute, as in the app.
-    client.setDefaultOptions({ queries: { retry: false, staleTime: 30_000 } });
+    keepFresh(client);
     await (await unsaved()).findByRole("link", { name: /^plan\.md/ });
     rerender(<p>Elsewhere</p>);
     // Saved or discarded on the note's page.
@@ -343,7 +339,7 @@ describe("Home", () => {
     await keep(PLAN);
     const { drive, client, rerender } = home({ ...PLAN, trashed: true });
     // Drive's answers stay fresh for half a minute, as in the app.
-    client.setDefaultOptions({ queries: { retry: false, staleTime: 30_000 } });
+    keepFresh(client);
     await (await unsaved()).findByText("In the trash");
     rerender(<p>Elsewhere</p>);
     // Restored from Drive's trash.

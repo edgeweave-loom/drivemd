@@ -1,3 +1,4 @@
+import { onlineManager } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as auth from "./auth.ts";
 import { AuthError, type AuthErrorReason } from "./auth.ts";
@@ -648,6 +649,51 @@ describe("the Drive client", () => {
     expect(await hasSettled(token)).toBe(false);
     check.resolve(EMAIL);
     await expect(token).resolves.toBe(TOKEN);
+  });
+
+  it("fails Drive at once while offline, rather than waiting for a token no tap can bring", async () => {
+    const session = await signedIn();
+    vi.mocked(auth.getAccessToken).mockReturnValue(undefined);
+    onlineManager.setOnline(false);
+
+    await expect(driveAuth().token()).rejects.toThrow(
+      new DriveError(0, "Google Drive could not be reached"),
+    );
+    expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
+  });
+
+  it("fails Drive's waiting calls once the device goes offline", async () => {
+    const session = await signedIn();
+    vi.mocked(auth.getAccessToken).mockReturnValue(undefined);
+    vi.mocked(auth.requestAccessToken).mockReturnValue(pendingToken().promise);
+    session.renew();
+    const token = driveAuth().token();
+    expect(await hasSettled(token)).toBe(false);
+
+    onlineManager.setOnline(false);
+
+    await expect(token).rejects.toThrow(
+      new DriveError(0, "Google Drive could not be reached"),
+    );
+  });
+
+  it("knows the connection while no page asks Drive anything", () => {
+    createSession();
+
+    window.dispatchEvent(new Event("offline"));
+
+    expect(onlineManager.isOnline()).toBe(false);
+  });
+
+  it("opens no Google window while offline, since it could not load", async () => {
+    const session = await signedIn();
+    vi.mocked(auth.getAccessToken).mockReturnValue(undefined);
+    onlineManager.setOnline(false);
+
+    session.renew();
+
+    expect(auth.requestAccessToken).not.toHaveBeenCalled();
+    expect(session.getSnapshot().waiting).toBe(false);
   });
 
   it("renews nothing while the token is valid", async () => {

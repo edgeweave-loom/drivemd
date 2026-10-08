@@ -35,6 +35,10 @@ export function createQueryClient(): QueryClient {
       // A page opened again within half a minute shows what it had, without
       // asking Drive again.
       queries: { retry: mayPassLater, staleTime: 30_000 },
+      // A write runs when asked, even offline, so that it fails and says
+      // why: one that waited for the connection would run later, unasked,
+      // perhaps once the user has left the page.
+      mutations: { networkMode: "always" },
     },
   });
 }

@@ -12,7 +12,7 @@ import {
 } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 import { moreActions } from "./test/actions.ts";
-import { renderWithDrive, visit } from "./test/render.tsx";
+import { keepFresh, renderWithDrive, visit } from "./test/render.tsx";
 
 function folder(name: string, id: string, parent: string, changes = {}) {
   const item = folderItem(name, { id, parents: [parent], ...changes });
@@ -232,7 +232,7 @@ describe("Move", () => {
   it("opens at the folder the file went to, once moved", async () => {
     const { drive, client } = openPlan();
     // As in the app, where the path stays fresh unless a change says not.
-    client.setDefaultOptions({ queries: { retry: false, staleTime: 30_000 } });
+    keepFresh(client);
 
     let picker = await openPicker();
     fireEvent.click(await picker.findByRole("button", { name: "Archive" }));

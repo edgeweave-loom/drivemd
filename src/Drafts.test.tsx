@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { EditorView } from "@codemirror/view";
 import { onlineManager } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { rememberAccount, signOut } from "./auth.ts";
 import { deleteDrafts, readDraft, writeDraft } from "./drafts.ts";
 import { resumeKeeping } from "./keep-draft.ts";
@@ -12,7 +12,7 @@ import { metadataQuery } from "./queries.ts";
 import { driveItem, metadata } from "./test/drive-items.ts";
 import { editInPreview, pickMode } from "./test/actions.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
-import { ACCOUNT, renderWithDrive } from "./test/render.tsx";
+import { ACCOUNT, keepFresh, renderWithDrive } from "./test/render.tsx";
 import { holdScreen } from "./test/screen.ts";
 
 const PLAN = metadata(driveItem("plan.md", { id: "plan", parents: ["work"] }), {
@@ -49,10 +49,6 @@ beforeEach(async () => {
   resumeKeeping();
   rememberAccount(ACCOUNT);
   await deleteDrafts(ACCOUNT);
-});
-
-afterEach(() => {
-  onlineManager.setOnline(true);
 });
 
 describe("unsaved text kept on the device", () => {
@@ -300,7 +296,7 @@ describe("unsaved text kept on the device", () => {
     await kept("- [ ] Boil\n", "revision-2", "bbbb");
     const { drive, client } = open();
     // As the file's page left it, fresh for half a minute as in the app.
-    client.setDefaultOptions({ queries: { retry: false, staleTime: 30_000 } });
+    keepFresh(client);
     client.setQueryData(metadataQuery(drive, PLAN).queryKey, PLAN);
     drive.getMetadata.mockResolvedValue(
       metadata(PLAN, { md5Checksum: "bbbb", headRevisionId: "revision-2" }),

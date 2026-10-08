@@ -1,3 +1,4 @@
+import { MutationObserver, onlineManager } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import { AuthError } from "./auth.ts";
 import { DriveError, TooLargeError, type DriveItem } from "./drive.ts";
@@ -44,6 +45,19 @@ describe("createQueryClient", () => {
     [new AuthError("superseded", "The user signed out")],
   ])("gives up at once after %s", (error) => {
     expect(retries(0, error)).toBe(false);
+  });
+
+  it("runs a write at once while offline, so that it fails rather than waits", async () => {
+    onlineManager.setOnline(false);
+    const unreachable = new DriveError(0, "Google Drive could not be reached");
+    const write = new MutationObserver(createQueryClient(), {
+      mutationFn: () => Promise.reject(unreachable),
+    });
+
+    const written = write.mutate();
+
+    expect(write.getCurrentResult().isPaused).toBe(false);
+    await expect(written).rejects.toBe(unreachable);
   });
 });
 

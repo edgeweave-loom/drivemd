@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import { onlineManager } from "@tanstack/react-query";
 import { cleanup, configure } from "@testing-library/react";
 import { afterEach } from "vitest";
 import { holdScreen, holdTouch, installScreen } from "./screen.ts";
@@ -77,4 +78,5 @@ afterEach(() => {
   cleanup();
   holdScreen("phone");
   holdTouch(false);
+  onlineManager.setOnline(true);
 });
