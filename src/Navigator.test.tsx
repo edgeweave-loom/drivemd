@@ -55,7 +55,7 @@ describe("Navigator", () => {
     expect(screen.getByRole("heading", { name: "Home" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("link", { name: "My Drive" }));
     expect(
-      await screen.findByRole("heading", { name: "My Drive" }),
+      await screen.findByRole("heading", { level: 2, name: "My Drive" }),
     ).toBeInTheDocument();
     expect(await screen.findByRole("link", { name: "notes.md" })).toBeVisible();
     expect(drive.listChildren).toHaveBeenCalledWith({ id: "root" });
@@ -68,7 +68,10 @@ describe("Navigator", () => {
   ])("opens %s", (path, heading) => {
     open(path);
 
-    expect(screen.getByRole("heading", { name: heading })).toBeVisible();
+    // The page's own heading, which a phone's bar names too.
+    expect(
+      screen.getByRole("heading", { level: 2, name: heading }),
+    ).toBeVisible();
   });
 
   it("searches from any page, renewing the token within the tap", () => {
@@ -261,7 +264,7 @@ describe("Navigator", () => {
     drive.getMetadata.mockImplementation(metadataOf(metadata(work)));
     drive.listChildren.mockResolvedValue([]);
     open("/folder/work", drive);
-    fireEvent.click(await screen.findByRole("button", { name: "New" }));
+    fireEvent.click(await screen.findByRole("button", { name: "New note" }));
     expect(screen.getByRole("dialog")).toBeVisible();
 
     act(() => {

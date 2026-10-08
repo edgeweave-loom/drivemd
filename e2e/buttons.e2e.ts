@@ -19,7 +19,7 @@ async function looks(control: Locator) {
 test("gives each action the emphasis its weight calls for", async ({
   page,
   drive,
-}) => {
+}, info) => {
   await page.goto("/");
   const signInButton = page.getByRole("button", {
     name: "Sign in with Google",
@@ -36,12 +36,14 @@ test("gives each action the emphasis its weight calls for", async ({
   await signIn(page);
   await page.getByRole("link", { name: "My Drive" }).click();
   await page.getByRole("link", { name: "Work", exact: true }).click();
-  // Tonal for a frequent one.
-  const create = page.getByRole("button", { name: "New" });
-  expect(await looks(create)).toMatchObject({
-    background: await token(page, "--secondary-container"),
-    color: await token(page, "--on-secondary-container"),
-  });
+  // Tonal for a frequent one, where it does not float as on a phone.
+  const create = page.getByRole("button", { name: "New note" });
+  if (info.project.metadata.layout !== "phone") {
+    expect(await looks(create)).toMatchObject({
+      background: await token(page, "--secondary-container"),
+      color: await token(page, "--on-secondary-container"),
+    });
+  }
   // Outlined for the safe way out of a choice.
   await create.click();
   const dialog = page.getByRole("dialog");
@@ -90,8 +92,11 @@ test("keeps a touch target of 48 px around a 40 px button on a touch screen", as
 }) => {
   await signIn(page);
   await page.getByRole("link", { name: "My Drive" }).click();
-  const create = page.getByRole("button", { name: "New" });
-  const box = await create.boundingBox();
+  await page.getByRole("button", { name: "New note" }).click();
+  const cancel = page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Cancel" });
+  const box = await cancel.boundingBox();
   if (!box) throw new Error("Not shown");
   expect(box.height).toBe(40);
   const touch = await page.evaluate(
@@ -103,13 +108,13 @@ test("keeps a touch target of 48 px around a 40 px button on a touch screen", as
       document.elementFromPoint(x ?? 0, y ?? 0)?.closest("button")?.textContent,
     [box.x + box.width / 2, box.y - 3],
   );
-  expect(hit === "New").toBe(touch);
+  expect(hit === "Cancel").toBe(touch);
 });
 
 test("rings the control the keyboard reaches", async ({ page }) => {
   await signIn(page);
   await page.getByRole("link", { name: "My Drive" }).click();
-  const create = page.getByRole("button", { name: "New" });
+  const create = page.getByRole("button", { name: "New note" });
   await create.focus();
   await page.keyboard.press("Shift+Tab");
   await page.keyboard.press("Tab");

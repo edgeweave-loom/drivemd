@@ -5,6 +5,7 @@ import { NameDialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
 import { FOLDER, type FileRef } from "./drive.ts";
 import { ItemListing } from "./EntryList.tsx";
+import { Icon } from "./Icon.tsx";
 import { usePath } from "./path.ts";
 import { childrenQuery, metadataQuery, refreshAfterChange } from "./queries.ts";
 import { hrefOf, navigate, type Crumb } from "./router.ts";
@@ -62,14 +63,16 @@ function NewFile({
   const [asking, setAsking] = useState(false);
   return (
     <>
+      {/* Tonal beside the folder's name, floating on a phone. */}
       <button
         type="button"
-        className="tonal"
+        className="tonal new-note"
         onClick={() => {
           setAsking(true);
         }}
       >
-        New
+        <Icon name="add" />
+        New note
       </button>
       {asking && (
         <CreateFile

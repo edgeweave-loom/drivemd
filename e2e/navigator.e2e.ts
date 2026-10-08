@@ -312,7 +312,7 @@ test("opens the Drive link shared with the installed app, and forgets the share"
 test("creates, renames, moves and trashes a file", async ({ page, drive }) => {
   await openWork(page);
 
-  await page.getByRole("button", { name: "New" }).click();
+  await page.getByRole("button", { name: "New note" }).click();
   const create = page.getByRole("dialog", { name: "New Markdown file" });
   await create.getByRole("textbox", { name: "Name" }).fill("ideas");
   await create.getByRole("button", { name: "Create" }).click();
@@ -359,7 +359,7 @@ test("asks to Continue over an open dialog when Drive refuses the token", async 
   drive,
 }) => {
   await openWork(page);
-  await page.getByRole("button", { name: "New" }).click();
+  await page.getByRole("button", { name: "New note" }).click();
   const create = page.getByRole("dialog", { name: "New Markdown file" });
 
   drive.expireToken();

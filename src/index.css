@@ -144,6 +144,45 @@ button.icon-button {
   }
 }
 
+/* A link that looks like an icon button, such as the bar's way up. */
+a.icon-button {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height);
+  height: var(--control-height);
+  border-radius: var(--radius-full);
+  color: var(--on-surface-variant);
+}
+
+@media (hover: hover) {
+  a.icon-button:hover {
+    background-image: linear-gradient(
+      color-mix(in srgb, currentColor 8%, transparent) 0 0
+    );
+  }
+}
+
+@media (pointer: coarse) {
+  a.icon-button::after {
+    position: absolute;
+    inset: calc((var(--control-height) - var(--touch-target)) / 2);
+    content: "";
+  }
+}
+
+/* New note: tonal beside the folder's name, floating on a phone. */
+button.new-note {
+  padding-left: var(--space-4);
+}
+
+button.new-note > .icon {
+  width: 18px;
+  height: 18px;
+}
+
 .icon {
   flex: none;
   width: 24px;
@@ -347,6 +386,58 @@ button.account {
   .bar h1 img {
     width: 32px;
     height: 32px;
+  }
+
+  /* A folder or a root names itself in the bar, which its page's heading
+     then need not repeat but to the ear. */
+  .bar .title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .bar.titled .up {
+    margin-left: calc(-1 * var(--space-2));
+  }
+
+  /* Its heading row then holds nothing that takes room. */
+  :root:has(.bar.titled) .page > .heading {
+    display: contents;
+  }
+
+  :root:has(.bar.titled) .page > h2,
+  :root:has(.bar.titled) .page > .heading > h2 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  button.new-note {
+    position: fixed;
+    right: var(--space-4);
+    bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+    z-index: 1;
+    min-height: var(--fab-size);
+    padding: 0 var(--space-5) 0 var(--space-4);
+    border-radius: var(--radius-lg);
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+    box-shadow: var(--elevation-3);
+  }
+
+  button.new-note > .icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* The list's last rows stay clear of it. */
+  .page:has(.new-note) {
+    padding-bottom: calc(var(--fab-size) + 2 * var(--space-4));
   }
 
   /* The search opens full screen. */
