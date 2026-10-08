@@ -9,6 +9,7 @@ import {
 import { flushSync } from "react-dom";
 import { Account } from "./Account.tsx";
 import { DriveContext, useDrive } from "./drive-context.ts";
+import type { FileRef } from "./drive.ts";
 import { linkedPage } from "./drive-web.ts";
 import { FileView } from "./FilePage.tsx";
 import { FolderPage } from "./FolderPage.tsx";
@@ -19,13 +20,22 @@ import { Link } from "./Link.tsx";
 import { useDrawer } from "./drawer.ts";
 import { NavDrawer } from "./NavDrawer.tsx";
 import { NewPage } from "./NewPage.tsx";
+import { useFolder } from "./path.ts";
 import { createQueryClient, refreshSearches } from "./queries.ts";
 import {
   SharedDrivesPage,
   SharedWithMePage,
   ShortcutsPage,
 } from "./RootPages.tsx";
-import { getPlace, hrefOf, mayLeave, navigate, usePlace } from "./router.ts";
+import { ROOT_PLACES } from "./roots.ts";
+import {
+  getPlace,
+  hrefOf,
+  mayLeave,
+  navigate,
+  usePlace,
+  type Crumb,
+} from "./router.ts";
 import { SearchPage } from "./SearchPage.tsx";
 import type { Session } from "./session.ts";
 
@@ -79,18 +89,32 @@ function AppBar({
   email: string;
   onSignOut: () => void;
 }) {
-  const { route } = usePlace();
+  const { route, trail, href } = usePlace();
+  const phone = useLayout() === "phone";
   const field = useRef<HTMLInputElement>(null);
   // The page that opened the search, which its Back returns to.
   const opener = useRef<string>(undefined);
+  // On a phone, a folder or a root names itself in the bar, with a way up.
+  const root =
+    phone && route.name !== "folder"
+      ? ROOT_PLACES.find((place) => place.root.href === href)?.root
+      : undefined;
+  const titled = phone && (route.name === "folder" || root !== undefined);
+  const looks = route.name === "search" ? "searching" : titled && "titled";
   return (
-    <header className={route.name === "search" ? "bar searching" : "bar"}>
-      <h1>
-        <Link to={HOME}>
-          <img src="/icon.svg" alt="" />
-          DriveMD
-        </Link>
-      </h1>
+    <header className={looks ? `bar ${looks}` : "bar"}>
+      {route.name === "folder" && titled ? (
+        <FolderTitle folder={route.folder} trail={trail} />
+      ) : root ? (
+        <Title name={root.name} up={[]} />
+      ) : (
+        <h1>
+          <Link to={HOME}>
+            <img src="/icon.svg" alt="" />
+            DriveMD
+          </Link>
+        </h1>
+      )}
       <SearchBox
         field={field}
         onBack={() => {
@@ -138,6 +162,45 @@ function Shell({ children }: { children: ReactNode }) {
       {drawer && <NavDrawer rail={drawer === "rail"} />}
       <main className={drawer ? "page panel" : "page"}>{children}</main>
     </div>
+  );
+}
+
+/** A folder's name, from the path the user took or else from Drive. */
+function FolderTitle({
+  folder,
+  trail,
+}: {
+  folder: FileRef;
+  trail: Crumb[] | undefined;
+}) {
+  const { path, name } = useFolder(folder, trail);
+  return <Title name={name} up={path?.slice(0, -1)} />;
+}
+
+/**
+ * The page's name, and a way up to the place above it: the last step of
+ * the path that leads there, or else Home; none while the path is unknown.
+ */
+function Title({ name, up }: { name: string; up: Crumb[] | undefined }) {
+  const above = up && (up.at(-1) ?? { name: "Home", href: HOME });
+  return (
+    <>
+      {up && above ? (
+        <Link
+          to={above.href}
+          trail={up.length > 0 ? up : undefined}
+          className="icon-button up"
+          aria-label={`Back to ${above.name}`}
+          title={`Back to ${above.name}`}
+        >
+          <Icon name="arrow_back" />
+        </Link>
+      ) : (
+        // Its place, kept while the path comes.
+        <span className="icon-button up" />
+      )}
+      <h1 className="title">{name}</h1>
+    </>
   );
 }
 

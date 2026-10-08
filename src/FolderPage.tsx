@@ -1,12 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Breadcrumbs } from "./Breadcrumbs.tsx";
 import { NameDialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
 import { FOLDER, type FileRef } from "./drive.ts";
 import { ItemListing } from "./EntryList.tsx";
-import { usePath } from "./path.ts";
-import { childrenQuery, metadataQuery, refreshAfterChange } from "./queries.ts";
+import { Icon } from "./Icon.tsx";
+import { useFolder } from "./path.ts";
+import { childrenQuery, refreshAfterChange } from "./queries.ts";
 import { hrefOf, navigate, type Crumb } from "./router.ts";
 
 export function FolderPage({
@@ -17,11 +18,7 @@ export function FolderPage({
   trail: Crumb[] | undefined;
 }) {
   const { drive } = useDrive();
-  // Says whether the user may add files, and names a folder reached without
-  // a path.
-  const details = useQuery(metadataQuery(drive, folder));
-  const path = usePath(folder, trail);
-  const name = path?.at(-1)?.name ?? details.data?.name;
+  const { details, path, name } = useFolder(folder, trail);
 
   if (details.data && details.data.mimeType !== FOLDER) {
     return (
@@ -36,7 +33,7 @@ export function FolderPage({
     <>
       <Breadcrumbs path={path} />
       <div className="heading">
-        <h2>{name ?? (details.isError ? "Folder" : "…")}</h2>
+        <h2>{name}</h2>
         {details.data?.capabilities.canAddChildren && (
           <NewFile folder={folder} path={path} />
         )}
@@ -62,14 +59,16 @@ function NewFile({
   const [asking, setAsking] = useState(false);
   return (
     <>
+      {/* Tonal beside the folder's name, floating on a phone. */}
       <button
         type="button"
-        className="tonal"
+        className="tonal new-note"
         onClick={() => {
           setAsking(true);
         }}
       >
-        New
+        <Icon name="add" />
+        New note
       </button>
       {asking && (
         <CreateFile

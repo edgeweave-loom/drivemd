@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { getPlace } from "./router.ts";
 import {
@@ -38,12 +38,10 @@ describe("ShortcutsPage", () => {
     renderWithDrive(<ShortcutsPage trail={undefined} />, drive);
 
     expect(screen.getByRole("heading", { name: "Shortcuts" })).toBeVisible();
+    // A root shows no breadcrumbs, which folder pages keep.
     expect(
-      within(screen.getByRole("navigation", { name: "Breadcrumbs" })).getByRole(
-        "link",
-        { name: "Home" },
-      ),
-    ).toHaveAttribute("href", "/");
+      screen.queryByRole("navigation", { name: "Breadcrumbs" }),
+    ).toBeNull();
     await screen.findByRole("link", { name: /Notes/ });
     expect(links()).toEqual(["Notes Shortcut", "plan.md Shortcut"]);
     fireEvent.click(screen.getByRole("link", { name: /Notes/ }));

@@ -5,13 +5,15 @@ test("names the app beside its mark, and leads Home from any page", async ({
   page,
 }, info) => {
   await signIn(page);
-  await page.getByRole("link", { name: "My Drive" }).click();
   const bar = page.getByRole("banner");
   const phone = info.project.metadata.layout === "phone";
   expect((await bar.boundingBox())?.height).toBe(phone ? 56 : 64);
   const mark = bar.locator('img[src="/icon.svg"]');
   await expect(mark).toHaveAttribute("alt", "");
   expect((await mark.boundingBox())?.width).toBe(phone ? 32 : 40);
+  // A phone's folders name themselves in the bar, with a way up instead.
+  if (phone) return;
+  await page.getByRole("link", { name: "My Drive" }).click();
   await bar.getByRole("link", { name: "DriveMD" }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "Recent" })).toBeVisible();

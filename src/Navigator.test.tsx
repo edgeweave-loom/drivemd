@@ -55,7 +55,7 @@ describe("Navigator", () => {
     expect(screen.getByRole("heading", { name: "Home" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("link", { name: "My Drive" }));
     expect(
-      await screen.findByRole("heading", { name: "My Drive" }),
+      await screen.findByRole("heading", { level: 2, name: "My Drive" }),
     ).toBeInTheDocument();
     expect(await screen.findByRole("link", { name: "notes.md" })).toBeVisible();
     expect(drive.listChildren).toHaveBeenCalledWith({ id: "root" });
@@ -68,7 +68,10 @@ describe("Navigator", () => {
   ])("opens %s", (path, heading) => {
     open(path);
 
-    expect(screen.getByRole("heading", { name: heading })).toBeVisible();
+    // The page's own heading, which a phone's bar names too.
+    expect(
+      screen.getByRole("heading", { level: 2, name: heading }),
+    ).toBeVisible();
   });
 
   it("searches from any page, renewing the token within the tap", () => {
@@ -261,7 +264,7 @@ describe("Navigator", () => {
     drive.getMetadata.mockImplementation(metadataOf(metadata(work)));
     drive.listChildren.mockResolvedValue([]);
     open("/folder/work", drive);
-    fireEvent.click(await screen.findByRole("button", { name: "New" }));
+    fireEvent.click(await screen.findByRole("button", { name: "New note" }));
     expect(screen.getByRole("dialog")).toBeVisible();
 
     act(() => {
@@ -311,5 +314,60 @@ describe("Navigator", () => {
 
     fireEvent.click(screen.getByRole("link", { name: "DriveMD" }));
     expect(getPlace().href).toBe("/");
+  });
+});
+
+describe("Navigator's app bar on a phone", () => {
+  const myDrive = { name: "My Drive", href: "/my-drive" };
+  const work = { name: "Work", href: "/folder/work" };
+
+  it("names a folder and leads up to the one above, along the path taken", () => {
+    const { drive } = open("/");
+    drive.getMetadata.mockReturnValue(new Promise(() => undefined));
+    drive.listChildren.mockReturnValue(new Promise(() => undefined));
+    act(() => {
+      navigate(work.href, [myDrive, work]);
+    });
+    const bar = screen.getByRole("banner");
+    expect(within(bar).getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Work",
+    );
+    const up = within(bar).getByRole("link", { name: "Back to My Drive" });
+    expect(up).toHaveAttribute("href", "/my-drive");
+    fireEvent.click(up);
+    expect(getPlace()).toMatchObject({ href: "/my-drive", trail: [myDrive] });
+  });
+
+  it("names a root, and leads up to Home", () => {
+    open("/shortcuts");
+    const bar = screen.getByRole("banner");
+    expect(within(bar).getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Shortcuts",
+    );
+    expect(
+      within(bar).getByRole("link", { name: "Back to Home" }),
+    ).toHaveAttribute("href", "/");
+  });
+
+  it("says the folder is on its way, and offers no way up until Drive gives its path", () => {
+    const { drive } = open("/folder/work");
+    drive.getMetadata.mockReturnValue(new Promise(() => undefined));
+    const bar = screen.getByRole("banner");
+    expect(within(bar).getByRole("heading", { level: 1 })).toHaveTextContent(
+      "…",
+    );
+    expect(within(bar).queryByRole("link", { name: /^Back to/ })).toBeNull();
+  });
+
+  it("calls a folder Drive does not describe Folder, as its page does", async () => {
+    const drive = fakeDrive();
+    drive.getMetadata.mockRejectedValue(new Error("offline"));
+    open("/folder/work", drive);
+    const bar = screen.getByRole("banner");
+    await waitFor(() => {
+      expect(within(bar).getByRole("heading", { level: 1 })).toHaveTextContent(
+        "Folder",
+      );
+    });
   });
 });

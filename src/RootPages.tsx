@@ -3,7 +3,6 @@ import {
   type QueryKey,
   type UseQueryOptions,
 } from "@tanstack/react-query";
-import { Breadcrumbs } from "./Breadcrumbs.tsx";
 import { useDrive } from "./drive-context.ts";
 import type { DriveItem } from "./drive.ts";
 import { EntryList, ItemListing } from "./EntryList.tsx";
@@ -56,7 +55,6 @@ function RootListing<Key extends QueryKey>({
 }) {
   return (
     <>
-      <Breadcrumbs path={[root]} />
       <h2>{root.name}</h2>
       <ItemListing query={query} trail={trail ?? [root]} empty={empty} />
     </>
@@ -68,7 +66,6 @@ export function SharedDrivesPage({ trail }: { trail: Crumb[] | undefined }) {
   const drives = useQuery(sharedDrivesQuery(drive));
   return (
     <>
-      <Breadcrumbs path={[ROOTS.sharedDrives]} />
       <h2>{ROOTS.sharedDrives.name}</h2>
       <Loaded query={drives}>
         {(found) => (
