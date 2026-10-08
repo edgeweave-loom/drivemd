@@ -51,7 +51,7 @@ interface Waiter {
   /** The account the call was made for. */
   account: string;
   resolve: (token: string) => void;
-  reject: (error: AuthError) => void;
+  reject: (error: AuthError | DriveError) => void;
 }
 
 const AUTH_MESSAGES: Record<AuthErrorReason, string | undefined> = {
@@ -252,6 +252,15 @@ export function createSession(driveAccount?: string): Session {
   });
   auth.onSignOutElsewhere(() => {
     if (state.screen.name !== "sign-in" || state.waiting) signedOutElsewhere();
+  });
+  // Offline, no token can come: Drive's calls waiting for one fail as Drive's
+  // would. Listening for as long as the tab lives also keeps the connection
+  // known while no page asks Drive anything, as once signed out.
+  onlineManager.subscribe((online) => {
+    if (online) return;
+    settleWaiters((waiter) => {
+      waiter.reject(new DriveError(0, UNREACHABLE));
+    });
   });
 
   return {

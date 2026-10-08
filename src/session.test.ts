@@ -662,6 +662,29 @@ describe("the Drive client", () => {
     expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
   });
 
+  it("fails Drive's waiting calls once the device goes offline", async () => {
+    const session = await signedIn();
+    vi.mocked(auth.getAccessToken).mockReturnValue(undefined);
+    vi.mocked(auth.requestAccessToken).mockReturnValue(pendingToken().promise);
+    session.renew();
+    const token = driveAuth().token();
+    expect(await hasSettled(token)).toBe(false);
+
+    onlineManager.setOnline(false);
+
+    await expect(token).rejects.toThrow(
+      new DriveError(0, "Google Drive could not be reached"),
+    );
+  });
+
+  it("knows the connection while no page asks Drive anything", () => {
+    createSession();
+
+    window.dispatchEvent(new Event("offline"));
+
+    expect(onlineManager.isOnline()).toBe(false);
+  });
+
   it("opens no Google window while offline, since it could not load", async () => {
     const session = await signedIn();
     vi.mocked(auth.getAccessToken).mockReturnValue(undefined);
