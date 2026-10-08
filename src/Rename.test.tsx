@@ -10,6 +10,7 @@ import {
   metadataOf,
 } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
+import { moreActions } from "./test/actions.ts";
 import { renderWithDrive, visit } from "./test/render.tsx";
 
 const WORK = metadata(folderItem("Work", { id: "work", parents: ["my-root"] }));
@@ -46,7 +47,9 @@ function PlanPage() {
 }
 
 async function openDialog() {
-  fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
+  fireEvent.click(
+    (await moreActions()).getByRole("button", { name: "Rename" }),
+  );
   return within(screen.getByRole("dialog", { name: "Rename" }));
 }
 
@@ -64,8 +67,9 @@ describe("Rename", () => {
     file.capabilities.canRename = false;
     openPlan(file);
 
-    await screen.findByText(/^Last modified/);
-    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
+    const menu = await moreActions();
+    expect(menu.getByRole("button", { name: "Move to trash" })).toBeVisible();
+    expect(menu.queryByRole("button", { name: "Rename" })).toBeNull();
   });
 
   it("renames the file, keeping the path taken", async () => {

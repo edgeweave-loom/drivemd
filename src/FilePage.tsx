@@ -7,7 +7,7 @@ import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { Dialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
 import type { FileMetadata, FileRef } from "./drive.ts";
-import { FileActions } from "./FileActions.tsx";
+import { ActionDialog, MoreActions, type Action } from "./FileActions.tsx";
 import { FolderPane } from "./FolderPane.tsx";
 import { InSlot } from "./InSlot.tsx";
 import { Link } from "./Link.tsx";
@@ -154,6 +154,7 @@ export function FilePage({
   const details = useQuery(metadataQuery(drive, file));
   const path = usePath(file, trail);
   const opens = details.data !== undefined && opensHere(details.data);
+  const [action, setAction] = useState<Action>();
 
   useEffect(() => {
     if (!opens) return;
@@ -175,12 +176,23 @@ export function FilePage({
         </h1>
         {opens && <Changed file={details.data} />}
       </InSlot>
-      {(Boolean(drawer) || opens) && (
-        <div className="heading">
-          {drawer}
-          {opens && <FileActions file={details.data} page={file} path={path} />}
-        </div>
+      {opens && (
+        <InSlot name="more">
+          <MoreActions file={details.data} onPick={setAction} />
+        </InSlot>
       )}
+      {opens && action && (
+        <ActionDialog
+          action={action}
+          file={details.data}
+          page={file}
+          path={path}
+          onClose={() => {
+            setAction(undefined);
+          }}
+        />
+      )}
+      {drawer && <div className="heading">{drawer}</div>}
       <Loaded
         query={details}
         missing="This file does not exist, or it is not shared with you."

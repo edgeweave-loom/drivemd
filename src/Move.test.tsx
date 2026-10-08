@@ -11,6 +11,7 @@ import {
   shortcutItem,
 } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
+import { moreActions } from "./test/actions.ts";
 import { renderWithDrive, visit } from "./test/render.tsx";
 
 function folder(name: string, id: string, parent: string, changes = {}) {
@@ -74,8 +75,9 @@ function namesAbove(picker: Awaited<ReturnType<typeof openPicker>>) {
     .map((button) => button.textContent);
 }
 
+/** Opens the picker from More actions, where a phone keeps Move. */
 async function openPicker() {
-  fireEvent.click(await screen.findByRole("button", { name: "Move" }));
+  fireEvent.click((await moreActions()).getByRole("button", { name: "Move" }));
   return within(screen.getByRole("dialog", { name: "Move plan.md" }));
 }
 
@@ -91,8 +93,9 @@ describe("Move", () => {
     file.capabilities.canMoveItemOutOfDrive = false;
     openPlan(file);
 
-    await screen.findByText(/^Last modified/);
-    expect(screen.queryByRole("button", { name: "Move" })).toBeNull();
+    const menu = await moreActions();
+    expect(menu.getByRole("button", { name: "Rename" })).toBeVisible();
+    expect(menu.queryByRole("button", { name: "Move" })).toBeNull();
   });
 
   it("opens at the file's folder, listing only folders", async () => {

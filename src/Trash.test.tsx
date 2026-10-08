@@ -10,6 +10,7 @@ import {
   metadataOf,
 } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
+import { moreActions } from "./test/actions.ts";
 import { renderWithDrive, visit } from "./test/render.tsx";
 
 const WORK = metadata(folderItem("Work", { id: "work", parents: ["my-root"] }));
@@ -38,7 +39,9 @@ function openPlan(file: FileMetadata = plan()) {
 }
 
 async function openDialog() {
-  fireEvent.click(await screen.findByRole("button", { name: "Move to trash" }));
+  fireEvent.click(
+    (await moreActions()).getByRole("button", { name: "Move to trash" }),
+  );
   return within(screen.getByRole("dialog", { name: "Move to trash?" }));
 }
 
@@ -52,8 +55,9 @@ describe("Move to trash", () => {
     file.capabilities.canTrash = false;
     openPlan(file);
 
-    await screen.findByText(/^Last modified/);
-    expect(screen.queryByRole("button", { name: "Move to trash" })).toBeNull();
+    const menu = await moreActions();
+    expect(menu.getByRole("button", { name: "Rename" })).toBeVisible();
+    expect(menu.queryByRole("button", { name: "Move to trash" })).toBeNull();
   });
 
   it("offers nothing on a file the user may not change", async () => {
@@ -65,7 +69,7 @@ describe("Move to trash", () => {
     openPlan(file);
 
     await screen.findByText(/^Last modified/);
-    for (const action of ["Rename", "Move", "Move to trash"]) {
+    for (const action of ["More actions", "Move"]) {
       expect(screen.queryByRole("button", { name: action })).toBeNull();
     }
   });
