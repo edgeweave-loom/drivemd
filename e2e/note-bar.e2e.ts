@@ -21,9 +21,10 @@ test("names the note in the app bar, with what it lets the user do", async ({
   ).toHaveCount(0);
 
   await page.locator(".markdown").getByRole("checkbox").first().check();
-  await expect(bar.getByRole("button", { name: "Save" })).toBeVisible();
+  await expect(
+    bar.getByRole("button", { name: "Save", exact: true }),
+  ).toBeVisible();
   const edit = page.getByRole("button", { name: "Edit" });
-  const unsaved = bar.getByText("Unsaved changes");
 
   if (info.project.metadata.layout === "phone") {
     // A way up to the note's folder, in place of DriveMD's mark, and neither
@@ -40,8 +41,7 @@ test("names the note in the app bar, with what it lets the user do", async ({
     if (!box || !screen) throw new Error("Edit has no place on the screen");
     expect(box.x + box.width).toBeGreaterThan(screen.width - 48);
     expect(box.y + box.height).toBeGreaterThan(screen.height - 48);
-    // Save says by showing that changes are unsaved, leaving the name room.
-    await expect(unsaved).toBeHidden();
+    // The name keeps room beside the tools.
     const whole = await bar
       .getByRole("heading", { level: 1 })
       .evaluate((name) => name.scrollWidth <= name.clientWidth);
@@ -51,8 +51,36 @@ test("names the note in the app bar, with what it lets the user do", async ({
     await expect(bar.getByRole("button", { name: "Edit" })).toBeVisible();
     await expect(changed).toBeVisible();
     await expect(account).toBeVisible();
-    await expect(unsaved).toBeVisible();
   }
+});
+
+test("keeps Save in one place through its states, and marks the tab while unsaved", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  const bar = page.getByRole("banner");
+  // A status, legible and reachable, rather than a disabled control.
+  const saved = bar.getByRole("button", { name: "Saved" });
+  await expect(saved).toHaveAttribute("aria-disabled", "true");
+  await expect(saved.locator('svg[data-icon="cloud_done"]')).toHaveCount(1);
+  await expect(saved).toHaveCSS(
+    "color",
+    await token(page, "--on-surface-variant"),
+  );
+  await expect(page).toHaveTitle("DriveMD");
+  const before = await saved.boundingBox();
+  expect(before?.width).toBeGreaterThanOrEqual(112);
+
+  await page.locator(".markdown").getByRole("checkbox").first().check();
+  const save = bar.getByRole("button", { name: "Save", exact: true });
+  await expect(save).not.toHaveAttribute("aria-disabled");
+  await expect(page).toHaveTitle("• DriveMD");
+  expect(await save.boundingBox()).toEqual(before);
+
+  await save.click();
+  await expect(saved).toBeVisible();
+  await expect(page).toHaveTitle("DriveMD");
 });
 
 test("offers Move by the note's name and the rest in More actions", async ({

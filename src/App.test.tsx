@@ -174,7 +174,9 @@ describe("App", () => {
 
     // Behind Welcome back, nobody has signed in to Google yet.
     await new Promise((settle) => setTimeout(settle, 50));
-    expect(screen.queryByText("Unsaved changes")).toBeNull();
+    expect(
+      screen.queryByRole("region", { name: "Unsaved changes" }),
+    ).toBeNull();
     act(() => {
       change({ screen: { name: "home", email: EMAIL } });
     });

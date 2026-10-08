@@ -82,7 +82,7 @@ test("marks what the user's version adds and removes, not by color alone", async
   if (!plan) throw new Error("No plan");
   plan.content = `${String(plan.content)}\nTheir line.\n`;
   plan.revision = 2;
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
 
   const differences = page.locator(".differences");
   // "- [ ] Boil water" became "- [x] Boil water": only the box changed.

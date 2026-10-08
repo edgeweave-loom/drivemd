@@ -351,6 +351,45 @@ button.note-name:is(:focus-visible, :active) {
   display: contents;
 }
 
+/* Save keeps its place and width through its states; Saved is a status,
+   legible and without a container, and neither it nor Saving… reacts as a
+   control (docs/DESIGN.md, Save). */
+button.save {
+  min-width: 112px;
+  padding: 0 var(--space-4);
+}
+
+button.save.saved {
+  border-color: transparent;
+  color: var(--on-surface-variant);
+}
+
+button.save[aria-disabled="true"] {
+  background-image: none;
+  cursor: default;
+}
+
+.save .spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: var(--radius-full);
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .save .spinner {
+    animation: none;
+  }
+}
+
 .search {
   position: relative;
   flex: 1 1 12rem;
@@ -507,10 +546,8 @@ button.account {
     line-height: 24px;
   }
 
-  /* As in Google's apps, a phone's bar leaves out when the note changed,
-     and that changes are unsaved, which Save says by showing. */
-  .note-title > .hint,
-  .note-tools .hint {
+  /* As in Google's apps, a phone's bar leaves out when the note changed. */
+  .note-title > .hint {
     display: none;
   }
 

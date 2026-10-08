@@ -77,7 +77,7 @@ test("gives each action the emphasis its weight calls for", async ({
   if (!plan) throw new Error("No plan");
   plan.content = `${String(plan.content)}\nTheir line.\n`;
   plan.revision = 2;
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await page.getByRole("button", { name: "Keep the Drive version" }).click();
   expect(
     await looks(page.getByRole("button", { name: "Drop my changes" })),

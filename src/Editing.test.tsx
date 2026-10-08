@@ -37,13 +37,66 @@ async function box(index: number) {
   return found;
 }
 
+describe("Save", () => {
+  it("says Saved, then Save once something changed, then Saving… while Drive writes", async () => {
+    const { drive } = open();
+    let written: (file: FileMetadata) => void = () => undefined;
+    drive.saveContent.mockReturnValue(
+      new Promise((resolve) => {
+        written = resolve;
+      }),
+    );
+
+    const saved = await screen.findByRole("button", { name: "Saved" });
+    expect(saved).toHaveAttribute("aria-disabled", "true");
+    expect(saved.querySelector('[data-icon="cloud_done"]')).not.toBeNull();
+    fireEvent.click(await box(0));
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save).not.toHaveAttribute("aria-disabled");
+    fireEvent.click(save);
+    const saving = await screen.findByRole("button", { name: "Saving…" });
+    expect(saving).toHaveAttribute("aria-disabled", "true");
+    written(SAVED);
+    expect(await screen.findByRole("button", { name: "Saved" })).toBeVisible();
+  });
+
+  it("writes nothing when Saved is pressed", async () => {
+    const { drive } = open();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Saved" }));
+    expect(drive.saveContent).not.toHaveBeenCalled();
+  });
+
+  it("marks the tab's title while changes are unsaved", async () => {
+    document.title = "DriveMD";
+    open();
+
+    fireEvent.click(await box(0));
+    expect(document.title).toBe("• DriveMD");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByRole("button", { name: "Saved" });
+    expect(document.title).toBe("DriveMD");
+  });
+
+  it("is not offered on a note the user may only read", async () => {
+    open(
+      TASKS,
+      metadata(PLAN, {
+        capabilities: { ...PLAN.capabilities, canModifyContent: false },
+      }),
+    );
+
+    await boxes();
+    expect(screen.queryByRole("button", { name: "Saved" })).toBeNull();
+  });
+});
+
 describe("editing a note in the viewer", () => {
   it("checks a task with a tap, changing only its mark, and offers to save", async () => {
     open();
     fireEvent.click(await box(0));
 
     expect((await boxes()).map((box) => box.checked)).toEqual([true, true]);
-    expect(screen.getByText("Unsaved changes")).toBeVisible();
     expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
   });
 
@@ -54,6 +107,7 @@ describe("editing a note in the viewer", () => {
     fireEvent.click(await box(1));
 
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Saved" })).toBeVisible();
   });
 
   it("saves the bytes after checking for others' changes, keeping the first revision", async () => {
@@ -63,7 +117,7 @@ describe("editing a note in the viewer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
-      expect(screen.queryByText("Unsaved changes")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     });
     expect(renew).toHaveBeenCalledOnce();
     expect(drive.keepRevision).toHaveBeenCalledExactlyOnceWith(
@@ -96,7 +150,7 @@ describe("editing a note in the viewer", () => {
     fireEvent.click(await box(0));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
-      expect(screen.queryByText("Unsaved changes")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     });
 
     rerender(<FileContent file={SAVED} />);
@@ -119,7 +173,7 @@ describe("editing a note in the viewer", () => {
     expect(ctrl).toBe(false);
     expect(renew).toHaveBeenCalledOnce();
     await waitFor(() => {
-      expect(screen.queryByText("Unsaved changes")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     });
 
     // Nothing left to save: the shortcut does nothing, but the browser's.
@@ -218,8 +272,8 @@ describe("editing a note in the viewer", () => {
     renderWithDrive(<FileContent file={PLAN} />, drive);
 
     expect(await screen.findByText(/DriveMD only shows it/)).toBeVisible();
-    expect(screen.queryByText("Unsaved changes")).toBeNull();
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Saved" })).toBeNull();
   });
 
   it("offers no Save once the user may no longer edit the file", async () => {
@@ -257,7 +311,7 @@ describe("editing a note in the viewer", () => {
 
     await screen.findByRole("button", { name: "Save" });
     expect((await boxes()).map((one) => one.checked)).toEqual([true, false]);
-    expect(screen.getByText("Unsaved changes")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
     expect(drive.saveContent).toHaveBeenCalledExactlyOnceWith(
       PLAN,
       utf8("- [x] Boil\n- [x] Pour\n"),
@@ -280,7 +334,7 @@ describe("editing a note in the viewer", () => {
     fireEvent.click(await box(0));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
-      expect(screen.queryByText("Unsaved changes")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     });
     rerender(<FileContent file={SAVED} />);
 

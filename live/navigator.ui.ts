@@ -552,8 +552,8 @@ test("checks a task in a CRLF note with a byte order mark, saving that byte only
   await loaded(page);
 
   await note.getByRole("checkbox").last().check();
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
 
   const after = before.slice();
   // The space between the brackets of "- [ ] Pour\r\n", 9 bytes from the end.
@@ -575,8 +575,8 @@ test("edits a note's source and saves it, keeping its line breaks", async ({
   await source.click();
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("Black.");
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
 
   expect(await bytesOf(run, id)).toEqual(utf8("# Tea\r\n\r\nGreen.\r\nBlack."));
 });

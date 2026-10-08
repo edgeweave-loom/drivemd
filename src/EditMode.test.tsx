@@ -78,7 +78,7 @@ describe("editing a note's source", () => {
     expect(
       screen.getByText("Green.", { selector: ".markdown p" }),
     ).toBeVisible();
-    expect(screen.getByText("Unsaved changes")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
@@ -164,8 +164,7 @@ describe("editing a note's source", () => {
     });
     answer(metadata(PLAN, { headRevisionId: "revision-2" }));
 
-    await screen.findByRole("button", { name: "Save" });
-    expect(screen.getByText("Unsaved changes")).toBeVisible();
+    expect(await screen.findByRole("button", { name: "Save" })).toBeVisible();
     expect(view.state.sliceDoc()).toBe("# Tea\r\n\r\n- [ ] Boil\r\n");
   });
 
@@ -180,7 +179,7 @@ describe("editing a note's source", () => {
       expect(drive.saveContent).toHaveBeenCalledOnce();
     });
     await waitFor(() => {
-      expect(screen.queryByText("Unsaved changes")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     });
 
     rerender(

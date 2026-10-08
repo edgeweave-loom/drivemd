@@ -164,10 +164,12 @@ describe("unsaved text kept on the device", () => {
     expect(
       await screen.findByText(/^You have unsaved changes to this note from /),
     ).toBeVisible();
+    // Save keeps its place meanwhile, with nothing to save yet.
+    expect(screen.getByRole("button", { name: "Saved" })).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Restore" }));
 
     expect(await screen.findByRole("checkbox")).toBeChecked();
-    expect(screen.getByText("Unsaved changes")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "Restore" })).toBeNull();
   });
 
@@ -341,7 +343,7 @@ describe("unsaved text kept on the device", () => {
 
     fireEvent.click(await screen.findByRole("checkbox"));
 
-    expect(screen.getByText("Unsaved changes")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
     await new Promise((settle) => setTimeout(settle, 700));
     vi.unstubAllGlobals();
   });
