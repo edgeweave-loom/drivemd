@@ -5,6 +5,7 @@ import { DriveError } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
 import { getPlace } from "./router.ts";
 import { driveItem, metadata } from "./test/drive-items.ts";
+import { pickMode } from "./test/actions.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 import { renderWithDrive, visit } from "./test/render.tsx";
 import { holdScreen } from "./test/screen.ts";
@@ -77,7 +78,7 @@ describe("a save that finds someone else's change", () => {
     async () => {
       holdScreen("wide");
       await conflict();
-      fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+      await pickMode("Editing");
       const view = await differences();
       const source = await waitFor(() => {
         const content = document
@@ -128,10 +129,10 @@ describe("a save that finds someone else's change", () => {
   it("keeps Drive's version after the editor closes, and tells the page of it", async () => {
     holdScreen("wide");
     await conflict();
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await pickMode("Editing");
 
     keepTheirs();
-    fireEvent.click(await screen.findByRole("button", { name: "Done" }));
+    await pickMode("Viewing");
 
     await new Promise((settle) => setTimeout(settle, 50));
     expect(screen.getByText("Serve")).toBeVisible();

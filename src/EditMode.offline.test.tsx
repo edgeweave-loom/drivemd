@@ -2,6 +2,7 @@ import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { FileContent } from "./FileContent.tsx";
 import { driveItem, metadata } from "./test/drive-items.ts";
+import { pickMode } from "./test/actions.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 import { renderWithDrive } from "./test/render.tsx";
 import { holdScreen } from "./test/screen.ts";
@@ -24,7 +25,7 @@ describe("editing without the editor's code", () => {
       drive,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await pickMode("Editing");
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "DriveMD could not load its editor. Check your connection, then reload it.",

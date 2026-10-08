@@ -570,7 +570,15 @@ test("edits a note's source and saves it, keeping its line breaks", async ({
   await expect(page.locator(".markdown").getByText("Green.")).toBeVisible();
   await loaded(page);
 
-  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  if (phone()) {
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+  } else {
+    await page.getByRole("button", { name: "Viewing" }).click();
+    await page
+      .getByRole("menu", { name: "Mode" })
+      .getByRole("menuitemradio", { name: "Editing" })
+      .click();
+  }
   const source = page.getByRole("textbox", { name: "Markdown source" });
   await source.click();
   await page.keyboard.press("ControlOrMeta+End");
@@ -594,7 +602,7 @@ test("shows a note that is not UTF-8 read-only", async ({ page, run }) => {
   ).toBeVisible();
   await loaded(page);
   await expect(
-    page.getByRole("button", { name: "Edit", exact: true }),
+    page.getByRole("button", { name: /^(Edit|Viewing)$/ }),
   ).toHaveCount(0);
 });
 

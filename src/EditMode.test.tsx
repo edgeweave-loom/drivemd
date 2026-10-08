@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { FileMetadata } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
 import { driveItem, metadata } from "./test/drive-items.ts";
+import { pickMode } from "./test/actions.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 import { renderWithDrive } from "./test/render.tsx";
 import { holdScreen } from "./test/screen.ts";
@@ -70,7 +71,7 @@ describe("editing a note's source", () => {
   it("shows the source beside the preview on a wide screen, and saves it", async () => {
     holdScreen("wide");
     const { drive } = open();
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await pickMode("Editing");
 
     const view = await editor();
     expect(view.state.sliceDoc()).toBe("# Tea\r\n\r\n- [ ] Boil\r\n");
@@ -92,7 +93,7 @@ describe("editing a note's source", () => {
   it("brings a task tapped in the preview into the source", async () => {
     holdScreen("wide");
     open();
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await pickMode("Editing");
     const view = await editor();
 
     fireEvent.click(screen.getByRole("checkbox"));
@@ -114,10 +115,10 @@ describe("editing a note's source", () => {
     expect((await editor()).state.sliceDoc()).toContain("Green.");
   });
 
-  it("keeps the revision opened while editing, and shows Drive's newer one after Done", async () => {
+  it("keeps the revision opened while editing, and shows Drive's newer one once viewing", async () => {
     holdScreen("wide");
     const { drive, rerender } = open();
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await pickMode("Editing");
     const view = await editor();
     type(view, "x");
 
@@ -135,10 +136,12 @@ describe("editing a note's source", () => {
     expect(screen.queryByText("Loading…")).toBeNull();
     expect(drive.getContent).toHaveBeenCalledOnce();
 
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    await pickMode("Viewing");
     expect(
       await screen.findByRole("heading", { name: "Coffee" }),
     ).toBeVisible();
+    // The edit was undone: nothing was written.
+    expect(drive.saveContent).not.toHaveBeenCalled();
   });
 
   it("keeps as unsaved an undo made while a save runs", async () => {
@@ -151,7 +154,7 @@ describe("editing a note's source", () => {
           answer = resolve;
         }),
     );
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await pickMode("Editing");
     const view = await editor();
     type(view, "x");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -171,7 +174,7 @@ describe("editing a note's source", () => {
   it("keeps the same editor, its cursor and history, after a save", async () => {
     holdScreen("wide");
     const { drive, rerender } = open();
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await pickMode("Editing");
     const view = await editor();
     type(view, "\r\nGreen.");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -189,8 +192,7 @@ describe("editing a note's source", () => {
     expect(await editor()).toBe(view);
   });
 
-  it("leaves the editor with Done, keeping the edits to save", async () => {
-    holdScreen("wide");
+  it("leaves a phone's editor with Done, keeping the edits to save", async () => {
     open();
     fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
     type(await editor(), "\r\nGreen.");

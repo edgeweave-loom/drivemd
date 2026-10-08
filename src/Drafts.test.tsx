@@ -10,6 +10,7 @@ import type { FileMetadata } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
 import { metadataQuery } from "./queries.ts";
 import { driveItem, metadata } from "./test/drive-items.ts";
+import { pickMode } from "./test/actions.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 import { ACCOUNT, renderWithDrive } from "./test/render.tsx";
 import { holdScreen } from "./test/screen.ts";
@@ -212,10 +213,12 @@ describe("unsaved text kept on the device", () => {
     open();
 
     await screen.findByRole("button", { name: "Restore" });
-    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /^(Edit|Editing|Viewing)$/ }),
+    ).toBeNull();
     expect(screen.getByRole("checkbox")).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Restore" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await pickMode("Editing");
 
     await waitFor(() => {
       const content = document
