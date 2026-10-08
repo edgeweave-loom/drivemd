@@ -1,7 +1,7 @@
 import { EditorView } from "@codemirror/view";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { FileMetadata } from "./drive.ts";
+import { DriveError, type FileMetadata } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
 import { driveItem, metadata } from "./test/drive-items.ts";
 import { pickMode } from "./test/actions.ts";
@@ -192,16 +192,39 @@ describe("editing a note's source", () => {
     expect(await editor()).toBe(view);
   });
 
-  it("leaves a phone's editor with Done, keeping the edits to save", async () => {
-    open();
+  it("saves before leaving a phone's editor with Done", async () => {
+    const { drive } = open();
     fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
     type(await editor(), "\r\nGreen.");
 
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
 
+    expect(await screen.findByRole("button", { name: "Edit" })).toBeVisible();
+    expect(drive.saveContent).toHaveBeenCalledExactlyOnceWith(
+      PLAN,
+      utf8("# Tea\r\n\r\n- [ ] Boil\r\n\r\nGreen."),
+    );
     expect(editorShown()).toBe(false);
     expect(screen.getByText("Green.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Saved" })).toBeVisible();
+  });
+
+  it("stays in a phone's editor when Done cannot save, saying why", async () => {
+    const { drive } = open();
+    drive.saveContent.mockRejectedValue(
+      new DriveError(403, "The user does not have sufficient permissions."),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    type(await editor(), "\r\nGreen.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The user does not have sufficient permissions.",
+    );
+    expect(editorShown()).toBe(true);
+    // Done gives way to Back meanwhile, which leaves the note.
+    expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
     expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Edit" })).toBeVisible();
   });
 });

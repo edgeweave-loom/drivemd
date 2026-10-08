@@ -95,6 +95,43 @@ test("switches between Editing and Viewing from the mode menu, saving first", as
   expect(drive.writes).toEqual(["keep plan revision-1", "save plan"]);
 });
 
+test("ends a phone's editing with a check in place of Back, which saves first", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.metadata.layout !== "phone",
+    "a wider screen has the mode menu",
+  );
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  const bar = page.getByRole("banner");
+  const back = bar.getByRole("link", { name: "Back to Work" });
+  await expect(back).toBeVisible();
+
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  const done = bar.getByRole("button", { name: "Done" });
+  await expect(done).toBeVisible();
+  await expect(back).toBeHidden();
+  const [checked, named] = await Promise.all([
+    done.boundingBox(),
+    bar.getByRole("heading", { level: 1 }).boundingBox(),
+  ]);
+  if (!checked || !named) throw new Error("The bar has no place for them");
+  expect(checked.x).toBeLessThan(named.x);
+
+  await page.getByRole("textbox", { name: "Markdown source" }).click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type("Tea.");
+  await done.click();
+  await expect(bar.getByRole("button", { name: "Saved" })).toBeVisible();
+  await expect(back).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Edit", exact: true }),
+  ).toBeFocused();
+  expect(drive.writes).toEqual(["keep plan revision-1", "save plan"]);
+});
+
 test("keeps Save in one place through its states, and marks the tab while unsaved", async ({
   page,
 }) => {

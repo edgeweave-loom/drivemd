@@ -621,6 +621,16 @@ export async function folderLink(page: Page, name: string): Promise<Locator> {
  * Drive's answer cancelled for an error.
  */
 export async function goHome(page: Page): Promise<void> {
+  // A phone editing has no Back but the browser's.
+  if (
+    await page
+      .getByRole("banner")
+      .getByRole("button", { name: "Done" })
+      .isVisible()
+  ) {
+    await page.goto("/");
+    return;
+  }
   if (test.info().project.metadata.layout !== "phone") {
     await page.getByRole("link", { name: "DriveMD" }).click();
     return;
@@ -696,9 +706,38 @@ export async function tickWhileEditing(page: Page): Promise<void> {
   await startEditing(page);
   if (test.info().project.metadata.layout === "phone") {
     await page.getByRole("button", { name: "Preview" }).click();
+  } else {
+    // Beside the source, which takes the tick once it has loaded.
+    await expect(
+      page.getByRole("textbox", { name: "Markdown source" }),
+    ).toBeVisible();
   }
   // Beside the source, the tick shows once the source has it.
   const task = page.locator(".markdown").getByRole("checkbox").first();
   await task.click();
   await expect(task).toBeChecked();
+}
+
+/** How many notes have unsaved changes kept on the device. */
+export function draftsKept(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const opening = indexedDB.open("drivemd");
+        opening.onsuccess = () => {
+          const database = opening.result;
+          if (!database.objectStoreNames.contains("drafts")) {
+            resolve(0);
+            return;
+          }
+          const counting = database
+            .transaction("drafts")
+            .objectStore("drafts")
+            .count();
+          counting.onsuccess = () => {
+            resolve(counting.result);
+          };
+        };
+      }),
+  );
 }

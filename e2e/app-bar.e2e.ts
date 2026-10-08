@@ -1,5 +1,6 @@
 import { token } from "./color.ts";
 import {
+  draftsKept,
   EMAIL,
   expect,
   goHome,
@@ -74,7 +75,8 @@ test("gives the focus back to the account when the user stays signed in", async 
   await page.goto("/edit?id=plan");
   await tickWhileEditing(page);
   if (test.info().project.metadata.layout === "phone") {
-    // A phone leaves the account to Home.
+    // A phone leaves the account to Home, once the device keeps the edit.
+    await expect.poll(() => draftsKept(page)).toBe(1);
     page.once("dialog", (dialog) => void dialog.accept());
     await goHome(page);
     await expect(

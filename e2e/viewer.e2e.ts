@@ -1,7 +1,7 @@
-import type { Page } from "@playwright/test";
 import { contrast, luminance } from "./color.ts";
 import {
   expect,
+  draftsKept,
   folderLink,
   goHome,
   startEditing,
@@ -10,30 +10,6 @@ import {
   test,
   vault,
 } from "./fake-google.ts";
-
-/** How many notes have unsaved changes kept on the device. */
-function draftsKept(page: Page): Promise<number> {
-  return page.evaluate(
-    () =>
-      new Promise<number>((resolve) => {
-        const opening = indexedDB.open("drivemd");
-        opening.onsuccess = () => {
-          const database = opening.result;
-          if (!database.objectStoreNames.contains("drafts")) {
-            resolve(0);
-            return;
-          }
-          const counting = database
-            .transaction("drafts")
-            .objectStore("drafts")
-            .count();
-          counting.onsuccess = () => {
-            resolve(counting.result);
-          };
-        };
-      }),
-  );
-}
 
 test("renders a note as GitHub does, under the security policy", async ({
   page,
@@ -444,10 +420,16 @@ test("asks before leaving a note with unsaved changes for another page", async (
   await signIn(page);
   await page.goto("/edit?id=plan");
   await tickWhileEditing(page);
-  const work = await folderLink(page, "Work");
+  // The folder's link where the screen has one beside the note, or else a
+  // link of the note's, to another page of the app, which a phone's preview
+  // shows while editing, its bar then having no Back.
+  const phone = test.info().project.metadata.layout === "phone";
+  const away = phone
+    ? page.locator(".markdown").getByRole("link", { name: "the archive" })
+    : await folderLink(page, "Work");
 
   const refused = page.waitForEvent("dialog");
-  void work.click();
+  void away.click();
   const asked = await refused;
   expect(asked.message()).toBe(
     "This note has unsaved changes. Leave it anyway?",
@@ -459,9 +441,8 @@ test("asks before leaving a note with unsaved changes for another page", async (
   ).toBeVisible();
 
   page.once("dialog", (dialog) => void dialog.accept());
-  await work.click();
+  await away.click();
   await expect(
-    page.getByRole("heading", { level: 2, name: "Work" }),
+    page.getByRole("heading", { level: 2, name: phone ? "Archive" : "Work" }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Archive" })).toBeVisible();
 });

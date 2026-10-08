@@ -333,15 +333,15 @@ describe("editing a note in the viewer", () => {
 
   it("leaves a task ticked while viewing to save beside other unsaved edits", async () => {
     const { drive } = open();
-    // Edits left unsaved by a phone's Done.
-    await editInPreview();
+    // A tick whose save failed is left to save.
+    drive.saveContent.mockRejectedValueOnce(new DriveError(500, "Backend"));
     fireEvent.click(await box(0));
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    await screen.findByRole("alert");
 
     fireEvent.click(await box(1));
     expect((await boxes()).map((one) => one.checked)).toEqual([true, false]);
     expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
-    expect(drive.saveContent).not.toHaveBeenCalled();
+    expect(drive.saveContent).toHaveBeenCalledOnce();
   });
 
   it("leaves a task ticked while editing to save", async () => {
