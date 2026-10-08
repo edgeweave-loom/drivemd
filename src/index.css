@@ -397,7 +397,8 @@ button.account {
   }
 }
 
-.account-menu {
+.account-menu,
+.actions-menu {
   inset: calc(var(--app-bar-height) - var(--space-2)) var(--space-4) auto auto;
 }
 
@@ -526,7 +527,8 @@ button.account {
     box-shadow: none;
   }
 
-  .account-menu {
+  .account-menu,
+  .actions-menu {
     top: calc(var(--app-bar-height-compact) - var(--space-2));
   }
 }

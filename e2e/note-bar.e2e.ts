@@ -33,12 +33,52 @@ test("names the note in the app bar, with what it lets the user do", async ({
     await expect(account).toHaveCount(0);
     // Save says by showing that changes are unsaved, leaving the name room.
     await expect(unsaved).toBeHidden();
-    const name = await bar.getByRole("heading", { level: 1 }).boundingBox();
-    expect(name?.width).toBeGreaterThan(100);
+    const whole = await bar
+      .getByRole("heading", { level: 1 })
+      .evaluate((name) => name.scrollWidth <= name.clientWidth);
+    expect(whole).toBe(true);
   } else {
     await expect(bar.getByRole("link", { name: "DriveMD" })).toBeVisible();
     await expect(changed).toBeVisible();
     await expect(account).toBeVisible();
     await expect(unsaved).toBeVisible();
   }
+});
+
+test("gathers the note's actions in More actions", async ({
+  page,
+  browserName,
+}) => {
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  const bar = page.getByRole("banner");
+  const name = bar.getByRole("heading", { level: 1, name: "plan.md" });
+  await expect(name).toBeVisible();
+
+  const more = bar.getByRole("button", { name: "More actions" });
+  await expect(more.locator('svg[data-icon="more_vert"]')).toHaveCount(1);
+  await more.click();
+  const menu = page.getByRole("dialog", { name: "More actions" });
+  await expect(menu.getByRole("button")).toHaveText([
+    "Rename",
+    "Move",
+    "Move to trash",
+  ]);
+  const box = await menu.boundingBox();
+  expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(
+    page.viewportSize()?.width ?? 0,
+  );
+
+  // The menu closes as the dialog opens.
+  await menu.getByRole("button", { name: "Rename" }).click();
+  await expect(menu).toBeHidden();
+  const rename = page.getByRole("dialog", { name: "Rename" });
+  await expect(rename.getByRole("textbox", { name: "Name" })).toHaveValue(
+    "plan.md",
+  );
+  await rename.getByRole("button", { name: "Cancel" }).click();
+  await expect(rename).toHaveCount(0);
+  // Chromium focuses what a click presses, which then gives the focus back
+  // to More actions once both the menu and the dialog are gone.
+  if (browserName === "chromium") await expect(more).toBeFocused();
 });

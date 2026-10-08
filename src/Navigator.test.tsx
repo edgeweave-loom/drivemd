@@ -364,6 +364,35 @@ describe("Navigator's note bar", () => {
     expect(bar.queryByRole("button", { name: /^Account, / })).toBeNull();
   });
 
+  it("gathers Rename, Move and Move to trash in More actions", async () => {
+    const bar = openPlan();
+
+    fireEvent.click(await bar.findByRole("button", { name: "More actions" }));
+    const menu = screen.getByRole("dialog", { name: "More actions" });
+    expect(
+      within(menu)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Rename", "Move", "Move to trash"]);
+  });
+
+  it("closes More actions as an action's dialog opens, outside the bar", async () => {
+    const bar = openPlan();
+
+    fireEvent.click(await bar.findByRole("button", { name: "More actions" }));
+    const menu = screen.getByRole("dialog", { name: "More actions" });
+    fireEvent.click(within(menu).getByRole("button", { name: "Rename" }));
+    expect(menu).not.toBeVisible();
+    const rename = screen.getByRole("dialog", { name: "Rename" });
+    expect(rename).toBeVisible();
+    // Outside the bar, whose styles would reach it.
+    expect(screen.getByRole("banner")).not.toContainElement(rename);
+
+    fireEvent.click(within(rename).getByRole("button", { name: "Cancel" }));
+    expect(rename).not.toBeInTheDocument();
+    expect(bar.getByRole("button", { name: "More actions" })).toHaveFocus();
+  });
+
   it("leads a phone Home from a note Drive cannot place", async () => {
     const drive = fakeDrive();
     drive.getMetadata.mockRejectedValue(new DriveError(404, "Not found"));
