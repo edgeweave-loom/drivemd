@@ -493,6 +493,12 @@ test("opens what Drive's Open with, New and pasted links name", async ({
   await expect(bar.getByRole("img", { name: "DriveMD" })).toBeVisible();
   await expect(bar.getByRole("link")).toHaveCount(0);
   await expect(page.getByRole("complementary")).toHaveCount(0);
+  // Editing on a computer, reading on a phone.
+  await expect(
+    phone()
+      ? page.getByRole("button", { name: "Edit", exact: true })
+      : bar.getByRole("button", { name: "Editing" }),
+  ).toBeVisible();
   await loaded(page);
 
   // An address typed in the tab ends that; a note's bar holds no search,

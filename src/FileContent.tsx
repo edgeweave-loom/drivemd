@@ -32,6 +32,7 @@ import { Icon } from "./Icon.tsx";
 import type { IconName } from "./icons.ts";
 import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
+import { openedFromDrive } from "./drive-tab.ts";
 import { useLayout } from "./layout.ts";
 import { Loaded } from "./Loaded.tsx";
 import { Missing } from "./Missing.tsx";
@@ -266,13 +267,18 @@ function read(bytes: Uint8Array<ArrayBuffer>): Note {
 function Content({ file }: { file: FileMetadata }) {
   const { drive, account } = useDrive();
   const client = useQueryClient();
+  // A tab opened from Drive opens the note in Editing on a wide screen, as
+  // Docs opens a document on a computer, and in reading on a phone.
+  const startsEditing = useLayout() !== "phone" && openedFromDrive();
   // The revision the page holds to, with the edits made to it, rather than
   // Drive's latest: one the user edited, one open in the editor, or one just
   // saved, until the page hears of it.
-  const [held, setHeld] = useState<Held>();
+  const [held, setHeld] = useState<Held | undefined>(() =>
+    startsEditing ? { opened: file } : undefined,
+  );
   // Whether the editor shows, and on a phone, the source or the preview:
   // kept while another revision loads.
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(startsEditing);
   const [pane, setPane] = useState<Pane>("source");
   // The revisions saved from this page, which the next save need not keep:
   // the one from before the first edit is kept, as is one someone else made.
