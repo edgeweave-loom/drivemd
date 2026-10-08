@@ -1,9 +1,11 @@
+import { onlineManager } from "@tanstack/react-query";
 import * as auth from "./auth.ts";
 import { AuthError, type AuthErrorReason } from "./auth.ts";
 import {
   createDrive,
   DriveError,
   getAccountEmail,
+  UNREACHABLE,
   type Drive,
 } from "./drive.ts";
 
@@ -124,6 +126,10 @@ export function createSession(driveAccount?: string): Session {
     const checked = screen.name === "home" && !state.waiting;
     const current = checked ? auth.getAccessToken() : undefined;
     if (current !== undefined) return Promise.resolve(current);
+    // Offline, no tap can bring one: the call fails as Drive's would.
+    if (!onlineManager.isOnline()) {
+      return Promise.reject(new DriveError(0, UNREACHABLE));
+    }
     return new Promise((resolve, reject) => {
       waiters.add({ account: screen.email, resolve, reject });
       // Without a renewal under way, only a tap on Continue can bring one.
@@ -293,6 +299,8 @@ export function createSession(driveAccount?: string): Session {
     renew() {
       const { screen } = state;
       if (screen.name !== "home" || auth.getAccessToken() !== undefined) return;
+      // Offline, Google's window could not load.
+      if (!onlineManager.isOnline()) return;
       start(auth.requestAccessToken(screen.email), screen.email);
     },
   };

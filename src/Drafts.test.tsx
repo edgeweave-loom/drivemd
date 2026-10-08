@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { EditorView } from "@codemirror/view";
 import { onlineManager } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { rememberAccount, signOut } from "./auth.ts";
 import { deleteDrafts, readDraft, writeDraft } from "./drafts.ts";
 import { resumeKeeping } from "./keep-draft.ts";
@@ -49,10 +49,6 @@ beforeEach(async () => {
   resumeKeeping();
   rememberAccount(ACCOUNT);
   await deleteDrafts(ACCOUNT);
-});
-
-afterEach(() => {
-  onlineManager.setOnline(true);
 });
 
 describe("unsaved text kept on the device", () => {

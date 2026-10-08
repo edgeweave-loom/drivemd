@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
 import { onlineManager } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteDraft, deleteDrafts, listDrafts, writeDraft } from "./drafts.ts";
 import { DriveError, type FileMetadata } from "./drive.ts";
 import { Home } from "./Home.tsx";
@@ -48,10 +48,6 @@ function home(...files: FileMetadata[]) {
 beforeEach(async () => {
   await deleteDrafts(ACCOUNT);
   await deleteDrafts("grace@example.com");
-});
-
-afterEach(() => {
-  onlineManager.setOnline(true);
 });
 
 function section(name: string) {

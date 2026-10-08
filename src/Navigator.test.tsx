@@ -31,7 +31,6 @@ function open(path: string, drive = fakeDrive()) {
 }
 
 afterEach(() => {
-  onlineManager.setOnline(true);
   guardLeaving(undefined);
   history.replaceState(null, "", "/");
   window.dispatchEvent(new PopStateEvent("popstate"));
