@@ -107,6 +107,8 @@ test("renames the note by its name, its ending set apart", async ({
 }) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
+  // Once the note shows, by when its vault check has answered.
+  await expect(page.locator(".markdown")).toBeAttached();
   const bar = page.getByRole("banner");
   const name = bar.getByRole("button", { name: "plan.md" });
   // It reads as text, its ending dimmer.
