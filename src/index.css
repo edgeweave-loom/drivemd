@@ -352,8 +352,8 @@ button.note-name:is(:focus-visible, :active) {
   display: contents;
 }
 
-/* A phone's Done takes the place of Back while editing. */
-.bar.note > .lead:not(:empty) + .up {
+/* A phone's Done takes the place of Back, or of the mark, while editing. */
+.bar.note > .lead:not(:empty) + :is(.up, .mark) {
   display: none;
 }
 
@@ -589,7 +589,7 @@ button.account {
     min-height: var(--app-bar-height-compact);
   }
 
-  .bar h1 img {
+  .bar :is(h1, .mark) img {
     width: 32px;
     height: 32px;
   }

@@ -71,6 +71,8 @@ if ("window" in globalThis) {
   URL.revokeObjectURL = () => undefined;
   // Nor does it load fonts: an event target stands for the page's.
   Object.defineProperty(document, "fonts", { value: new EventTarget() });
+  // Nor does it time the page's load, which then counts as a new address.
+  performance.getEntriesByType = () => [];
   installScreen();
 }
 
