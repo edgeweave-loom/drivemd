@@ -1,6 +1,7 @@
 import { EditorView } from "@codemirror/view";
+import { onlineManager } from "@tanstack/react-query";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { DriveError, type FileMetadata } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
 import { driveItem, metadata } from "./test/drive-items.ts";
@@ -36,6 +37,10 @@ async function editor() {
     return view;
   });
 }
+
+afterEach(() => {
+  onlineManager.setOnline(true);
+});
 
 function editorShown() {
   return document.querySelector(".editor") !== null;
@@ -224,6 +229,24 @@ describe("editing a note's source", () => {
     );
     expect(editorShown()).toBe(true);
     // Done gives way to Back meanwhile, which leaves the note.
+    expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
+  });
+
+  it("says at once that Done cannot save while the device is offline", async () => {
+    const { drive } = open();
+    drive.saveContent.mockRejectedValue(
+      new DriveError(0, "Google Drive could not be reached"),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    type(await editor(), "\r\nGreen.");
+    onlineManager.setOnline(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Google Drive could not be reached. Check your connection.",
+    );
     expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
     expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
   });

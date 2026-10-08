@@ -103,8 +103,6 @@ function ClosedNote({
     mutationFn: () => deleteDraft(account, draft.fileId),
     onSuccess: () =>
       client.invalidateQueries({ queryKey: draftsQuery(account).queryKey }),
-    // The device answers, with or without a connection.
-    networkMode: "always",
   });
   return (
     <>

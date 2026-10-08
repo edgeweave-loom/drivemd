@@ -1,5 +1,12 @@
+import type { Route } from "@playwright/test";
 import { token } from "./color.ts";
-import { expect, signIn, test, tickWhileEditing } from "./fake-google.ts";
+import {
+  expect,
+  signIn,
+  startEditing,
+  test,
+  tickWhileEditing,
+} from "./fake-google.ts";
 
 test("names the note in the app bar, with what it lets the user do", async ({
   page,
@@ -129,6 +136,46 @@ test("ends a phone's editing with a check in place of Back, which saves first", 
   await expect(
     page.getByRole("button", { name: "Edit", exact: true }),
   ).toBeFocused();
+  expect(drive.writes).toEqual(["keep plan revision-1", "save plan"]);
+});
+
+test("says at once that a save cannot reach Drive while offline", async ({
+  page,
+  drive,
+}, info) => {
+  const phone = info.project.metadata.layout === "phone";
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  const bar = page.getByRole("banner");
+  await startEditing(page);
+  await page.getByRole("textbox", { name: "Markdown source" }).click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type("Tea.");
+  await page.context().setOffline(true);
+  // Chromium lets a route answer offline; Drive itself could not.
+  const unreachable = (route: Route) => route.abort("internetdisconnected");
+  await page.route("https://www.googleapis.com/**", unreachable);
+
+  await bar
+    .getByRole(
+      "button",
+      phone ? { name: "Done" } : { name: "Save", exact: true },
+    )
+    .click();
+
+  await expect(page.getByRole("alert")).toContainText("Check your connection.");
+  const save = bar.getByRole("button", { name: "Save", exact: true });
+  await expect(save).not.toHaveAttribute("aria-disabled");
+  if (phone) {
+    // Back comes again in place of Done, so the note never holds the user.
+    await expect(bar.getByRole("link", { name: "Back to Work" })).toBeVisible();
+  }
+  expect(drive.writes).toEqual([]);
+
+  await page.unroute("https://www.googleapis.com/**", unreachable);
+  await page.context().setOffline(false);
+  await save.click();
+  await expect(bar.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(drive.writes).toEqual(["keep plan revision-1", "save plan"]);
 });
 

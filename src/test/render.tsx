@@ -11,8 +11,8 @@ export const ACCOUNT = "ada@example.com";
 
 /**
  * Renders a page with a made-up Drive, signed in unless the tab waits for
- * Continue. Failed calls are not tried again, so that tests need not wait;
- * queries.test.ts covers when the app does.
+ * Continue. Failed reads are not tried again, so that tests need not wait;
+ * queries.test.ts covers when the app does. Writes run as in the app.
  */
 export function renderWithDrive(
   ui: ReactNode,
@@ -20,7 +20,10 @@ export function renderWithDrive(
   { signedIn = true } = {},
 ) {
   const client = createQueryClient();
-  client.setDefaultOptions({ queries: { retry: false } });
+  client.setDefaultOptions({
+    ...client.getDefaultOptions(),
+    queries: { retry: false },
+  });
   const renew = vi.fn();
   const within = (page: ReactNode) => (
     <QueryClientProvider client={client}>

@@ -300,7 +300,10 @@ describe("unsaved text kept on the device", () => {
     await kept("- [ ] Boil\n", "revision-2", "bbbb");
     const { drive, client } = open();
     // As the file's page left it, fresh for half a minute as in the app.
-    client.setDefaultOptions({ queries: { retry: false, staleTime: 30_000 } });
+    client.setDefaultOptions({
+      ...client.getDefaultOptions(),
+      queries: { retry: false, staleTime: 30_000 },
+    });
     client.setQueryData(metadataQuery(drive, PLAN).queryKey, PLAN);
     drive.getMetadata.mockResolvedValue(
       metadata(PLAN, { md5Checksum: "bbbb", headRevisionId: "revision-2" }),

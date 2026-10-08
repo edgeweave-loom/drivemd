@@ -232,7 +232,10 @@ describe("Move", () => {
   it("opens at the folder the file went to, once moved", async () => {
     const { drive, client } = openPlan();
     // As in the app, where the path stays fresh unless a change says not.
-    client.setDefaultOptions({ queries: { retry: false, staleTime: 30_000 } });
+    client.setDefaultOptions({
+      ...client.getDefaultOptions(),
+      queries: { retry: false, staleTime: 30_000 },
+    });
 
     let picker = await openPicker();
     fireEvent.click(await picker.findByRole("button", { name: "Archive" }));

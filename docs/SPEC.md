@@ -39,7 +39,7 @@ The interface is in English and follows the system's light or dark theme.
 
 - WYSIWYG editing (source editing keeps files byte-identical), and full Obsidian-style live preview (planned for v2, see Editor)
 - Real-time multi-user collaboration
-- Offline editing: unsaved text is kept on the device, but nothing reaches Drive while offline
+- Offline editing: unsaved text is kept on the device, but nothing reaches Drive while offline. A save, or any other change to Drive, fails at once and says to check the connection, rather than waiting to run later unasked
 - Converting to or from Google Docs
 - Users outside our Workspace organization
 - Searching inside file contents (search is by name)
