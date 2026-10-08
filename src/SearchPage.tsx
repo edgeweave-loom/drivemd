@@ -43,6 +43,7 @@ function Results({ text, wanted }: { text: string; wanted: string }) {
         order="as-listed"
         // Where a file sits comes from Drive, not from the search.
         trail={undefined}
+        located
         empty={`Among Drive's first 100 matches, no Markdown file has a name with ${wanted}. Drive matches the start of words: “plan” finds planning.md, not myplan.md.`}
       />
     </>

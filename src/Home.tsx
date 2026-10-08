@@ -28,6 +28,7 @@ export function Home() {
           order="as-listed"
           // Where a file sits comes from Drive.
           trail={undefined}
+          located
           empty="The Markdown files you view, here or in Google Drive, show here."
         />
       </Section>

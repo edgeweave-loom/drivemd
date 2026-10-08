@@ -3,7 +3,13 @@ import { describe, expect, it } from "vitest";
 import { DriveError } from "./drive.ts";
 import { EntryList } from "./EntryList.tsx";
 import { entriesOf } from "./listing.ts";
-import { FOLDER, shortcutItem } from "./test/drive-items.ts";
+import {
+  driveItem,
+  FOLDER,
+  folderItem,
+  metadata,
+  shortcutItem,
+} from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 import { renderWithDrive } from "./test/render.tsx";
 
@@ -74,5 +80,58 @@ describe("EntryList", () => {
       .toBe("return");
     await new Promise((resolve) => setTimeout(resolve));
     expect(screen.getByRole("link", { name: /Notes/ })).toHaveAttribute("href");
+  });
+});
+
+describe("EntryList, where it gives each note's folder", () => {
+  it("names the folder a note sits in, once Drive answers", async () => {
+    const drive = fakeDrive();
+    drive.getMetadata.mockResolvedValue(
+      metadata(folderItem("Work", { id: "work" })),
+    );
+    renderWithDrive(
+      <EntryList
+        entries={entriesOf([driveItem("plan.md", { parents: ["work"] })])}
+        trail={undefined}
+        empty="Nothing"
+        located
+      />,
+      drive,
+    );
+    const plan = screen.getByRole("link", { name: "plan.md" });
+    await waitFor(() => {
+      expect(plan).toHaveAccessibleDescription("Work");
+    });
+    expect(drive.getMetadata).toHaveBeenCalledWith({ id: "work" });
+  });
+
+  it("says Shared with me for a note whose folder Drive does not name", () => {
+    const drive = fakeDrive();
+    renderWithDrive(
+      <EntryList
+        entries={entriesOf([driveItem("shared.md", { parents: [] })])}
+        trail={undefined}
+        empty="Nothing"
+        located
+      />,
+      drive,
+    );
+    expect(
+      screen.getByRole("link", { name: "shared.md" }),
+    ).toHaveAccessibleDescription("Shared with me");
+    expect(drive.getMetadata).not.toHaveBeenCalled();
+  });
+
+  it("gives no folder where the list does not ask for it", () => {
+    const drive = fakeDrive();
+    renderWithDrive(
+      <EntryList
+        entries={entriesOf([driveItem("plan.md", { parents: ["work"] })])}
+        trail={undefined}
+        empty="Nothing"
+      />,
+      drive,
+    );
+    expect(drive.getMetadata).not.toHaveBeenCalled();
   });
 });

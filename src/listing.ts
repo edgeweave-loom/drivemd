@@ -17,6 +17,8 @@ export interface Entry {
   opens: FileRef;
   /** Where a shortcut points, for checking that its target still opens. */
   target: ShortcutTarget | undefined;
+  /** The folder the item sits in, when Drive names one. */
+  parent: string | undefined;
   modifiedTime: string | undefined;
   /** Who changed the item last: "you", when the signed-in user did. */
   modifiedBy: string | undefined;
@@ -68,6 +70,7 @@ export function entriesOf(
         name,
         opens: { id: opens.id, resourceKey: opens.resourceKey },
         target,
+        parent: item.parents[0],
         modifiedTime: item.modifiedTime,
         modifiedBy: item.lastModifiedByMe ? "you" : item.lastModifiedBy,
       },

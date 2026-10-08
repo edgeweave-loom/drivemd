@@ -81,6 +81,7 @@ export function SharedDrivesPage({ trail }: { trail: Crumb[] | undefined }) {
                 name,
                 opens: { id },
                 target: undefined,
+                parent: undefined,
                 // Drive gives a shared drive no time of change.
                 modifiedTime: undefined,
                 modifiedBy: undefined,
