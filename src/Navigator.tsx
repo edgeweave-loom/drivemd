@@ -63,6 +63,7 @@ export function Navigator({
     () => ({
       drive: session.drive,
       renew: session.renew,
+      signOut: session.signOut,
       account: email,
       signedIn,
     }),

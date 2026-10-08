@@ -58,6 +58,17 @@ test("holds the note alone, through a reload, until another address opens", asyn
     await expect(mark).toBeHidden();
     await bar.getByRole("button", { name: "Done" }).click();
     await expect(mark).toBeVisible();
+    // The account, which no Home holds here, is in More actions.
+    await bar.getByRole("button", { name: "More actions" }).click();
+    const menu = page.getByRole("dialog", { name: "More actions" });
+    await expect(
+      menu.getByRole("link", { name: "About DriveMD" }),
+    ).toBeVisible();
+    await expect(menu.getByRole("button", { name: "Sign out" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+  } else {
+    await expect(bar.getByRole("button", { name: /^Account, / })).toBeVisible();
   }
 
   await page.reload();

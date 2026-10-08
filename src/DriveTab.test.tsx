@@ -38,7 +38,16 @@ function openFromDrive() {
   visit("/edit?id=plan");
   const session = { drive, renew: vi.fn(), signOut: vi.fn() };
   render(<Navigator session={session} email={EMAIL} signedIn />);
-  return { drive, bar: within(screen.getByRole("banner")) };
+  return { drive, session, bar: within(screen.getByRole("banner")) };
+}
+
+/** What the open More actions menu offers, in order. */
+function items() {
+  return [
+    ...screen
+      .getByRole("dialog", { name: "More actions" })
+      .querySelectorAll("a, button"),
+  ].map((item) => item.textContent);
 }
 
 afterEach(() => {
@@ -146,5 +155,65 @@ describe("A tab opened from Drive", () => {
     expect(
       await screen.findByRole("link", { name: "DriveMD" }),
     ).toHaveAttribute("href", "/");
+  });
+
+  it("keeps the account in a phone's More actions, after the note's actions", async () => {
+    const { session, bar } = openFromDrive();
+    await bar.findByText(/^Last modified/);
+
+    fireEvent.click(await bar.findByRole("button", { name: "More actions" }));
+    const menu = within(screen.getByRole("dialog", { name: "More actions" }));
+    expect(items()).toEqual([
+      "Move",
+      "Move to trash",
+      "About DriveMD",
+      "Sign out",
+    ]);
+    expect(menu.getByText(EMAIL)).toBeVisible();
+    expect(menu.getByRole("link", { name: "About DriveMD" })).toHaveAttribute(
+      "href",
+      "/about.html",
+    );
+    fireEvent.click(menu.getByRole("button", { name: "Sign out" }));
+    await waitFor(() => {
+      expect(session.signOut).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("leaves the account to its own button on a wider screen", async () => {
+    holdScreen("tablet");
+    const { bar } = openFromDrive();
+
+    fireEvent.click(await bar.findByRole("button", { name: "More actions" }));
+    const menu = within(screen.getByRole("dialog", { name: "More actions" }));
+    expect(menu.queryByRole("button", { name: "Sign out" })).toBeNull();
+    expect(menu.queryByRole("link", { name: "About DriveMD" })).toBeNull();
+  });
+
+  it("keeps a phone's account within reach once the note is in the trash", async () => {
+    const { drive, bar } = openFromDrive();
+    drive.trashFile.mockImplementation(() => {
+      drive.getMetadata.mockReturnValue(new Promise(() => undefined));
+      return Promise.resolve();
+    });
+    await bar.findByText(/^Last modified/);
+
+    fireEvent.click(bar.getByRole("button", { name: "More actions" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "More actions" })).getByRole(
+        "button",
+        { name: "Move to trash" },
+      ),
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Move to trash?" })).getByRole(
+        "button",
+        { name: "Move to trash" },
+      ),
+    );
+    await screen.findByText(/^This file is in the trash\./);
+
+    fireEvent.click(bar.getByRole("button", { name: "More actions" }));
+    expect(items()).toEqual(["About DriveMD", "Sign out"]);
   });
 });

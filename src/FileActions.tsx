@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useId, useRef } from "react";
 import { createPortal } from "react-dom";
+import { AccountItems } from "./Account.tsx";
 import { ConfirmDialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
 import { Icon } from "./Icon.tsx";
@@ -38,22 +39,26 @@ export function MoveButton({ onPick }: { onPick: () => void }) {
 /**
  * The rest of what the user may do with the file, as far as Drive allows, in
  * a menu that closes as an action's dialog opens; Move among them where the
- * page says so.
+ * page says so, and the account after them where the bar has no room for it.
  */
 export function MoreActions({
   file,
   moves,
+  account,
   onPick,
 }: {
-  file: FileMetadata;
+  /** The file, while the page shows it. */
+  file: FileMetadata | undefined;
   moves: boolean;
+  account: boolean;
   onPick: (action: Action) => void;
 }) {
   const id = useId();
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
-  const { canTrash } = file.capabilities;
-  if (!moves && !canTrash) return null;
+  const { account: email, signOut } = useDrive();
+  const canTrash = file?.capabilities.canTrash ?? false;
+  if (!moves && !canTrash && !account) return null;
   const item = (action: Action, label: string) => (
     <button
       type="button"
@@ -89,6 +94,14 @@ export function MoreActions({
       >
         {moves && item("move", "Move")}
         {canTrash && item("trash", "Move to trash")}
+        {account && (
+          <AccountItems
+            email={email}
+            onSignOut={signOut}
+            button={button}
+            menu={menu}
+          />
+        )}
       </div>
     </>
   );

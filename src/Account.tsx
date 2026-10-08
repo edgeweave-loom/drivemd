@@ -1,4 +1,4 @@
-import { useId, useRef } from "react";
+import { useId, useRef, type RefObject } from "react";
 import { SignOut } from "./SignOut.tsx";
 
 /**
@@ -36,26 +36,53 @@ export function Account({
         aria-label="Account"
         className="menu account-menu"
       >
-        <p>{email}</p>
-        <a
-          href="/about.html"
-          target="_blank"
-          rel="noopener"
-          onClick={() => {
-            menu.current?.hidePopover();
-          }}
-        >
-          About DriveMD
-        </a>
-        <SignOut
-          account={email}
+        <AccountItems
+          email={email}
           onSignOut={onSignOut}
-          onStay={() => {
-            // The menu closed as the dialog opened.
-            button.current?.focus();
-          }}
+          button={button}
+          menu={menu}
         />
       </div>
+    </>
+  );
+}
+
+/**
+ * The account's part of a menu: its address, the about page and Sign out,
+ * after which the focus goes back to the button that opened the menu.
+ */
+export function AccountItems({
+  email,
+  onSignOut,
+  button,
+  menu,
+}: {
+  email: string;
+  onSignOut: () => void;
+  button: RefObject<HTMLButtonElement | null>;
+  menu: RefObject<HTMLDivElement | null>;
+}) {
+  return (
+    <>
+      <p>{email}</p>
+      <a
+        href="/about.html"
+        target="_blank"
+        rel="noopener"
+        onClick={() => {
+          menu.current?.hidePopover();
+        }}
+      >
+        About DriveMD
+      </a>
+      <SignOut
+        account={email}
+        onSignOut={onSignOut}
+        onStay={() => {
+          // The menu closed as the dialog opened.
+          button.current?.focus();
+        }}
+      />
     </>
   );
 }

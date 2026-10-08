@@ -170,6 +170,8 @@ export function FilePage({
   // Beside the name, or in More actions on a phone, which has no room there.
   const movable = opens && mayMove(details.data);
   const moveBeside = movable && !phone;
+  // A phone's tab opened from Drive has no Home that holds the account.
+  const account = phone && openedFromDrive();
 
   useEffect(() => {
     if (!opens) return;
@@ -207,11 +209,12 @@ export function FilePage({
         </div>
         {opens && <Changed file={details.data} />}
       </InSlot>
-      {opens && (
+      {(opens || account) && (
         <InSlot name="more">
           <MoreActions
-            file={details.data}
+            file={opens ? details.data : undefined}
             moves={movable && !moveBeside}
+            account={account}
             onPick={setAction}
           />
         </InSlot>
