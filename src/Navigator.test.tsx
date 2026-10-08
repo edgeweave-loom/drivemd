@@ -6,7 +6,9 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { onlineManager } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DriveError } from "./drive.ts";
 import { Navigator } from "./Navigator.tsx";
 import { getPlace, guardLeaving, navigate } from "./router.ts";
 import {
@@ -29,6 +31,7 @@ function open(path: string, drive = fakeDrive()) {
 }
 
 afterEach(() => {
+  onlineManager.setOnline(true);
   guardLeaving(undefined);
   history.replaceState(null, "", "/");
   window.dispatchEvent(new PopStateEvent("popstate"));
@@ -208,14 +211,23 @@ describe("Navigator", () => {
     const search = screen.getByRole("searchbox");
     fireEvent.change(search, {
       target: {
-        value: "https://drive.google.com/file/d/plan/view?resourcekey=k",
+        value: "https://drive.google.com/drive/folders/work?resourcekey=k",
       },
     });
     fireEvent.submit(search);
     expect(session.renew).toHaveBeenCalledOnce();
-    expect(getPlace().href).toBe("/edit?id=plan&resourcekey=k");
+    expect(getPlace().href).toBe("/folder/work?resourcekey=k");
     expect(session.drive.search).not.toHaveBeenCalled();
     expect(search).toHaveValue("");
+
+    fireEvent.change(search, {
+      target: {
+        value: "https://drive.google.com/file/d/plan/view?resourcekey=k",
+      },
+    });
+    fireEvent.submit(search);
+    expect(session.renew).toHaveBeenCalledTimes(2);
+    expect(getPlace().href).toBe("/edit?id=plan&resourcekey=k");
   });
 
   it("searches again when the address of the search shown is pasted", async () => {
@@ -247,14 +259,6 @@ describe("Navigator", () => {
     expect(session.renew).not.toHaveBeenCalled();
     expect(getPlace().href).toBe("/shortcuts");
     expect(search).toHaveValue(link);
-  });
-
-  it("opens a file's page", () => {
-    open("/edit?id=plan");
-
-    expect(
-      screen.getByRole("navigation", { name: "Breadcrumbs" }),
-    ).toBeVisible();
   });
 
   it("leaves a folder's dialogs behind when another folder opens", async () => {
@@ -317,6 +321,88 @@ describe("Navigator", () => {
   });
 });
 
+describe("Navigator's note bar", () => {
+  function openPlan() {
+    const drive = fakeDrive();
+    drive.getMetadata.mockImplementation(
+      metadataOf(
+        metadata(folderItem("Work", { id: "work", parents: ["my-root"] })),
+        metadata(driveItem("plan.md", { id: "plan", parents: ["work"] })),
+      ),
+    );
+    drive.listChildren.mockResolvedValue([]);
+    drive.markViewed.mockResolvedValue();
+    drive.getContent.mockResolvedValue(new TextEncoder().encode("# The plan"));
+    open("/edit?id=plan", drive);
+    return within(screen.getByRole("banner"));
+  }
+
+  it("names the note and who changed it last, with its tools and no search", async () => {
+    const bar = openPlan();
+
+    expect(
+      await bar.findByRole("heading", { level: 1, name: "plan.md" }),
+    ).toBeVisible();
+    expect(
+      await bar.findByText(/^Last modified by Ada Lovelace on /),
+    ).toBeVisible();
+    expect(await bar.findByRole("button", { name: "Edit" })).toBeVisible();
+    expect(bar.queryByRole("searchbox")).toBeNull();
+    expect(bar.queryByRole("button", { name: "Search" })).toBeNull();
+    expect(
+      screen.queryByRole("navigation", { name: "Breadcrumbs" }),
+    ).toBeNull();
+  });
+
+  it("leads a phone up to the note's folder, rebuilt from Drive", async () => {
+    const bar = openPlan();
+
+    expect(
+      await bar.findByRole("link", { name: "Back to Work" }),
+    ).toHaveAttribute("href", "/folder/work");
+    expect(bar.queryByRole("link", { name: "DriveMD" })).toBeNull();
+    expect(bar.queryByRole("button", { name: /^Account, / })).toBeNull();
+  });
+
+  it("leads a phone Home from a note Drive cannot place", async () => {
+    const drive = fakeDrive();
+    drive.getMetadata.mockRejectedValue(new DriveError(404, "Not found"));
+    open("/edit?id=plan", drive);
+
+    expect(
+      await within(screen.getByRole("banner")).findByRole("link", {
+        name: "Back to Home",
+      }),
+    ).toHaveAttribute("href", "/");
+  });
+
+  it("leads a phone Home from a note opened offline", () => {
+    onlineManager.setOnline(false);
+    open("/edit?id=plan");
+
+    expect(
+      within(screen.getByRole("banner")).getByRole("link", {
+        name: "Back to Home",
+      }),
+    ).toHaveAttribute("href", "/");
+  });
+
+  it("leads a wider screen Home by DriveMD's mark, beside the account", async () => {
+    holdScreen("tablet");
+    const bar = openPlan();
+
+    await bar.findByRole("heading", { level: 1, name: "plan.md" });
+    expect(bar.getByRole("link", { name: "DriveMD" })).toHaveAttribute(
+      "href",
+      "/",
+    );
+    expect(bar.queryByRole("link", { name: /^Back to/ })).toBeNull();
+    expect(
+      bar.getByRole("button", { name: `Account, ${EMAIL}` }),
+    ).toBeVisible();
+  });
+});
+
 describe("Navigator's app bar on a phone", () => {
   const myDrive = { name: "My Drive", href: "/my-drive" };
   const work = { name: "Work", href: "/folder/work" };
@@ -357,6 +443,18 @@ describe("Navigator's app bar on a phone", () => {
       "…",
     );
     expect(within(bar).queryByRole("link", { name: /^Back to/ })).toBeNull();
+  });
+
+  it("leads Home from a folder Drive cannot place", async () => {
+    const drive = fakeDrive();
+    drive.getMetadata.mockRejectedValue(new DriveError(404, "Not found"));
+    open("/folder/work", drive);
+
+    expect(
+      await within(screen.getByRole("banner")).findByRole("link", {
+        name: "Back to Home",
+      }),
+    ).toHaveAttribute("href", "/");
   });
 
   it("calls a folder Drive does not describe Folder, as its page does", async () => {

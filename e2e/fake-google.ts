@@ -1,4 +1,10 @@
-import { test as base, expect, type Page, type Route } from "@playwright/test";
+import {
+  test as base,
+  expect,
+  type Locator,
+  type Page,
+  type Route,
+} from "@playwright/test";
 import { createHash } from "node:crypto";
 
 // Made-up data only: no real account, Drive ID or note.
@@ -584,4 +590,46 @@ export function vault(page: Page) {
     .or(drive)
     .getByRole("link", { name: "Journal" })
     .or(drive.getByRole("button", { name: "Vaults" }));
+}
+
+/**
+ * The link from a note to the folder it sits in, as the screen offers it:
+ * heading the folder pane on a wide screen, or its drawer on a tablet, which
+ * opens first, or Back on a phone.
+ */
+export async function folderLink(page: Page, name: string): Promise<Locator> {
+  switch (test.info().project.metadata.layout) {
+    case "wide":
+      return page
+        .getByRole("complementary", { name })
+        .getByRole("link", { name, exact: true });
+    case "tablet":
+      await page.getByRole("button", { name: "Folder" }).click();
+      return page
+        .getByRole("dialog", { name })
+        .getByRole("link", { name, exact: true });
+    default:
+      return page
+        .getByRole("banner")
+        .getByRole("link", { name: `Back to ${name}` });
+  }
+}
+
+/**
+ * Goes Home from plan.md, in My Drive › Work: by DriveMD's mark, or up its
+ * path on a phone, each folder listed before it is left, since WebKit takes
+ * Drive's answer cancelled for an error.
+ */
+export async function goHome(page: Page): Promise<void> {
+  if (test.info().project.metadata.layout !== "phone") {
+    await page.getByRole("link", { name: "DriveMD" }).click();
+    return;
+  }
+  await page.getByRole("link", { name: "Back to Work" }).click();
+  await expect(page.getByRole("link", { name: "Archive" })).toBeVisible();
+  await page.getByRole("link", { name: "Back to My Drive" }).click();
+  await expect(
+    page.getByRole("link", { name: "Work", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Back to Home" }).click();
 }

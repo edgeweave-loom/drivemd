@@ -27,6 +27,7 @@ import {
   type FileMetadata,
   type FileRef,
 } from "./drive.ts";
+import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
 import { useLayout } from "./layout.ts";
 import { Loaded } from "./Loaded.tsx";
@@ -665,18 +666,20 @@ function NoteView({
           </button>
         )}
         {editable && (
-          <button
-            type="button"
-            className="tonal"
-            onClick={() => {
-              onEditing(!editing);
-            }}
-          >
-            {editing ? "Done" : "Edit"}
-          </button>
+          <InSlot name="mode">
+            <button
+              type="button"
+              className="tonal"
+              onClick={() => {
+                onEditing(!editing);
+              }}
+            >
+              {editing ? "Done" : "Edit"}
+            </button>
+          </InSlot>
         )}
         {unsaved && !conflict && (
-          <>
+          <InSlot name="save">
             <span className="hint">Unsaved changes</span>
             <button
               type="button"
@@ -686,7 +689,7 @@ function NoteView({
             >
               {save.isPending ? "Saving…" : "Save"}
             </button>
-          </>
+          </InSlot>
         )}
       </div>
       {conflict && (

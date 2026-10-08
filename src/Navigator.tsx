@@ -20,7 +20,7 @@ import { Link } from "./Link.tsx";
 import { useDrawer } from "./drawer.ts";
 import { NavDrawer } from "./NavDrawer.tsx";
 import { NewPage } from "./NewPage.tsx";
-import { useFolder } from "./path.ts";
+import { useAbove, useFolder } from "./path.ts";
 import { createQueryClient, refreshSearches } from "./queries.ts";
 import {
   SharedDrivesPage,
@@ -37,6 +37,7 @@ import {
   type Crumb,
 } from "./router.ts";
 import { SearchPage } from "./SearchPage.tsx";
+import { SlotsContext, type SlotName, type Slots } from "./slots.ts";
 import type { Session } from "./session.ts";
 
 const HOME = hrefOf({ name: "home" });
@@ -65,24 +66,105 @@ export function Navigator({
     }),
     [session, email, signedIn],
   );
+  // The note's page fills places of the app bar, which it holds the state of.
+  const [slots, setSlots] = useState<Slots>({});
+  const places = useMemo(() => {
+    const place = (name: SlotName) => (element: HTMLElement | null) => {
+      setSlots((before) =>
+        before[name] === (element ?? undefined)
+          ? before
+          : { ...before, [name]: element ?? undefined },
+      );
+    };
+    return { title: place("title"), mode: place("mode"), save: place("save") };
+  }, []);
   return (
     <QueryClientProvider client={client}>
       <DriveContext value={access}>
-        <AppBar email={email} onSignOut={session.signOut} />
-        <Shell>
-          {children}
-          <Page />
-        </Shell>
+        <SlotsContext value={slots}>
+          <AppBar email={email} onSignOut={session.signOut} places={places} />
+          <Shell>
+            {children}
+            <Page />
+          </Shell>
+        </SlotsContext>
       </DriveContext>
     </QueryClientProvider>
   );
 }
+
+type Places = Record<SlotName, (element: HTMLElement | null) => void>;
 
 /**
  * DriveMD's mark and name, which lead Home, the search bar and the account.
  * On a phone, the search opens full screen from a button.
  */
 function AppBar({
+  email,
+  onSignOut,
+  places,
+}: {
+  email: string;
+  onSignOut: () => void;
+  places: Places;
+}) {
+  const { route } = usePlace();
+  if (route.name === "file") {
+    return (
+      <NoteBar
+        file={route.file}
+        email={email}
+        onSignOut={onSignOut}
+        places={places}
+      />
+    );
+  }
+  return <BrowsingBar email={email} onSignOut={onSignOut} />;
+}
+
+/**
+ * A note's app bar: DriveMD's mark, or a phone's way up to the note's
+ * folder, then the places the note's page fills, and the account but on a
+ * phone, which leaves it to Home.
+ */
+function NoteBar({
+  file,
+  email,
+  onSignOut,
+  places: { title, mode, save },
+}: {
+  file: FileRef;
+  email: string;
+  onSignOut: () => void;
+  places: Places;
+}) {
+  const { trail } = usePlace();
+  const phone = useLayout() === "phone";
+  return (
+    <header className="bar note">
+      {phone ? (
+        <NoteUp file={file} trail={trail} />
+      ) : (
+        <Link to={HOME} className="mark" aria-label="DriveMD">
+          <img src="/icon.svg" alt="" />
+        </Link>
+      )}
+      <div className="note-title" ref={title} />
+      <div className="note-tools">
+        <span className="slot" ref={mode} />
+        <span className="slot" ref={save} />
+      </div>
+      {!phone && <Account email={email} onSignOut={onSignOut} />}
+    </header>
+  );
+}
+
+/**
+ * The app bar beside Home, folders and search: DriveMD's mark and name,
+ * which lead Home, or on a phone a folder's name and its way up, then the
+ * search bar and the account.
+ */
+function BrowsingBar({
   email,
   onSignOut,
 }: {
@@ -173,34 +255,51 @@ function FolderTitle({
   folder: FileRef;
   trail: Crumb[] | undefined;
 }) {
-  const { path, name } = useFolder(folder, trail);
-  return <Title name={name} up={path?.slice(0, -1)} />;
+  const { name } = useFolder(folder, trail);
+  return <Title name={name} up={useAbove(folder, trail)} />;
+}
+
+/** A note's way up, on a phone: to the folder the path gives it. */
+function NoteUp({
+  file,
+  trail,
+}: {
+  file: FileRef;
+  trail: Crumb[] | undefined;
+}) {
+  return <Up up={useAbove(file, trail)} />;
+}
+
+/** The page's name, and a way up to the place above it. */
+function Title({ name, up }: { name: string; up: Crumb[] | undefined }) {
+  return (
+    <>
+      <Up up={up} />
+      <h1 className="title">{name}</h1>
+    </>
+  );
 }
 
 /**
- * The page's name, and a way up to the place above it: the last step of
- * the path that leads there, or else Home; none while the path is unknown.
+ * A way up to the place above the page: the last step of the path that
+ * leads there, or else Home; none while the path is unknown.
  */
-function Title({ name, up }: { name: string; up: Crumb[] | undefined }) {
+function Up({ up }: { up: Crumb[] | undefined }) {
   const above = up && (up.at(-1) ?? { name: "Home", href: HOME });
+  if (!up || !above) {
+    // Its place, kept while the path comes.
+    return <span className="icon-button up" />;
+  }
   return (
-    <>
-      {up && above ? (
-        <Link
-          to={above.href}
-          trail={up.length > 0 ? up : undefined}
-          className="icon-button up"
-          aria-label={`Back to ${above.name}`}
-          title={`Back to ${above.name}`}
-        >
-          <Icon name="arrow_back" />
-        </Link>
-      ) : (
-        // Its place, kept while the path comes.
-        <span className="icon-button up" />
-      )}
-      <h1 className="title">{name}</h1>
-    </>
+    <Link
+      to={above.href}
+      trail={up.length > 0 ? up : undefined}
+      className="icon-button up"
+      aria-label={`Back to ${above.name}`}
+      title={`Back to ${above.name}`}
+    >
+      <Icon name="arrow_back" />
+    </Link>
   );
 }
 

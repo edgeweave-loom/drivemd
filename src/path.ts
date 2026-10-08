@@ -26,6 +26,21 @@ export function usePath(
 }
 
 /**
+ * The path above an item, which its way up leads to: none while Drive is
+ * asked, and Home's once Drive fails to place the item or cannot be reached,
+ * so that the page still leads somewhere.
+ */
+export function useAbove(
+  item: FileRef,
+  trail: Crumb[] | undefined,
+): Crumb[] | undefined {
+  const rebuilt = useClimb(item, trail === undefined);
+  const path = trail ?? (rebuilt.data && crumbsOf(rebuilt.data));
+  if (path) return path.slice(0, -1);
+  return rebuilt.isError || rebuilt.fetchStatus === "paused" ? [] : undefined;
+}
+
+/**
  * A folder's details, its path, and its name as the page and a phone's bar
  * give it: from the path, or else from Drive, while Drive is still asked or
  * once it failed to say.

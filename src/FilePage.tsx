@@ -4,12 +4,12 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
-import { Breadcrumbs } from "./Breadcrumbs.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
 import type { FileMetadata, FileRef } from "./drive.ts";
 import { FileActions } from "./FileActions.tsx";
 import { FolderPane } from "./FolderPane.tsx";
+import { InSlot } from "./InSlot.tsx";
 import { Link } from "./Link.tsx";
 import { kindOf } from "./listing.ts";
 import { useLayout } from "./layout.ts";
@@ -166,16 +166,21 @@ export function FilePage({
 
   return (
     <div className="main">
-      <Breadcrumbs path={path} />
-      <div className="heading">
-        <h2>
+      {/* In the app bar, which names the note and when it last changed. */}
+      <InSlot name="title">
+        <h1 className="title">
           {path?.at(-1)?.name ??
             details.data?.name ??
             (details.isError ? "File" : "…")}
-        </h2>
-        {drawer}
-        {opens && <FileActions file={details.data} page={file} path={path} />}
-      </div>
+        </h1>
+        {opens && <Changed file={details.data} />}
+      </InSlot>
+      {(Boolean(drawer) || opens) && (
+        <div className="heading">
+          {drawer}
+          {opens && <FileActions file={details.data} page={file} path={path} />}
+        </div>
+      )}
       <Loaded
         query={details}
         missing="This file does not exist, or it is not shared with you."
@@ -232,7 +237,6 @@ function About({
   }
   return (
     <>
-      <Changed file={file} />
       <Suspense fallback={<p className="hint">Loading…</p>}>
         <FileContent file={file} />
       </Suspense>

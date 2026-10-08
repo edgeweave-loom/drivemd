@@ -73,7 +73,7 @@ describe("the folder pane", () => {
       { name: "notes.md", href: "/edit?id=notes" },
     ]);
     expect(
-      await screen.findByRole("heading", { level: 2, name: "notes.md" }),
+      await screen.findByRole("heading", { level: 1, name: "notes.md" }),
     ).toBeVisible();
     expect(pane().getByRole("link", { name: "notes.md" })).toHaveAttribute(
       "aria-current",
