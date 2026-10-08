@@ -61,7 +61,8 @@ const COLORS = EditorView.theme({
     fontSize: "max(16px, 1rem)",
   },
   "&.cm-focused": { outline: "2px solid var(--primary)" },
-  ".cm-scroller": { fontFamily: "inherit", lineHeight: "1.5" },
+  // 26 px lines at 16 px, as the note's own.
+  ".cm-scroller": { fontFamily: "inherit", lineHeight: "1.625" },
   ".cm-content": { caretColor: "var(--on-surface)" },
   ".cm-cursor": { borderLeftColor: "var(--on-surface)" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground":

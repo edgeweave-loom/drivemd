@@ -1340,9 +1340,13 @@ dialog.drawer {
   border: 0;
 }
 
-/* A note, rendered as GitHub renders Markdown. */
+/* A note, rendered as GitHub renders Markdown, in the design's type: 16 px
+   on 26 px lines, at most 72 characters wide (docs/DESIGN.md, Type). */
 .markdown {
+  max-width: 72ch;
   min-width: 0;
+  font-size: 16px;
+  line-height: 26px;
   overflow-wrap: break-word;
 }
 
@@ -1358,42 +1362,43 @@ dialog.drawer {
   margin: 0 0 1rem;
 }
 
+/* Headings at 500, without GitHub's rules: the smaller ones at the body's
+   size. */
 .markdown :is(h1, h2, h3, h4, h5, h6) {
-  margin: 1.5rem 0 1rem;
+  margin: var(--space-6) 0 var(--space-3);
   color: inherit;
-  font-weight: 600;
-  line-height: 1.25;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 26px;
   text-transform: none;
 }
 
-.markdown :is(h1, h2) {
-  padding-bottom: 0.3em;
-  border-bottom: 1px solid var(--outline-variant);
-}
-
 .markdown h1 {
-  font-size: 2em;
+  font-size: 32px;
+  line-height: 40px;
 }
 
 .markdown h2 {
-  font-size: 1.5em;
+  font-size: 24px;
+  line-height: 32px;
 }
 
 .markdown h3 {
-  font-size: 1.25em;
+  font-size: 20px;
+  line-height: 28px;
 }
 
-.markdown h4 {
-  font-size: 1em;
-}
+/* A step smaller on a phone. */
+@media (width < 768px), (pointer: coarse) and (height < 500px) {
+  .markdown h1 {
+    font-size: 28px;
+    line-height: 36px;
+  }
 
-.markdown h5 {
-  font-size: 0.875em;
-}
-
-.markdown h6 {
-  color: var(--on-surface-variant);
-  font-size: 0.85em;
+  .markdown h2 {
+    font-size: 22px;
+    line-height: 30px;
+  }
 }
 
 .markdown :is(ul, ol) {
@@ -1412,9 +1417,13 @@ dialog.drawer {
   list-style: none;
 }
 
+/* A task's box at the list's edge, in the accent, as in Docs. */
 .markdown .task-list-item input {
-  margin: 0 0.35em 0.25em -1.4em;
-  vertical-align: middle;
+  width: 18px;
+  height: 18px;
+  margin: 0 var(--space-3) 0 -2em;
+  vertical-align: -3px;
+  accent-color: var(--primary);
 }
 
 /* In a vault, as in Obsidian, a checked task is struck through. */
@@ -1522,23 +1531,25 @@ dialog.drawer {
   font-size: 0.875em;
 }
 
+/* Code in Google Sans Code, 14 px in the body, its blocks on 22 px
+   lines. */
 .markdown :is(code, kbd, pre, samp) {
   font-family: var(--font-mono);
-  font-size: 85%;
+  font-size: 0.875em;
 }
 
 .markdown code {
   padding: 0.2em 0.4em;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: var(--surface-container-high);
 }
 
 .markdown pre {
   padding: 1rem;
   overflow: auto;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--surface-container-high);
-  line-height: 1.45;
+  line-height: 22px;
 }
 
 .markdown pre code {
@@ -1622,17 +1633,22 @@ dialog.drawer {
   border-collapse: collapse;
 }
 
+/* Tables as Drive lists files: a rule under each row, the head quieter. */
 .markdown :is(th, td) {
-  padding: 6px 13px;
-  border: 1px solid var(--outline-variant);
+  padding: var(--space-2) var(--space-5) var(--space-2) 0;
+  border-bottom: 1px solid var(--outline-variant);
+  text-align: start;
 }
 
-.markdown tr:nth-child(2n) {
-  background: var(--surface-container-low);
+.markdown th {
+  color: var(--on-surface-variant);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
 }
 
 .markdown hr {
-  height: 0.25em;
+  height: 1px;
   padding: 0;
   border: 0;
   background: var(--outline-variant);
