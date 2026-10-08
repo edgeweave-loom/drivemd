@@ -94,6 +94,7 @@ export function EntryList({
               target={entry.target}
               trail={trail}
               current={entry.opens.id === current}
+              located={located}
             />
           ) : (
             <EntryLink
@@ -160,11 +161,12 @@ function EntryLink({
       </span>
       {(located || when) && (
         <span className="details">
-          {located && <Location id={`${ids}-where`} entry={entry} />}
-          {located && when && (
-            <span className="separator" aria-hidden="true">
-              {" · "}
-            </span>
+          {located && (
+            <Location
+              id={`${ids}-where`}
+              entry={entry}
+              followed={when !== undefined}
+            />
           )}
           {when && (
             <span id={`${ids}-when`} className="modified">
@@ -187,18 +189,27 @@ function ShortcutEntry({
   target,
   trail,
   current,
+  located,
 }: {
   entry: Entry;
   target: ShortcutTarget;
   trail: Crumb[] | undefined;
   current: boolean;
+  located: boolean;
 }) {
   const { drive } = useDrive();
   const ids = useId();
   const check = useQuery(shortcutQuery(drive, target));
   const broken = check.data;
   if (!broken) {
-    return <EntryLink entry={entry} trail={trail} current={current} />;
+    return (
+      <EntryLink
+        entry={entry}
+        trail={trail}
+        current={current}
+        located={located}
+      />
+    );
   }
   return (
     // A link without an address: it is there, but opens nothing.
@@ -216,6 +227,8 @@ function ShortcutEntry({
       </span>
       {/* Why it opens nothing, where its time of change would be. */}
       <span className="details">
+        {/* Where the reason lines up with the times of change. */}
+        {located && <span className="location" />}
         <span id={`${ids}-why`} className="modified reason">
           {BROKEN[broken]}
         </span>
@@ -229,7 +242,16 @@ function ShortcutEntry({
  * the screen: a call per note, a few at a time. A note whose folder Drive
  * does not name was shared with the user on its own.
  */
-function Location({ id, entry }: { id: string; entry: Entry }) {
+function Location({
+  id,
+  entry,
+  followed,
+}: {
+  id: string;
+  entry: Entry;
+  /** Whether the time of change follows, which a phone joins to it. */
+  followed: boolean;
+}) {
   const { drive } = useDrive();
   const [seen, near] = useSeen();
   const folder = useQuery({
@@ -239,8 +261,15 @@ function Location({ id, entry }: { id: string; entry: Entry }) {
   const name =
     entry.parent === undefined ? ROOTS.sharedWithMe.name : folder.data;
   return (
-    <span id={id} ref={near} className="location">
-      {name}
-    </span>
+    <>
+      <span id={id} ref={near} className="location">
+        {name}
+      </span>
+      {name && followed && (
+        <span className="separator" aria-hidden="true">
+          {" · "}
+        </span>
+      )}
+    </>
   );
 }

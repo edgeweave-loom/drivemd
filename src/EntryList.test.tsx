@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { DriveError } from "./drive.ts";
 import { EntryList } from "./EntryList.tsx";
 import { entriesOf } from "./listing.ts";
+import { metadataQuery } from "./queries.ts";
 import {
   driveItem,
   FOLDER,
@@ -120,6 +121,85 @@ describe("EntryList, where it gives each note's folder", () => {
       screen.getByRole("link", { name: "shared.md" }),
     ).toHaveAccessibleDescription("Shared with me");
     expect(drive.getMetadata).not.toHaveBeenCalled();
+  });
+
+  it("names a shortcut's folder too", async () => {
+    const drive = fakeDrive();
+    drive.checkShortcut.mockResolvedValue(undefined);
+    drive.getMetadata.mockResolvedValue(
+      metadata(folderItem("Work", { id: "parent" })),
+    );
+    renderWithDrive(
+      <EntryList
+        entries={entriesOf([shortcutItem("plan.md", "text/markdown")])}
+        trail={undefined}
+        empty="Nothing"
+        located
+      />,
+      drive,
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("link", { name: /plan\.md/ }),
+      ).toHaveAccessibleDescription("Work");
+    });
+  });
+
+  it("joins the folder to the time only once Drive names it", async () => {
+    const drive = fakeDrive();
+    let answer: (folder: ReturnType<typeof metadata>) => void = () => undefined;
+    drive.getMetadata.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    renderWithDrive(
+      <EntryList
+        entries={entriesOf([
+          driveItem("plan.md", {
+            parents: ["work"],
+            modifiedTime: "2026-09-01T10:00:00.000Z",
+          }),
+        ])}
+        trail={undefined}
+        empty="Nothing"
+        located
+      />,
+      drive,
+    );
+    const details = screen
+      .getByRole("link", { name: "plan.md" })
+      .querySelector(".details");
+    expect(details).toHaveTextContent(/^Sep 1, 2026$/);
+    act(() => {
+      answer(metadata(folderItem("Work", { id: "work" })));
+    });
+    await waitFor(() => {
+      expect(details).toHaveTextContent(/^Work · Sep 1, 2026$/);
+    });
+  });
+
+  it("shares the folder's details with the rest of the app", async () => {
+    const drive = fakeDrive();
+    const { client } = renderWithDrive(
+      <EntryList
+        entries={entriesOf([driveItem("plan.md", { parents: ["work"] })])}
+        trail={undefined}
+        empty="Nothing"
+        located
+      />,
+      drive,
+    );
+    // As a folder page or the breadcrumbs would read them.
+    act(() => {
+      client.setQueryData(
+        metadataQuery(drive, { id: "work" }).queryKey,
+        metadata(folderItem("Work", { id: "work" })),
+      );
+    });
+    expect(
+      await screen.findByText("Work", { selector: ".location" }),
+    ).toBeVisible();
   });
 
   it("gives no folder where the list does not ask for it", () => {

@@ -167,22 +167,19 @@ export const MAX_IMAGE = 10_000_000;
 // them come near the screen together.
 const lookups = pool(4);
 
-// So do the folders that Recent's and search's notes sit in.
-const locations = pool(4);
-
-/** The name of a folder that a list gives as a note's location. */
+/**
+ * The name of a folder that a list gives as a note's location: the folder's
+ * details, which the rest of the app reads too, asked for a few at a time,
+ * as links and images are.
+ */
 export function locationQuery(drive: Drive, folder: string | undefined) {
+  const item = folder === undefined ? undefined : { id: folder };
   return queryOptions({
-    queryKey: key("location", folder),
-    queryFn: folder
-      ? ({ signal }) =>
-          locations(
-            async () => (await drive.getMetadata({ id: folder })).name,
-            signal,
-          )
+    ...metadataQuery(drive, item),
+    queryFn: item
+      ? ({ signal }) => lookups(() => drive.getMetadata(item), signal)
       : skipToken,
-    // A folder's name seldom changes while its notes are listed.
-    staleTime: VAULTS_STALE_TIME,
+    select: (details) => details.name,
   });
 }
 
