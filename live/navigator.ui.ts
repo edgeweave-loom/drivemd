@@ -435,6 +435,9 @@ test("creates, renames, moves and trashes a note", async ({ page, run }) => {
   await create.getByRole("button", { name: "Create" }).click();
   await expect(noteName(page, `${RUN} idea.md`)).toBeVisible();
   const id = new URL(page.url()).searchParams.get("id") ?? "";
+  // Once the note shows, as a person would rename it: before the vault check
+  // has answered, renaming asks first.
+  await loaded(page);
 
   await renameNote(page, `${RUN} idea.md`, `${RUN} plan`);
   await expect(noteName(page, `${RUN} plan.md`)).toBeVisible();
@@ -567,7 +570,7 @@ test("edits a note's source and saves it, keeping its line breaks", async ({
   await expect(page.locator(".markdown").getByText("Green.")).toBeVisible();
   await loaded(page);
 
-  await page.getByRole("button", { name: "Edit" }).click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
   const source = page.getByRole("textbox", { name: "Markdown source" });
   await source.click();
   await page.keyboard.press("ControlOrMeta+End");
@@ -590,7 +593,9 @@ test("shows a note that is not UTF-8 read-only", async ({ page, run }) => {
     page.getByText("Not UTF-8 text: DriveMD only shows it"),
   ).toBeVisible();
   await loaded(page);
-  await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Edit", exact: true }),
+  ).toHaveCount(0);
 });
 
 test("renders a note of a vault as Obsidian does, its links and embeds leading to the right files", async ({
