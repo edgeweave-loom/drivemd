@@ -238,11 +238,24 @@ button.new-note > .icon {
   min-width: 0;
 }
 
-.note-title > * {
+.note-title :is(.title, .hint) {
+  min-width: 0;
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The name, and Move beside it, which keeps the row to the name's height. */
+.note-title > .name {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  min-width: 0;
+}
+
+.note-title > .name > .icon-button {
+  margin-block: calc((28px - var(--control-height)) / 2);
 }
 
 .note-title > .hint {
@@ -397,7 +410,8 @@ button.account {
   }
 }
 
-.account-menu {
+.account-menu,
+.actions-menu {
   inset: calc(var(--app-bar-height) - var(--space-2)) var(--space-4) auto auto;
 }
 
@@ -411,7 +425,7 @@ button.account {
     height: 32px;
   }
 
-  .note-title > .title {
+  .note-title .title {
     font-size: 18px;
     line-height: 24px;
   }
@@ -526,7 +540,8 @@ button.account {
     box-shadow: none;
   }
 
-  .account-menu {
+  .account-menu,
+  .actions-menu {
     top: calc(var(--app-bar-height-compact) - var(--space-2));
   }
 }

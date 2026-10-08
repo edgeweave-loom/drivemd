@@ -76,39 +76,7 @@ const ROOT_SPOTS: Spot[] = [
 ];
 
 /** Moves the file into a folder the user picks, from where it is. */
-export function Move({
-  file,
-  page,
-}: {
-  file: FileMetadata;
-  /** The file as the page's address names it. */
-  page: FileRef;
-}) {
-  const [asking, setAsking] = useState(false);
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => {
-          setAsking(true);
-        }}
-      >
-        Move
-      </button>
-      {asking && (
-        <MoveDialog
-          file={file}
-          page={page}
-          onClose={() => {
-            setAsking(false);
-          }}
-        />
-      )}
-    </>
-  );
-}
-
-function MoveDialog({
+export function MoveDialog({
   file,
   page,
   onClose,

@@ -3,6 +3,7 @@ import {
   EMAIL,
   expect,
   folderLink,
+  noteAction,
   signIn,
   test,
   vault,
@@ -210,7 +211,7 @@ test("follows a shortcut, and greys out one whose target is gone", async ({
   await expect(page).toHaveURL(/\/edit\?id=plan$/);
 
   // Move opens where the file sits, not where its shortcut does.
-  await page.getByRole("button", { name: "Move", exact: true }).click();
+  await noteAction(page, "Move");
   const move = page.getByRole("dialog", { name: "Move plan.md" });
   await expect(move.getByRole("heading", { name: "Work" })).toBeVisible();
   await expect(move.getByRole("button", { name: "Archive" })).toBeVisible();
@@ -312,7 +313,7 @@ test("creates, renames, moves and trashes a file", async ({
     page.getByRole("heading", { level: 1, name: "ideas.md" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Rename" }).click();
+  await noteAction(page, "Rename");
   const rename = page.getByRole("dialog", { name: "Rename" });
   await rename.getByRole("textbox", { name: "Name" }).fill("roadmap.md");
   await rename.getByRole("button", { name: "Rename" }).click();
@@ -320,7 +321,7 @@ test("creates, renames, moves and trashes a file", async ({
     page.getByRole("heading", { level: 1, name: "roadmap.md" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Move", exact: true }).click();
+  await noteAction(page, "Move");
   const move = page.getByRole("dialog", { name: "Move roadmap.md" });
   await move.getByRole("button", { name: "Archive" }).click();
   await move.getByRole("button", { name: "Move here" }).click();
@@ -331,7 +332,7 @@ test("creates, renames, moves and trashes a file", async ({
     await page.getByRole("button", { name: "Close" }).click();
   }
 
-  await page.getByRole("button", { name: "Move to trash" }).click();
+  await noteAction(page, "Move to trash");
   const trash = page.getByRole("dialog", { name: "Move to trash?" });
   await trash.getByRole("button", { name: "Move to trash" }).click();
   await expect(

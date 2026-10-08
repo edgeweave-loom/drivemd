@@ -76,7 +76,12 @@ export function Navigator({
           : { ...before, [name]: element ?? undefined },
       );
     };
-    return { title: place("title"), mode: place("mode"), save: place("save") };
+    return {
+      title: place("title"),
+      mode: place("mode"),
+      save: place("save"),
+      more: place("more"),
+    };
   }, []);
   return (
     <QueryClientProvider client={client}>
@@ -131,7 +136,7 @@ function NoteBar({
   file,
   email,
   onSignOut,
-  places: { title, mode, save },
+  places: { title, mode, save, more },
 }: {
   file: FileRef;
   email: string;
@@ -153,6 +158,7 @@ function NoteBar({
       <div className="note-tools">
         <span className="slot" ref={mode} />
         <span className="slot" ref={save} />
+        <span className="slot" ref={more} />
       </div>
       {!phone && <Account email={email} onSignOut={onSignOut} />}
     </header>

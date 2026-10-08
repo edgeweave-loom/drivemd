@@ -228,6 +228,13 @@ export function isMarkdown(name: string): boolean {
   return /\.(md|markdown)$/i.test(name);
 }
 
+/** Whether Drive lets the user move the file, within its drive or out. */
+export function mayMove({ capabilities }: FileMetadata): boolean {
+  return (
+    capabilities.canMoveItemWithinDrive || capabilities.canMoveItemOutOfDrive
+  );
+}
+
 export async function getAccountEmail(accessToken: string): Promise<string> {
   const response = await reach(ABOUT_URL, {
     headers: { Authorization: `Bearer ${accessToken}` },

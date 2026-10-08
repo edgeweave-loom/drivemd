@@ -103,4 +103,39 @@ describe("Dialog", () => {
 
     expect(showModal).toHaveBeenCalledOnce();
   });
+
+  it("gives the focus back to what had it once the page drops it", () => {
+    function Page({ asking }: { asking: boolean }) {
+      return (
+        <>
+          <button type="button">Rename</button>
+          {asking && (
+            <Dialog title="Rename" onClose={vi.fn()}>
+              <input aria-label="Name" />
+            </Dialog>
+          )}
+        </>
+      );
+    }
+    const { rerender } = render(
+      <StrictMode>
+        <Page asking={false} />
+      </StrictMode>,
+    );
+    const opener = screen.getByRole("button", { name: "Rename" });
+    opener.focus();
+    rerender(
+      <StrictMode>
+        <Page asking />
+      </StrictMode>,
+    );
+    screen.getByRole("textbox", { name: "Name" }).focus();
+
+    rerender(
+      <StrictMode>
+        <Page asking={false} />
+      </StrictMode>,
+    );
+    expect(opener).toHaveFocus();
+  });
 });

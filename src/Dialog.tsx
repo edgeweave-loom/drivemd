@@ -3,7 +3,8 @@ import { describeError } from "./errors.ts";
 
 /**
  * A modal dialog, open while it is shown: the page behind it is out of
- * reach. Escape closes it, unless it has no onClose.
+ * reach. Escape closes it, unless it has no onClose. Once the page drops it,
+ * the focus goes back to what had it, if still there, as when it closes.
  */
 export function Dialog({
   title,
@@ -17,10 +18,20 @@ export function Dialog({
   children: ReactNode;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const opener = useRef<Element>(null);
   const titleId = useId();
   useEffect(() => {
     // React may run this twice, and a modal dialog cannot open twice.
-    if (dialog.current?.open === false) dialog.current.showModal();
+    if (dialog.current?.open === false) {
+      opener.current = document.activeElement;
+      dialog.current.showModal();
+    }
+    return () => {
+      const { current } = opener;
+      if (current instanceof HTMLElement && current.isConnected) {
+        current.focus();
+      }
+    };
   }, []);
   return (
     <dialog

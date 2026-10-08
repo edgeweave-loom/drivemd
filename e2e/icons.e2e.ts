@@ -1,6 +1,6 @@
 import type { Locator } from "@playwright/test";
 import { token } from "./color.ts";
-import { expect, signIn, test } from "./fake-google.ts";
+import { expect, noteAction, signIn, test } from "./fake-google.ts";
 
 test("marks what opens a list with an icon, the same everywhere", async ({
   page,
@@ -40,7 +40,7 @@ test("marks what opens a list with an icon, the same everywhere", async ({
     ).toHaveCount(1);
   }
   // The move picker's folders and steps, at the same size.
-  await page.getByRole("button", { name: "Move", exact: true }).click();
+  await noteAction(page, "Move");
   const move = page.getByRole("dialog", { name: "Move plan.md" });
   const folder = move.getByRole("button", { name: "Archive" });
   expect((await chevron(folder).boundingBox())?.width).toBe(size);

@@ -272,6 +272,26 @@ function folderLink(page: Page, name: string) {
         .getByRole("link", { name, exact: true });
 }
 
+/**
+ * Picks one of a note's actions: Move by the note's name, but on a phone,
+ * and the others from More actions.
+ */
+async function noteAction(
+  page: Page,
+  name: "Rename" | "Move" | "Move to trash",
+) {
+  const bar = page.getByRole("banner");
+  if (name === "Move" && !phone()) {
+    await bar.getByRole("button", { name, exact: true }).click();
+    return;
+  }
+  await bar.getByRole("button", { name: "More actions" }).click();
+  await page
+    .getByRole("dialog", { name: "More actions" })
+    .getByRole("button", { name, exact: true })
+    .click();
+}
+
 /** The search box, opened first where a phone keeps it behind a button. */
 async function searchBox(page: Page) {
   if (phone()) {
@@ -392,7 +412,7 @@ test("finds the vault on Home, and warns before renaming a note in it", async ({
     .getByRole("link", { name: `${RUN} daily.md` })
     .first()
     .click();
-  await page.getByRole("button", { name: "Rename" }).click();
+  await noteAction(page, "Rename");
   const rename = page.getByRole("dialog", { name: "Rename" });
   await expect(
     rename.getByText(/^This note is in an Obsidian vault\./),
@@ -410,20 +430,20 @@ test("creates, renames, moves and trashes a note", async ({ page, run }) => {
   await expect(noteName(page, `${RUN} idea.md`)).toBeVisible();
   const id = new URL(page.url()).searchParams.get("id") ?? "";
 
-  await page.getByRole("button", { name: "Rename" }).click();
+  await noteAction(page, "Rename");
   const rename = page.getByRole("dialog", { name: "Rename" });
   await rename.getByRole("textbox", { name: "Name" }).fill(`${RUN} plan.md`);
   await rename.getByRole("button", { name: "Rename" }).click();
   await expect(noteName(page, `${RUN} plan.md`)).toBeVisible();
 
-  await page.getByRole("button", { name: "Move", exact: true }).click();
+  await noteAction(page, "Move");
   const move = page.getByRole("dialog", { name: `Move ${RUN} plan.md` });
   await move.getByRole("button", { name: `${RUN} Archive` }).click();
   await move.getByRole("button", { name: "Move here" }).click();
   await expect(move).toHaveCount(0);
   await expect(folderLink(page, `${RUN} Archive`)).toBeVisible();
 
-  await page.getByRole("button", { name: "Move to trash" }).click();
+  await noteAction(page, "Move to trash");
   await page
     .getByRole("dialog", { name: "Move to trash?" })
     .getByRole("button", { name: "Move to trash" })

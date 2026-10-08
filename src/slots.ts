@@ -1,7 +1,7 @@
 import { createContext } from "react";
 
 /** The places of a note's app bar that the note's page fills. */
-export type SlotName = "title" | "mode" | "save";
+export type SlotName = "title" | "mode" | "save" | "more";
 
 export type Slots = Partial<Record<SlotName, HTMLElement>>;
 
