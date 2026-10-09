@@ -344,8 +344,48 @@ describe("A tab opened from Drive, before sign-in", () => {
     ).toBeVisible();
   });
 
-  it("keeps the app's own words in a tab of the app's own", () => {
+  it("names what Drive asked for while the session reopens", () => {
+    markTab(true);
+    render(
+      <App
+        session={
+          fakeSession({ screen: { name: "loading", email: EMAIL } }).session
+        }
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: "Open a note from Google Drive",
+      }),
+    ).toBeVisible();
+  });
+
+  it("promises no account chooser while Google's script failed", () => {
+    markTab(true);
+    render(
+      <App
+        session={fakeSession({ driveAccount: true, google: "failed" }).session}
+      />,
+    );
+
+    expect(button("Try again")).toBeVisible();
+    expect(screen.queryByText(/^Google lets you choose/)).toBeNull();
+  });
+
+  it("says Google starts from Drive's account in a tab Drive's New opened", () => {
     render(<App session={fakeSession({ driveAccount: true }).session} />);
+
+    expect(
+      screen.getByText(
+        "Google lets you choose the account, starting with the one Drive used.",
+      ),
+    ).toBeVisible();
+  });
+
+  it("keeps the app's own words in a tab of the app's own", () => {
+    render(<App session={fakeSession().session} />);
 
     expect(
       screen.getByText(

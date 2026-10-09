@@ -69,11 +69,11 @@ a {
   line-height: 20px;
 }
 
-.app > .about {
+.app > .foot {
   margin-top: var(--space-2);
 }
 
-.app > .about a {
+.app > .foot a {
   font-size: 14px;
   font-weight: 500;
   line-height: 20px;
@@ -86,7 +86,7 @@ a {
     min-height: 100dvh;
   }
 
-  .app > .about {
+  .app > .foot {
     margin-top: auto;
     padding-top: var(--space-5);
   }

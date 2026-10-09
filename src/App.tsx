@@ -51,18 +51,17 @@ export function App({ session }: { session: Session }) {
     }
     case "loading":
       return (
-        <SignInCard heading="DriveMD">
+        <SignInCard>
           <p>Opening your session…</p>
           {status}
         </SignInCard>
       );
     case "sign-in": {
-      // Drive asked for a note, whose name the app cannot know yet.
       const drive = openedFromDrive();
+      // Google's chooser opens from the tap, once its script is ready.
+      const chooses = drive || state.driveAccount;
       return (
-        <SignInCard
-          heading={drive ? "Open a note from Google Drive" : "DriveMD"}
-        >
+        <SignInCard>
           <p>
             {drive
               ? "Google Drive asked DriveMD to open a Markdown file. Sign in with your Google account to see it."
@@ -75,7 +74,7 @@ export function App({ session }: { session: Session }) {
           >
             Sign in with Google
           </GoogleButton>
-          {drive && (
+          {chooses && state.google !== "failed" && (
             <p className="hint">
               {state.driveAccount
                 ? "Google lets you choose the account, starting with the one Drive used."
@@ -83,7 +82,7 @@ export function App({ session }: { session: Session }) {
             </p>
           )}
           {status}
-          <p className="about">
+          <p className="foot">
             <a href="/about.html">Privacy, terms and support</a>
           </p>
         </SignInCard>
@@ -92,18 +91,16 @@ export function App({ session }: { session: Session }) {
   }
 }
 
-/** The screen before sign-in: DriveMD's mark, then what to do. */
-function SignInCard({
-  heading,
-  children,
-}: {
-  heading: string;
-  children: ReactNode;
-}) {
+/**
+ * The screen before sign-in: DriveMD's mark, then what to do. In a tab that
+ * Drive opened, it names what Drive asked for, a note whose name the app
+ * cannot know yet.
+ */
+function SignInCard({ children }: { children: ReactNode }) {
   return (
     <main className="app">
       <img className="mark" src="/icon.svg" alt="" />
-      <h1>{heading}</h1>
+      <h1>{openedFromDrive() ? "Open a note from Google Drive" : "DriveMD"}</h1>
       {children}
     </main>
   );
