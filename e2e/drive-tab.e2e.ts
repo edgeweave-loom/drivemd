@@ -51,6 +51,16 @@ test("holds the note alone, through a reload, until another address opens", asyn
   await expect(bar.getByRole("link")).toHaveCount(0);
   await expect(page.getByRole("complementary")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Folder" })).toHaveCount(0);
+  // Editing on a wide screen, the source beside the preview, as Docs opens a
+  // document on a computer; reading on a phone.
+  await expect(page.getByRole("region", { name: "Markdown" })).toHaveCount(
+    phone ? 0 : 1,
+  );
+  await expect(
+    phone
+      ? page.getByRole("button", { name: "Edit", exact: true })
+      : bar.getByRole("button", { name: "Editing" }),
+  ).toBeVisible();
   if (phone) {
     // A phone's Done takes the mark's place while editing.
     await startEditing(page);

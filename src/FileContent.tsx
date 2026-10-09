@@ -32,7 +32,8 @@ import { Icon } from "./Icon.tsx";
 import type { IconName } from "./icons.ts";
 import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
-import { useLayout } from "./layout.ts";
+import { openedFromDrive } from "./drive-tab.ts";
+import { PHONE, useLayout } from "./layout.ts";
 import { Loaded } from "./Loaded.tsx";
 import { Missing } from "./Missing.tsx";
 import { ModeMenu } from "./ModeMenu.tsx";
@@ -273,6 +274,17 @@ function Content({ file }: { file: FileMetadata }) {
   // Whether the editor shows, and on a phone, the source or the preview:
   // kept while another revision loads.
   const [editing, setEditing] = useState(false);
+  function edit(open: boolean) {
+    // The editor holds to the revision it opens with.
+    if (open) setHeld((now) => now ?? { opened: file });
+    setEditing(open);
+  }
+  // A tab opened from Drive opens the note in Editing on a wide screen, as
+  // Docs opens a document on a computer, and in reading on a phone: once,
+  // as the note first shows, if the user may edit it.
+  const [opening, setOpening] = useState(
+    () => openedFromDrive() && !window.matchMedia(PHONE).matches,
+  );
   const [pane, setPane] = useState<Pane>("source");
   // The revisions saved from this page, which the next save need not keep:
   // the one from before the first edit is kept, as is one someone else made.
@@ -345,6 +357,10 @@ function Content({ file }: { file: FileMetadata }) {
   useEffect(() => {
     if (keptAsIs !== undefined) void forgetKept(keptAsIs);
   }, [keptAsIs]);
+  if (opening && content.data) {
+    setOpening(false);
+    if (readOnly(file, content.data) === undefined) edit(true);
+  }
   // Out of the editor, the page shows Drive's latest again once it holds no
   // edits, or once it heard of the revision just saved; in the editor, Drive
   // never changes the text being typed.
@@ -462,11 +478,7 @@ function Content({ file }: { file: FileMetadata }) {
             waiting={offered(kept.data, held, note)}
             session={shown.session}
             editing={editing}
-            onEditing={(open) => {
-              // The editor holds to the revision it opens with.
-              if (open) setHeld((now) => now ?? { opened: file });
-              setEditing(open);
-            }}
+            onEditing={edit}
             pane={pane}
             onPane={setPane}
             text={held?.text ?? note.text}

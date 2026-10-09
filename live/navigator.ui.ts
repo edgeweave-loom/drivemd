@@ -29,6 +29,10 @@ const INDEX_TEST_TIMEOUT_MS = INDEX_TIMEOUT_MS + 60_000;
 // A token just minted lives an hour; the app asks for Continue in its last
 // 5 minutes, which a test cannot tap.
 const TOKEN_LIFETIME_MS = 50 * 60_000;
+// A first save checks the revision, keeps the one before the edits, then
+// writes: three calls to Drive in turn, which can take longer than the 5 s
+// Playwright waits by default.
+const SAVE = { timeout: 20_000 };
 
 interface Run {
   /** The run's folder, named after the browser, which makes its own. */
@@ -493,6 +497,12 @@ test("opens what Drive's Open with, New and pasted links name", async ({
   await expect(bar.getByRole("img", { name: "DriveMD" })).toBeVisible();
   await expect(bar.getByRole("link")).toHaveCount(0);
   await expect(page.getByRole("complementary")).toHaveCount(0);
+  // Editing on a computer, reading on a phone.
+  await expect(
+    phone()
+      ? page.getByRole("button", { name: "Edit", exact: true })
+      : bar.getByRole("button", { name: "Editing" }),
+  ).toBeVisible();
   await loaded(page);
 
   // An address typed in the tab ends that; a note's bar holds no search,
@@ -559,7 +569,7 @@ test("checks a task in a CRLF note with a byte order mark, saving that byte only
 
   // Ticked while viewing, a task saves at once.
   await note.getByRole("checkbox").last().check();
-  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible(SAVE);
 
   const after = before.slice();
   // The space between the brackets of "- [ ] Pour\r\n", 9 bytes from the end.
@@ -590,7 +600,7 @@ test("edits a note's source and saves it, keeping its line breaks", async ({
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("Black.");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible(SAVE);
 
   expect(await bytesOf(run, id)).toEqual(utf8("# Tea\r\n\r\nGreen.\r\nBlack."));
 });
