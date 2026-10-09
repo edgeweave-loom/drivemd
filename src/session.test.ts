@@ -115,6 +115,7 @@ describe("on start", () => {
     expect(session.getSnapshot()).toMatchObject({
       screen: { name: "sign-in" },
       google: "loading",
+      driveAccount: false,
     });
     await vi.waitFor(() => {
       expect(session.getSnapshot().google).toBe("ready");
@@ -310,12 +311,14 @@ describe("a tab that Drive opened", () => {
     vi.mocked(auth.requestAccessToken).mockResolvedValue(TOKEN);
     const session = createSession(DRIVE_ACCOUNT);
     expect(screenOf(session)).toEqual({ name: "sign-in" });
+    expect(session.getSnapshot().driveAccount).toBe(true);
 
     session.signIn();
     expect(auth.requestAccessToken).toHaveBeenCalledWith(DRIVE_ACCOUNT, CHOOSE);
     await settled(session);
     expect(screenOf(session)).toEqual({ name: "home", email: EMAIL });
     expect(auth.rememberAccount).toHaveBeenCalledWith(EMAIL);
+    expect(session.getSnapshot().driveAccount).toBe(false);
   });
 
   it("acts as its own account when it already has a token", async () => {
@@ -355,6 +358,7 @@ describe("a tab that Drive opened", () => {
     const session = createSession(DRIVE_ACCOUNT);
 
     session.signOut();
+    expect(session.getSnapshot().driveAccount).toBe(false);
     session.signIn();
     expect(auth.requestAccessToken).toHaveBeenCalledWith();
   });

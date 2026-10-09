@@ -1,5 +1,6 @@
 import { useSyncExternalStore, type ReactNode } from "react";
 import { Dialog } from "./Dialog.tsx";
+import { openedFromDrive } from "./drive-tab.ts";
 import { Navigator } from "./Navigator.tsx";
 import type { Session, SessionState } from "./session.ts";
 import { SignOut } from "./SignOut.tsx";
@@ -49,31 +50,60 @@ export function App({ session }: { session: Session }) {
       );
     }
     case "loading":
-    case "sign-in":
       return (
-        <main className="app">
-          <h1>DriveMD</h1>
-          {screen.name === "loading" ? (
-            <p>Opening your session…</p>
-          ) : (
-            <>
-              <p>Browse and edit the Markdown files in your Google Drive.</p>
-              <GoogleButton
-                google={state.google}
-                onClick={session.signIn}
-                onRetry={session.retry}
-              >
-                Sign in with Google
-              </GoogleButton>
-              <p>
-                <a href="/about.html">Privacy, terms and support</a>
-              </p>
-            </>
+        <SignInCard>
+          <p>Opening your session…</p>
+          {status}
+        </SignInCard>
+      );
+    case "sign-in": {
+      const drive = openedFromDrive();
+      // Google's chooser opens from the tap, once its script is ready.
+      const chooses = drive || state.driveAccount;
+      return (
+        <SignInCard>
+          <p>
+            {drive
+              ? "Google Drive asked DriveMD to open a Markdown file. Sign in with your Google account to see it."
+              : "Browse and edit the Markdown files in your Google Drive."}
+          </p>
+          <GoogleButton
+            google={state.google}
+            onClick={session.signIn}
+            onRetry={session.retry}
+          >
+            Sign in with Google
+          </GoogleButton>
+          {chooses && state.google !== "failed" && (
+            <p className="hint">
+              {state.driveAccount
+                ? "Google lets you choose the account, starting with the one Drive used."
+                : "Google lets you choose the account."}
+            </p>
           )}
           {status}
-        </main>
+          <p className="foot">
+            <a href="/about.html">Privacy, terms and support</a>
+          </p>
+        </SignInCard>
       );
+    }
   }
+}
+
+/**
+ * The screen before sign-in: DriveMD's mark, then what to do. In a tab that
+ * Drive opened, it names what Drive asked for, a note whose name the app
+ * cannot know yet.
+ */
+function SignInCard({ children }: { children: ReactNode }) {
+  return (
+    <main className="app">
+      <img className="mark" src="/icon.svg" alt="" />
+      <h1>{openedFromDrive() ? "Open a note from Google Drive" : "DriveMD"}</h1>
+      {children}
+    </main>
+  );
 }
 
 /** What the session has to say: a sign-in under way, messages. */
