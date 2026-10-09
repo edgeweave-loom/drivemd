@@ -24,6 +24,11 @@ export interface SessionState {
   message: string | undefined;
   /** What the security policy blocked that sign-in depends on, if anything. */
   blocked: string | undefined;
+  /**
+   * Whether signing in starts from the account Drive acted as, which
+   * Google's account chooser then shows first.
+   */
+  driveAccount: boolean;
 }
 
 /**
@@ -88,6 +93,7 @@ export function createSession(driveAccount?: string): Session {
     waiting: false,
     message: undefined,
     blocked: undefined,
+    driveAccount: driveAccount !== undefined,
   };
   // Drive calls waiting for a token that only a tap can bring.
   const waiters = new Set<Waiter>();
@@ -95,7 +101,7 @@ export function createSession(driveAccount?: string): Session {
   let requested = driveAccount;
 
   function update(changes: Partial<SessionState>): void {
-    state = { ...state, ...changes };
+    state = { ...state, ...changes, driveAccount: requested !== undefined };
     for (const listener of listeners) listener();
   }
 

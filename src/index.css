@@ -30,16 +30,79 @@ a {
   color: var(--primary);
 }
 
+/* The screen before sign-in: DriveMD's mark, a heading, what to do and the
+   way to the about page, on a card over the app's background on a wide
+   screen, or filling a phone's (mockups drive-tab-sign-in). */
 .app {
-  display: grid;
-  gap: 1rem;
-  max-width: 28rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 448px;
   margin: 0 auto;
-  padding: 2rem 1rem;
+  padding: var(--space-7) var(--space-5) var(--space-5);
+}
+
+.app > .mark {
+  width: 56px;
+  height: 56px;
+  margin-bottom: var(--space-4);
 }
 
 .app h1 {
   margin: 0;
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 36px;
+}
+
+.app > p {
+  color: var(--on-surface-variant);
+}
+
+.app > button {
+  margin-top: var(--space-2);
+}
+
+.app > .hint {
+  margin-top: var(--space-2);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.app > .about {
+  margin-top: var(--space-2);
+}
+
+.app > .about a {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  text-decoration: none;
+}
+
+@media (width < 768px), (pointer: coarse) and (height < 500px) {
+  /* The about page's link at the foot of the screen. */
+  .app {
+    min-height: 100dvh;
+  }
+
+  .app > .about {
+    margin-top: auto;
+    padding-top: var(--space-5);
+  }
+}
+
+@media (width >= 768px) and (not ((pointer: coarse) and (height < 500px))) {
+  :root:has(main.app) {
+    background: var(--app-background);
+  }
+
+  .app {
+    margin-block: 20vh;
+    padding: var(--space-7);
+    border-radius: var(--radius-xl);
+    background: var(--sheet);
+  }
 }
 
 .app p,

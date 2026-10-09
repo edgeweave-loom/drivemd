@@ -23,6 +23,18 @@ async function openFromDrive(page: Page) {
     userId: "104857600000000000001",
   };
   await page.goto(`/open?state=${encodeURIComponent(JSON.stringify(state))}`);
+  // Before sign-in, the screen says what Drive asked for.
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: "Open a note from Google Drive",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Google lets you choose the account, starting with the one Drive used.",
+    ),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Sign in with Google" }).click();
   await shown(page);
 }

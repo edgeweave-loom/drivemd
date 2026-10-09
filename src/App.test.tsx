@@ -10,6 +10,7 @@ import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.tsx";
 import { deleteDrafts, writeDraft } from "./drafts.ts";
+import { markTab } from "./drive-tab.ts";
 import type { Session, SessionState } from "./session.ts";
 import { driveItem } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
@@ -24,6 +25,7 @@ function fakeSession(initial: Partial<SessionState> = {}) {
     waiting: false,
     message: undefined,
     blocked: undefined,
+    driveAccount: false,
     ...initial,
   };
   const listeners = new Set<() => void>();
@@ -297,5 +299,59 @@ describe("App", () => {
       change({ screen: { name: "home", email: EMAIL } });
     });
     expect(screen.getByText(EMAIL)).toBeInTheDocument();
+  });
+});
+
+describe("A tab opened from Drive, before sign-in", () => {
+  afterEach(() => {
+    markTab(false);
+  });
+
+  it("says that Drive asked DriveMD to open a note, choosing from Drive's account", () => {
+    markTab(true);
+    const { session } = fakeSession({ driveAccount: true });
+    render(<App session={session} />);
+
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: "Open a note from Google Drive",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "Google Drive asked DriveMD to open a Markdown file. Sign in with your Google account to see it.",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "Google lets you choose the account, starting with the one Drive used.",
+      ),
+    ).toBeVisible();
+    fireEvent.click(button("Sign in with Google"));
+    expect(session.signIn).toHaveBeenCalledOnce();
+    expect(
+      screen.getByRole("link", { name: "Privacy, terms and support" }),
+    ).toHaveAttribute("href", "/about.html");
+  });
+
+  it("names no account to start from once Drive's is forgotten", () => {
+    markTab(true);
+    render(<App session={fakeSession().session} />);
+
+    expect(
+      screen.getByText("Google lets you choose the account."),
+    ).toBeVisible();
+  });
+
+  it("keeps the app's own words in a tab of the app's own", () => {
+    render(<App session={fakeSession({ driveAccount: true }).session} />);
+
+    expect(
+      screen.getByText(
+        "Browse and edit the Markdown files in your Google Drive.",
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText(/^Google lets you choose/)).toBeNull();
   });
 });
