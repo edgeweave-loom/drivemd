@@ -15,7 +15,7 @@ We will confirm that we received the report, keep you informed while we fix it, 
 In scope, in this repository's code and configuration:
 
 - Script injection through a note, a link, a file name or an address of the app, or a way around the security policy and its Trusted Types.
-- The access token leaving the tab, reaching a URL, a log or storage that outlives the tab, or being sent anywhere but Google.
+- The access token leaving the tab, other than to a note's tab that the tab opens itself, reaching a URL, a log or storage that outlives the tab, or being sent anywhere but Google.
 - The app writing bytes the user did not edit, or writing over someone else's change without asking.
 - The workflows, the build and the dependencies, including what could reach the deploy credentials.
 
