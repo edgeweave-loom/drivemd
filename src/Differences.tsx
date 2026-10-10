@@ -4,14 +4,27 @@ import { EditorView } from "@codemirror/view";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { mountIn, THEME } from "./codemirror.ts";
 
-// Framed, on the page's surface.
+// In code type on a sheet (docs/DESIGN.md, Differences), the runs alike
+// folded into a line that says how many. Before THEME, which would win.
 const FRAME = EditorView.theme({
   "&": {
-    border: "1px solid var(--outline-variant)",
-    borderRadius: "0.5rem",
-    background: "var(--surface)",
+    borderRadius: "var(--radius-md)",
+    overflow: "hidden",
+    background: "var(--sheet)",
+    fontSize: "14px",
   },
-  ".cm-scroller": { lineHeight: "1.5" },
+  ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "22px" },
+  ".cm-line, .cm-deletedChunk > .cm-deletedLine": {
+    padding: "0 var(--space-3)",
+  },
+  ".cm-deletedChunk": { paddingLeft: "0" },
+  ".cm-collapsedLines": {
+    padding: "0 var(--space-3)",
+    textAlign: "center",
+    fontFamily: "var(--font-sans)",
+    fontSize: "12px",
+    "&::before, &::after": { content: "none" },
+  },
 });
 
 /**
@@ -43,10 +56,12 @@ export function Differences({
           unifiedMergeView({
             original: theirs,
             mergeControls: false,
+            // The lines' colors and marks tell the changes already.
+            gutter: false,
             collapseUnchanged: {},
           }),
-          THEME,
           FRAME,
+          THEME,
           EditorView.contentAttributes.of({
             "aria-label": "Your version against Google Drive's",
           }),
