@@ -514,11 +514,11 @@ declare global {
  */
 export const test = base.extend<{ drive: FakeDrive }>({
   drive: [
-    async ({ page, baseURL }, use) => {
+    async ({ context, baseURL }, use) => {
       const drive = new FakeDrive();
       const problems: string[] = [];
       // Routes added later come first: this one catches what the others don't.
-      await page.route("**", (route) => {
+      await context.route("**", (route) => {
         const url = route.request().url();
         // WebKit routes the object URLs the app makes for Drive's images too.
         const app = baseURL && new URL(baseURL).origin;
@@ -531,18 +531,19 @@ export const test = base.extend<{ drive: FakeDrive }>({
         problems.push(`request to ${url}`);
         return route.abort();
       });
-      await page.route("https://accounts.google.com/gsi/client", (route) =>
+      await context.route("https://accounts.google.com/gsi/client", (route) =>
         route.fulfill({ contentType: "text/javascript", body: FAKE_GIS }),
       );
-      await page.route("https://www.googleapis.com/**", (route) =>
+      await context.route("https://www.googleapis.com/**", (route) =>
         drive.handle(route),
       );
-      page.on("pageerror", (error) => problems.push(error.message));
-      // Collected here, since every page the test opens starts afresh.
-      await page.exposeFunction("reportViolation", (violation: string) => {
+      context.on("weberror", (error) => problems.push(error.error().message));
+      // Collected here, since every page the test opens starts afresh, the tabs
+      // the app opens included.
+      await context.exposeFunction("reportViolation", (violation: string) => {
         problems.push(`blocked: ${violation}`);
       });
-      await page.addInitScript(() => {
+      await context.addInitScript(() => {
         document.addEventListener("securitypolicyviolation", (event) => {
           void window.reportViolation?.(
             `${event.effectiveDirective} ${event.blockedURI}`,

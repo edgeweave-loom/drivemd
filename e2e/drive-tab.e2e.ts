@@ -146,3 +146,86 @@ test("stays on the note it moves to the trash, which then says so", async ({
   ).toHaveCount(0);
   await expect(page.getByRole("link", { name: "About DriveMD" })).toBeVisible();
 });
+
+test("opens a link to another note in a new tab, signed in, in the same mode", async ({
+  page,
+  context,
+}) => {
+  await openFromDrive(page);
+  // A link is looked up once it comes near the screen.
+  await page
+    .getByText(/^Next:/)
+    .last()
+    .scrollIntoViewIfNeeded();
+  const opened = context.waitForEvent("page");
+  await page.getByRole("link", { name: "the notes" }).click();
+  const tab = await opened;
+
+  // The tab inherits the token: no Continue, the note at once.
+  await expect(
+    tab.getByRole("heading", { level: 1, name: "notes.md" }),
+  ).toBeVisible();
+  await expect(tab).toHaveURL(/\/edit\?id=notes#later$/);
+  await expect(tab.getByRole("banner").getByRole("link")).toHaveCount(0);
+  await tab.waitForLoadState("networkidle");
+  // Neither tab can reach the other, and neither keeps the one-time marker.
+  expect(await tab.evaluate(() => window.opener === null)).toBe(true);
+  for (const each of [page, tab]) {
+    expect(
+      await each.evaluate(() => sessionStorage.getItem("drivemd.handoff")),
+    ).toBeNull();
+  }
+  // The opening tab stays on its note.
+  await expect(
+    page.getByRole("heading", { level: 1, name: "The plan" }),
+  ).toBeVisible();
+
+  await tab.reload();
+  await expect(
+    tab.getByRole("heading", { level: 1, name: "notes.md" }),
+  ).toBeVisible();
+  await expect(tab.getByRole("banner").getByRole("link")).toHaveCount(0);
+  await tab.waitForLoadState("networkidle");
+
+  // An address typed in the new tab ends the mode, as in any other.
+  await tab.goto("/edit?id=notes");
+  await expect(
+    tab.getByRole("heading", { level: 1, name: "notes.md" }),
+  ).toBeVisible();
+  await expect(tab.getByRole("banner").getByRole("link")).not.toHaveCount(0);
+  await tab.waitForLoadState("networkidle");
+});
+
+test("opens a note from the source in a new tab, once Drive has found it", async ({
+  page,
+  context,
+}, info) => {
+  test.skip(
+    info.project.metadata.layout === "phone",
+    "A phone opens the note for reading, without its source",
+  );
+  await openFromDrive(page);
+  const source = page.getByRole("textbox", { name: "Markdown source" });
+  await source.getByText("the notes", { exact: true }).click();
+  await page.keyboard.press("End");
+  // A path not looked up yet, which Drive takes a while to find.
+  await page.keyboard.insertText(" [fresh](./notes.md)");
+  await page.route("https://www.googleapis.com/**", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.fallback();
+  });
+  const opened = context.waitForEvent("page");
+  // The app takes Cmd on Apple's devices, whatever the machine running them.
+  const apple = info.project.name.endsWith("-webkit");
+  await source.getByText("fresh", { exact: true }).click({
+    modifiers: [apple ? "Meta" : "Control"],
+  });
+  const tab = await opened;
+
+  await expect(
+    tab.getByRole("heading", { level: 1, name: "notes.md" }),
+  ).toBeVisible();
+  await expect(tab.getByRole("banner").getByRole("link")).toHaveCount(0);
+  await tab.waitForLoadState("networkidle");
+  await page.unrouteAll({ behavior: "wait" });
+});

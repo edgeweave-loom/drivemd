@@ -1,7 +1,11 @@
 import { useLayout } from "./layout.ts";
+import { getPlace, routeOf } from "./router.ts";
+import { read, write } from "./storage.ts";
 
 // Kept by the tab alone, through reloads.
 const MARK = "drivemd.fromDrive";
+// Copied, with the rest of the tab's storage, into the tab a link opens.
+const HANDOFF = "drivemd.handoff";
 
 let marked = false;
 
@@ -11,7 +15,34 @@ let marked = false;
  * Forward: any other address of the app opened in the tab ends the mode.
  */
 export function markTab(fromDrive: boolean): void {
-  keep(fromDrive || (revisited() && read() !== null));
+  const handed = take(HANDOFF);
+  keep(
+    fromDrive ||
+      handed ||
+      (revisited() && read("sessionStorage", MARK) !== null),
+  );
+}
+
+/**
+ * Opens the note a link leads to in a new tab, as Docs opens links, when this
+ * tab is one that Drive opened. The browser copies the tab's storage into
+ * the new one, token included, so that it does not ask to sign in again (see
+ * "Handing the token to a new tab" in docs/SPEC.md). Whether it opened one:
+ * a folder, the note shown, or a tab the browser blocked open in place.
+ */
+export function openNoteTab(href: string): boolean {
+  const url = new URL(href, window.location.origin);
+  if (!marked || url.origin !== window.location.origin) return false;
+  const route = routeOf(url);
+  const { route: shown } = getPlace();
+  if (route.name !== "file") return false;
+  if (shown.name === "file" && shown.file.id === route.file.id) return false;
+  write("sessionStorage", HANDOFF, "open");
+  try {
+    return window.open(url, "_blank") !== null;
+  } finally {
+    write("sessionStorage", HANDOFF, null);
+  }
 }
 
 /**
@@ -24,12 +55,8 @@ export function leaveNote(): void {
 
 function keep(mark: boolean): void {
   marked = mark;
-  try {
-    if (marked) sessionStorage.setItem(MARK, "open");
-    else sessionStorage.removeItem(MARK);
-  } catch {
-    // Without storage, the mode lasts as long as the page.
-  }
+  // Without storage, the mode lasts as long as the page.
+  write("sessionStorage", MARK, marked ? "open" : null);
 }
 
 /**
@@ -47,12 +74,11 @@ function revisited(): boolean {
   return type === "reload" || type === "back_forward";
 }
 
-function read(): string | null {
-  try {
-    return sessionStorage.getItem(MARK);
-  } catch {
-    return null;
-  }
+/** Reads a one-time value, which no later load of the tab finds. */
+function take(key: string): boolean {
+  const value = read("sessionStorage", key);
+  if (value !== null) write("sessionStorage", key, null);
+  return value !== null;
 }
 
 /**

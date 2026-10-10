@@ -1,13 +1,14 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DriveContext } from "./drive-context.ts";
+import { markTab } from "./drive-tab.ts";
 import { Link } from "./Link.tsx";
-import { getPlace } from "./router.ts";
+import { getPlace, hrefOf } from "./router.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 
 const TRAIL = [{ name: "My Drive", href: "/my-drive" }];
 
-function renderLink(renew = vi.fn()) {
+function renderLink(renew = vi.fn(), to = "/my-drive") {
   render(
     <DriveContext
       value={{
@@ -18,7 +19,7 @@ function renderLink(renew = vi.fn()) {
         signedIn: true,
       }}
     >
-      <Link to="/my-drive" trail={TRAIL}>
+      <Link to={to} trail={TRAIL}>
         My Drive
       </Link>
     </DriveContext>,
@@ -28,6 +29,7 @@ function renderLink(renew = vi.fn()) {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  markTab(false);
   history.replaceState(null, "", "/");
   window.dispatchEvent(new PopStateEvent("popstate"));
 });
@@ -70,5 +72,42 @@ describe("Link", () => {
     expect(() => render(<Link to="/my-drive">My Drive</Link>)).toThrow(
       /DriveContext/,
     );
+  });
+});
+
+describe("A link to another note, in a tab opened from Drive", () => {
+  const SHOWN = hrefOf({ name: "file", file: { id: "plan" } });
+  const OTHER = hrefOf({ name: "file", file: { id: "notes" } });
+
+  function fromDrive() {
+    vi.spyOn(performance, "getEntriesByType").mockReturnValue([
+      { type: "navigate" } as PerformanceNavigationTiming,
+    ]);
+    markTab(true);
+    history.replaceState(null, "", SHOWN);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
+
+  it("opens it in a new tab, before anything else can spend the tap", () => {
+    fromDrive();
+    const open = vi.spyOn(window, "open").mockReturnValue(window);
+    const renew = vi.fn();
+    const link = renderLink(renew, OTHER);
+
+    expect(fireEvent.click(link)).toBe(false);
+    expect(open).toHaveBeenCalledOnce();
+    expect(renew).not.toHaveBeenCalled();
+    expect(getPlace().href).toBe(SHOWN);
+  });
+
+  it("opens it in place when the browser blocks the new tab", () => {
+    fromDrive();
+    vi.spyOn(window, "open").mockReturnValue(null);
+    const renew = vi.fn();
+    const link = renderLink(renew, OTHER);
+
+    fireEvent.click(link);
+    expect(renew).toHaveBeenCalledOnce();
+    expect(getPlace().href).toBe(OTHER);
   });
 });
