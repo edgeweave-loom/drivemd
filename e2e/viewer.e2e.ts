@@ -1,4 +1,4 @@
-import { contrast, luminance } from "./color.ts";
+import { contrast, luminance, token } from "./color.ts";
 import {
   expect,
   draftsKept,
@@ -331,6 +331,62 @@ test("folds the lines alike in the theme's colors, as the system's changes", asy
   for (const background of (await colors()).backgrounds) {
     expect(luminance(background)).toBeGreaterThan(0.5);
   }
+});
+
+test("sets the differences in code type on a sheet, the folds centered", async ({
+  page,
+  drive,
+}) => {
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  // Once the note shows, someone else saves it.
+  await expect(
+    page.locator(".markdown").getByRole("checkbox").first(),
+  ).toBeVisible();
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content = `${String(plan.content)}\nTheir line.\n`;
+  plan.revision = 2;
+  // Ticked while viewing, a task saves at once, which finds their change.
+  await page.locator(".markdown").getByRole("checkbox").first().check();
+
+  const differences = page.locator(".differences .cm-editor");
+  await expect(differences.locator(".cm-content")).toBeVisible();
+  expect(
+    await differences.evaluate((editor) => {
+      const style = getComputedStyle(editor);
+      const line = editor.querySelector(".cm-line");
+      const text = line && getComputedStyle(line);
+      return {
+        background: style.backgroundColor,
+        radius: style.borderTopLeftRadius,
+        family: text?.fontFamily,
+        size: text?.fontSize,
+        height: text?.lineHeight,
+        padding: text?.paddingLeft,
+      };
+    }),
+  ).toMatchObject({
+    background: await token(page, "--sheet"),
+    radius: "12px",
+    family: expect.stringMatching(/^"?Google Sans Code\b/),
+    size: "14px",
+    height: "22px",
+    padding: "12px",
+  });
+  // The lines it removes start where the others do, with no gutter.
+  const starts = await differences.evaluate((editor) =>
+    [".cm-line", ".cm-deletedChunk .cm-deletedLine"].map((selector) => {
+      const range = document.createRange();
+      range.selectNodeContents(editor.querySelector(selector) ?? editor);
+      return range.getClientRects()[0]?.left;
+    }),
+  );
+  expect(starts[1]).toBe(starts[0]);
+  await expect(differences.locator(".cm-gutters")).toHaveCount(0);
+  const folded = differences.locator(".cm-collapsedLines").first();
+  await expect(folded).toHaveText(/^\d+ unchanged lines$/);
+  await expect(folded).toHaveCSS("text-align", "center");
 });
 
 test("keeps unsaved changes on the device across a reload", async ({
