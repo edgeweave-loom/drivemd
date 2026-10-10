@@ -73,7 +73,9 @@ export default defineConfig({
         branches: 90,
         // These modules handle full-Drive tokens, or the bytes written back
         // to Drive: every branch is tested.
-        "{src/{auth,drive,save,session,text},live/grant}.ts": { 100: true },
+        "{src/{auth,drive,save,session,storage,text},live/grant}.ts": {
+          100: true,
+        },
       },
     },
   },

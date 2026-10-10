@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { useDrive } from "./drive-context.ts";
+import { openNoteTab } from "./drive-tab.ts";
 import { inDrive } from "./drive-web.ts";
 import { FOLDER, GOOGLE_TYPES, isMarkdown, type FileRef } from "./drive.ts";
 import { resolveQuery, vaultLinkQuery } from "./queries.ts";
@@ -77,7 +78,7 @@ export function useFollow(
 
 /**
  * Opens what a link leads to in Drive: in the app, a note at the part `hash`
- * names, or in Google Drive.
+ * names, in a new tab from a tab that Drive opened, or in Google Drive.
  */
 function open(found: Found | null | undefined, hash: string): void {
   if (!found) return;
@@ -85,7 +86,8 @@ function open(found: Found | null | undefined, hash: string): void {
   if (mimeType === FOLDER) {
     navigate(hrefOf({ name: "folder", folder: ref }));
   } else if (!mimeType.startsWith(GOOGLE_TYPES) && isMarkdown(name)) {
-    navigate(hrefOf({ name: "file", file: ref }) + hash);
+    const note = hrefOf({ name: "file", file: ref }) + hash;
+    if (!openNoteTab(note)) navigate(note);
   } else {
     window.open(inDrive(ref), "_blank", "noopener,noreferrer");
   }

@@ -8,6 +8,11 @@ import "./index.css";
 import { hrefOf, routeOf } from "./router.ts";
 import { createSession } from "./session.ts";
 
+// A tab needs nothing from the tab that opened it, which it would otherwise
+// reach through window.opener (see "Handing the token to a new tab" in
+// docs/SPEC.md).
+window.opener = null;
+
 const root = document.getElementById("root");
 if (!root) throw new Error("index.html has no #root element");
 
