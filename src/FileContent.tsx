@@ -85,7 +85,7 @@ function EditorMissing() {
   return <Missing part="editor" />;
 }
 
-const KEPT = new Intl.DateTimeFormat(undefined, {
+const WHEN = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
 });
@@ -160,6 +160,22 @@ function conflictName(name: string): string {
 }
 
 /**
+ * Who changed the file last, and when, as far as Drive says: maybe its
+ * details rather than its text, which the file's own fields do not tell.
+ */
+function changed({
+  modifiedTime,
+  lastModifiedBy,
+  lastModifiedByMe,
+}: FileMetadata): string {
+  const date = new Date(modifiedTime ?? Number.NaN);
+  const when = Number.isNaN(date.getTime()) ? "" : ` on ${WHEN.format(date)},`;
+  return lastModifiedByMe
+    ? `You changed it elsewhere${when} after you opened it here`
+    : `${lastModifiedBy ?? "Someone"} changed it${when} after you opened it`;
+}
+
+/**
  * Someone else saved the file since the user opened it: their version
  * against the user's, and the user's choice of which to keep.
  */
@@ -188,56 +204,67 @@ function Conflict({
   const [dropping, setDropping] = useState(false);
   return (
     <section className="conflict" aria-labelledby={id}>
-      <h3 id={id}>Someone changed this file in Google Drive</h3>
-      <p>
-        They saved a version since you opened yours, so DriveMD saved nothing.
-        Below, what yours removes from theirs is struck through, and what it
-        adds is underlined.
-      </p>
-      <div className="actions">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => {
-            setDropping(true);
-          }}
-        >
-          Keep the Drive version
-        </button>
-        <button type="button" disabled={busy} onClick={onOverwrite}>
-          Overwrite with mine
-        </button>
-        {onCopy && (
-          <button type="button" disabled={busy} onClick={onCopy}>
-            Save mine as a copy
+      <div className="banner">
+        <Icon name="sync_problem" />
+        <h3 id={id}>Someone changed this file in Google Drive</h3>
+        <p>
+          {changed(theirs)}, so DriveMD saved nothing. Below, what your version
+          removes from Drive's is struck through, and what it adds is
+          underlined.
+        </p>
+        {/* By risk: the copy loses nothing, overwriting keeps Drive's version
+          in the history, and keeping Drive's drops the user's changes. */}
+        <div className="actions">
+          {onCopy && (
+            <button
+              type="button"
+              className="filled"
+              disabled={busy}
+              onClick={onCopy}
+            >
+              Save mine as a copy
+            </button>
+          )}
+          <button type="button" disabled={busy} onClick={onOverwrite}>
+            Overwrite with mine
           </button>
+          <button
+            type="button"
+            className="text danger"
+            disabled={busy}
+            onClick={() => {
+              setDropping(true);
+            }}
+          >
+            Keep the Drive version
+          </button>
+        </div>
+        {error && (
+          <p role="alert" className="failure">
+            {error instanceof CopyTakenError
+              ? error.message
+              : describeError(error)}
+          </p>
+        )}
+        {dropping && (
+          <ConfirmDialog
+            title="Drop your changes?"
+            action="Drop my changes"
+            danger
+            pending={false}
+            error={null}
+            onConfirm={onKeep}
+            onClose={() => {
+              setDropping(false);
+            }}
+          >
+            <p>
+              Your version of the note goes, and Google Drive's stays. This
+              cannot be undone.
+            </p>
+          </ConfirmDialog>
         )}
       </div>
-      {error && (
-        <p role="alert" className="failure">
-          {error instanceof CopyTakenError
-            ? error.message
-            : describeError(error)}
-        </p>
-      )}
-      {dropping && (
-        <ConfirmDialog
-          title="Drop your changes?"
-          action="Drop my changes"
-          danger
-          pending={false}
-          error={null}
-          onConfirm={onKeep}
-          onClose={() => {
-            setDropping(false);
-          }}
-        >
-          <p>
-            Your version of the note goes, and Google Drive's stays. This cannot
-            be undone.
-          </p>
-        </ConfirmDialog>
-      )}
       <Loaded query={content}>
         {(note) => (
           <Suspense fallback={<p className="hint">Loading the differences…</p>}>
@@ -535,7 +562,7 @@ function Restore({
     <div className="warning restore">
       <p>
         You have unsaved changes to this note from{" "}
-        {KEPT.format(new Date(draft.keptAt))}, kept on this device.
+        {WHEN.format(new Date(draft.keptAt))}, kept on this device.
       </p>
       <div className="actions">
         <button

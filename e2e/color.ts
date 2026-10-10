@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 /** A CSS color, as the page computes it in its theme. */
 export function computed(page: Page, value: string): Promise<string> {
@@ -35,4 +35,18 @@ export function contrast(one: string, other: string): number {
     (a, b) => b - a,
   );
   return ((light ?? 0) + 0.05) / ((dark ?? 0) + 0.05);
+}
+
+/** The colors a control shows: its container, label and outline. */
+export function looks(control: Locator) {
+  return control.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      background: style.backgroundColor,
+      color: style.color,
+      border: style.borderTopColor,
+      height: element.getBoundingClientRect().height,
+      radius: Number.parseFloat(style.borderTopLeftRadius),
+    };
+  });
 }
