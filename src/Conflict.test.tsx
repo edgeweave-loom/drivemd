@@ -1,5 +1,11 @@
 import { EditorView } from "@codemirror/view";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { DriveError } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
@@ -45,6 +51,13 @@ async function conflict() {
     name: "Someone changed this file in Google Drive",
   });
   return { ...rendered, drive };
+}
+
+/** The banner that offers the choice. */
+function banner() {
+  return screen.getByRole("region", {
+    name: "Someone changed this file in Google Drive",
+  });
 }
 
 /** Keeps Drive's version, confirming that the user's changes go. */
@@ -112,6 +125,89 @@ describe("a save that finds someone else's change", () => {
     expect(view.state.readOnly).toBe(true);
     expect(drive.saveContent).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  it("keeps the choice open while overwriting, and after Drive refuses it", async () => {
+    const { drive } = await conflict();
+    let refuse: (error: Error) => void = () => undefined;
+    drive.saveContent.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          refuse = reject;
+        }),
+    );
+    const overwrite = () =>
+      within(banner()).getByRole("button", { name: "Overwrite with mine" });
+
+    fireEvent.click(overwrite());
+    await waitFor(() => {
+      expect(overwrite()).toBeDisabled();
+    });
+    expect(screen.getByRole("button", { name: "Saving…" })).toBeVisible();
+    act(() => {
+      refuse(new DriveError(503, "Backend error"));
+    });
+
+    expect(await within(banner()).findByRole("alert")).toHaveTextContent(
+      "Backend error",
+    );
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(overwrite()).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    // Saving in another way would find the conflict again: nothing saves.
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
+    await new Promise((settle) => setTimeout(settle, 50));
+    expect(banner()).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent("Backend error");
+    expect(drive.saveContent).toHaveBeenCalledOnce();
+    fireEvent.click(overwrite());
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: /Someone changed/ }),
+      ).toBeNull();
+    });
+    expect(drive.saveContent).toHaveBeenCalledTimes(2);
+  });
+
+  it("stays in Editing with the choice open when Viewing would save", async () => {
+    holdScreen("wide");
+    const { drive } = await conflict();
+    await pickMode("Editing");
+    const asked = drive.getMetadata.mock.calls.length;
+
+    await pickMode("Viewing");
+
+    await new Promise((settle) => setTimeout(settle, 50));
+    expect(banner()).toBeVisible();
+    expect(screen.getByRole("region", { name: "Markdown" })).toBeVisible();
+    expect(drive.getMetadata).toHaveBeenCalledTimes(asked);
+  });
+
+  it("says only why the choice made last failed", async () => {
+    const { drive } = await conflict();
+    drive.createFile.mockRejectedValue(
+      new DriveError(403, "The user does not have permission"),
+    );
+    drive.saveContent.mockRejectedValue(new DriveError(503, "Backend error"));
+
+    fireEvent.click(
+      within(banner()).getByRole("button", { name: "Save mine as a copy" }),
+    );
+    await within(banner()).findByText(/does not have permission/);
+    fireEvent.click(
+      within(banner()).getByRole("button", { name: "Overwrite with mine" }),
+    );
+
+    await within(banner()).findByText(/Backend error/);
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    // A new attempt clears the last one's reason.
+    drive.createFile.mockReturnValueOnce(new Promise(() => undefined));
+    fireEvent.click(
+      within(banner()).getByRole("button", { name: "Save mine as a copy" }),
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
   });
 
   it("keeps Drive's version, dropping the user's", async () => {

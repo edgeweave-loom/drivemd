@@ -367,6 +367,8 @@ function Content({ file }: { file: FileMetadata }) {
   if (held && !editing && released(held, file, content.data)) {
     setHeld(undefined);
   }
+  // Someone else's revision, which a save found, until the user settles it.
+  const [conflict, setConflict] = useState<FileMetadata>();
   const save = useMutation({
     // Over the revision opened, or over someone else's, which the user chose
     // to overwrite after a conflict: theirs is kept in the history.
@@ -383,8 +385,10 @@ function Content({ file }: { file: FileMetadata }) {
       // Drive said which revision it holds: the page's details follow.
       if ("conflict" in result) {
         setDetails(client, result.conflict);
+        setConflict(result.conflict);
         return;
       }
+      setConflict(undefined);
       const { saved } = result;
       const revision = saved.headRevisionId;
       if (revision !== undefined) {
@@ -487,9 +491,11 @@ function Content({ file }: { file: FileMetadata }) {
             }}
             save={save}
             copy={copy}
+            conflict={conflict}
             onKeepTheirs={(theirs) => {
               // Their revision shows, in the editor too, without the edits.
               setHeld({ opened: theirs, newer: true });
+              setConflict(undefined);
               save.reset();
               copy.reset();
               madeCopy.current = undefined;
@@ -596,6 +602,7 @@ function NoteView({
   onEdit,
   save,
   copy,
+  conflict,
   onKeepTheirs,
 }: {
   file: FileMetadata;
@@ -620,6 +627,8 @@ function NoteView({
     Error,
     { bytes: Uint8Array<ArrayBuffer>; folder: string }
   >;
+  /** Someone else's revision, which the user has yet to settle. */
+  conflict: FileMetadata | undefined;
   /** Drops the edits for the revision someone else saved. */
   onKeepTheirs: (theirs: FileMetadata) => void;
 }) {
@@ -666,8 +675,6 @@ function NoteView({
       document.title = title;
     };
   }, [unsaved]);
-  const conflict =
-    save.data && "conflict" in save.data ? save.data.conflict : undefined;
   const [folder] = file.parents;
   // A phone reading the note floats Edit over it; Done is in the bar.
   const floats = editable && layout === "phone" && !editing;
@@ -691,9 +698,12 @@ function NoteView({
       },
     );
   }
-  /** Saves the note, if anything changed, then does `then` once saved. */
+  /**
+   * Saves the note, if anything changed, then does `then` once saved; not
+   * while a conflict is open, which only the user's choice settles.
+   */
   function saveThen(then?: () => void) {
-    if (!unsaved || save.isPending) return;
+    if (!unsaved || save.isPending || conflict) return;
     write(text, then);
   }
   function saveNow() {
@@ -825,8 +835,9 @@ function NoteView({
             </InSlot>
           ))}
         {/* While the page waits for an answer about changes kept on the
-            device, too: nothing is unsaved yet. */}
-        {reason === undefined && !conflict && (
+            device, too: nothing is unsaved yet. During a conflict, only while
+            the user's version overwrites Drive's. */}
+        {reason === undefined && (!conflict || save.isPending) && (
           <InSlot name="save">
             <Save
               state={save.isPending ? "saving" : unsaved ? "save" : "saved"}
@@ -840,12 +851,13 @@ function NoteView({
           theirs={conflict}
           mine={text}
           busy={save.isPending || copy.isPending}
-          error={copy.error}
+          error={copy.error ?? save.error}
           onKeep={() => {
             onKeepTheirs(conflict);
           }}
           onOverwrite={() => {
             renew();
+            copy.reset();
             save.mutate({ bytes, text, over: conflict });
           }}
           onCopy={
@@ -853,12 +865,13 @@ function NoteView({
               ? undefined
               : () => {
                   renew();
+                  save.reset();
                   copy.mutate({ bytes, folder });
                 }
           }
         />
       )}
-      {save.error && (
+      {save.error && !conflict && (
         <p role="alert" className="failure">
           {describeError(save.error)}
         </p>
