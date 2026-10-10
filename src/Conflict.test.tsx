@@ -25,9 +25,13 @@ const THEIRS = metadata(PLAN, {
   headRevisionId: "revision-3",
 });
 const utf8 = (text: string) => new TextEncoder().encode(text);
+const WHEN = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
 
 /** A note whose save finds that someone else changed it in Drive. */
-async function conflict() {
+async function conflict(theirs = THEIRS) {
   const drive = fakeDrive();
   drive.getContent.mockImplementation((file) =>
     Promise.resolve(
@@ -38,7 +42,7 @@ async function conflict() {
       ),
     ),
   );
-  drive.getMetadata.mockResolvedValue(THEIRS);
+  drive.getMetadata.mockResolvedValue(theirs);
   drive.keepRevision.mockResolvedValue();
   drive.saveContent.mockImplementation((file) =>
     Promise.resolve(metadata(file, { headRevisionId: "revision-4" })),
@@ -127,6 +131,53 @@ describe("a save that finds someone else's change", () => {
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   });
 
+  it("offers the choices by risk: a copy, then overwriting, then Drive's version", async () => {
+    await conflict();
+
+    expect(
+      within(banner())
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual([
+      "Save mine as a copy",
+      "Overwrite with mine",
+      "Keep the Drive version",
+    ]);
+  });
+
+  it.each([
+    [
+      "someone else",
+      { lastModifiedBy: "Ada Lovelace" },
+      "Ada Lovelace changed it on WHEN, after you opened it",
+    ],
+    [
+      "the user, elsewhere",
+      { lastModifiedBy: "Grace Hopper", lastModifiedByMe: true },
+      "You changed it elsewhere on WHEN, after you opened it here",
+    ],
+    [
+      "a user Drive does not name",
+      { lastModifiedBy: undefined },
+      "Someone changed it on WHEN, after you opened it",
+    ],
+  ])("says who changed the file, %s, and when", async (_, who, said) => {
+    const modifiedTime = "2026-09-01T10:42:00.000Z";
+    await conflict(metadata(THEIRS, { ...who, modifiedTime }));
+
+    expect(banner()).toHaveTextContent(
+      `${said.replace("WHEN", WHEN.format(new Date(modifiedTime)))}, so DriveMD saved nothing.`,
+    );
+  });
+
+  it("leaves out when the file changed, if Drive does not say", async () => {
+    await conflict(metadata(THEIRS, { modifiedTime: undefined }));
+
+    expect(banner()).toHaveTextContent(
+      "Ada Lovelace changed it after you opened it, so DriveMD saved nothing.",
+    );
+  });
+
   it("keeps the choice open while overwriting, and after Drive refuses it", async () => {
     const { drive } = await conflict();
     let refuse: (error: Error) => void = () => undefined;
@@ -167,6 +218,13 @@ describe("a save that finds someone else's change", () => {
       ).toBeNull();
     });
     expect(drive.saveContent).toHaveBeenCalledTimes(2);
+  });
+
+  it("holds the differences in the banner's region", async () => {
+    await conflict();
+
+    await differences();
+    expect(banner().querySelector(".differences")).not.toBeNull();
   });
 
   it("stays in Editing with the choice open when Viewing would save", async () => {

@@ -274,7 +274,7 @@ test("shows someone else's change at save, and overwrites it when asked", async 
   expect(drive.writes).toEqual([]);
 
   await page.getByRole("button", { name: "Overwrite with mine" }).click();
-  // The panel stays until Drive holds the user's version.
+  // The banner stays until Drive holds the user's version.
   await expect
     .poll(() => drive.writes)
     .toEqual(["keep plan revision-2", "save plan"]);

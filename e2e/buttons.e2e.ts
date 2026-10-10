@@ -1,20 +1,5 @@
-import type { Locator } from "@playwright/test";
-import { computed, token } from "./color.ts";
+import { computed, looks, token } from "./color.ts";
 import { expect, signIn, test } from "./fake-google.ts";
-
-/** The colors a control shows: its container, label and outline. */
-async function looks(control: Locator) {
-  return control.evaluate((element) => {
-    const style = getComputedStyle(element);
-    return {
-      background: style.backgroundColor,
-      color: style.color,
-      border: style.borderTopColor,
-      height: element.getBoundingClientRect().height,
-      radius: Number.parseFloat(style.borderTopLeftRadius),
-    };
-  });
-}
 
 test("gives each action the emphasis its weight calls for", async ({
   page,
