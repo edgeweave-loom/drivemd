@@ -156,6 +156,16 @@ button.danger {
   color: var(--on-error);
 }
 
+button.text {
+  padding: 0 var(--space-3);
+  border-color: transparent;
+}
+
+button.text.danger {
+  background: none;
+  color: var(--error);
+}
+
 /* The label's color laid over the control: 8% under the mouse, 10% under
    the keyboard's focus or a press. */
 @media (hover: hover) {
@@ -180,7 +190,7 @@ button:disabled {
   cursor: default;
 }
 
-button:is(.filled, .tonal, .danger):disabled {
+button:is(.filled, .tonal, .danger):not(.text):disabled {
   border-color: transparent;
   background: color-mix(in srgb, var(--on-surface) 12%, transparent);
 }
@@ -1878,24 +1888,69 @@ dialog.drawer {
   }
 }
 
+/* A conflict: its banner, then the differences. */
 .conflict {
   display: grid;
-  gap: 0.75rem;
-  padding: 1rem;
-  border: 1px solid var(--attention);
-  border-radius: 0.5rem;
+  gap: var(--space-4);
+}
+
+/* A banner under the app bar (docs/DESIGN.md, Banner): the icon beside the
+   title, and what follows under the title, or across on a phone. */
+.banner {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
   background: var(--attention-container);
   color: var(--on-attention-container);
 }
 
-.page .conflict h3 {
+.banner > :not(.icon) {
+  grid-column: 2;
+}
+
+.page .banner h3 {
   color: inherit;
-  font-size: 1.125rem;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
   text-transform: none;
 }
 
-.conflict .actions {
+.banner > .actions {
   justify-content: flex-start;
+}
+
+/* The banner's own colors carry its actions' emphases. */
+.banner > .actions > button:not(:disabled) {
+  border-color: var(--on-attention-container);
+  color: var(--on-attention-container);
+}
+
+.banner > .actions > button.filled:not(:disabled) {
+  background: var(--on-attention-container);
+  color: var(--attention-container);
+}
+
+.banner > .actions > button.text:not(:disabled) {
+  border-color: transparent;
+}
+
+.banner > .actions > button.text.danger:not(:disabled) {
+  color: var(--error);
+}
+
+@media (width < 768px), (pointer: coarse) and (height < 500px) {
+  .banner > :not(.icon, h3) {
+    grid-column: 1 / -1;
+  }
+
+  .banner > .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 .restore {
