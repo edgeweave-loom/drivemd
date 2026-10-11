@@ -134,7 +134,9 @@ test("tells Safari's users how to add DriveMD to the Home Screen, until they tap
   const hint = page.getByRole("region", {
     name: "Add DriveMD to your Home Screen",
   });
-  await expect(hint).toContainText("In Safari, tap Share, then Add to Home Screen");
+  await expect(hint).toContainText(
+    "In Safari, tap Share, then Add to Home Screen",
+  );
   await expect(hint).toHaveCSS(
     "background-color",
     await token(page, "--secondary-container"),
