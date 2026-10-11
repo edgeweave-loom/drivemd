@@ -105,6 +105,7 @@ Material Symbols Outlined, at weight 400, grade 0 and optical size 24, filled on
 | `drive_file_move`, `delete`, `more_vert`  | Move, Move to trash, More actions                   |
 | `search`, `close`, `arrow_back`, `add`    | Search, clear or close, Back, New note              |
 | `sync_problem`                            | Someone changed the note in Drive                   |
+| `ios_share`                               | How to add DriveMD to the Home Screen               |
 | `undo`, `redo`, `title`, `format_bold`, … | The keyboard toolbar's keys, as the spec lists them |
 
 The DriveMD mark, `public/icon.svg`, shows at 40 px in the app bar (32 px on a phone) and is never recolored or redrawn.
@@ -129,7 +130,7 @@ Measurements are in CSS pixels; colors are tokens.
 - **Breadcrumbs.** On folder pages only: `on-surface-variant` steps with a pill hover, the current one `on-surface` at 500 and not a link, `chevron_right` between them.
 - **Search.** On a wide screen, a 48 px pill on `surface-container-high`, at most 720 px wide, `sheet` with `--elevation-1` while focused. On a phone, an icon that opens a full-screen search on `surface-container-high`, with Back and Clear.
 - **Badge.** 20 px, `--radius-xs`, label-medium: neutral (outline) for what an item is (Shortcut), `secondary-container` for where it belongs (Vault), `attention-container` for what the user cannot do (Read only).
-- **Banner.** Under the app bar, `--radius-md`, 16 px of padding: an icon, a title-medium title, one or two sentences, and its actions. `attention-container` for a decision, `error-container` for a failure. The conflict's actions go by risk: Save mine as a copy (filled), Overwrite with mine (outlined), Keep the Drive version (danger text, which asks again).
+- **Banner.** Under the app bar, `--radius-md`, 16 px of padding: an icon, a title-medium title, one or two sentences, and its actions. `attention-container` for a decision, `error-container` for a failure, `secondary-container` for a tip, such as how to add DriveMD to the Home Screen, whose one action, Got it, is a text button. The conflict's actions go by risk: Save mine as a copy (filled), Overwrite with mine (outlined), Keep the Drive version (danger text, which asks again).
 - **Differences.** Google Sans Code at 14 / 22 on `sheet`, lines padded 12 px; unchanged runs folded into a `surface-container` line ("14 unchanged lines").
 - **Snackbar.** `inverse-surface`, `--radius-xs`, `--elevation-3`, at the bottom left (bottom on a phone): one past-tense sentence ("Saved to Google Drive") and at most one action in `inverse-primary`, gone after 4 seconds, 10 with an action.
 - **Dialog.** `surface-container-high`, `--radius-xl`, `--elevation-3`, over a `scrim` at 32%: the question as its title, one or two sentences of consequence, then Cancel and the action named by its verb, a loss in danger.

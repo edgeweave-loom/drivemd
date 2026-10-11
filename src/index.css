@@ -1957,6 +1957,16 @@ dialog.drawer {
   color: var(--error);
 }
 
+/* A tip, which asks for no decision. */
+.banner.tip {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+.banner.tip > .actions > button:not(:disabled) {
+  color: var(--on-secondary-container);
+}
+
 @media (width < 768px), (pointer: coarse) and (height < 500px) {
   .banner > :not(.icon, h3) {
     grid-column: 1 / -1;

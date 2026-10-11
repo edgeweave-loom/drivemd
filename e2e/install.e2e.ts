@@ -1,5 +1,6 @@
 import type { APIRequestContext, Page } from "@playwright/test";
-import { expect, test } from "./fake-google.ts";
+import { token } from "./color.ts";
+import { expect, signIn, test, vault } from "./fake-google.ts";
 
 interface Icon {
   src: string;
@@ -116,4 +117,45 @@ test("is a manifest Chrome reads without a complaint", async ({
   const { url, errors } = await cdp.send("Page.getAppManifest");
   expect(url).toMatch(/\/manifest\.webmanifest$/);
   expect(errors).toEqual([]);
+});
+
+test("tells Safari's users how to add DriveMD to the Home Screen, until they tap Got it", async ({
+  page,
+}, info) => {
+  test.skip(
+    info.project.name === "desktop-chromium",
+    "A mouse means a computer, which has no Home Screen",
+  );
+  // As Safari on an iPhone or an iPad says outside the Home Screen.
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "standalone", { value: false });
+  });
+  await signIn(page);
+  const hint = page.getByRole("region", {
+    name: "Add DriveMD to your Home Screen",
+  });
+  await expect(hint).toContainText("In Safari, tap Share, then Add to Home Screen");
+  await expect(hint).toHaveCSS(
+    "background-color",
+    await token(page, "--secondary-container"),
+  );
+  await expect(hint.locator('svg[data-icon="ios_share"]')).toHaveCount(1);
+  // Under the app bar, before the files.
+  const bar = await page.getByRole("banner").boundingBox();
+  const box = await hint.boundingBox();
+  const recent = await page
+    .getByRole("heading", { name: "Recent" })
+    .boundingBox();
+  if (!bar || !box || !recent) throw new Error("Not shown");
+  expect(box.y).toBeGreaterThanOrEqual(bar.y + bar.height);
+  expect(box.y + box.height).toBeLessThanOrEqual(recent.y);
+
+  await hint.getByRole("button", { name: "Got it" }).click();
+  await expect(hint).toHaveCount(0);
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Home", exact: true }),
+  ).toBeAttached();
+  await expect(vault(page)).toBeVisible();
+  await expect(hint).toHaveCount(0);
 });
