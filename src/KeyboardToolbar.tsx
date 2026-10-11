@@ -118,7 +118,9 @@ export function KeyboardToolbar({
     <div
       role="toolbar"
       aria-label="Formatting"
-      className="keyboard-toolbar"
+      className={
+        keyboard > 0 ? "keyboard-toolbar over-keyboard" : "keyboard-toolbar"
+      }
       // Set through the DOM, which the security policy allows.
       style={{ transform: `translateY(${String(-keyboard)}px)` }}
     >
