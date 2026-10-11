@@ -20,7 +20,7 @@ The same goes for the repository: tests, fixtures and examples use made-up data,
 1. Fork the repository and branch from `dev`. `main` holds what is released: `dev` reaches it through release pull requests.
 2. Set up as the README's [Development](README.md#development) and [End-to-end tests](README.md#end-to-end-tests) sections say. The unit and end-to-end tests replace Google with made-up answers, so they need no Google account or OAuth client.
 3. Write the failing test first, then the code that makes it pass. Browser behavior is tested with `npm run e2e`, in Chromium and WebKit, under the security policy that Hosting sends.
-4. Before pushing, run the checks that CI runs on the code: `npm run lint`, `npm run format:check`, `npm run coverage`, `npm run build` and `npm run e2e`. CI also audits the dependencies and the workflows.
+4. Before pushing, run the checks that CI runs on the code: `npm run check` (lint, format, coverage and build) and `npm run e2e`. The Git hooks that the README's Development section turns on run `npm run check` before each push, and check the format and the lint of each commit. CI also audits the dependencies and the workflows.
 5. Update the spec in the same pull request when a decision changes, and the README when commands, environment variables or behavior do.
 6. Open the pull request against `dev`.
 

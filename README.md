@@ -57,22 +57,25 @@ npm run dev
 
 Open http://localhost:5173, not `127.0.0.1`: it is the only local origin the OAuth client authorizes, so the dev server refuses to start on another port. Signing in needs an OAuth client's ID (see Configuration), but the tests do not: they replace Google with made-up answers.
 
-| Command                    | What it does                                                    |
-| -------------------------- | --------------------------------------------------------------- |
-| `npm run dev`              | Serve the app with hot reload                                   |
-| `npm run build`            | Type-check, then build the static site into `dist/`             |
-| `npm run preview`          | Serve the `dist/` build on the same port                        |
-| `npm test`                 | Run the tests in watch mode                                     |
-| `npm run coverage`         | Run the tests once; fails under the coverage thresholds         |
-| `npm run e2e`              | Run the end-to-end tests in real browsers                       |
-| `npm run lint`             | Lint with type-aware and security rules; any warning fails      |
-| `npm run format`           | Format every file with Prettier (`npm run format:check` checks) |
-| `npm run deploy`           | Deploy `dist/` to the site mapped to the `app` target           |
-| `npm run live-check:login` | Sign the test account in for the live Drive checks              |
-| `npm run live-check`       | Check the Drive client against the real Drive                   |
-| `npm run live-check:ui`    | Check the deployed app on the real Drive, in real browsers      |
+| Command                    | What it does                                                     |
+| -------------------------- | ---------------------------------------------------------------- |
+| `npm run dev`              | Serve the app with hot reload                                    |
+| `npm run build`            | Type-check, then build the static site into `dist/`              |
+| `npm run preview`          | Serve the `dist/` build on the same port                         |
+| `npm test`                 | Run the tests in watch mode                                      |
+| `npm run coverage`         | Run the tests once; fails under the coverage thresholds          |
+| `npm run e2e`              | Run the end-to-end tests in real browsers                        |
+| `npm run lint`             | Lint with type-aware and security rules; any warning fails       |
+| `npm run format`           | Format every file with Prettier (`npm run format:check` checks)  |
+| `npm run check`            | Lint, check the format, run `coverage`, then `build`, as CI does |
+| `npm run deploy`           | Deploy `dist/` to the site mapped to the `app` target            |
+| `npm run live-check:login` | Sign the test account in for the live Drive checks               |
+| `npm run live-check`       | Check the Drive client against the real Drive                    |
+| `npm run live-check:ui`    | Check the deployed app on the real Drive, in real browsers       |
 
 Write the failing test first, then the code that makes it pass. CI runs the checks above on every pull request and on every push to `dev` and `main`.
+
+Once per clone, `git config core.hooksPath .githooks` turns on the repository's Git hooks: before each commit, Prettier and ESLint check the files being committed; before each push, `npm run check` runs. `.npmrc` turns off install scripts, so `npm ci` cannot turn them on itself.
 
 ## End-to-end tests
 
