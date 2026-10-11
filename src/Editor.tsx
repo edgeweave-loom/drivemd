@@ -271,21 +271,13 @@ export function Editor({
   const editor = useRef<EditorView | null>(null);
   const [focused, setFocused] = useState(false);
   const toolbar = useTouch() && focused;
-  const bar = useRef<HTMLDivElement>(null);
   const opening = useEffectEvent(() => initial);
   const edited = useEffectEvent((update: ViewUpdate) => {
     if (update.docChanged) onChange(update.state.sliceDoc());
     if (update.focusChanged) setFocused(update.view.hasFocus);
   });
   const clearance = useEffectEvent(() =>
-    toolbar
-      ? {
-          bottom: Math.max(
-            TOOLBAR_HEIGHT,
-            bar.current?.getBoundingClientRect().height ?? 0,
-          ),
-        }
-      : null,
+    toolbar ? { bottom: TOOLBAR_HEIGHT } : null,
   );
   const followed = useEffectEvent((href: string) => {
     onFollow(href);
@@ -325,7 +317,6 @@ export function Editor({
       <div className="editor" ref={host} />
       {toolbar && (
         <KeyboardToolbar
-          ref={bar}
           onCommand={(command) => {
             if (editor.current) command(editor.current);
           }}

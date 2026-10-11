@@ -140,7 +140,7 @@ test("keeps the bar's and the page's content clear of the notch, held sideways",
   await clear(page, await newNote(page), SIDEWAYS, PADDING);
 });
 
-test("keeps a note's lines and the keyboard's keys clear of the notch and the home bar", async ({
+test("keeps a note's lines and the keyboard's keys clear of the notch", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 852, height: 393 });
@@ -158,14 +158,20 @@ test("keeps a note's lines and the keyboard's keys clear of the notch and the ho
   expect(await box(toolbar)).toMatchObject({ x: 0, width: 852 });
   const { y, height } = await box(toolbar);
   expect(y + height).toBe(393);
-  await clear(page, toolbar.getByRole("button").first(), SIDEWAYS);
+  // It adds no home bar's inset under its keys: a phone shows it over the
+  // keyboard, which covers the home bar, and the Home Screen app, whose
+  // window the keyboard shrinks, would show the inset as an empty row. With
+  // no keyboard up, as here, its keys sit over the home bar.
+  expect(height).toBe(48);
+  const sides = { ...SIDEWAYS, bottom: 0 };
+  await clear(page, toolbar.getByRole("button").first(), sides);
   await clear(
     page,
     toolbar.getByRole("button", { name: "Find in note" }),
-    SIDEWAYS,
+    sides,
   );
 
-  // The note's end scrolls clear of it, and of the home bar under it.
+  // The note's end scrolls clear of it.
   await page.evaluate(() => {
     window.scrollTo(0, document.documentElement.scrollHeight);
   });

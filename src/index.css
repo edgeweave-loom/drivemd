@@ -1990,9 +1990,9 @@ dialog.drawer {
 }
 
 /* Pinned above a touch screen's keyboard, at the height the editor keeps
-   clear of the cursor (TOOLBAR_HEIGHT, and the inset under it); it scrolls
-   sideways on phones. Its
-   keys stay clear of the notch, and of the home bar but over the keyboard. */
+   clear of the cursor (TOOLBAR_HEIGHT); it scrolls sideways on phones. Its
+   keys stay clear of the notch. A phone shows it over the keyboard only,
+   which covers the home bar, so it adds no inset under them. */
 .keyboard-toolbar {
   position: fixed;
   right: 0;
@@ -2001,9 +2001,8 @@ dialog.drawer {
   z-index: 2;
   display: flex;
   align-items: center;
-  height: calc(var(--keyboard-toolbar-height) + env(safe-area-inset-bottom));
-  padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom)
-    env(safe-area-inset-left);
+  height: var(--keyboard-toolbar-height);
+  padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
   overflow-x: auto;
   border-top: 1px solid var(--outline-variant);
   background: var(--surface-container);
@@ -2014,11 +2013,6 @@ dialog.drawer {
    home bar. */
 body:has(> .keyboard-toolbar) {
   padding-bottom: var(--keyboard-toolbar-height);
-}
-
-.keyboard-toolbar.over-keyboard {
-  height: var(--keyboard-toolbar-height);
-  padding-bottom: 0;
 }
 
 .keyboard-toolbar button {
