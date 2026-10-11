@@ -572,7 +572,9 @@ export async function signIn(page: Page): Promise<void> {
     "require-trusted-types-for 'script'",
   );
   await page.getByRole("button", { name: "Sign in with Google" }).click();
-  await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Home", exact: true }),
+  ).toBeVisible();
   const recent = page.getByRole("region", { name: "Recent" }).getByRole("link");
   await expect(recent.locator(".name")).toHaveText(["plan.md"]);
   // And the folder it sits in, which Drive names after the list.

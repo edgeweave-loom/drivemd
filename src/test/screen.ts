@@ -35,3 +35,18 @@ export function installScreen(): void {
       },
     }) as unknown as MediaQueryList;
 }
+
+/**
+ * Has the browser say whether it runs from the Home Screen, as Safari on an
+ * iPhone or an iPad does, or say nothing, as other browsers do.
+ */
+export function holdStandalone(standalone: boolean | undefined): void {
+  if (standalone === undefined) {
+    Reflect.deleteProperty(navigator, "standalone");
+    return;
+  }
+  Object.defineProperty(navigator, "standalone", {
+    value: standalone,
+    configurable: true,
+  });
+}

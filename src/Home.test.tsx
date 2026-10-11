@@ -12,6 +12,7 @@ import {
   metadataOf,
 } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
+import { holdStandalone, holdTouch } from "./test/screen.ts";
 import { ACCOUNT, keepFresh, renderWithDrive } from "./test/render.tsx";
 
 const PLAN = metadata(driveItem("plan.md", { id: "plan" }));
@@ -91,6 +92,23 @@ describe("Home", () => {
       "Shared drives",
       "Shared with me",
     ]);
+  });
+
+  it("tells Safari's users how to add DriveMD to the Home Screen, before the files", async () => {
+    holdTouch(true);
+    holdStandalone(false);
+    try {
+      renderWithDrive(<Home />, fakeDrive());
+      const hint = await screen.findByRole("region", {
+        name: "Add DriveMD to your Home Screen",
+      });
+      expect(
+        hint.compareDocumentPosition(section("Recent").getByRole("heading")),
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    } finally {
+      holdTouch(false);
+      holdStandalone(undefined);
+    }
   });
 
   it("says what fills Recent and Vaults when they are empty", async () => {

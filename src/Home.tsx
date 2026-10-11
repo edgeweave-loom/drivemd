@@ -4,6 +4,7 @@ import { useDrawer } from "./drawer.ts";
 import { useDrive } from "./drive-context.ts";
 import { ItemListing } from "./EntryList.tsx";
 import { Icon } from "./Icon.tsx";
+import { InstallHint } from "./InstallHint.tsx";
 import { Link } from "./Link.tsx";
 import { draftsQuery, recentQuery, vaultsQuery } from "./queries.ts";
 import { ROOT_PLACES } from "./roots.ts";
@@ -16,6 +17,7 @@ export function Home() {
   return (
     <>
       <h2>Home</h2>
+      <InstallHint />
       {drafts.data && drafts.data.length > 0 && (
         <Section title="Unsaved changes">
           <UnsavedNotes drafts={drafts.data} />

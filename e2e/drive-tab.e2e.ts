@@ -100,7 +100,9 @@ test("holds the note alone, through a reload, until another address opens", asyn
 
   // An address typed in the tab ends the mode.
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Home", exact: true }),
+  ).toBeVisible();
   await page
     .getByRole("region", { name: "Recent" })
     .getByRole("link", { name: "plan.md" })
