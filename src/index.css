@@ -8,6 +8,8 @@
 @import "@fontsource-variable/google-sans-code/wght-italic.css";
 
 :root {
+  /* The keyboard toolbar's, over the keyboard (TOOLBAR_HEIGHT). */
+  --keyboard-toolbar-height: 48px;
   color: var(--on-surface);
   background: var(--surface);
   font-family: var(--font-sans);
@@ -1988,7 +1990,8 @@ dialog.drawer {
 }
 
 /* Pinned above a touch screen's keyboard, at the height the editor keeps
-   clear of the cursor (TOOLBAR_HEIGHT); it scrolls sideways on phones. Its
+   clear of the cursor (TOOLBAR_HEIGHT, and the inset under it); it scrolls
+   sideways on phones. Its
    keys stay clear of the notch, and of the home bar but over the keyboard. */
 .keyboard-toolbar {
   position: fixed;
@@ -1998,7 +2001,7 @@ dialog.drawer {
   z-index: 2;
   display: flex;
   align-items: center;
-  height: calc(48px + env(safe-area-inset-bottom));
+  height: calc(var(--keyboard-toolbar-height) + env(safe-area-inset-bottom));
   padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom)
     env(safe-area-inset-left);
   overflow-x: auto;
@@ -2007,8 +2010,14 @@ dialog.drawer {
   scrollbar-width: none;
 }
 
+/* The page's end scrolls clear of it; the page already keeps clear of the
+   home bar. */
+body:has(> .keyboard-toolbar) {
+  padding-bottom: var(--keyboard-toolbar-height);
+}
+
 .keyboard-toolbar.over-keyboard {
-  height: 48px;
+  height: var(--keyboard-toolbar-height);
   padding-bottom: 0;
 }
 
