@@ -309,5 +309,6 @@ test("renames the note by its name, its ending set apart", async ({
   await field.fill("roadmap");
   await field.press("Enter");
   await expect(bar.getByRole("button", { name: "roadmap.md" })).toBeFocused();
-  expect(drive.writes).toEqual(["rename plan roadmap.md"]);
+  // The new name shows as it goes to Drive.
+  await expect.poll(() => drive.writes).toEqual(["rename plan roadmap.md"]);
 });
