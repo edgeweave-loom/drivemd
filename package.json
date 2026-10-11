@@ -13,6 +13,7 @@
     "build:e2e": "VITE_GOOGLE_CLIENT_ID=e2e.apps.googleusercontent.com vite build --outDir dist-e2e",
     "preview": "vite preview",
     "lint": "eslint . --max-warnings 0",
+    "check": "npm run lint && npm run format:check && npm run coverage && npm run build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest",

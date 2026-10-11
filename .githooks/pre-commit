@@ -1,0 +1,18 @@
+#!/bin/sh
+# Before each commit, in a few seconds: the formatting and the lint of the
+# files about to be committed, as they are in the working tree. The
+# pre-push hook runs the rest of CI's checks.
+set -eu
+
+staged() {
+  git diff --cached --name-only --diff-filter=ACMR -z -- "$@"
+}
+
+if [ -n "$(staged | tr -d '\0')" ]; then
+  staged | xargs -0 npx prettier --check --ignore-unknown
+fi
+
+set -- '*.ts' '*.tsx' '*.js'
+if [ -n "$(staged "$@" | tr -d '\0')" ]; then
+  staged "$@" | xargs -0 npx eslint --max-warnings 0 --no-warn-ignored
+fi
