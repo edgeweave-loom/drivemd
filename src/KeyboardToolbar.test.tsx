@@ -169,6 +169,8 @@ describe("the keyboard toolbar", () => {
     await editing("tea");
     const bar = screen.getByRole("toolbar", { name: "Formatting" });
     expect(bar.style.transform).toBe("translateY(0px)");
+    // At the screen's bottom, it stays clear of the home bar.
+    expect(bar).not.toHaveClass("over-keyboard");
 
     act(() => {
       viewport.show(500);
@@ -178,6 +180,8 @@ describe("the keyboard toolbar", () => {
     await waitFor(() => {
       expect(bar.style.transform).toBe("translateY(-300px)");
     });
+    // Which the keyboard then covers.
+    expect(bar).toHaveClass("over-keyboard");
     act(() => {
       viewport.show(500, 100);
     });
@@ -186,6 +190,7 @@ describe("the keyboard toolbar", () => {
       viewport.show(800);
     });
     expect(bar.style.transform).toBe("translateY(0px)");
+    expect(bar).not.toHaveClass("over-keyboard");
     // As Safari bounces past the page's end.
     act(() => {
       viewport.show(800, 50);

@@ -39,7 +39,10 @@ a {
   gap: var(--space-4);
   max-width: 448px;
   margin: 0 auto;
-  padding: var(--space-7) var(--space-5) var(--space-5);
+  padding: calc(var(--space-7) + env(safe-area-inset-top))
+    calc(var(--space-5) + env(safe-area-inset-right))
+    calc(var(--space-5) + env(safe-area-inset-bottom))
+    calc(var(--space-5) + env(safe-area-inset-left));
 }
 
 .app > .mark {
@@ -257,7 +260,8 @@ button.new-note > .icon {
 }
 
 /* The app bar: DriveMD's mark and name, which lead Home, the search bar
-   and the account. */
+   and the account. Its background runs under the status bar and to the
+   screen's edges, its content clear of them (docs/DESIGN.md, Layout). */
 .bar {
   position: sticky;
   top: 0;
@@ -266,8 +270,10 @@ button.new-note > .icon {
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-4);
   align-items: center;
-  min-height: var(--app-bar-height);
-  padding: 0 var(--space-4);
+  min-height: calc(var(--app-bar-height) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top)
+    calc(var(--space-4) + env(safe-area-inset-right)) 0
+    calc(var(--space-4) + env(safe-area-inset-left));
   border-bottom: 1px solid var(--outline-variant);
   background: var(--surface);
 }
@@ -439,7 +445,8 @@ button.mode {
 }
 
 .mode-menu {
-  inset: calc(var(--app-bar-height) - var(--space-2)) var(--space-4) auto auto;
+  inset: calc(var(--app-bar-height) + env(safe-area-inset-top) - var(--space-2))
+    calc(var(--space-4) + env(safe-area-inset-right)) auto auto;
 }
 
 @supports (anchor-name: --mode) {
@@ -660,12 +667,13 @@ button.account {
 
 .account-menu,
 .actions-menu {
-  inset: calc(var(--app-bar-height) - var(--space-2)) var(--space-4) auto auto;
+  inset: calc(var(--app-bar-height) + env(safe-area-inset-top) - var(--space-2))
+    calc(var(--space-4) + env(safe-area-inset-right)) auto auto;
 }
 
 @media (width < 768px), (pointer: coarse) and (height < 500px) {
   .bar {
-    min-height: var(--app-bar-height-compact);
+    min-height: calc(var(--app-bar-height-compact) + env(safe-area-inset-top));
   }
 
   .bar :is(h1, .mark) img {
@@ -789,7 +797,9 @@ button.account {
 
   .account-menu,
   .actions-menu {
-    top: calc(var(--app-bar-height-compact) - var(--space-2));
+    top: calc(
+      var(--app-bar-height-compact) + env(safe-area-inset-top) - var(--space-2)
+    );
   }
 }
 
@@ -909,7 +919,9 @@ dialog.drawer {
   height: 100%;
   max-height: none;
   margin: 0;
-  padding: 1rem;
+  padding: calc(1rem + env(safe-area-inset-top)) 1rem
+    calc(1rem + env(safe-area-inset-bottom))
+    calc(1rem + env(safe-area-inset-left));
   border: none;
   border-right: 1px solid var(--outline-variant);
   background: var(--surface);
@@ -941,7 +953,7 @@ dialog.drawer {
 
 .drawer-nav {
   position: sticky;
-  top: var(--app-bar-height);
+  top: calc(var(--app-bar-height) + env(safe-area-inset-top));
   padding: 0 var(--space-3) var(--space-4);
 }
 
@@ -1102,7 +1114,7 @@ dialog.drawer {
 
 .page.panel {
   align-content: start;
-  min-height: calc(100dvh - var(--app-bar-height));
+  min-height: calc(100dvh - var(--app-bar-height) - env(safe-area-inset-top));
   max-width: none;
   margin: 0;
   padding: var(--space-5);
@@ -1111,14 +1123,17 @@ dialog.drawer {
 }
 
 /* How far in the page's text sits, which a note's source, running from
-   edge to edge, keeps too. */
+   edge to edge, keeps too; beyond the screen's safe area. */
 .page {
   --text-inset: var(--space-4);
   display: grid;
   gap: 1rem;
   max-width: 48rem;
   margin: 0 auto;
-  padding: var(--text-inset);
+  padding: var(--text-inset)
+    calc(var(--text-inset) + env(safe-area-inset-right))
+    calc(var(--text-inset) + env(safe-area-inset-bottom))
+    calc(var(--text-inset) + env(safe-area-inset-left));
 }
 
 .page h2,
@@ -1839,7 +1854,7 @@ dialog.drawer {
   .page:has(> .split) {
     display: flex;
     flex-direction: column;
-    min-height: calc(100dvh - var(--app-bar-height));
+    min-height: calc(100dvh - var(--app-bar-height) - env(safe-area-inset-top));
     max-width: none;
     padding: var(--space-3) var(--space-4) 0;
   }
@@ -1963,7 +1978,8 @@ dialog.drawer {
 }
 
 /* Pinned above a touch screen's keyboard, at the height the editor keeps
-   clear of the cursor (TOOLBAR_HEIGHT); it scrolls sideways on phones. */
+   clear of the cursor (TOOLBAR_HEIGHT); it scrolls sideways on phones. Its
+   keys stay clear of the notch, and of the home bar but over the keyboard. */
 .keyboard-toolbar {
   position: fixed;
   right: 0;
@@ -1972,11 +1988,18 @@ dialog.drawer {
   z-index: 2;
   display: flex;
   align-items: center;
-  height: 48px;
+  height: calc(48px + env(safe-area-inset-bottom));
+  padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
   overflow-x: auto;
   border-top: 1px solid var(--outline-variant);
   background: var(--surface-container);
   scrollbar-width: none;
+}
+
+.keyboard-toolbar.over-keyboard {
+  height: 48px;
+  padding-bottom: 0;
 }
 
 .keyboard-toolbar button {
