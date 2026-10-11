@@ -217,6 +217,41 @@ test("formats the source from the keyboard toolbar on touch screens", async ({
   expect(String(drive.files.get("notes")?.content)).toBe("one\n- [ ] two\n");
 });
 
+test("leaves the note's end clear of the keyboard toolbar", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.name === "desktop-chromium",
+    "A mouse has no keyboard toolbar",
+  );
+  const notes = drive.files.get("notes");
+  if (notes) {
+    notes.content = Array.from(
+      { length: 80 },
+      (_, line) => `line ${String(line + 1)}\n`,
+    ).join("");
+  }
+  await signIn(page);
+  await page.goto("/edit?id=notes");
+  await startEditing(page);
+  const source = page.getByRole("textbox", { name: "Markdown source" });
+  await source.locator(".cm-line").first().click();
+  const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+  await expect(toolbar).toBeVisible();
+
+  await page.evaluate(() => {
+    window.scrollTo(0, document.documentElement.scrollHeight);
+  });
+  // Down to the empty line after the last line break.
+  await expect(source.getByText("line 80")).toBeVisible();
+  const last = source.locator(".cm-line").last();
+  const line = await last.boundingBox();
+  const bar = await toolbar.boundingBox();
+  if (!line || !bar) throw new Error("Not shown");
+  expect(line.y + line.height).toBeLessThanOrEqual(bar.y);
+});
+
 test("saves with Ctrl+S, and follows a link with Ctrl+click in the source", async ({
   page,
   drive,

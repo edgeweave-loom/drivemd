@@ -164,6 +164,13 @@ test("keeps a note's lines and the keyboard's keys clear of the notch and the ho
     toolbar.getByRole("button", { name: "Find in note" }),
     SIDEWAYS,
   );
+
+  // The note's end scrolls clear of it, and of the home bar under it.
+  await page.evaluate(() => {
+    window.scrollTo(0, document.documentElement.scrollHeight);
+  });
+  const end = await box(source.locator(".cm-line").last());
+  expect(end.y + end.height).toBeLessThanOrEqual(y);
 });
 
 test("keeps the folder's drawer clear of the status bar and the home bar", async ({

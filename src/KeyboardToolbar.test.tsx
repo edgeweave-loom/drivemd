@@ -7,7 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Editor } from "./Editor.tsx";
 import { holdTouch } from "./test/screen.ts";
 
@@ -209,5 +209,19 @@ describe("the keyboard toolbar", () => {
     await screen.findByRole("toolbar", { name: "Formatting" });
 
     expect(margins(view)).toContainEqual({ bottom: 48 });
+  });
+
+  it("keeps the cursor clear of the home bar's inset under it", async () => {
+    holdTouch(true);
+    const view = open("tea");
+    act(() => {
+      view.focus();
+    });
+    const bar = await screen.findByRole("toolbar", { name: "Formatting" });
+    vi.spyOn(bar, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 718, 393, 82),
+    );
+
+    expect(margins(view)).toContainEqual({ bottom: 82 });
   });
 });

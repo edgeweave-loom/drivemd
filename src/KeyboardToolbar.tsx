@@ -1,7 +1,7 @@
 import { redo, undo } from "@codemirror/commands";
 import { openSearchPanel } from "@codemirror/search";
 import type { Command } from "@codemirror/view";
-import { useSyncExternalStore, type SyntheticEvent } from "react";
+import { useSyncExternalStore, type Ref, type SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "./Icon.tsx";
 import type { IconName } from "./icons.ts";
@@ -15,7 +15,10 @@ import {
   toggleList,
 } from "./formatting.ts";
 
-/** The toolbar's height, which the editor keeps clear of the cursor. */
+/**
+ * The toolbar's height over the keyboard, which the editor keeps clear of
+ * the cursor; at the screen's bottom, it adds the home bar's inset.
+ */
 export const TOOLBAR_HEIGHT = 48;
 
 const KEYS: { name: string; command: Command; icon: IconName }[] = [
@@ -110,12 +113,15 @@ function keepFocus(event: SyntheticEvent) {
  */
 export function KeyboardToolbar({
   onCommand,
+  ref,
 }: {
   onCommand: (command: Command) => void;
+  ref?: Ref<HTMLDivElement>;
 }) {
   const keyboard = useSyncExternalStore(subscribe, keyboardHeight);
   return createPortal(
     <div
+      ref={ref}
       role="toolbar"
       aria-label="Formatting"
       className={
