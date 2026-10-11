@@ -169,8 +169,13 @@ test("keeps a note's lines and the keyboard's keys clear of the notch and the ho
   await page.evaluate(() => {
     window.scrollTo(0, document.documentElement.scrollHeight);
   });
-  const end = await box(source.locator(".cm-line").last());
-  expect(end.y + end.height).toBeLessThanOrEqual(y);
+  // CodeMirror draws its lines afresh as the page scrolls.
+  await expect
+    .poll(async () => {
+      const end = await source.locator(".cm-line").last().boundingBox();
+      return end ? end.y + end.height : Infinity;
+    })
+    .toBeLessThanOrEqual(y);
 });
 
 test("keeps the folder's drawer clear of the status bar and the home bar", async ({

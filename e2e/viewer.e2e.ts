@@ -245,11 +245,15 @@ test("leaves the note's end clear of the keyboard toolbar", async ({
   });
   // Down to the empty line after the last line break.
   await expect(source.getByText("line 80")).toBeVisible();
-  const last = source.locator(".cm-line").last();
-  const line = await last.boundingBox();
   const bar = await toolbar.boundingBox();
-  if (!line || !bar) throw new Error("Not shown");
-  expect(line.y + line.height).toBeLessThanOrEqual(bar.y);
+  if (!bar) throw new Error("Not shown");
+  // CodeMirror draws its lines afresh as the page scrolls.
+  await expect
+    .poll(async () => {
+      const line = await source.locator(".cm-line").last().boundingBox();
+      return line ? line.y + line.height : Infinity;
+    })
+    .toBeLessThanOrEqual(bar.y);
 });
 
 test("saves with Ctrl+S, and follows a link with Ctrl+click in the source", async ({
