@@ -88,7 +88,7 @@ A note's sizes are set in rem, the table's pixels at the browser's default size,
 
 - Every control is at least 48 px (`--touch-target`) on a touch screen; a button can stay 40 px tall (`--control-height`) with an invisible margin. The keyboard toolbar's keys are 44 px.
 - Nothing works on hover alone.
-- Bars at the screen's edges add `env(safe-area-inset-*)` to their padding: the app bar under the iPhone's status bar, the floating buttons, the snackbar and the keyboard toolbar above the home bar.
+- Bars at the screen's edges add `env(safe-area-inset-*)` to their padding: the app bar under the iPhone's status bar, the floating buttons and the snackbar above the home bar, and the keyboard toolbar's keys clear of the notch (over the keyboard, it needs no home bar's inset).
 
 ## Icons
 
