@@ -1,4 +1,4 @@
-import { contrast, luminance, token } from "./color.ts";
+import { contrast, luminance, token, touchScreen } from "./color.ts";
 import {
   expect,
   draftsKept,
@@ -372,7 +372,8 @@ test("folds the lines alike in the theme's colors, as the system's changes", asy
   const { text, backgrounds } = await colors();
   expect(backgrounds.length).toBeGreaterThan(0);
   for (const background of backgrounds) {
-    expect(luminance(background)).toBeLessThan(0.1);
+    // Dark on a touch screen; a computer keeps the light theme.
+    expect(luminance(background) < 0.1).toBe(await touchScreen(page));
     expect(contrast(text, background)).toBeGreaterThanOrEqual(4.5);
   }
 

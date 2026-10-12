@@ -6,7 +6,9 @@ export type Layout = "phone" | "tablet" | "wide";
 // A phone held sideways, wide as it may be, keeps the phone layout.
 export const PHONE = "(width < 768px), (pointer: coarse) and (height < 500px)";
 export const WIDE = "(width >= 1024px)";
-// A screen the user touches, rather than points at with a mouse.
+// A screen the user touches, rather than points at with a mouse. Only there
+// does the theme follow the system's: src/tokens.css and index.html's
+// theme-color repeat this query.
 export const TOUCH = "(pointer: coarse)";
 
 function watching(queries: string[]) {

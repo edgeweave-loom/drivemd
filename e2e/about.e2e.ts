@@ -1,3 +1,4 @@
+import { touchScreen } from "./color.ts";
 import { EMAIL, expect, signIn, test } from "./fake-google.ts";
 
 test("says how DriveMD treats data, its terms, where to get help and its source, signed out", async ({
@@ -171,4 +172,19 @@ test("shows DriveMD's icon in the browser's tab, on both pages", async ({
       }),
   );
   expect(width).toBeGreaterThan(0);
+});
+
+test("keeps the light theme on a computer, as the app does", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/about.html");
+  await expect(
+    page.getByRole("heading", { level: 1, name: "About DriveMD" }),
+  ).toBeVisible();
+  // The on-surface token's light value, or on a touch screen its dark one.
+  await expect(page.locator(":root")).toHaveCSS(
+    "color",
+    (await touchScreen(page)) ? "rgb(224, 227, 230)" : "rgb(24, 28, 30)",
+  );
 });
