@@ -2,9 +2,11 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { DriveError, type FileMetadata } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
+import { NewVersion } from "./NewVersion.tsx";
 import { driveItem, metadata } from "./test/drive-items.ts";
 import { editInPreview } from "./test/actions.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
+import { comeBack, deployNewVersion } from "./test/new-version.ts";
 import { renderWithDrive } from "./test/render.tsx";
 
 const PLAN = metadata(driveItem("plan.md", { id: "plan" }), {
@@ -79,6 +81,45 @@ describe("Save", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await screen.findByRole("button", { name: "Saved" });
     expect(document.title).toBe("DriveMD");
+  });
+
+  it("holds the offer of a new version until the changes are saved", async () => {
+    const fetch = deployNewVersion();
+    const drive = fakeDrive();
+    drive.getContent.mockResolvedValue(utf8(TASKS));
+    drive.getMetadata.mockResolvedValue(PLAN);
+    drive.keepRevision.mockResolvedValue();
+    let written: (file: FileMetadata) => void = () => undefined;
+    drive.saveContent.mockReturnValue(
+      new Promise((resolve) => {
+        written = resolve;
+      }),
+    );
+    renderWithDrive(
+      <>
+        <NewVersion />
+        <FileContent file={PLAN} />
+      </>,
+      drive,
+    );
+    const offer = () =>
+      screen.queryByRole("region", {
+        name: "A new version of DriveMD is ready",
+      });
+
+    await editInPreview();
+    fireEvent.click(await box(0));
+    comeBack();
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledOnce();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByRole("button", { name: "Saving…" });
+    expect(offer()).toBeNull();
+    written(SAVED);
+
+    await screen.findByRole("button", { name: "Saved" });
+    expect(offer()).toBeVisible();
   });
 
   it("is not offered on a note the user may only read", async () => {

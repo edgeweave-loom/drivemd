@@ -40,7 +40,22 @@ const release = appVersion(
 );
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      // The version Hosting serves, which an open page compares with its own
+      // to offer a new one (src/new-version.ts). Hosting serves it, as the
+      // app's page, without letting the browser keep it.
+      name: "version-file",
+      generateBundle() {
+        this.emitFile({
+          type: "asset",
+          fileName: "version.json",
+          source: JSON.stringify({ version: release }),
+        });
+      },
+    },
+  ],
   define: { __APP_VERSION__: JSON.stringify(release) },
   resolve: {
     alias: [

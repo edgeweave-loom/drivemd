@@ -14,6 +14,7 @@ import { markTab } from "./drive-tab.ts";
 import type { Session, SessionState } from "./session.ts";
 import { driveItem } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
+import { comeBack, deployNewVersion } from "./test/new-version.ts";
 import { visit } from "./test/render.tsx";
 
 const EMAIL = "ada@example.com";
@@ -208,6 +209,19 @@ describe("App", () => {
     expect(
       screen.getByText(/^DriveMD \d+\.\d+\.\d+(-beta(\.\d+)?(\+[0-9a-f]+)?)?$/),
     ).toBeInTheDocument();
+  });
+
+  it("offers a new version under the app bar", async () => {
+    deployNewVersion();
+    const { session } = fakeSession({ screen: { name: "home", email: EMAIL } });
+    render(<App session={session} />);
+
+    comeBack();
+
+    const offer = await screen.findByRole("region", {
+      name: "A new version of DriveMD is ready",
+    });
+    expect(screen.getByRole("main")).toContainElement(offer);
   });
 
   it("shows another account nothing the first one loaded", async () => {
