@@ -476,6 +476,33 @@ function defineChecks(auth: DriveAuth): void {
     }
   });
 
+  it("names a shared drive's top folder, and a vault there, after the drive", async (context) => {
+    const shared = await testDrive();
+    if (!shared)
+      return context.skip(`It is in no shared drive named ${SHARED_DRIVE}`);
+
+    const top = await drive.getMetadata(shared);
+    expect(top.name === SHARED_DRIVE, "the drive's top folder").toBe(true);
+    // A run cut short leaves its .obsidian folder, which the next one uses.
+    const [left] = await found(
+      `'${shared.id}' in parents and name = '.obsidian' and trashed = false`,
+      { corpora: "drive", driveId: shared.id },
+    );
+    const made =
+      left === undefined
+        ? await make({ name: ".obsidian", mimeType: FOLDER }, shared.id)
+        : undefined;
+    try {
+      await eventually("the vault at the drive's top", async () =>
+        (await drive.findVaults()).some(
+          ({ id, name }) => id === shared.id && name === SHARED_DRIVE,
+        ),
+      );
+    } finally {
+      if (made !== undefined) await drive.trashFile({ id: made });
+    }
+  });
+
   // Last, since the drive may take a while to show up again.
   it("leaves out a shared drive the user hid", async (context) => {
     const shared = await testDrive();

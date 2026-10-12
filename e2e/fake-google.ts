@@ -12,6 +12,8 @@ export const EMAIL = "ada@example.com";
 
 const FOLDER = "application/vnd.google-apps.folder";
 const SHORTCUT = "application/vnd.google-apps.shortcut";
+/** The shared drives the user is a member of. */
+const SHARED_DRIVES = [{ id: "team", name: "Team" }];
 const SCOPE =
   "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.install";
 
@@ -217,8 +219,10 @@ function seed(): FakeFile[] {
       ownedByMe: true,
     },
     {
+      // Drive names every shared drive's top folder "Drive": its own name
+      // comes from the drive (SHARED_DRIVES).
       id: "team",
-      name: "Team",
+      name: "Drive",
       mimeType: FOLDER,
       parents: [],
       driveId: "team",
@@ -341,9 +345,9 @@ export class FakeDrive {
     data: string | null,
   ): [number, unknown] | undefined {
     if (path === "/about") return [200, { user: { emailAddress: EMAIL } }];
-    if (path === "/drives") {
-      return [200, { drives: [{ id: "team", name: "Team" }] }];
-    }
+    if (path === "/drives") return [200, { drives: SHARED_DRIVES }];
+    const drive = SHARED_DRIVES.find(({ id }) => path === `/drives/${id}`);
+    if (drive) return [200, { name: drive.name }];
     if (path === "/files" && method === "GET") {
       return [200, { files: this.search(params.get("q") ?? "").map(asJson) }];
     }

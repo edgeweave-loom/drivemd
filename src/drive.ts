@@ -363,7 +363,15 @@ export function createDrive(auth: DriveAuth): Drive {
 
   async function getMetadata(file: FileRef): Promise<FileMetadata> {
     const response = await send(fileUrl(file, { fields: FILE_FIELDS }), [file]);
-    return parse(response, parseFile);
+    const metadata = await parse(response, parseFile);
+    // Drive names every shared drive's top folder "Drive": only the drive
+    // itself knows its name. The top folder has the drive's ID.
+    if (metadata.driveId !== metadata.id) return metadata;
+    const name = await parse(
+      await send(`${API}/drives/${checked(metadata.id)}?fields=name`, []),
+      (body) => (isRecord(body) ? optionalString(body.name) : undefined),
+    );
+    return { ...metadata, name };
   }
 
   return {

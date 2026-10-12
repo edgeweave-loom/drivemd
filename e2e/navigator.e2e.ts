@@ -235,6 +235,20 @@ test("shows Recent, the vaults, and the other roots", async ({ page }) => {
   await expect(page.getByRole("link", { name: "shared.md" })).toBeVisible();
 });
 
+test("names a shared drive reached without a path after the drive", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/folder/team");
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Team" }),
+  ).toBeVisible();
+  await expect(crumbs(page).getByRole("link")).toHaveText([
+    "Home",
+    "Shared drives",
+  ]);
+});
+
 test("searches Markdown files by name", async ({ page }) => {
   await signIn(page);
   const search = await searchBox(page);
