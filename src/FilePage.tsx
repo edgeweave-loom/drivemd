@@ -21,6 +21,7 @@ import { kindOf } from "./listing.ts";
 import { useLayout } from "./layout.ts";
 import { Loaded } from "./Loaded.tsx";
 import { Missing } from "./Missing.tsx";
+import { NewVersion } from "./NewVersion.tsx";
 import { NoteName } from "./NoteName.tsx";
 import { usePath } from "./path.ts";
 import { metadataQuery, refreshRecent } from "./queries.ts";
@@ -230,6 +231,7 @@ export function FilePage({
         />
       )}
       {drawer && <div className="heading">{drawer}</div>}
+      <NewVersion />
       <Loaded
         query={details}
         missing="This file does not exist, or it is not shared with you."

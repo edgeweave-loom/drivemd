@@ -37,6 +37,7 @@ import { PHONE, useLayout } from "./layout.ts";
 import { Loaded } from "./Loaded.tsx";
 import { Missing } from "./Missing.tsx";
 import { ModeMenu } from "./ModeMenu.tsx";
+import { useHoldNewVersion } from "./new-version.ts";
 import { useFollow } from "./follow.ts";
 import { Rendered } from "./Markdown.tsx";
 import { deleteDraftHolding, type Draft } from "./drafts.ts";
@@ -693,6 +694,8 @@ function NoteView({
       guardLeaving(undefined);
     };
   }, [unsaved, file.id]);
+  // A new version waits for the changes to be saved, as they do meanwhile.
+  useHoldNewVersion(unsaved);
   // The tab says that the note holds unsaved changes.
   useEffect(() => {
     if (!unsaved) return;

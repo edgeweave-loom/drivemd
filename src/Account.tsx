@@ -1,10 +1,13 @@
 import { useId, useRef, type RefObject } from "react";
+import { Icon } from "./Icon.tsx";
+import { reload, useNewVersion } from "./new-version.ts";
 import { SignOut } from "./SignOut.tsx";
 
 /**
  * The signed-in account, as its initial, since Google gives DriveMD no
  * photo, and a menu: its address, the about page, which offers the source
- * that the AGPL asks for, Sign out and the version running.
+ * that the AGPL asks for, Sign out and the version running, with a way to a
+ * new version once one is offered.
  */
 export function Account({
   email,
@@ -50,7 +53,8 @@ export function Account({
 /**
  * The account's part of a menu: its address, the about page, Sign out, after
  * which the focus goes back to the button that opened the menu, and the
- * version running.
+ * version running, then Reload to update once a new version is offered,
+ * even put off with Later.
  */
 export function AccountItems({
   email,
@@ -63,6 +67,7 @@ export function AccountItems({
   button: RefObject<HTMLButtonElement | null>;
   menu: RefObject<HTMLDivElement | null>;
 }) {
+  const version = useNewVersion();
   return (
     <>
       <p>{email}</p>
@@ -85,6 +90,12 @@ export function AccountItems({
         }}
       />
       <p>DriveMD {__APP_VERSION__}</p>
+      {(version === "offered" || version === "later") && (
+        <button type="button" onClick={reload}>
+          <Icon name="refresh" />
+          Reload to update
+        </button>
+      )}
     </>
   );
 }

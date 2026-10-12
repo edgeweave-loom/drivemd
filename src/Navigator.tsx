@@ -22,6 +22,7 @@ import { Link } from "./Link.tsx";
 import { useDrawer } from "./drawer.ts";
 import { NavDrawer } from "./NavDrawer.tsx";
 import { NewPage } from "./NewPage.tsx";
+import { NewVersion } from "./NewVersion.tsx";
 import { useAbove, useFolder } from "./path.ts";
 import { createQueryClient, refreshSearches } from "./queries.ts";
 import {
@@ -94,6 +95,7 @@ export function Navigator({
           <AppBar email={email} onSignOut={session.signOut} places={places} />
           <Shell>
             {children}
+            <NewVersionOffer />
             <Page />
           </Shell>
         </SlotsContext>
@@ -257,6 +259,15 @@ function BrowsingBar({
       <Account email={email} onSignOut={onSignOut} />
     </header>
   );
+}
+
+/**
+ * The offer of a new version, under the app bar; a note's page makes it
+ * under its own head, lined up with the note.
+ */
+function NewVersionOffer() {
+  const { route } = usePlace();
+  return route.name === "file" ? null : <NewVersion />;
 }
 
 /** The page, beside the navigation drawer where it shows. */

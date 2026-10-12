@@ -5,6 +5,7 @@ import { markTab } from "./drive-tab.ts";
 import { requestFromDrive } from "./drive-ui.ts";
 import { sharedPage } from "./drive-web.ts";
 import "./index.css";
+import { watchVersion } from "./new-version.ts";
 import { hrefOf, routeOf } from "./router.ts";
 import { createSession } from "./session.ts";
 
@@ -35,6 +36,9 @@ if (routeOf(url).name === "share") {
   history.replaceState(null, "", sharedPage(url) ?? hrefOf({ name: "share" }));
 }
 const session = createSession(fromDrive?.account);
+// A page left open, as the Home Screen app is for days, offers the version
+// Hosting serves once it is a new one.
+watchVersion();
 
 createRoot(root).render(
   <StrictMode>
