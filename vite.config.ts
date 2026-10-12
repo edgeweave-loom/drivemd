@@ -1,7 +1,10 @@
 import react from "@vitejs/plugin-react";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { appVersion } from "./build-version.ts";
 import firebase from "./firebase.json" with { type: "json" };
+import pkg from "./package.json" with { type: "json" };
 
 // The OAuth client authorizes http://localhost:5173 and no other local origin.
 const port = 5173;
@@ -25,8 +28,20 @@ const entities = fileURLToPath(
   ),
 );
 
+// CI builds production from main; every other build is a beta.
+const release = appVersion(
+  pkg.version,
+  process.env.GITHUB_REF === "refs/heads/main",
+  (...args) =>
+    execFileSync("git", args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim(),
+);
+
 export default defineConfig({
   plugins: [react()],
+  define: { __APP_VERSION__: JSON.stringify(release) },
   resolve: {
     alias: [
       { find: /^decode-named-character-reference$/, replacement: entities },

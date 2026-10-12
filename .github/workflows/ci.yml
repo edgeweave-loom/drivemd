@@ -56,8 +56,10 @@ jobs:
           PRODUCTION_FIREBASE_HOSTING_SITE: ${{ vars.PRODUCTION_FIREBASE_HOSTING_SITE }}
           GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      # The build names its version from the tags and the history.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       # package.json names the next release, and a release PR must not name
       # one already out: the release job tags each release once it is live.
