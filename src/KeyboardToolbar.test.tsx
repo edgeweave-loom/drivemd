@@ -7,7 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Editor } from "./Editor.tsx";
 import { holdTouch } from "./test/screen.ts";
 
@@ -52,15 +52,32 @@ function margins(view: EditorView) {
   return view.state.facet(EditorView.scrollMargins).map((of) => of(view));
 }
 
-/** A screen whose keyboard leaves `height` of the page's 800 pixels. */
+/**
+ * A screen whose keyboard leaves `height` of the page's 800 pixels, from
+ * `pageTop` down, where the page is scrolled to 0. `offsetTop` is what iOS
+ * says besides, which may be off.
+ */
 class Viewport extends EventTarget {
   height = 800;
+  pageTop = 0;
   offsetTop = 0;
-  show(height: number, offsetTop = 0) {
+  show(height: number, pageTop = 0, offsetTop = pageTop) {
     this.height = height;
+    this.pageTop = pageTop;
     this.offsetTop = offsetTop;
-    this.dispatchEvent(new Event(offsetTop === 0 ? "resize" : "scroll"));
+    this.dispatchEvent(new Event(pageTop === 0 ? "resize" : "scroll"));
   }
+}
+
+/**
+ * Has the toolbar sit with its bottom at `bottom()`, before its lift, as
+ * the browser lays it out.
+ */
+function layOut(bar: HTMLElement, bottom: () => number) {
+  vi.spyOn(bar, "getBoundingClientRect").mockImplementation(() => {
+    const lift = Number(/-?\d+/.exec(bar.style.transform)?.[0] ?? 0);
+    return new DOMRect(0, bottom() + lift - 48, 0, 48);
+  });
 }
 
 describe("the keyboard toolbar", () => {
@@ -75,7 +92,6 @@ describe("the keyboard toolbar", () => {
 
   afterEach(() => {
     Reflect.deleteProperty(window, "visualViewport");
-    Reflect.deleteProperty(window, "innerHeight");
   });
 
   it("shows on a touch screen while the editor has the focus", async () => {
@@ -162,22 +178,15 @@ describe("the keyboard toolbar", () => {
       value: viewport,
       configurable: true,
     });
-    Object.defineProperty(window, "innerHeight", {
-      value: 800,
-      configurable: true,
-    });
     await editing("tea");
     const bar = screen.getByRole("toolbar", { name: "Formatting" });
-    expect(bar.style.transform).toBe("translateY(0px)");
+    let bottom = 800;
+    layOut(bar, () => bottom);
 
     act(() => {
       viewport.show(500);
     });
-    // React may listen only after the toolbar shows, and then reads where
-    // the keyboard is.
-    await waitFor(() => {
-      expect(bar.style.transform).toBe("translateY(-300px)");
-    });
+    expect(bar.style.transform).toBe("translateY(-300px)");
     act(() => {
       viewport.show(500, 100);
     });
@@ -191,6 +200,14 @@ describe("the keyboard toolbar", () => {
       viewport.show(800, 50);
     });
     expect(bar.style.transform).toBe("translateY(0px)");
+
+    // As the Home Screen app lays the page out once lines are deleted at the
+    // note's end, measured in the iOS simulator.
+    bottom = 475;
+    act(() => {
+      viewport.show(424, 0, 318);
+    });
+    expect(bar.style.transform).toBe("translateY(-51px)");
   });
 
   it("keeps the cursor clear of it while it shows", async () => {

@@ -1156,6 +1156,14 @@ dialog.drawer {
   margin: 0;
 }
 
+.about .close {
+  justify-self: start;
+}
+
+.about .close[hidden] {
+  display: none;
+}
+
 .about section {
   display: grid;
   gap: 0.75rem;

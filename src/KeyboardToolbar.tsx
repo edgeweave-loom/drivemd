@@ -1,7 +1,7 @@
 import { redo, undo } from "@codemirror/commands";
 import { openSearchPanel } from "@codemirror/search";
 import type { Command } from "@codemirror/view";
-import { useSyncExternalStore, type SyntheticEvent } from "react";
+import { useLayoutEffect, useRef, type SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "./Icon.tsx";
 import type { IconName } from "./icons.ts";
@@ -72,25 +72,35 @@ const KEYS: { name: string; command: Command; icon: IconName }[] = [
 ];
 
 /**
- * How far the on-screen keyboard rises over the page's bottom edge: the
- * part of the page the visual viewport leaves out below itself.
+ * Lifts the toolbar so that its bottom meets the visual viewport's, above
+ * the keyboard, and keeps it there. The toolbar's own place is measured
+ * rather than taken for the layout viewport's bottom edge, nor is the
+ * visual viewport's top taken from `offsetTop`: with the keyboard up, iOS
+ * leaves both off by up to hundreds of pixels at the note's end, where
+ * typing or deleting lines resizes the page (checked in the iOS simulator,
+ * in Safari and in the Home Screen app).
  */
-function keyboardHeight(): number {
+function followKeyboard(bar: HTMLElement): () => void {
   const viewport = window.visualViewport;
-  if (!viewport) return 0;
-  return Math.max(
-    0,
-    Math.round(window.innerHeight - viewport.offsetTop - viewport.height),
-  );
-}
-
-function subscribe(onChange: () => void): () => void {
-  const viewport = window.visualViewport;
-  viewport?.addEventListener("resize", onChange);
-  viewport?.addEventListener("scroll", onChange);
+  if (!viewport) return () => undefined;
+  let lift = 0;
+  const place = () => {
+    const bottom = bar.getBoundingClientRect().bottom + lift;
+    const visible = viewport.pageTop - window.scrollY + viewport.height;
+    lift = Math.max(0, Math.round(bottom - visible));
+    // Set through the DOM, which the security policy allows.
+    bar.style.transform = `translateY(${String(-lift)}px)`;
+  };
+  place();
+  viewport.addEventListener("resize", place);
+  viewport.addEventListener("scroll", place);
+  window.addEventListener("resize", place);
+  window.addEventListener("scroll", place);
   return () => {
-    viewport?.removeEventListener("resize", onChange);
-    viewport?.removeEventListener("scroll", onChange);
+    viewport.removeEventListener("resize", place);
+    viewport.removeEventListener("scroll", place);
+    window.removeEventListener("resize", place);
+    window.removeEventListener("scroll", place);
   };
 }
 
@@ -113,14 +123,17 @@ export function KeyboardToolbar({
 }: {
   onCommand: (command: Command) => void;
 }) {
-  const keyboard = useSyncExternalStore(subscribe, keyboardHeight);
+  const bar = useRef<HTMLDivElement>(null);
+  useLayoutEffect(
+    () => (bar.current ? followKeyboard(bar.current) : undefined),
+    [],
+  );
   return createPortal(
     <div
+      ref={bar}
       role="toolbar"
       aria-label="Formatting"
       className="keyboard-toolbar"
-      // Set through the DOM, which the security policy allows.
-      style={{ transform: `translateY(${String(-keyboard)}px)` }}
     >
       {KEYS.map(({ name, command, icon }) => (
         <button
