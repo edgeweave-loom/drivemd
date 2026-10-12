@@ -2009,9 +2009,11 @@ dialog.drawer {
   scrollbar-width: none;
 }
 
-/* The page's end scrolls clear of it; the page already keeps clear of the
-   home bar. */
-body:has(> .keyboard-toolbar) {
+/* The note's end scrolls clear of it; the page already keeps clear of the
+   home bar. The room is the editor's own: on a phone, the source runs past
+   the sides of what holds it, which CodeMirror then takes for scrollers,
+   keeping the cursor clear of the toolbar only within their bottom edge. */
+body:has(> .keyboard-toolbar) .editor {
   padding-bottom: var(--keyboard-toolbar-height);
 }
 
