@@ -455,6 +455,65 @@ describe("getMetadata", () => {
     });
   });
 
+  /** A shared drive's top folder, which Drive names "Drive" whatever the drive is called. */
+  function driveTop(id = "drive-1") {
+    return Response.json({
+      id,
+      name: "Drive",
+      mimeType: "application/vnd.google-apps.folder",
+      parents: [],
+      driveId: id,
+    });
+  }
+
+  it("names a shared drive's top folder after the drive", async () => {
+    respond(driveTop(), Response.json({ name: "Team" }));
+
+    await expect(getMetadata({ id: "drive-1" })).resolves.toMatchObject({
+      id: "drive-1",
+      name: "Team",
+      driveId: "drive-1",
+    });
+    const { url } = sent(1);
+    expect(url.origin + url.pathname).toBe(
+      "https://www.googleapis.com/drive/v3/drives/drive-1",
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({ fields: "name" });
+  });
+
+  it("asks for no drive's name for an item inside a shared drive", async () => {
+    respond(Response.json({ ...FILE, driveId: "drive-1" }));
+
+    await expect(getMetadata()).resolves.toMatchObject({ name: FILE.name });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("asks for no drive whose ID is not a Drive ID", async () => {
+    respond(driveTop("../about"));
+
+    await expect(getMetadata({ id: "drive-1" })).rejects.toMatchObject({
+      name: "DriveError",
+      status: 400,
+    });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["a refusal", refusal(404), 404],
+    ["no name", Response.json({ name: "" }), 200],
+    ["null", Response.json(null), 200],
+  ])(
+    "fails when the drive's name comes with %s",
+    async (_, response, status) => {
+      respond(driveTop(), response);
+
+      await expect(getMetadata({ id: "drive-1" })).rejects.toMatchObject({
+        name: "DriveError",
+        status,
+      });
+    },
+  );
+
   it.each([
     "unexpected",
     { targetId: "file-2" },
@@ -1029,6 +1088,34 @@ describe("findVaults", () => {
       supportsAllDrives: "true",
       includeItemsFromAllDrives: "true",
     });
+  });
+
+  it("names a vault at the top of a shared drive after the drive", async () => {
+    respond(
+      Response.json({
+        files: [
+          {
+            ...FILE,
+            name: ".obsidian",
+            mimeType: FOLDER,
+            parents: ["drive-1"],
+          },
+        ],
+      }),
+      Response.json({
+        id: "drive-1",
+        name: "Drive",
+        mimeType: FOLDER,
+        parents: [],
+        driveId: "drive-1",
+      }),
+      Response.json({ name: "Team" }),
+    );
+
+    const vaults = await createDrive(fakeAuth()).findVaults();
+    expect(vaults.map(({ id, name }) => [id, name])).toEqual([
+      ["drive-1", "Team"],
+    ]);
   });
 
   it("leaves out a vault whose folder the user cannot open", async () => {
