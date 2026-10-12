@@ -8,8 +8,6 @@ export const PHONE = "(width < 768px), (pointer: coarse) and (height < 500px)";
 export const WIDE = "(width >= 1024px)";
 // A screen the user touches, rather than points at with a mouse.
 export const TOUCH = "(pointer: coarse)";
-// The app added to a phone's home screen, where iOS shows no Back button.
-export const STANDALONE = "(display-mode: standalone)";
 
 function watching(queries: string[]) {
   return (onChange: () => void): (() => void) => {
