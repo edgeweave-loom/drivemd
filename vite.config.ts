@@ -40,7 +40,8 @@ export default defineConfig({
     assetsInlineLimit: 0,
     rolldownOptions: {
       // The about page, which the Marketplace listing links to, is a page of
-      // its own, readable without signing in; its one script brings the Close button.
+      // its own, readable without signing in; its one script brings the
+      // Close button.
       input: ["index.html", "about.html"].map((page) =>
         fileURLToPath(new URL(page, import.meta.url)),
       ),

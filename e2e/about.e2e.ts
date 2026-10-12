@@ -1,4 +1,4 @@
-import { expect, test } from "./fake-google.ts";
+import { EMAIL, expect, signIn, test } from "./fake-google.ts";
 
 test("says how DriveMD treats data, its terms, where to get help and its source, signed out", async ({
   page,
@@ -58,14 +58,7 @@ test("says how DriveMD treats data, its terms, where to get help and its source,
   await expect(page.getByRole("main")).toHaveCSS("max-width", "768px");
 });
 
-test("goes back to where the user was with Close, and closes a tab that holds only the page", async ({
-  page,
-}) => {
-  await page.goto("/about.html");
-  await page.goto("/about.html#support");
-  await page.getByRole("button", { name: "Close" }).click();
-  await expect(page).toHaveURL(/\/about\.html$/);
-
+test("goes back to the sign-in screen with Close", async ({ page }) => {
   await page.goto("/");
   await expect(
     page.getByRole("button", { name: "Sign in with Google" }),
@@ -76,13 +69,37 @@ test("goes back to where the user was with Close, and closes a tab that holds on
   await expect(
     page.getByRole("button", { name: "Sign in with Google" }),
   ).toBeVisible();
+});
 
+test("closes the tab that the account's menu opened, even after a visit elsewhere", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page
+    .getByRole("banner")
+    .getByRole("button", { name: `Account, ${EMAIL}` })
+    .click();
   const opened = page.context().waitForEvent("page");
-  await page.evaluate(() => window.open("/about.html", "_blank", "noopener"));
+  await page.getByRole("link", { name: "About DriveMD" }).click();
   const tab = await opened;
+  await expect(
+    tab.getByRole("heading", { level: 1, name: "About DriveMD" }),
+  ).toBeVisible();
+  // A page ahead in the history leaves nothing to go back to.
+  await tab.goto("/");
+  await tab.goBack();
   const closed = tab.waitForEvent("close");
   await tab.getByRole("button", { name: "Close" }).click();
   await closed;
+});
+
+test("opens the app with Close where the tab can neither go back nor close", async ({
+  page,
+}) => {
+  // Opened after the browser's blank page, which is not DriveMD's own.
+  await page.goto("/about.html");
+  await page.getByRole("button", { name: "Close" }).click();
+  await expect(page).toHaveURL(/\/$/);
 });
 
 test.describe("without script", () => {
