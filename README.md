@@ -168,6 +168,8 @@ gh variable set GCP_SERVICE_ACCOUNT --repo "$REPO" --body "$SA"
 gh variable set GCP_WORKLOAD_IDENTITY_PROVIDER --repo "$REPO" --body "projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/drivemd"
 ```
 
+Releases follow the spec's [Versions](docs/SPEC.md#recommended-tech-stack): `package.json` on `dev` names the next one, and a pull request to `main` fails CI if that version is already tagged. Once production is deployed, the release job tags the merge commit `v<version>` and publishes a GitHub release with the merge commit's body as notes; a rerun on the same commit changes nothing. A release whose run never deployed, because a later push to `main` overtook it, gets no tag: create it by hand with `gh release create v<version> --target <merge commit>`. Right after a release, give `package.json` on `dev` the next version with `npm version <version> --no-git-tag-version`, in a pull request of its own.
+
 A run deploys only its branch's latest commit: re-running an older one fails rather than putting its older build back, and Hosting's release history, in the Firebase console, rolls a site back.
 
 Both sites belong to one project, which also holds the OAuth client, the Drive UI integration and the Marketplace listing. Firebase grants Hosting rights on a whole project, not on a site, so the deploy account can deploy either site: whatever reaches `dev` must be trusted as much as what reaches `main`.
