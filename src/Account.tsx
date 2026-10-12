@@ -1,5 +1,4 @@
 import { useId, useRef, type RefObject } from "react";
-import { STANDALONE } from "./layout.ts";
 import { SignOut } from "./SignOut.tsx";
 
 /**
@@ -63,16 +62,13 @@ export function AccountItems({
   button: RefObject<HTMLButtonElement | null>;
   menu: RefObject<HTMLDivElement | null>;
 }) {
-  // The Home Screen app has no Back button: the page opens in its window, so
-  // that its Close button, or a swipe, returns to the app where it was left.
-  const standalone = window.matchMedia(STANDALONE).matches;
   return (
     <>
       <p>{email}</p>
       <a
         href="/about.html"
-        target={standalone ? undefined : "_blank"}
-        rel={standalone ? undefined : "noopener"}
+        target="_blank"
+        rel="noopener"
         onClick={() => {
           menu.current?.hidePopover();
         }}

@@ -56,6 +56,12 @@ test("says how DriveMD treats data, its terms, where to get help and its source,
   ).toHaveAttribute("href", "https://openfontlicense.org");
   // Styled by the app's own stylesheet, which the policy allows.
   await expect(page.getByRole("main")).toHaveCSS("max-width", "768px");
+  // Close starts where the text does, as wide as its label.
+  const heading = await page.getByRole("heading", { level: 1 }).boundingBox();
+  const close = await page.getByRole("button", { name: "Close" }).boundingBox();
+  if (!heading || !close) throw new Error("Not shown");
+  expect(close.x).toBeCloseTo(heading.x, 0);
+  expect(close.width).toBeLessThan(heading.width);
 });
 
 test("goes back to the sign-in screen with Close", async ({ page }) => {
@@ -105,7 +111,7 @@ test("opens the app with Close where the tab can neither go back nor close", asy
 test.describe("without script", () => {
   test.use({ javaScriptEnabled: false });
 
-  test("leaves the page readable and the Close button out", async ({
+  test("leaves the page readable, leading into the app, and the Close button out", async ({
     page,
   }) => {
     await page.goto("/about.html");
@@ -113,9 +119,10 @@ test.describe("without script", () => {
       page.getByRole("heading", { level: 1, name: "About DriveMD" }),
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "Close" })).toBeHidden();
+    // The way into the app, for whoever comes from the Marketplace listing.
     await expect(
-      page.getByRole("link", { name: "Open DriveMD" }),
-    ).toBeVisible();
+      page.getByRole("link", { name: "sign in to DriveMD" }),
+    ).toHaveAttribute("href", "/");
   });
 });
 

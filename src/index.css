@@ -1156,14 +1156,11 @@ dialog.drawer {
   margin: 0;
 }
 
-.about .actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-  align-items: center;
+.about .close {
+  justify-self: start;
 }
 
-.about button[hidden] {
+.about .close[hidden] {
   display: none;
 }
 
