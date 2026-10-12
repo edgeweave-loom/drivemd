@@ -2,7 +2,12 @@ import "@testing-library/jest-dom/vitest";
 import { onlineManager } from "@tanstack/react-query";
 import { cleanup, configure } from "@testing-library/react";
 import { afterEach } from "vitest";
-import { holdScreen, holdTouch, installScreen } from "./screen.ts";
+import {
+  holdScreen,
+  holdStandaloneApp,
+  holdTouch,
+  installScreen,
+} from "./screen.ts";
 
 // The viewer and the editor load as chunks of their own, which a busy
 // machine may take more than the default second to render.
@@ -80,5 +85,6 @@ afterEach(() => {
   cleanup();
   holdScreen("phone");
   holdTouch(false);
+  holdStandaloneApp(false);
   onlineManager.setOnline(true);
 });

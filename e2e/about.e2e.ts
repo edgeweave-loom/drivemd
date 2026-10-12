@@ -54,10 +54,52 @@ test("says how DriveMD treats data, its terms, where to get help and its source,
       .locator("#source")
       .getByRole("link", { name: "SIL Open Font License" }),
   ).toHaveAttribute("href", "https://openfontlicense.org");
-  // Styled by the app's own stylesheet, which the policy allows, and
-  // running no script.
+  // Styled by the app's own stylesheet, which the policy allows.
   await expect(page.getByRole("main")).toHaveCSS("max-width", "768px");
-  await expect(page.locator("script")).toHaveCount(0);
+});
+
+test("goes back to where the user was with Close, and closes a tab that holds only the page", async ({
+  page,
+}) => {
+  await page.goto("/about.html");
+  await page.goto("/about.html#support");
+  await page.getByRole("button", { name: "Close" }).click();
+  await expect(page).toHaveURL(/\/about\.html$/);
+
+  await page.goto("/");
+  await expect(
+    page.getByRole("button", { name: "Sign in with Google" }),
+  ).toBeEnabled();
+  await page.getByRole("link", { name: "Privacy, terms and support" }).click();
+  await page.getByRole("button", { name: "Close" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(
+    page.getByRole("button", { name: "Sign in with Google" }),
+  ).toBeVisible();
+
+  const opened = page.context().waitForEvent("page");
+  await page.evaluate(() => window.open("/about.html", "_blank", "noopener"));
+  const tab = await opened;
+  const closed = tab.waitForEvent("close");
+  await tab.getByRole("button", { name: "Close" }).click();
+  await closed;
+});
+
+test.describe("without script", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("leaves the page readable and the Close button out", async ({
+    page,
+  }) => {
+    await page.goto("/about.html");
+    await expect(
+      page.getByRole("heading", { level: 1, name: "About DriveMD" }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Close" })).toBeHidden();
+    await expect(
+      page.getByRole("link", { name: "Open DriveMD" }),
+    ).toBeVisible();
+  });
 });
 
 test("leads there from the sign-in screen", async ({ page }) => {

@@ -9,8 +9,8 @@
     <link rel="stylesheet" href="/src/index.css" />
   </head>
   <body>
-    <!-- The Marketplace listing links to each part: needs no sign-in, and no
-         script. -->
+    <!-- The Marketplace listing links to each part: needs no sign-in. The
+         script only brings the Close button, which stays hidden without it. -->
     <main class="page about">
       <h1>About DriveMD</h1>
       <p>
@@ -18,7 +18,10 @@
         files in their Google Drive, on a computer or a phone. It is an internal
         tool: only accounts of our Google Workspace organization can sign in.
       </p>
-      <p><a href="/">Open DriveMD</a></p>
+      <p class="actions">
+        <a href="/">Open DriveMD</a>
+        <button type="button" class="close tonal" hidden>Close</button>
+      </p>
 
       <section id="privacy">
         <h2>Privacy</h2>
@@ -130,5 +133,6 @@
         </p>
       </section>
     </main>
+    <script type="module" src="/src/about.ts"></script>
   </body>
 </html>
