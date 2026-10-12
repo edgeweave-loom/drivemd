@@ -254,6 +254,19 @@ test("leaves the note's end clear of the keyboard toolbar", async ({
       return line ? line.y + line.height : Infinity;
     })
     .toBeLessThanOrEqual(bar.y);
+
+  // The lines typed at the note's end stay above it too.
+  await source.getByText("line 80").click();
+  await page.keyboard.press("End");
+  for (let line = 0; line < 6; line += 1) {
+    await page.keyboard.press("Enter");
+    await expect
+      .poll(async () => {
+        const typed = await source.locator(".cm-activeLine").boundingBox();
+        return typed ? typed.y + typed.height : Infinity;
+      })
+      .toBeLessThanOrEqual(bar.y);
+  }
 });
 
 test("saves with Ctrl+S, and follows a link with Ctrl+click in the source", async ({
