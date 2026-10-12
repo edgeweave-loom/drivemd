@@ -4,7 +4,7 @@ import { SignOut } from "./SignOut.tsx";
 /**
  * The signed-in account, as its initial, since Google gives DriveMD no
  * photo, and a menu: its address, the about page, which offers the source
- * that the AGPL asks for, and Sign out.
+ * that the AGPL asks for, Sign out and the version running.
  */
 export function Account({
   email,
@@ -48,8 +48,9 @@ export function Account({
 }
 
 /**
- * The account's part of a menu: its address, the about page and Sign out,
- * after which the focus goes back to the button that opened the menu.
+ * The account's part of a menu: its address, the about page, Sign out, after
+ * which the focus goes back to the button that opened the menu, and the
+ * version running.
  */
 export function AccountItems({
   email,
@@ -83,6 +84,7 @@ export function AccountItems({
           button.current?.focus();
         }}
       />
+      <p>DriveMD {__APP_VERSION__}</p>
     </>
   );
 }

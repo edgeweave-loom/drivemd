@@ -200,6 +200,16 @@ describe("App", () => {
     });
   });
 
+  it("names the running version in the account's menu", () => {
+    const { session } = fakeSession({ screen: { name: "home", email: EMAIL } });
+    render(<App session={session} />);
+
+    fireEvent.click(button(`Account, ${EMAIL}`));
+    expect(
+      screen.getByText(/^DriveMD \d+\.\d+\.\d+(-beta(\.\d+)?(\+[0-9a-f]+)?)?$/),
+    ).toBeInTheDocument();
+  });
+
   it("shows another account nothing the first one loaded", async () => {
     visit("/my-drive", { trail: [{ name: "My Drive", href: "/my-drive" }] });
     const { session, change } = fakeSession({
