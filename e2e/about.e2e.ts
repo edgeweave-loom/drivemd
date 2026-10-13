@@ -96,7 +96,14 @@ test("closes the tab that the account's menu opened, even after a visit elsewher
   await tab.goto("/");
   await tab.goBack();
   const closed = tab.waitForEvent("close");
-  await tab.getByRole("button", { name: "Close" }).click();
+  // The tab may close before Playwright sees the click through, which it
+  // then reports as failed: only a tab still open is a failure.
+  await tab
+    .getByRole("button", { name: "Close" })
+    .click()
+    .catch((error: unknown) => {
+      if (!tab.isClosed()) throw error;
+    });
   await closed;
 });
 
