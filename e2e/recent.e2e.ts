@@ -1,6 +1,6 @@
 import { expect, goHome, signIn, test } from "./fake-google.ts";
 
-test("shows the 10 notes opened last, then all of them, through Back", async ({
+test("shows the 10 notes opened last, then all of them, folded again on Back", async ({
   page,
   drive,
 }) => {
@@ -45,8 +45,8 @@ test("shows the 10 notes opened last, then all of them, through Back", async ({
   ).toBeVisible();
   await page.waitForLoadState("networkidle");
   await page.goBack();
-  // Still unfolded, whether or not Drive has the note opened last first yet.
-  await expect(links).toHaveCount(12);
-  await expect(showAll).toHaveCount(0);
-  await expect(links.locator(".location")).toHaveText(Array(12).fill("Work"));
+  // Folded again, whether or not Drive has the note opened last first yet.
+  await expect(showAll).toBeVisible();
+  await expect(links).toHaveCount(10);
+  await expect(links.locator(".location")).toHaveText(Array(10).fill("Work"));
 });

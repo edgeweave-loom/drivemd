@@ -8,7 +8,6 @@ import { InstallHint } from "./InstallHint.tsx";
 import { Link } from "./Link.tsx";
 import { draftsQuery, recentQuery, vaultsQuery } from "./queries.ts";
 import { ROOT_PLACES } from "./roots.ts";
-import { unfold, usePlace } from "./router.ts";
 import { UnsavedNotes } from "./UnsavedNotes.tsx";
 
 /** How many notes Recent shows until the user asks for all. */
@@ -16,7 +15,6 @@ const RECENT_SHOWN = 10;
 
 export function Home() {
   const { drive, account, signedIn } = useDrive();
-  const { unfolded } = usePlace();
   const drafts = useQuery({ ...draftsQuery(account), enabled: signedIn });
   const drawer = useDrawer();
   return (
@@ -36,7 +34,7 @@ export function Home() {
           // Where a file sits comes from Drive.
           trail={undefined}
           located
-          folded={unfolded ? undefined : { limit: RECENT_SHOWN, unfold }}
+          limit={RECENT_SHOWN}
           empty="The Markdown files you view, here or in Google Drive, show here."
         />
       </Section>
