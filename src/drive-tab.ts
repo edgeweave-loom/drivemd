@@ -4,18 +4,23 @@ import { read, write } from "./storage.ts";
 
 // Kept by the tab alone, through reloads.
 const MARK = "drivemd.fromDrive";
-// Copied, with the rest of the tab's storage, into the tab a link opens.
-const HANDOFF = "drivemd.handoff";
+// Starts the name that window.open gives the tab a link opens. Unlike a
+// value in the tab's storage, which WebKit's copy can miss when written just
+// before, the new tab always has it.
+const NAME = "drivemd.note.";
 
 let marked = false;
 
 /**
  * Marks the tab as one that Drive's Open with opened, as the app starts at
- * the address Drive opens, or else keeps the mark through a reload, Back or
- * Forward: any other address of the app opened in the tab ends the mode.
+ * the address Drive opens or in the tab that such a tab opens for a link, or
+ * else keeps the mark through a reload, Back or Forward: any other address of
+ * the app opened in the tab ends the mode.
  */
 export function markTab(fromDrive: boolean): void {
-  const handed = take(HANDOFF);
+  const handed = window.name.startsWith(NAME);
+  // A tab keeps its name through any address typed in it.
+  if (handed) window.name = "";
   keep(
     fromDrive ||
       handed ||
@@ -26,9 +31,10 @@ export function markTab(fromDrive: boolean): void {
 /**
  * Opens the note a link leads to in a new tab, as Docs opens links, when this
  * tab is one that Drive opened. The browser copies the tab's storage into
- * the new one, token included, so that it does not ask to sign in again (see
- * "Handing the token to a new tab" in docs/SPEC.md). Whether it opened one:
- * a folder, the note shown, or a tab the browser blocked open in place.
+ * the new one, token included, so that it does not ask to sign in again, and
+ * names it so that it keeps the mode (see "Handing the token to a new tab" in
+ * docs/SPEC.md). Whether it opened one: a folder, the note shown, or a tab
+ * the browser blocked open in place.
  */
 export function openNoteTab(href: string): boolean {
   const url = new URL(href, window.location.origin);
@@ -37,12 +43,9 @@ export function openNoteTab(href: string): boolean {
   const { route: shown } = getPlace();
   if (route.name !== "file") return false;
   if (shown.name === "file" && shown.file.id === route.file.id) return false;
-  write("sessionStorage", HANDOFF, "open");
-  try {
-    return window.open(url, "_blank") !== null;
-  } finally {
-    write("sessionStorage", HANDOFF, null);
-  }
+  // A name of its own, or the browser would open the note in a tab that a
+  // link opened before, if it still had the name.
+  return window.open(url, NAME + crypto.randomUUID()) !== null;
 }
 
 /**
@@ -72,13 +75,6 @@ function revisited(): boolean {
   const [entry] = performance.getEntriesByType("navigation");
   const type = entry && "type" in entry ? entry.type : undefined;
   return type === "reload" || type === "back_forward";
-}
-
-/** Reads a one-time value, which no later load of the tab finds. */
-function take(key: string): boolean {
-  const value = read("sessionStorage", key);
-  if (value !== null) write("sessionStorage", key, null);
-  return value !== null;
 }
 
 /**
