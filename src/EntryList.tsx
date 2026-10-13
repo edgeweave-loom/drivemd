@@ -3,7 +3,7 @@ import {
   type QueryKey,
   type UseQueryOptions,
 } from "@tanstack/react-query";
-import { useId, useRef } from "react";
+import { useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useDrive } from "./drive-context.ts";
 import type { DriveItem, ShortcutTarget } from "./drive.ts";
@@ -27,7 +27,7 @@ export function ItemListing<Answer, Key extends QueryKey>({
   empty,
   folders,
   located = false,
-  folded,
+  limit,
 }: {
   query: UseQueryOptions<Answer, Error, DriveItem[], Key>;
   /** By name, unless Drive's own order says more, as in search results. */
@@ -42,7 +42,8 @@ export function ItemListing<Answer, Key extends QueryKey>({
   folders?: IconName;
   /** Whether each row gives the folder its item sits in. */
   located?: boolean;
-  folded?: Folded | undefined;
+  /** How many entries show until the user asks for all. */
+  limit?: number;
 }) {
   const items = useQuery(query);
   return (
@@ -55,17 +56,11 @@ export function ItemListing<Answer, Key extends QueryKey>({
           empty={empty}
           folders={folders}
           located={located}
-          folded={folded}
+          limit={limit}
         />
       )}
     </Loaded>
   );
-}
-
-/** A list that shows its first entries, and the rest once the user asks. */
-interface Folded {
-  limit: number;
-  unfold: () => void;
 }
 
 /** Folders and files to open, extending the path the user took. */
@@ -76,7 +71,7 @@ export function EntryList({
   empty,
   folders = "folder",
   located = false,
-  folded,
+  limit,
 }: {
   entries: Entry[];
   trail: Crumb[] | undefined;
@@ -85,18 +80,23 @@ export function EntryList({
   empty: string;
   folders?: IconName | undefined;
   located?: boolean;
-  folded?: Folded | undefined;
+  limit?: number | undefined;
 }) {
   const list = useRef<HTMLUListElement>(null);
+  // Folded again each time the list shows anew.
+  const [all, setAll] = useState(false);
   if (entries.length === 0) return <p className="hint">{empty}</p>;
-  const shown = folded ? entries.slice(0, folded.limit) : entries;
-  function showAll({ limit, unfold }: Folded) {
-    flushSync(unfold);
+  const shown = all ? entries : entries.slice(0, limit);
+  function showAll() {
+    const revealed = shown.length;
+    flushSync(() => {
+      setAll(true);
+    });
     // The first entry it revealed takes the focus the button had.
     const links = list.current?.querySelectorAll<HTMLElement>(
       ":scope > li:not(.entries-head) > a",
     );
-    links?.[limit]?.focus();
+    links?.[revealed]?.focus();
   }
   return (
     <>
@@ -131,14 +131,8 @@ export function EntryList({
           </li>
         ))}
       </ul>
-      {folded && shown.length < entries.length && (
-        <button
-          type="button"
-          className="text"
-          onClick={() => {
-            showAll(folded);
-          }}
-        >
+      {limit !== undefined && shown.length < entries.length && (
+        <button type="button" className="text" onClick={showAll}>
           Show all
         </button>
       )}

@@ -1,17 +1,10 @@
 import "fake-indexeddb/auto";
 import { onlineManager } from "@tanstack/react-query";
-import {
-  act,
-  fireEvent,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteDraft, deleteDrafts, listDrafts, writeDraft } from "./drafts.ts";
 import { DriveError, type FileMetadata } from "./drive.ts";
 import { Home } from "./Home.tsx";
-import { navigate } from "./router.ts";
 import {
   driveItem,
   folderItem,
@@ -58,11 +51,6 @@ beforeEach(async () => {
   await deleteDrafts("grace@example.com");
 });
 
-afterEach(() => {
-  history.replaceState(null, "", "/");
-  window.dispatchEvent(new PopStateEvent("popstate"));
-});
-
 /** Home, with more files in Recent than it shows at first. */
 function manyRecent() {
   const names = Array.from(
@@ -72,8 +60,7 @@ function manyRecent() {
   const drive = fakeDrive();
   drive.listRecent.mockResolvedValue(names.map((name) => driveItem(name)));
   drive.findVaults.mockResolvedValue([]);
-  renderWithDrive(<Home />, drive);
-  return { drive, names };
+  return { ...renderWithDrive(<Home />, drive), names };
 }
 
 function section(name: string) {
@@ -150,23 +137,19 @@ describe("Home", () => {
     expect(section("Recent").queryByRole("button")).toBeNull();
   });
 
-  it("shows every file again when Back returns to Home", async () => {
-    const { names } = manyRecent();
+  it("shows the 10 files opened last again each time Home shows", async () => {
+    const { rerender } = manyRecent();
     fireEvent.click(
       await section("Recent").findByRole("button", { name: "Show all" }),
     );
-    act(() => {
-      navigate("/my-drive");
-    });
+    rerender(<p>Elsewhere</p>);
+
+    rerender(<Home />);
+
+    expect(
+      await section("Recent").findByRole("button", { name: "Show all" }),
+    ).toBeVisible();
     expect(linksIn("Recent")).toHaveLength(10);
-
-    act(() => {
-      history.back();
-    });
-
-    await waitFor(() => {
-      expect(linksIn("Recent")).toEqual(names);
-    });
   });
 
   it("tells Safari's users how to add DriveMD to the Home Screen, before the files", async () => {
