@@ -5,15 +5,18 @@ import {
   type Extension,
 } from "@codemirror/state";
 import { EditorView, ViewPlugin } from "@codemirror/view";
+import { TOUCH } from "./layout.ts";
 
-const DARK = "(prefers-color-scheme: dark)";
+// The app's theme is dark when the system's is, on a touch screen only: a
+// computer keeps the light theme (src/tokens.css).
+const DARK = `(prefers-color-scheme: dark) and ${TOUCH}`;
 
 const turnDark = StateEffect.define<boolean>();
 
-// Whether the system's theme is dark, which CodeMirror cannot tell from
-// the app's colors: its packages, such as @codemirror/merge, otherwise style
+// Whether the app's theme is dark, which CodeMirror cannot tell from its
+// colors: its packages, such as @codemirror/merge, otherwise style
 // themselves for a light theme.
-const systemDark = StateField.define<boolean>({
+const themeDark = StateField.define<boolean>({
   create: () => window.matchMedia(DARK).matches,
   update: (dark, transaction) =>
     transaction.effects.reduce(
@@ -23,7 +26,7 @@ const systemDark = StateField.define<boolean>({
   provide: (field) => EditorView.darkTheme.from(field),
 });
 
-const followSystem = ViewPlugin.define((view) => {
+const followTheme = ViewPlugin.define((view) => {
   const query = window.matchMedia(DARK);
   const follow = () => {
     view.dispatch({ effects: turnDark.of(query.matches) });
@@ -95,13 +98,13 @@ const COLORS = EditorView.theme({
 });
 
 /**
- * The editor in the app's colors, light or dark as the system is, and in
- * its fonts.
+ * The editor in the app's colors, light or dark as the app's theme is, and
+ * in its fonts.
  */
 export const THEME: Extension = [
   COLORS,
-  systemDark,
-  followSystem,
+  themeDark,
+  followTheme,
   measureOnFonts,
 ];
 

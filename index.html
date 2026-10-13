@@ -6,7 +6,6 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
-    <meta name="color-scheme" content="light dark" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="DriveMD" />
@@ -14,15 +13,16 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <!-- The page's background, the surface token of src/tokens.css, for the
-         browser's and the installed app's bars. -->
+         browser's and the installed app's bars: dark only where the theme
+         is, on a touch screen. -->
     <meta
       name="theme-color"
-      media="(prefers-color-scheme: light)"
+      media="(prefers-color-scheme: light), (not (pointer: coarse))"
       content="#f7f9fd"
     />
     <meta
       name="theme-color"
-      media="(prefers-color-scheme: dark)"
+      media="(prefers-color-scheme: dark) and (pointer: coarse)"
       content="#101416"
     />
     <title>DriveMD</title>

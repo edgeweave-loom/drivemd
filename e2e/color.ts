@@ -13,6 +13,11 @@ export function computed(page: Page, value: string): Promise<string> {
   }, value);
 }
 
+/** Whether the page's screen is a touch screen, as the app tells (src/layout.ts). */
+export function touchScreen(page: Page): Promise<boolean> {
+  return page.evaluate(() => matchMedia("(pointer: coarse)").matches);
+}
+
 /** A token of src/tokens.css, as the page computes it in its theme. */
 export function token(page: Page, name: string): Promise<string> {
   return computed(page, `var(${name})`);

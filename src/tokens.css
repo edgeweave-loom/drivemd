@@ -3,10 +3,12 @@
  * Material Design 3 roles: the accents from the tonal spot scheme of the icon's
  * teal, #0f766e, and the neutral surfaces from Google Drive's hue (232.6, at
  * chroma 5 and 9), computed with material-color-utilities 0.4.0. Each color
- * gives its light value, then its dark one; the page follows the system's theme.
+ * gives its light value, then its dark one. A touch screen follows the
+ * system's theme; a computer keeps the light one, as Google Docs does on the
+ * web.
  */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
   --surface: light-dark(#f7f9fd, #101416);
   --surface-dim: light-dark(#d8dadd, #101416);
@@ -89,4 +91,10 @@
   --font-mono:
     "Google Sans Code Variable", ui-monospace, SFMono-Regular, Menlo, Consolas,
     monospace;
+}
+
+@media (pointer: coarse) {
+  :root {
+    color-scheme: light dark;
+  }
 }

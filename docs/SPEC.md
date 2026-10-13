@@ -16,7 +16,7 @@ DriveMD is open source, under the GNU Affero General Public License, version 3 o
 
 Users are employees signed in with an account in our Workspace organization. Accounts outside the organization cannot sign in. Most users are technical and comfortable with Markdown syntax.
 
-The interface is in English and follows the system's light or dark theme.
+The interface is in English. On a phone or a tablet, it follows the system's light or dark theme; on a computer, it keeps the light theme, as Google Docs does on the web, so that a note looks like the Drive and Docs tabs beside it. A computer is a screen whose primary pointer is not coarse (see Interface redesign): an iPad with a trackpad, whose primary pointer stays coarse, follows the system's theme, as Google's iPad apps do.
 
 **Platforms**
 
@@ -79,7 +79,7 @@ The interface is in English and follows the system's light or dark theme.
    - On a phone, **Edit** opens the editor and a check in place of Back closes it, saving first, as Viewing does, and giving way to Back while a save failed or a conflict is open; on a wider screen, the mode menu does, and choosing **Viewing** saves first, staying in Editing when more was typed meanwhile (see Interface redesign). A note opens in reading, but in Editing on a wide screen in a tab opened from Drive, as it first shows, if the user may edit it then, holding to the revision it opened with as Editing does (see Interface redesign). Wide screens and tablets show the source and the preview side by side, on two sheets named Markdown and Preview, and read a note on one sheet, as Docs shows a page (see Interface redesign). Phones switch between the source and the preview.
    - The editor holds the text while it shows: a task tapped in the preview reaches it as one edit, which undo reverts. The page holds to the revision the editor opened with, across the user's own saves, and shows a newer one from Drive only once the editor closes with nothing unsaved.
    - Whatever an edit inserts, typed, pasted, dropped, typed by an input method or put by a replacement, takes the file's own line break, and NUL characters and half characters are kept out, so that the saved bytes are the text shown.
-   - The editor runs in a shadow root, where CodeMirror styles itself through constructed style sheets: elsewhere it adds `<style>` elements, which the security policy blocks, and the policy needs no `'unsafe-inline'` for styles. The app tells CodeMirror whether the system's theme is dark, as it changes, since CodeMirror cannot tell from the app's colors: its packages, such as the differences' `@codemirror/merge`, otherwise style themselves for a light theme.
+   - The editor runs in a shadow root, where CodeMirror styles itself through constructed style sheets: elsewhere it adds `<style>` elements, which the security policy blocks, and the policy needs no `'unsafe-inline'` for styles. The app tells CodeMirror whether its theme is dark, as it changes, since CodeMirror cannot tell from the app's colors: its packages, such as the differences' `@codemirror/merge`, otherwise style themselves for a light theme.
    - **Light live styling (v1).** Headings shown larger, bold and italic styled, inline code and code blocks in monospace. Markdown symbols (`**`, `#`, `[]()`) are dimmed, never hidden, so cursor and selection behave normally on phones.
    - Front matter shows as YAML at the text's size, its keys and symbols dimmed like Markdown's, as YAML code blocks do. The editor finds it where the viewer's `remark-frontmatter` does: between two lines of three dashes, which spaces and tabs may follow, the first one being the note's first line, after any byte order mark. A note whose first fence never closes has no front matter, in the editor as in the viewer. `@codemirror/lang-yaml`'s own front matter is not used: it takes the rest of the note when no fence closes it, closes at a line of four dashes, and misses a fence that spaces follow.
    - A tap or click in the editor only places the cursor; checkboxes and links react in the viewer and the preview. On desktop, Cmd/Ctrl+click opens a link from the editor, as in Obsidian: an inline link, an autolink or a bare web address, where a tap in the preview would lead.
@@ -398,7 +398,7 @@ Build in nine milestones, each ending with something that runs; give Claude Code
    11. The conflict's banner and the order of its choices.
    12. The security review of a token handed to a new tab, then links to other notes opening in new tabs from a tab opened from Drive.
    13. Carried over from milestone 8: safe areas, the Add to Home Screen hint, and the keyboard toolbar no longer covering the end of the note.
-   - Done when: the app shows each screen of `docs/design/mockups/` on a computer, an iPad and an iPhone, in both themes; a note opened from Drive offers no way into the rest of the app; switching to Viewing saves; and the end-to-end tests and live checks pass.
+   - Done when: the app shows each screen of `docs/design/mockups/` on a computer, and on an iPad and an iPhone in both themes; a note opened from Drive offers no way into the rest of the app; switching to Viewing saves; and the end-to-end tests and live checks pass.
 
 ## v2: Obsidian-style live preview
 
