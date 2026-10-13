@@ -78,6 +78,9 @@ test("goes back to the sign-in screen with Close", async ({ page }) => {
   ).toBeVisible();
 });
 
+/** What Playwright says of a call cut short by its page closing. */
+const CLOSED = "Target page, context or browser has been closed";
+
 test("closes the tab that the account's menu opened, even after a visit elsewhere", async ({
   page,
 }) => {
@@ -95,15 +98,17 @@ test("closes the tab that the account's menu opened, even after a visit elsewher
   // A page ahead in the history leaves nothing to go back to.
   await tab.goto("/");
   await tab.goBack();
+  const close = tab.getByRole("button", { name: "Close" });
+  // The tab is still open here, so that only Close may close it.
+  await expect(close).toBeVisible();
   const closed = tab.waitForEvent("close");
   // The tab may close before Playwright sees the click through, which it
-  // then reports as failed: only a tab still open is a failure.
-  await tab
-    .getByRole("button", { name: "Close" })
-    .click()
-    .catch((error: unknown) => {
-      if (!tab.isClosed()) throw error;
-    });
+  // then reports as closed, with no class of its own to tell it by: any
+  // other error fails the test.
+  await close.click().catch((error: unknown) => {
+    if (!(error instanceof Error && error.message.includes(CLOSED)))
+      throw error;
+  });
   await closed;
 });
 
