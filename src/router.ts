@@ -36,6 +36,8 @@ export interface Place {
   trail: Crumb[] | undefined;
   /** The part of the page the URL leads to, after its `#`, as encoded. */
   fragment: string | undefined;
+  /** Whether the user showed the page's list in full, which Back keeps. */
+  unfolded: boolean;
 }
 
 const NOT_FOUND: Route = { name: "not-found" };
@@ -169,6 +171,7 @@ export function getPlace(): Place {
       href,
       trail: readTrail(history.state, href),
       fragment: fragmentOf(url),
+      unfolded: isRecord(history.state) && history.state.unfolded === true,
     };
   }
   return snapshot;
@@ -224,12 +227,19 @@ export function navigate(
   const page = canonical(url);
   const target = page + url.hash;
   const same = page === getPlace().href;
-  const kept: unknown = same ? history.state : null;
-  const state = trail === undefined ? kept : { trail };
+  // The page opens with its list folded, and keeps its trail if shown.
+  const state = { trail: trail ?? (same ? getPlace().trail : undefined) };
   if (same || replace) history.replaceState(state, "", target);
   else history.pushState(state, "", target);
   // Back returns to where the page was left, as the browser keeps it.
   if (!same) window.scrollTo(0, 0);
+  changed();
+}
+
+/** Shows the page's list in full, until the user leaves it for another. */
+export function unfold(): void {
+  const state: unknown = history.state;
+  history.replaceState({ ...(isRecord(state) && state), unfolded: true }, "");
   changed();
 }
 

@@ -6,6 +6,7 @@ import {
   hrefOf,
   navigate,
   routeOf,
+  unfold,
   usePlace,
   type Route,
 } from "./router.ts";
@@ -130,6 +131,7 @@ describe("the place shown", () => {
       href: "/",
       trail: undefined,
       fragment: undefined,
+      unfolded: false,
     });
 
     act(() => {
@@ -141,6 +143,7 @@ describe("the place shown", () => {
       href: "/my-drive",
       trail: MY_DRIVE,
       fragment: undefined,
+      unfolded: false,
     });
 
     act(() => {
@@ -202,6 +205,33 @@ describe("the place shown", () => {
     expect(getPlace().trail).toBeUndefined();
   });
 
+  it("keeps a list unfolded on the page's entry, which Back returns to", async () => {
+    const shortcuts = [{ name: "Shortcuts", href: "/shortcuts" }];
+    navigate("/shortcuts", shortcuts);
+    const entries = history.length;
+
+    unfold();
+    expect(history.length).toBe(entries);
+    expect(getPlace()).toMatchObject({ trail: shortcuts, unfolded: true });
+    navigate("/my-drive", MY_DRIVE);
+    expect(getPlace().unfolded).toBe(false);
+    history.back();
+    await waitFor(() => {
+      expect(getPlace().href).toBe("/shortcuts");
+    });
+    expect(getPlace()).toMatchObject({ trail: shortcuts, unfolded: true });
+  });
+
+  it("folds the list of the page shown once a link opens it again", () => {
+    const shortcuts = [{ name: "Shortcuts", href: "/shortcuts" }];
+    navigate("/shortcuts", shortcuts);
+    unfold();
+
+    navigate("/shortcuts");
+
+    expect(getPlace()).toMatchObject({ trail: shortcuts, unfolded: false });
+  });
+
   it("keeps the URL of a page that does not exist", () => {
     visit("/nowhere?x=1", null);
 
@@ -210,6 +240,7 @@ describe("the place shown", () => {
       href: "/nowhere?x=1",
       trail: undefined,
       fragment: undefined,
+      unfolded: false,
     });
   });
 
