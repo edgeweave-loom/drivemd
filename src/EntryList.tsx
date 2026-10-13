@@ -3,7 +3,8 @@ import {
   type QueryKey,
   type UseQueryOptions,
 } from "@tanstack/react-query";
-import { useId } from "react";
+import { useId, useRef } from "react";
+import { flushSync } from "react-dom";
 import { useDrive } from "./drive-context.ts";
 import type { DriveItem, ShortcutTarget } from "./drive.ts";
 import { Icon } from "./Icon.tsx";
@@ -26,6 +27,7 @@ export function ItemListing<Answer, Key extends QueryKey>({
   empty,
   folders,
   located = false,
+  folded,
 }: {
   query: UseQueryOptions<Answer, Error, DriveItem[], Key>;
   /** By name, unless Drive's own order says more, as in search results. */
@@ -40,6 +42,7 @@ export function ItemListing<Answer, Key extends QueryKey>({
   folders?: IconName;
   /** Whether each row gives the folder its item sits in. */
   located?: boolean;
+  folded?: Folded | undefined;
 }) {
   const items = useQuery(query);
   return (
@@ -52,10 +55,17 @@ export function ItemListing<Answer, Key extends QueryKey>({
           empty={empty}
           folders={folders}
           located={located}
+          folded={folded}
         />
       )}
     </Loaded>
   );
+}
+
+/** A list that shows its first entries, and the rest once the user asks. */
+interface Folded {
+  limit: number;
+  unfold: () => void;
 }
 
 /** Folders and files to open, extending the path the user took. */
@@ -66,6 +76,7 @@ export function EntryList({
   empty,
   folders = "folder",
   located = false,
+  folded,
 }: {
   entries: Entry[];
   trail: Crumb[] | undefined;
@@ -74,40 +85,64 @@ export function EntryList({
   empty: string;
   folders?: IconName | undefined;
   located?: boolean;
+  folded?: Folded | undefined;
 }) {
+  const list = useRef<HTMLUListElement>(null);
   if (entries.length === 0) return <p className="hint">{empty}</p>;
+  const shown = folded ? entries.slice(0, folded.limit) : entries;
+  function showAll({ limit, unfold }: Folded) {
+    flushSync(unfold);
+    // The first entry it revealed takes the focus the button had.
+    const links = list.current?.querySelectorAll<HTMLElement>(
+      ":scope > li:not(.entries-head) > a",
+    );
+    links?.[limit]?.focus();
+  }
   return (
-    <ul className="entries">
-      {/* The table's head, which each row's name and description say. */}
-      {entries.some((entry) => modifiedLine(entry) !== undefined) && (
-        <li className="entries-head" aria-hidden="true">
-          <span>Name</span>
-          {located && <span>Location</span>}
-          <span>Modified</span>
-        </li>
+    <>
+      <ul className="entries" ref={list}>
+        {/* The table's head, which each row's name and description say. */}
+        {entries.some((entry) => modifiedLine(entry) !== undefined) && (
+          <li className="entries-head" aria-hidden="true">
+            <span>Name</span>
+            {located && <span>Location</span>}
+            <span>Modified</span>
+          </li>
+        )}
+        {shown.map((entry) => (
+          <li key={entry.id}>
+            {entry.target ? (
+              <ShortcutEntry
+                entry={entry}
+                target={entry.target}
+                trail={trail}
+                current={entry.opens.id === current}
+                located={located}
+              />
+            ) : (
+              <EntryLink
+                entry={entry}
+                trail={trail}
+                current={entry.opens.id === current}
+                folders={folders}
+                located={located}
+              />
+            )}
+          </li>
+        ))}
+      </ul>
+      {folded && shown.length < entries.length && (
+        <button
+          type="button"
+          className="text"
+          onClick={() => {
+            showAll(folded);
+          }}
+        >
+          Show all
+        </button>
       )}
-      {entries.map((entry) => (
-        <li key={entry.id}>
-          {entry.target ? (
-            <ShortcutEntry
-              entry={entry}
-              target={entry.target}
-              trail={trail}
-              current={entry.opens.id === current}
-              located={located}
-            />
-          ) : (
-            <EntryLink
-              entry={entry}
-              trail={trail}
-              current={entry.opens.id === current}
-              folders={folders}
-              located={located}
-            />
-          )}
-        </li>
-      ))}
-    </ul>
+    </>
   );
 }
 

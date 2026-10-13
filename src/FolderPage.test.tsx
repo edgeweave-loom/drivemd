@@ -154,6 +154,7 @@ describe("FolderPage", () => {
       route: { name: "folder", folder: { id: "id-Notes" } },
       href: "/folder/id-Notes",
       trail: [...TRAIL, { name: "Notes", href: "/folder/id-Notes" }],
+      unfolded: false,
     });
     fireEvent.click(screen.getByRole("link", { name: "a.md" }));
     expect(getPlace().href).toBe("/edit?id=id-a_md");

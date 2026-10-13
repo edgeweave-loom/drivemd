@@ -1,10 +1,17 @@
 import "fake-indexeddb/auto";
 import { onlineManager } from "@tanstack/react-query";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteDraft, deleteDrafts, listDrafts, writeDraft } from "./drafts.ts";
 import { DriveError, type FileMetadata } from "./drive.ts";
 import { Home } from "./Home.tsx";
+import { navigate } from "./router.ts";
 import {
   driveItem,
   folderItem,
@@ -51,6 +58,24 @@ beforeEach(async () => {
   await deleteDrafts("grace@example.com");
 });
 
+afterEach(() => {
+  history.replaceState(null, "", "/");
+  window.dispatchEvent(new PopStateEvent("popstate"));
+});
+
+/** Home, with more files in Recent than it shows at first. */
+function manyRecent() {
+  const names = Array.from(
+    { length: 12 },
+    (_, index) => `note-${String(index + 1).padStart(2, "0")}.md`,
+  );
+  const drive = fakeDrive();
+  drive.listRecent.mockResolvedValue(names.map((name) => driveItem(name)));
+  drive.findVaults.mockResolvedValue([]);
+  renderWithDrive(<Home />, drive);
+  return { drive, names };
+}
+
 function section(name: string) {
   return within(screen.getByRole("region", { name }));
 }
@@ -92,6 +117,56 @@ describe("Home", () => {
       "Shared drives",
       "Shared with me",
     ]);
+  });
+
+  it("shows the 10 files opened last, then every one Drive sent once asked", async () => {
+    const { drive, names } = manyRecent();
+    await section("Recent").findByRole("link", { name: "note-01.md" });
+    expect(linksIn("Recent")).toEqual(names.slice(0, 10));
+
+    fireEvent.click(
+      section("Recent").getByRole("button", { name: "Show all" }),
+    );
+
+    expect(linksIn("Recent")).toEqual(names);
+    expect(
+      section("Recent").getByRole("link", { name: "note-11.md" }),
+    ).toHaveFocus();
+    expect(section("Recent").queryByRole("button")).toBeNull();
+    expect(drive.listRecent).toHaveBeenCalledOnce();
+  });
+
+  it("offers no Show all when Drive sent 10 files or fewer", async () => {
+    const drive = fakeDrive();
+    const names = Array.from(
+      { length: 10 },
+      (_, index) => `${String(index)}.md`,
+    );
+    drive.listRecent.mockResolvedValue(names.map((name) => driveItem(name)));
+    renderWithDrive(<Home />, drive);
+
+    await section("Recent").findByRole("link", { name: "0.md" });
+    expect(linksIn("Recent")).toEqual(names);
+    expect(section("Recent").queryByRole("button")).toBeNull();
+  });
+
+  it("shows every file again when Back returns to Home", async () => {
+    const { names } = manyRecent();
+    fireEvent.click(
+      await section("Recent").findByRole("button", { name: "Show all" }),
+    );
+    act(() => {
+      navigate("/my-drive");
+    });
+    expect(linksIn("Recent")).toHaveLength(10);
+
+    act(() => {
+      history.back();
+    });
+
+    await waitFor(() => {
+      expect(linksIn("Recent")).toEqual(names);
+    });
   });
 
   it("tells Safari's users how to add DriveMD to the Home Screen, before the files", async () => {
