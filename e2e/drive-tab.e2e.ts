@@ -170,13 +170,9 @@ test("opens a link to another note in a new tab, signed in, in the same mode", a
   await expect(tab).toHaveURL(/\/edit\?id=notes#later$/);
   await expect(tab.getByRole("banner").getByRole("link")).toHaveCount(0);
   await tab.waitForLoadState("networkidle");
-  // Neither tab can reach the other, and neither keeps the one-time marker.
+  // Neither tab can reach the other, and the new tab keeps no name.
   expect(await tab.evaluate(() => window.opener === null)).toBe(true);
-  for (const each of [page, tab]) {
-    expect(
-      await each.evaluate(() => sessionStorage.getItem("drivemd.handoff")),
-    ).toBeNull();
-  }
+  expect(await tab.evaluate(() => window.name)).toBe("");
   // The opening tab stays on its note.
   await expect(
     page.getByRole("heading", { level: 1, name: "The plan" }),

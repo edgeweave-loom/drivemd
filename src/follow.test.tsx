@@ -88,7 +88,7 @@ describe("useFollow", () => {
           `${hrefOf({ name: "file", file: { id: "plan" } })}#next`,
           window.location.origin,
         ),
-        "_blank",
+        expect.stringMatching(/^drivemd\.note\./),
       );
     });
     expect(getPlace().route).toEqual({ name: "home" });

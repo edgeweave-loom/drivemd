@@ -9,8 +9,22 @@ function loaded(type: NavigationTimingType) {
   ]);
 }
 
+const NOTE = hrefOf({ name: "file", file: { id: "note-b" } });
+
+/** Shows note-a in a tab that Drive opened. */
+function fromDrive() {
+  loaded("navigate");
+  markTab(true);
+  history.replaceState(
+    null,
+    "",
+    hrefOf({ name: "file", file: { id: "note-a" } }),
+  );
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
+  window.name = "";
   markTab(false);
 });
 
@@ -85,18 +99,6 @@ describe("A tab opened from Drive", () => {
 });
 
 describe("A link to another note, in a tab opened from Drive", () => {
-  const NOTE = hrefOf({ name: "file", file: { id: "note-b" } });
-
-  function fromDrive() {
-    loaded("navigate");
-    markTab(true);
-    history.replaceState(
-      null,
-      "",
-      hrefOf({ name: "file", file: { id: "note-a" } }),
-    );
-  }
-
   it("opens it in a new tab that keeps this one as its opener", () => {
     fromDrive();
     const open = vi.spyOn(window, "open").mockReturnValue(window);
@@ -104,42 +106,18 @@ describe("A link to another note, in a tab opened from Drive", () => {
     expect(openNoteTab(NOTE)).toBe(true);
     expect(open).toHaveBeenCalledWith(
       new URL(NOTE, window.location.origin),
-      "_blank",
+      expect.stringMatching(/^drivemd\.note\./),
     );
   });
 
-  it("lets the new tab keep the mode once, as the browser copies the tab's storage", () => {
+  it("opens a new tab for each, rather than one a link opened before", () => {
     fromDrive();
-    const copied: Record<string, string> = {};
-    vi.spyOn(window, "open").mockImplementation(() => {
-      for (const key of Object.keys(sessionStorage)) {
-        copied[key] = sessionStorage.getItem(key) ?? "";
-      }
-      return window;
-    });
+    const open = vi.spyOn(window, "open").mockReturnValue(window);
     openNoteTab(NOTE);
-    expect(sessionStorage.length).toBe(1);
+    openNoteTab(NOTE);
 
-    // The new tab starts with the copy, at an address opened.
-    sessionStorage.clear();
-    for (const [key, value] of Object.entries(copied)) {
-      sessionStorage.setItem(key, value);
-    }
-    markTab(false);
-    expect(openedFromDrive()).toBe(true);
-
-    markTab(false);
-    expect(openedFromDrive()).toBe(false);
-  });
-
-  it("leaves no way to keep the mode when the browser fails to open the tab", () => {
-    fromDrive();
-    vi.spyOn(window, "open").mockImplementation(() => {
-      throw new DOMException("Blocked", "SecurityError");
-    });
-
-    expect(() => openNoteTab(NOTE)).toThrow();
-    expect(sessionStorage.length).toBe(1);
+    const [first, second] = open.mock.calls.map(([, target]) => target);
+    expect(first).not.toBe(second);
   });
 
   it("opens it in place when the browser blocks the new tab", () => {
@@ -180,5 +158,58 @@ describe("A link to another note, in a tab opened from Drive", () => {
 
     expect(openNoteTab(NOTE)).toBe(false);
     expect(open).not.toHaveBeenCalled();
+  });
+});
+
+describe("The tab a link opens from a tab opened from Drive", () => {
+  /** Starts the page in the tab that openNoteTab opens, as the browser does. */
+  function openedByLink() {
+    fromDrive();
+    let name = "";
+    vi.spyOn(window, "open").mockImplementation((_, target) => {
+      name = target ?? "";
+      return window;
+    });
+    openNoteTab(NOTE);
+    // The browser copied nothing of the tab's storage into the new one.
+    sessionStorage.clear();
+    window.name = name;
+  }
+
+  it("keeps the mode, though the browser copied nothing for it", () => {
+    openedByLink();
+    markTab(false);
+
+    expect(openedFromDrive()).toBe(true);
+  });
+
+  it.each(["reload", "back_forward"] as const)(
+    "keeps the mode through a %s, once its name is gone",
+    (type) => {
+      openedByLink();
+      markTab(false);
+      loaded(type);
+      markTab(false);
+
+      expect(openedFromDrive()).toBe(true);
+    },
+  );
+
+  it("loses the mode to an address typed in it", () => {
+    openedByLink();
+    markTab(false);
+    markTab(false);
+
+    expect(openedFromDrive()).toBe(false);
+    expect(window.name).toBe("");
+  });
+
+  it("leaves a name that no link of the app gave it", () => {
+    loaded("navigate");
+    window.name = "elsewhere";
+    markTab(false);
+
+    expect(openedFromDrive()).toBe(false);
+    expect(window.name).toBe("elsewhere");
   });
 });
