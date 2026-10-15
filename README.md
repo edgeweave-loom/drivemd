@@ -85,6 +85,10 @@ Once per clone, `git config core.hooksPath .githooks` turns on the repository's 
 
 Before the first run, download the browsers once with `npx playwright install chromium webkit`: they go to `~/.cache/ms-playwright`, shared by every project on the machine. WebKit also needs system libraries, which `sudo npx playwright install-deps webkit` installs. CI runs the tests in Microsoft's Playwright image, which holds both, and deploys only once they pass. The image's version must be the locked `@playwright/test`'s, as CI checks, and Dependabot does not update it: its Playwright pull request fails until you set, on the same branch, the image's tag in `.github/workflows/ci.yml` with the digest that `docker buildx imagetools inspect mcr.microsoft.com/playwright:v<version>-noble` prints. The tests record no traces, screenshots or videos, which would keep the requests the app makes.
 
+## Device checks
+
+Neither the end-to-end tests nor the live checks run iOS itself: Safari's bars, the on-screen keyboard, the notch and the home bar, the Home Screen app and Google's sign-in window. [`docs/apple-device-checks.md`](docs/apple-device-checks.md) lists the checks for those, on staging, written for Claude Code driving the iOS Simulator on a Mac, and readable by a person with a real iPhone or iPad. Run them before a milestone that changes the interface closes, and before a release.
+
 ## Configuration
 
 The app reads its settings from `VITE_*` environment variables when it is built. For development, copy `.env.example` to `.env.local` and fill it in; git ignores `.env` and `.env.local`.
