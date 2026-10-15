@@ -230,6 +230,47 @@ describe("the keyboard toolbar", () => {
     appBar.remove();
   });
 
+  it("scrolls to the cursor once the keyboard has come, unless scrolled away", async () => {
+    const viewport = new Viewport();
+    Object.defineProperty(window, "visualViewport", {
+      value: viewport,
+      configurable: true,
+    });
+    const view = await editing("tea");
+    let cursor = 450;
+    vi.spyOn(view, "coordsAtPos").mockImplementation(() => ({
+      left: 0,
+      right: 0,
+      top: cursor,
+      bottom: cursor + 26,
+    }));
+    const scrolls: number[] = [];
+    view.dispatch({
+      effects: StateEffect.appendConfig.of(
+        EditorView.updateListener.of((update) => {
+          for (const { effects } of update.transactions) {
+            scrolls.push(effects.length);
+          }
+        }),
+      ),
+    });
+
+    act(() => {
+      viewport.show(500);
+    });
+    await waitFor(() => {
+      expect(scrolls).toEqual([1]);
+    });
+
+    // As Safari folds its bars while the page scrolls far from the cursor.
+    cursor = -2000;
+    act(() => {
+      viewport.show(540);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    expect(scrolls).toEqual([1]);
+  });
+
   it.each([
     {
       touch: true,

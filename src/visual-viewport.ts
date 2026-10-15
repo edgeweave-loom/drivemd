@@ -33,7 +33,9 @@ export function keepVisible(
   let frame: number | undefined;
   const place = () => {
     const box = element.getBoundingClientRect();
-    const top = viewport.pageTop - window.scrollY;
+    // Never above the page's top, where the Home Screen app puts it a few
+    // pixels once the page scrolls to the cursor.
+    const top = Math.max(0, viewport.pageTop - window.scrollY);
     const bottom = top + viewport.height;
     shift = Math.round(
       Math.max(

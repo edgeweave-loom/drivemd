@@ -58,6 +58,16 @@ describe("keepVisible", () => {
     expect(bar.style.transform).toBe("translateY(0px)");
   });
 
+  it("never takes the visual viewport for above the page's top", () => {
+    const bar = element(() => 0, 56);
+    keepVisible(bar);
+
+    // As the Home Screen app reports it once the page scrolls to the cursor.
+    viewport.show(452, -5);
+
+    expect(bar.style.transform).toBe("translateY(0px)");
+  });
+
   it("keeps a dialog's top in view when it cannot fit above the keyboard", () => {
     const dialog = element(() => 100, 600);
     keepVisible(dialog);

@@ -341,14 +341,30 @@ export function Editor({
           }}
           onResize={() => {
             const view = editor.current;
-            view?.dispatch({
-              effects: EditorView.scrollIntoView(view.state.selection.main),
-            });
+            if (view && onScreen(view)) {
+              view.dispatch({
+                effects: EditorView.scrollIntoView(view.state.selection.main),
+              });
+            }
           }}
         />
       )}
     </>
   );
+}
+
+/**
+ * Whether the cursor shows in the visual viewport, perhaps under the
+ * keyboard toolbar, rather than where the user scrolled away from it:
+ * Safari resizes the visual viewport as its bars fold while the page
+ * scrolls, not only as the keyboard comes or goes.
+ */
+function onScreen(view: EditorView): boolean {
+  const cursor = view.coordsAtPos(view.state.selection.main.head);
+  const viewport = window.visualViewport;
+  if (!cursor || !viewport) return false;
+  const top = viewport.pageTop - window.scrollY;
+  return cursor.bottom > top && cursor.top < top + viewport.height;
 }
 
 /**
