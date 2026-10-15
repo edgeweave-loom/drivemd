@@ -12,6 +12,7 @@ import {
   highlightSelectionMatches,
   search,
   searchKeymap,
+  searchPanelOpen,
 } from "@codemirror/search";
 import {
   EditorState,
@@ -33,6 +34,7 @@ import {
   useEffect,
   useEffectEvent,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   type Ref,
@@ -45,6 +47,7 @@ import { commandKey } from "./keys.ts";
 import { useTouch } from "./layout.ts";
 import { linkAt } from "./source-links.ts";
 import type { LineBreak } from "./text.ts";
+import { keepVisible } from "./visual-viewport.ts";
 
 /**
  * Light live styling: headings larger, bold and italic as such, code in
@@ -101,6 +104,8 @@ const ON_SHEET = EditorView.theme({
     backgroundColor: "var(--surface-container-low)",
     boxShadow: "inset 2px 0 0 var(--primary)",
   },
+  // Find in note's panel sticks under the app bar, never over it.
+  ".cm-panels-top": { top: "var(--app-bar-bottom)", zIndex: "0" },
 });
 
 const CODE_LINE = Decoration.line({ class: "cm-code-line" });
@@ -280,12 +285,34 @@ export function Editor({
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
   const [focused, setFocused] = useState(false);
-  const toolbar = useTouch() && focused;
+  const [searching, setSearching] = useState(false);
+  const touch = useTouch();
+  const toolbar = touch && focused;
   const opening = useEffectEvent(() => initial);
   const edited = useEffectEvent((update: ViewUpdate) => {
     if (update.docChanged) onChange(update.state.sliceDoc());
     if (update.focusChanged) setFocused(update.view.hasFocus);
+    const open = searchPanelOpen(update.state);
+    if (open !== searchPanelOpen(update.startState)) setSearching(open);
   });
+  // While the toolbar or Find in note's panel shows, the app bar stays on
+  // the screen, Done and Save with it, and the panel under it: iOS pans the
+  // visual viewport away from the page's top, where they stick.
+  const keeping = touch && (focused || searching);
+  useLayoutEffect(() => {
+    if (!keeping) return;
+    const appBar = document.querySelector<HTMLElement>(".bar");
+    const panel = searching
+      ? editor.current?.dom.querySelector<HTMLElement>(".cm-panels-top")
+      : null;
+    const stops = [
+      appBar && keepVisible(appBar),
+      panel && keepVisible(panel, { below: appBar }),
+    ];
+    return () => {
+      for (const stop of stops) stop?.();
+    };
+  }, [keeping, searching]);
   // The app bar stays over the page's top while the toolbar shows.
   const clearance = useEffectEvent(() =>
     toolbar

@@ -89,8 +89,7 @@ function keepFocus(event: SyntheticEvent) {
 /**
  * The formatting keys pinned above a touch screen's keyboard while the
  * editor has the focus: the iPhone's keyboard has no Tab key, nor any key
- * for Markdown. The keys never take the focus, so the keyboard stays. The
- * page's app bar stays on the screen meanwhile, its Done and Save with it.
+ * for Markdown. The keys never take the focus, so the keyboard stays.
  */
 export function KeyboardToolbar({
   onCommand,
@@ -102,19 +101,17 @@ export function KeyboardToolbar({
 }) {
   const bar = useRef<HTMLDivElement>(null);
   const resized = useEffectEvent(onResize);
-  useLayoutEffect(() => {
-    const appBar = document.querySelector<HTMLElement>(".bar");
-    const stops = [
-      bar.current &&
-        keepVisible(bar.current, () => {
-          resized();
-        }),
-      appBar && keepVisible(appBar),
-    ];
-    return () => {
-      for (const stop of stops) stop?.();
-    };
-  }, []);
+  useLayoutEffect(
+    () =>
+      bar.current
+        ? keepVisible(bar.current, {
+            onResize: () => {
+              resized();
+            },
+          })
+        : undefined,
+    [],
+  );
   return createPortal(
     <div
       ref={bar}

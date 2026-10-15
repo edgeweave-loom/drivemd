@@ -18,12 +18,17 @@ const SETTLE_FRAMES = 30;
  * next frames (checked in the iOS simulator, in Safari and in the Home
  * Screen app).
  *
- * `onResize` runs once the element has settled after the viewport's height
- * changed, as when the keyboard comes or goes.
+ * `below` is an element kept on the screen too, such as the app bar, whose
+ * bottom the element's top stays under. `onResize` runs once the element
+ * has settled after the viewport's height changed, as when the keyboard
+ * comes or goes.
  */
 export function keepVisible(
   element: HTMLElement,
-  onResize?: () => void,
+  {
+    below,
+    onResize,
+  }: { below?: HTMLElement | null; onResize?: () => void } = {},
 ): () => void {
   const viewport = window.visualViewport;
   if (!viewport) return () => undefined;
@@ -37,7 +42,7 @@ export function keepVisible(
     // The top is never above the page's, where the Home Screen app puts it
     // a few pixels once the page scrolls to the cursor; the bottom still
     // needs that offset.
-    const top = Math.max(0, offset);
+    const top = Math.max(0, offset, below?.getBoundingClientRect().bottom ?? 0);
     const bottom = offset + viewport.height;
     shift = Math.round(
       Math.max(
