@@ -198,7 +198,7 @@ function extensions(
   lineBreak: LineBreak,
   changed: (update: ViewUpdate) => void,
   follow: (href: string) => void,
-  clearance: () => { bottom: number } | null,
+  clearance: () => { top: number; bottom: number } | null,
 ): Extension[] {
   return [
     // Lines join with the file's own break, whatever the browser sends.
@@ -232,9 +232,19 @@ function extensions(
     EditorView.contentAttributes.of({ "aria-label": "Markdown source" }),
     EditorView.updateListener.of(changed),
     followLinks(follow),
-    // The cursor stays clear of the keyboard toolbar when the editor
-    // scrolls to it.
+    // The cursor stays clear of the keyboard toolbar and the app bar when
+    // the editor scrolls to it.
     EditorView.scrollMargins.of(clearance),
+    // A tap places the cursor without scrolling to it, where the toolbar
+    // may cover it.
+    EditorState.transactionExtender.of((transaction) =>
+      transaction.selection &&
+      transaction.isUserEvent("select") &&
+      !transaction.scrollIntoView &&
+      clearance()
+        ? { effects: EditorView.scrollIntoView(transaction.newSelection.main) }
+        : null,
+    ),
   ];
 }
 
@@ -276,8 +286,17 @@ export function Editor({
     if (update.docChanged) onChange(update.state.sliceDoc());
     if (update.focusChanged) setFocused(update.view.hasFocus);
   });
+  // The app bar stays over the page's top while the toolbar shows.
   const clearance = useEffectEvent(() =>
-    toolbar ? { bottom: TOOLBAR_HEIGHT } : null,
+    toolbar
+      ? {
+          top: Math.max(
+            0,
+            document.querySelector(".bar")?.getBoundingClientRect().bottom ?? 0,
+          ),
+          bottom: TOOLBAR_HEIGHT,
+        }
+      : null,
   );
   const followed = useEffectEvent((href: string) => {
     onFollow(href);
@@ -320,10 +339,32 @@ export function Editor({
           onCommand={(command) => {
             if (editor.current) command(editor.current);
           }}
+          onResize={() => {
+            const view = editor.current;
+            if (view && onScreen(view)) {
+              view.dispatch({
+                effects: EditorView.scrollIntoView(view.state.selection.main),
+              });
+            }
+          }}
         />
       )}
     </>
   );
+}
+
+/**
+ * Whether the cursor shows in the visual viewport, perhaps under the
+ * keyboard toolbar, rather than where the user scrolled away from it:
+ * Safari resizes the visual viewport as its bars fold while the page
+ * scrolls, not only as the keyboard comes or goes.
+ */
+function onScreen(view: EditorView): boolean {
+  const cursor = view.coordsAtPos(view.state.selection.main.head);
+  const viewport = window.visualViewport;
+  if (!cursor || !viewport) return false;
+  const top = viewport.pageTop - window.scrollY;
+  return cursor.bottom > top && cursor.top < top + viewport.height;
 }
 
 /**
