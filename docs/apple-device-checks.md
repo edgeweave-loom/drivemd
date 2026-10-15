@@ -7,6 +7,7 @@ The end-to-end tests run Playwright's WebKit with an iPhone's and an iPad's scre
 - **Report, do not fix.** Run the checks and write the report. Do not change the app's code, do not file issues and do not push anything: draft the issues in the report, for the developer to file.
 - **Staging only.** Check `https://md-staging.corp.edgeweave.tech`, or the address the developer gives, never production unless asked.
 - **The test account only.** The developer signs in. Never type, read or keep a password or a code, and take no screenshot of Google's sign-in pages. The account's email shows in the app: write `<test account>` in the report instead, and keep screenshots out of the repository and of any upload, since they show it.
+- **Logs only to explain a failure.** The device's logs (`mobile_get_device_logs`) can hold the account's email and Google's tokens. Collect them only to explain a FAIL, narrowed with `filter` and `limit`, into the output folder. Quote in the report only the lines the verdict needs, with `<test account>` for the email and no token. Screen recordings show the email, as screenshots do.
 - **Touch only the check's files.** Create, edit and trash only the `device-check-*` notes below, in the test account's My Drive.
 - **One verdict per check:** PASS, FAIL (what was expected, what showed, and the screenshot), or BLOCKED (what the Simulator could not do, and what a real device should check instead). A known limit that the spec describes is a PASS with a note, not a FAIL.
 - **Ask the developer** whenever Google asks for credentials, when macOS asks for a permission, and when a check needs something the Simulator lacks.
@@ -25,12 +26,26 @@ Use the newest iOS runtime that Xcode has (`xcrun simctl list runtimes`) and the
 
 Create each one fresh for a run, so that no Home Screen app, `localStorage` or Google session is left from the last one: `xcrun simctl delete "DriveMD iPhone"` if it exists, then `xcrun simctl create "DriveMD iPhone" <device type> <runtime>`, and `xcrun simctl boot` it. Give the status bar a fixed time and battery, so that screenshots compare: `xcrun simctl status_bar <device> override --time 9:41 --batteryState charged --batteryLevel 100`.
 
+### Install
+
+Once per Mac:
+
+- Xcode with an iOS runtime (Xcode ▸ Settings ▸ Components, or `xcodebuild -downloadPlatform iOS`), opened once to accept its license.
+- Node.js 20 or later, and [uv](https://docs.astral.sh/uv/) for the measuring scripts (`brew install node uv`).
+- [mobile-mcp](https://github.com/mobile-next/mobile-mcp) as Claude Code's MCP server, with its telemetry off: otherwise it sends each tool call's name to its developers, and offers a tool that sends them what the agent writes in it.
+
+  ```sh
+  claude mcp add mobile -e MOBILEMCP_DISABLE_TELEMETRY=1 -- npx -y @mobilenext/mobile-mcp@latest
+  ```
+
+  It brings mobilecli, which drives the Simulator. Restart Claude Code and check with `/mcp` that `mobile` is connected. The same server drives Android emulators, through `adb`.
+
 ### Tools
 
-- `xcrun simctl` opens addresses (`openurl <device> <url>`), takes screenshots (`io <device> screenshot <file>`), sets the theme (`ui <device> appearance light|dark`) and fills the device's clipboard (`pbcopy <device>`).
-- Taps, swipes, typing and the screen's accessibility tree come from an iOS Simulator MCP server when one is set up, or else from [idb](https://fbidb.io/): `brew install facebook/fb/idb-companion`, `uv tool install fb-idb`, then `idb ui tap`, `idb ui swipe`, `idb ui text` and `idb ui describe-all`. Coordinates are in points.
-- The Simulator's menus turn the device and switch the keyboard: **Device ▸ Rotate Left / Rotate Right**, **I/O ▸ Keyboard ▸ Connect Hardware Keyboard** (⇧⌘K) and **Toggle Software Keyboard** (⌘K). Reach them with `osascript`, for example `osascript -e 'tell application "System Events" to tell process "Simulator" to click menu item "Rotate Left" of menu "Device" of menu bar 1'`. macOS asks the developer once to let the terminal control the computer (Privacy & Security ▸ Accessibility).
-- **Typing and the on-screen keyboard.** Text typed through idb or the Mac's keyboard comes as a hardware keyboard's, which can make iOS hide the on-screen one. Turn **Connect Hardware Keyboard** off for every keyboard check, and take a screenshot after typing: if the on-screen keyboard went away, enter text by tapping its keys, or paste it (`xcrun simctl pbcopy`, then tap the cursor and **Paste**).
+- **mobile-mcp** taps (`mobile_click_on_screen_at_coordinates`, `mobile_long_press_on_screen_at_coordinates`), swipes from a point in one of four directions (`mobile_swipe_on_screen`), types (`mobile_type_keys`), lists the screen's elements (`mobile_list_elements_on_screen`), presses Home (`mobile_press_button` with `HOME`, to send the Home Screen app to the background), opens addresses (`mobile_open_url`), saves screenshots (`mobile_save_screenshot`) and fills the clipboard (`mobile_clipboard`). Tap an element by the reference that the list gives; otherwise, convert a screenshot's pixels with the mapping that comes with it.
+- `xcrun simctl` does the rest: the theme (`ui <device> appearance light|dark`) and the status bar (`status_bar`).
+- The Simulator's menus turn the device and switch the keyboard: **Device ▸ Rotate Left / Rotate Right**, **I/O ▸ Keyboard ▸ Connect Hardware Keyboard** (⇧⌘K) and **Toggle Software Keyboard** (⌘K). `mobile_set_orientation` knows only portrait and landscape, not the side, so C2 turns the device from the menus. Reach them with `osascript`, for example `osascript -e 'tell application "System Events" to tell process "Simulator" to click menu item "Rotate Left" of menu "Device" of menu bar 1'`. macOS asks the developer once to let the terminal control the computer (Privacy & Security ▸ Accessibility).
+- **Typing and the on-screen keyboard.** With the Simulator closed, `defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false` starts the devices with the hardware keyboard off, as every keyboard check needs but D6; if D1 shows no on-screen keyboard, turn it off from the menu. Typed text may still come as a hardware keyboard's, which can make iOS hide the on-screen one: take a screenshot after typing, and if the on-screen keyboard went away, enter text by tapping its keys, or paste it (`mobile_clipboard`, then tap the cursor and **Paste**).
 - **Measuring.** Screenshots are in pixels, 3 per point on an iPhone and 2 on an iPad. Measure gaps and overlaps on them with a short script (`uv run --with pillow python …`). When a value from the page is needed, such as `visualViewport` or a box's position, ask the developer to open Safari's **Develop ▸ Simulator** Web Inspector on the Mac and run what you give them.
 
 ### Output
@@ -85,7 +100,7 @@ Run the sections in this order, so that each context is set up once:
 5. Both devices, both themes: F.
 6. I, only if staging deploys a new version during the run.
 
-Run every check in the light theme unless it says otherwise; section F runs both.
+Run every check in the light theme unless it says otherwise: E3, section F and H2 also run the dark one. Once such a check ends, set the device back to light (`xcrun simctl ui <device> appearance light`) before the next one.
 
 ## Checks
 
