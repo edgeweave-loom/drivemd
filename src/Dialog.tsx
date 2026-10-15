@@ -1,10 +1,12 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { describeError } from "./errors.ts";
+import { keepVisible } from "./visual-viewport.ts";
 
 /**
  * A modal dialog, open while it is shown: the page behind it is out of
  * reach. Escape closes it, unless it has no onClose. Once the page drops it,
  * the focus goes back to what had it, if still there, as when it closes.
+ * It stays above the keyboard, which Safari on an iPhone lays it out under.
  */
 export function Dialog({
   title,
@@ -26,7 +28,9 @@ export function Dialog({
       opener.current = document.activeElement;
       dialog.current.showModal();
     }
+    const stop = dialog.current && keepVisible(dialog.current);
     return () => {
+      stop?.();
       const { current } = opener;
       if (current instanceof HTMLElement && current.isConnected) {
         current.focus();

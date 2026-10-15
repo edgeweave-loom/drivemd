@@ -1,4 +1,5 @@
 import { searchPanelOpen } from "@codemirror/search";
+import { StateEffect } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import {
   act,
@@ -210,16 +211,51 @@ describe("the keyboard toolbar", () => {
     expect(bar.style.transform).toBe("translateY(-51px)");
   });
 
-  it("keeps the cursor clear of it while it shows", async () => {
+  it("keeps the cursor clear of it and of the app bar while it shows", async () => {
+    const appBar = document.body.appendChild(document.createElement("header"));
+    appBar.className = "bar";
+    vi.spyOn(appBar, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 0, 56),
+    );
     holdTouch(true);
     const view = open("tea");
-    expect(margins(view)).not.toContainEqual({ bottom: 48 });
+    expect(margins(view)).toContainEqual(null);
 
     act(() => {
       view.focus();
     });
     await screen.findByRole("toolbar", { name: "Formatting" });
 
-    expect(margins(view)).toContainEqual({ bottom: 48 });
+    expect(margins(view)).toContainEqual({ top: 56, bottom: 48 });
+    appBar.remove();
+  });
+
+  it.each([
+    {
+      touch: true,
+      what: "scrolls to the cursor a tap places, which it may cover",
+    },
+    { touch: false, what: "leaves the scrolling to the browser with a mouse" },
+  ])("$what", async ({ touch }) => {
+    holdTouch(touch);
+    const view = open("tea\nfor\ntwo");
+    act(() => {
+      view.focus();
+    });
+    if (touch) await screen.findByRole("toolbar", { name: "Formatting" });
+    const scrolls: boolean[] = [];
+    view.dispatch({
+      effects: StateEffect.appendConfig.of(
+        EditorView.updateListener.of((update) => {
+          for (const { selection, effects } of update.transactions) {
+            if (selection) scrolls.push(effects.length > 0);
+          }
+        }),
+      ),
+    });
+
+    view.dispatch({ selection: { anchor: 5 }, userEvent: "select" });
+
+    expect(scrolls).toEqual([touch]);
   });
 });
