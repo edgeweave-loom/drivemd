@@ -269,6 +269,42 @@ test("leaves the note's end clear of the keyboard toolbar", async ({
   }
 });
 
+test("shows Find in note's panel under the app bar, mid-note", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.name === "desktop-chromium",
+    "A mouse has no keyboard toolbar",
+  );
+  const notes = drive.files.get("notes");
+  if (notes) {
+    notes.content = Array.from(
+      { length: 80 },
+      (_, line) => `line ${String(line + 1)}\n`,
+    ).join("");
+  }
+  await signIn(page);
+  await page.goto("/edit?id=notes");
+  await startEditing(page);
+  const source = page.getByRole("textbox", { name: "Markdown source" });
+  await source.locator(".cm-line").first().click();
+  await page.evaluate(() => {
+    window.scrollTo(0, document.documentElement.scrollHeight / 2);
+  });
+  await page
+    .getByRole("toolbar", { name: "Formatting" })
+    .getByRole("button", { name: "Find in note" })
+    .click();
+
+  const field = page.getByRole("textbox", { name: "Find" });
+  await expect(field).toBeFocused();
+  const appBar = await page.getByRole("banner").boundingBox();
+  const panel = await page.locator(".cm-panels-top").boundingBox();
+  if (!appBar || !panel) throw new Error("Not shown");
+  expect(panel.y).toBe(appBar.y + appBar.height);
+});
+
 test("saves with Ctrl+S, and follows a link with Ctrl+click in the source", async ({
   page,
   drive,

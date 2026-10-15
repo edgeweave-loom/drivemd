@@ -68,6 +68,21 @@ describe("keepVisible", () => {
     expect(bar.style.transform).toBe("translateY(0px)");
   });
 
+  it("keeps Find in note's panel under the app bar as iOS pans the page", () => {
+    let top = 0;
+    const bar = element(() => top, 56);
+    const panel = element(() => top + 56, 82);
+    keepVisible(bar);
+    keepVisible(panel, { below: bar });
+
+    // Its field focused, the page panned 120 px away from the bar.
+    top = -120;
+    viewport.show(400);
+
+    expect(bar.style.transform).toBe("translateY(120px)");
+    expect(panel.style.transform).toBe("translateY(120px)");
+  });
+
   it("keeps a dialog's top in view when it cannot fit above the keyboard", () => {
     const dialog = element(() => 100, 600);
     keepVisible(dialog);
@@ -82,7 +97,7 @@ describe("keepVisible", () => {
     let bottom = 800;
     const bar = element(() => bottom - 48, 48);
     const resized = vi.fn();
-    keepVisible(bar, resized);
+    keepVisible(bar, { onResize: resized });
 
     // A passing place, then the right one, without an event between.
     bottom = 1206;

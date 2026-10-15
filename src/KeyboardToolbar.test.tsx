@@ -81,6 +81,17 @@ function layOut(bar: HTMLElement, bottom: () => number) {
   });
 }
 
+/**
+ * Has an element sit `height` tall from `top()`, before its own shift, as
+ * the browser lays it out.
+ */
+function sitAt(element: HTMLElement, top: () => number, height: number) {
+  vi.spyOn(element, "getBoundingClientRect").mockImplementation(() => {
+    const shift = Number(/-?\d+/.exec(element.style.transform)?.[0] ?? 0);
+    return new DOMRect(0, top() + shift, 0, height);
+  });
+}
+
 describe("the keyboard toolbar", () => {
   beforeEach(() => {
     // jsdom names Apple as its vendor, so CodeMirror reads the selection in
@@ -160,6 +171,39 @@ describe("the keyboard toolbar", () => {
     tap("Find in note");
 
     expect(searchPanelOpen(view.state)).toBe(true);
+  });
+
+  it("keeps the app bar and Find in note's panel in view while it is open", async () => {
+    const viewport = new Viewport();
+    Object.defineProperty(window, "visualViewport", {
+      value: viewport,
+      configurable: true,
+    });
+    const appBar = document.body.appendChild(document.createElement("header"));
+    appBar.className = "bar";
+    let top = 0;
+    sitAt(appBar, () => top, 56);
+    const view = await editing("tea");
+
+    tap("Find in note");
+    const panel = view.dom.querySelector<HTMLElement>(".cm-panels-top");
+    if (!panel) throw new Error("No panel");
+    sitAt(panel, () => top + 56, 82);
+    // Its field has the focus, and iOS pans the page away from the bar.
+    act(() => {
+      view.contentDOM.blur();
+    });
+    await waitFor(() => {
+      expect(toolbar()).toBeNull();
+    });
+    top = -120;
+    act(() => {
+      viewport.show(400);
+    });
+
+    expect(appBar.style.transform).toBe("translateY(120px)");
+    expect(panel.style.transform).toBe("translateY(120px)");
+    appBar.remove();
   });
 
   it("leaves the focus, and the keyboard, with the editor", async () => {

@@ -10,6 +10,9 @@
 :root {
   /* The keyboard toolbar's, over the keyboard (TOOLBAR_HEIGHT). */
   --keyboard-toolbar-height: 48px;
+  /* Where the app bar ends, under which what sticks to the page's top
+     stays, as Find in note's panel does (Editor.tsx). */
+  --app-bar-bottom: calc(var(--app-bar-height) + env(safe-area-inset-top));
   color: var(--on-surface);
   background: var(--surface);
   font-family: var(--font-sans);
@@ -674,6 +677,12 @@ button.account {
 }
 
 @media (width < 768px), (pointer: coarse) and (height < 500px) {
+  :root {
+    --app-bar-bottom: calc(
+      var(--app-bar-height-compact) + env(safe-area-inset-top)
+    );
+  }
+
   .bar {
     min-height: calc(var(--app-bar-height-compact) + env(safe-area-inset-top));
   }
