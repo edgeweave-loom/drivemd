@@ -31,7 +31,7 @@ Create each one fresh for a run, so that no Home Screen app, `localStorage` or G
 Once per Mac:
 
 - Xcode with an iOS runtime (Xcode ▸ Settings ▸ Components, or `xcodebuild -downloadPlatform iOS`), opened once to accept its license.
-- Node.js 20 or later, and [uv](https://docs.astral.sh/uv/) for the measuring scripts (`brew install node uv`).
+- Node.js 24, as the repository uses, and [uv](https://docs.astral.sh/uv/) for the measuring scripts: `brew install node@24 uv`, then `brew link node@24`, since Homebrew's `node` is a newer major version.
 - [mobile-mcp](https://github.com/mobile-next/mobile-mcp) as Claude Code's MCP server, with its telemetry off: otherwise it sends each tool call's name to its developers, and offers a tool that sends them what the agent writes in it.
 
   ```sh
