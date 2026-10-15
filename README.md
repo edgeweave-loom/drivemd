@@ -87,7 +87,7 @@ Before the first run, download the browsers once with `npx playwright install ch
 
 ## Device checks
 
-Neither the end-to-end tests nor the live checks run iOS itself: Safari's bars, the on-screen keyboard, the notch and the home bar, the Home Screen app and Google's sign-in window. [`docs/apple-device-checks.md`](docs/apple-device-checks.md) lists the checks for those, on staging, written for Claude Code driving the iOS Simulator on a Mac, and readable by a person with a real iPhone or iPad. Run them before a milestone that changes the interface closes, and before a release.
+Neither the end-to-end tests nor the live checks run iOS itself: Safari's bars, the on-screen keyboard, the notch and the home bar, the Home Screen app and Google's sign-in window. [`docs/apple-device-checks.md`](docs/apple-device-checks.md) lists the checks for those, on staging, written for Claude Code driving the iOS Simulator on a Mac, and readable by a person with a real iPhone or iPad. The MCP server that drives the Simulator is declared in `.mcp.json`: Claude Code offers it to whoever opens the repository, and only those who run these checks need accept it. Run them before a milestone that changes the interface closes, and before a release.
 
 ## Configuration
 

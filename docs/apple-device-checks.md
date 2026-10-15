@@ -31,14 +31,10 @@ Create each one fresh for a run, so that no Home Screen app, `localStorage` or G
 Once per Mac:
 
 - Xcode with an iOS runtime (Xcode ▸ Settings ▸ Components, or `xcodebuild -downloadPlatform iOS`), opened once to accept its license.
-- Node.js 24, as the repository uses, and [uv](https://docs.astral.sh/uv/) for the measuring scripts: `brew install node@24 uv`, then `brew link node@24`, since Homebrew's `node` is a newer major version.
-- [mobile-mcp](https://github.com/mobile-next/mobile-mcp) as Claude Code's MCP server, with its telemetry off: otherwise it sends each tool call's name to its developers, and offers a tool that sends them what the agent writes in it.
+- Node.js 24, which the repository also runs on, and [uv](https://docs.astral.sh/uv/) for the measuring scripts: `brew install node@24 uv`, then `brew link node@24`, since Homebrew's `node` is a newer major version.
+- [mobile-mcp](https://github.com/mobile-next/mobile-mcp), Claude Code's MCP server for the Simulator, which the repository's `.mcp.json` declares: when Claude Code offers to use it, accept `mobile`, then check with `/mcp` that it is connected. Whoever does not run these checks declines, and nothing is installed. `.mcp.json` turns its telemetry off, since it would otherwise send each tool call's name to its developers, and offer a tool that sends them what the agent writes in it. It pins a version at least a week old, as Dependabot's cooldown does, and Dependabot does not update it: raise it by hand. The server brings mobilecli, which drives the Simulator, and drives Android emulators too, through `adb`.
 
-  ```sh
-  claude mcp add mobile -e MOBILEMCP_DISABLE_TELEMETRY=1 -- npx -y @mobilenext/mobile-mcp@latest
-  ```
-
-  It brings mobilecli, which drives the Simulator. Restart Claude Code and check with `/mcp` that `mobile` is connected. The same server drives Android emulators, through `adb`.
+Before the first check, the agent checks these with `xcodebuild -version`, `xcrun simctl list runtimes`, `node -v`, `uv --version` and whether the `mobile` tools are available, and tells the developer what is missing.
 
 ### Tools
 
