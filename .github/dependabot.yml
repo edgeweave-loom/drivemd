@@ -15,7 +15,8 @@ updates:
       npm-minor-and-patch:
         update-types: [minor, patch]
     ignore:
-      # Node.js types follow the Node.js 22 line in .nvmrc.
+      # Node.js types follow the Node.js 24 line that package.json's devEngines
+      # pins.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
     commit-message:

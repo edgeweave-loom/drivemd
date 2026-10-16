@@ -9,10 +9,10 @@ staged() {
 }
 
 if [ -n "$(staged | tr -d '\0')" ]; then
-  staged | xargs -0 npx prettier --check --ignore-unknown
+  staged | xargs -0 pnpm exec prettier --check --ignore-unknown
 fi
 
 set -- '*.ts' '*.tsx' '*.js'
 if [ -n "$(staged "$@" | tr -d '\0')" ]; then
-  staged "$@" | xargs -0 npx eslint --max-warnings 0 --no-warn-ignored
+  staged "$@" | xargs -0 pnpm exec eslint --max-warnings 0 --no-warn-ignored
 fi
