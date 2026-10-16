@@ -301,6 +301,17 @@ test("shows Find in note in the app bar on a phone, or under it, mid-note", asyn
   await expect(field).toBeFocused();
   // Safari zooms in on a field whose text is smaller.
   await expect(field).toHaveCSS("font-size", "16px");
+  // Drawn over the note's text, which runs under it.
+  const onTop = await field.evaluate((input) => {
+    const box = input.getBoundingClientRect();
+    return (
+      document.elementFromPoint(
+        box.x + box.width / 2,
+        box.y + box.height / 2,
+      ) === input
+    );
+  });
+  expect(onTop).toBe(true);
   const appBar = page.getByRole("banner");
   const bar = page.getByRole("search", { name: "Find in note" });
   if (info.project.metadata.layout === "phone") {
