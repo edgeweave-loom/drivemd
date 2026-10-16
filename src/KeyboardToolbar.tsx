@@ -1,15 +1,11 @@
 import { redo, undo } from "@codemirror/commands";
-import { openSearchPanel } from "@codemirror/search";
 import type { Command } from "@codemirror/view";
-import {
-  useEffectEvent,
-  useLayoutEffect,
-  useRef,
-  type SyntheticEvent,
-} from "react";
+import { useEffectEvent, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { findInNote } from "./find.ts";
 import { Icon } from "./Icon.tsx";
 import type { IconName } from "./icons.ts";
+import { keepFocus } from "./keys.ts";
 import {
   cycleHeading,
   cycleTask,
@@ -72,19 +68,10 @@ const KEYS: { name: string; command: Command; icon: IconName }[] = [
   },
   {
     name: "Find in note",
-    command: openSearchPanel,
+    command: findInNote,
     icon: "search",
   },
 ];
-
-/**
- * Keeps the focus, and the keyboard, with the editor. Only the mouse event
- * that would move it is cancelled: WebKit drops a whole tap, click
- * included, when its pointerdown is.
- */
-function keepFocus(event: SyntheticEvent) {
-  event.preventDefault();
-}
 
 /**
  * The formatting keys pinned above a touch screen's keyboard while the

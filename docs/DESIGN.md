@@ -94,19 +94,20 @@ A note's sizes are set in rem, the table's pixels at the browser's default size,
 
 Material Symbols Outlined, at weight 400, grade 0 and optical size 24, filled only for the current item; 18 px inside a button. The app inlines them as SVG, as the keyboard toolbar already does, under the Apache License in [`LICENSES/`](../LICENSES/).
 
-| Icon                                      | Means                                               |
-| ----------------------------------------- | --------------------------------------------------- |
-| `home`, `cloud`, `shortcut`               | Home, My Drive (never Drive's logo), Shortcuts      |
-| `folder_shared`, `group`, `book`          | Shared drives, Shared with me, an Obsidian vault    |
-| `folder`, `folder_open`, `description`    | A folder, the folder of the note shown, a note      |
-| `link_off`                                | A broken shortcut                                   |
-| `edit`, `visibility`, `code`              | Editing, Viewing (and Preview), the Markdown source |
-| `cloud_done`, `check`                     | Saved; Done on a phone                              |
-| `drive_file_move`, `delete`, `more_vert`  | Move, Move to trash, More actions                   |
-| `search`, `close`, `arrow_back`, `add`    | Search, clear or close, Back, New note              |
-| `sync_problem`                            | Someone changed the note in Drive                   |
-| `ios_share`                               | How to add DriveMD to the Home Screen               |
-| `undo`, `redo`, `title`, `format_bold`, … | The keyboard toolbar's keys, as the spec lists them |
+| Icon                                       | Means                                               |
+| ------------------------------------------ | --------------------------------------------------- |
+| `home`, `cloud`, `shortcut`                | Home, My Drive (never Drive's logo), Shortcuts      |
+| `folder_shared`, `group`, `book`           | Shared drives, Shared with me, an Obsidian vault    |
+| `folder`, `folder_open`, `description`     | A folder, the folder of the note shown, a note      |
+| `link_off`                                 | A broken shortcut                                   |
+| `edit`, `visibility`, `code`               | Editing, Viewing (and Preview), the Markdown source |
+| `cloud_done`, `check`                      | Saved; Done on a phone                              |
+| `drive_file_move`, `delete`, `more_vert`   | Move, Move to trash, More actions                   |
+| `search`, `close`, `arrow_back`, `add`     | Search, clear or close, Back, New note              |
+| `keyboard_arrow_up`, `keyboard_arrow_down` | Find in note's previous and next match              |
+| `sync_problem`                             | Someone changed the note in Drive                   |
+| `ios_share`                                | How to add DriveMD to the Home Screen               |
+| `undo`, `redo`, `title`, `format_bold`, …  | The keyboard toolbar's keys, as the spec lists them |
 
 The DriveMD mark, `public/icon.svg`, shows at 40 px in the app bar (32 px on a phone) and is never recolored or redrawn.
 
@@ -136,6 +137,7 @@ Measurements are in CSS pixels; colors are tokens.
 - **Snackbar.** `inverse-surface`, `--radius-xs`, `--elevation-3`, at the bottom left (bottom on a phone): one past-tense sentence ("Saved to Google Drive") and at most one action in `inverse-primary`, gone after 4 seconds, 10 with an action.
 - **Dialog.** `surface-container-high`, `--radius-xl`, `--elevation-3`, over a `scrim` at 32%: the question as its title, one or two sentences of consequence, then Cancel and the action named by its verb, a loss in danger.
 - **Keyboard toolbar.** `surface-container`, 48 px, 44 px keys that scroll sideways, as the spec describes it.
+- **Find in note.** While editing, one row: the field, a 40 px pill on `surface-container-high` at the editor's 16 px, `search` before it on a wider screen where the bar is 480 px wide or more; the count in body-medium `on-surface-variant` ("3 of 14", "14 matches", "No matches"); Previous and Next match; and Find options, a menu of Match case, Whole word and Regular expression, each checked while on, then Replace, which adds a second row: the Replace with field, then Replace and Replace all as text buttons. On a phone it takes the app bar's place, Back at its start, as the search does; on a wider screen it sticks over the source's top, under the app bar, on `sheet` from edge to edge of it with a rule in `outline-variant` under it, Close at its end. Its buttons never take the focus, so that a touch screen's keyboard stays up, as the keyboard toolbar's keys do. Matches show on `secondary-container`, the selected one on `primary-container` outlined in `primary`, and the selected text's other occurrences on `primary` at 12%.
 
 ## In the app
 

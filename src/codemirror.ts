@@ -66,10 +66,15 @@ const COLORS = EditorView.theme({
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground":
     { background: "color-mix(in srgb, var(--primary) 30%, transparent)" },
   ".cm-code-line": { fontFamily: "var(--font-mono)" },
-  ".cm-panels": {
-    borderColor: "var(--outline-variant)",
-    background: "var(--surface-container)",
-    color: "inherit",
+  // Find in note's matches, the selected one stronger and outlined, and
+  // the selected text's other occurrences, fainter.
+  ".cm-searchMatch": { backgroundColor: "var(--secondary-container)" },
+  ".cm-searchMatch-selected": {
+    backgroundColor: "var(--primary-container)",
+    outline: "1px solid var(--primary)",
+  },
+  ".cm-selectionMatch": {
+    backgroundColor: "color-mix(in srgb, var(--primary) 12%, transparent)",
   },
   // The differences: what the user's version adds underlined, and what it
   // removes struck through, never told by color alone, its lines on colors

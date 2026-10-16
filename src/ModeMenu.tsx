@@ -1,6 +1,7 @@
 import { useCallback, useId, useRef } from "react";
 import { Icon } from "./Icon.tsx";
 import type { IconName } from "./icons.ts";
+import { moveInMenu } from "./menu.ts";
 
 interface Mode {
   editing: boolean;
@@ -71,27 +72,7 @@ export function ModeMenu({
         role="menu"
         aria-label="Mode"
         className="menu mode-menu"
-        onKeyDown={(event) => {
-          const items = [
-            ...event.currentTarget.querySelectorAll<HTMLElement>(
-              '[role="menuitemradio"]',
-            ),
-          ];
-          if (event.key === "Tab") {
-            event.currentTarget.hidePopover();
-            return;
-          }
-          const at = items.indexOf(event.target as HTMLElement);
-          const to = {
-            ArrowDown: (at + 1) % items.length,
-            ArrowUp: (at - 1 + items.length) % items.length,
-            Home: 0,
-            End: items.length - 1,
-          }[event.key];
-          if (to === undefined) return;
-          event.preventDefault();
-          items[to]?.focus();
-        }}
+        onKeyDown={moveInMenu}
       >
         {[EDITING, VIEWING].map((mode) => (
           <button
