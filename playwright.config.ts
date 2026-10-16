@@ -17,7 +17,7 @@ export default defineConfig({
     video: "off",
   },
   webServer: {
-    command: `npm run build:e2e && npx vite preview --outDir dist-e2e --port ${String(port)}`,
+    command: `pnpm run build:e2e && pnpm exec vite preview --outDir dist-e2e --port ${String(port)}`,
     url: `http://localhost:${String(port)}`,
     reuseExistingServer: !process.env.CI,
   },

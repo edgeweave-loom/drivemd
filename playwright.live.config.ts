@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// `npm run live-check:ui`: the deployed app on the real Drive, as the test
+// `pnpm run live-check:ui`: the deployed app on the real Drive, as the test
 // account (see "Live Drive checks" in the README). Never run in CI.
 export default defineConfig({
   testDir: "live",

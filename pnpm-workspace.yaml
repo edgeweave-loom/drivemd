@@ -1,0 +1,28 @@
+saveExact: true
+engineStrict: true
+# 7 days, in minutes: Dependabot's cooldown. Setting it makes resolution
+# fail rather than fall back to a younger version.
+minimumReleaseAge: 10080
+# pnpm 12.13.0 is the first whose `pnpm audit signatures` passes with
+# devEngines.runtime (pnpm/pnpm#16869). Drop these once it is 7 days old,
+# on 2026-10-20. Its binaries come at its own version, and a pattern cannot
+# name one.
+minimumReleaseAgeExclude:
+  - pnpm@12.13.0
+  - "@pnpm/exe.*"
+# Fail the install on a version published with weaker evidence (no
+# provenance, no trusted publisher) than an earlier one of the same package.
+trustPolicy: no-downgrade
+trustPolicyExclude:
+  # The 6.x backport of a fix, published in 2023 without provenance after 7.x
+  # had it; @babel/core, which the React hooks lint rule uses, and
+  # firebase-tools need 6.x.
+  - semver@6.3.1
+# Dependency build scripts are blocked, and an unlisted one fails the
+# install: allow them one by one, each with its reason.
+allowBuilds:
+  # Only warns about its version scheme.
+  protobufjs: false
+  # Builds a regular expression engine for Hosting's emulator, which falls
+  # back to JavaScript's when it is missing.
+  re2: false

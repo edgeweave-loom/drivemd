@@ -45,45 +45,45 @@ DriveMD serves one Google Workspace organization. It asks for Google's `drive` s
 
 1. In a Google Cloud project of your organization, enable the Google Drive API, set the audience to **Internal** in Google Auth Platform, and create an OAuth client of type **Web application** whose authorized JavaScript origins are your app's addresses, and `http://localhost:5173` for development. The spec's [Google Cloud setup](docs/SPEC.md#google-auth-scopes-and-workspace-setup) gives each step, with Edgeweave's addresses.
 2. Rewrite `about.html`, which speaks for Edgeweave, with your own description, privacy policy, terms and support, and point its source code link at your copy's source: the AGPL asks whoever serves a modified version to its users to offer them its source. `e2e/about.e2e.ts` checks the page's links.
-3. Build with your client's ID, `VITE_GOOGLE_CLIENT_ID=<client-id> npm run build`, and serve `dist/` over HTTPS. Firebase Hosting serves it as `firebase.json` says, and [Deployment](#deployment) has CI deploy it. Another host must send the same headers, the Content Security Policy above all, which keeps script in a note from reaching the user's token, and serve the files of `dist/` as they are and `index.html` for any other path.
+3. Build with your client's ID, `VITE_GOOGLE_CLIENT_ID=<client-id> pnpm run build`, and serve `dist/` over HTTPS. Firebase Hosting serves it as `firebase.json` says, and [Deployment](#deployment) has CI deploy it. Another host must send the same headers, the Content Security Policy above all, which keeps script in a note from reaching the user's token, and serve the files of `dist/` as they are and `index.html` for any other path.
 4. To open .md files from Drive's **Open with**, list the app as the spec's [Drive integration](docs/SPEC.md#drive-open-with-integration-via-private-marketplace) section does, with your own addresses.
 
 ## Development
 
-You need Node.js 22.22.2 or later on the 22 line (`.nvmrc`), or 24.15.0 or later on the 24 line, and npm.
+You need [pnpm](https://pnpm.io/installation). It switches to the version that `packageManager` names in `package.json`, and installs the Node.js that `devEngines` pins there to run the scripts.
 
 ```sh
-npm ci
-npm run dev
+pnpm install
+pnpm run dev
 ```
 
 Open http://localhost:5173, not `127.0.0.1`: it is the only local origin the OAuth client authorizes, so the dev server refuses to start on another port. Signing in needs an OAuth client's ID (see Configuration), but the tests do not: they replace Google with made-up answers.
 
-| Command                    | What it does                                                     |
-| -------------------------- | ---------------------------------------------------------------- |
-| `npm run dev`              | Serve the app with hot reload                                    |
-| `npm run build`            | Type-check, then build the static site into `dist/`              |
-| `npm run preview`          | Serve the `dist/` build on the same port                         |
-| `npm test`                 | Run the tests in watch mode                                      |
-| `npm run coverage`         | Run the tests once; fails under the coverage thresholds          |
-| `npm run e2e`              | Run the end-to-end tests in real browsers                        |
-| `npm run lint`             | Lint with type-aware and security rules; any warning fails       |
-| `npm run format`           | Format every file with Prettier (`npm run format:check` checks)  |
-| `npm run check`            | Lint, check the format, run `coverage`, then `build`, as CI does |
-| `npm run deploy`           | Deploy `dist/` to the site mapped to the `app` target            |
-| `npm run live-check:login` | Sign the test account in for the live Drive checks               |
-| `npm run live-check`       | Check the Drive client against the real Drive                    |
-| `npm run live-check:ui`    | Check the deployed app on the real Drive, in real browsers       |
+| Command                     | What it does                                                     |
+| --------------------------- | ---------------------------------------------------------------- |
+| `pnpm run dev`              | Serve the app with hot reload                                    |
+| `pnpm run build`            | Type-check, then build the static site into `dist/`              |
+| `pnpm run preview`          | Serve the `dist/` build on the same port                         |
+| `pnpm test`                 | Run the tests in watch mode                                      |
+| `pnpm run coverage`         | Run the tests once; fails under the coverage thresholds          |
+| `pnpm run e2e`              | Run the end-to-end tests in real browsers                        |
+| `pnpm run lint`             | Lint with type-aware and security rules; any warning fails       |
+| `pnpm run format`           | Format every file with Prettier (`pnpm run format:check` checks) |
+| `pnpm run check`            | Lint, check the format, run `coverage`, then `build`, as CI does |
+| `pnpm run deploy`           | Deploy `dist/` to the site mapped to the `app` target            |
+| `pnpm run live-check:login` | Sign the test account in for the live Drive checks               |
+| `pnpm run live-check`       | Check the Drive client against the real Drive                    |
+| `pnpm run live-check:ui`    | Check the deployed app on the real Drive, in real browsers       |
 
 Write the failing test first, then the code that makes it pass. CI runs the checks above on every pull request and on every push to `dev` and `main`.
 
-Once per clone, `git config core.hooksPath .githooks` turns on the repository's Git hooks: before each commit, Prettier and ESLint check the files being committed; before each push, `npm run check` runs. `.npmrc` turns off install scripts, so `npm ci` cannot turn them on itself.
+Once per clone, `git config core.hooksPath .githooks` turns on the repository's Git hooks: before each commit, Prettier and ESLint check the files being committed; before each push, `pnpm run check` runs.
 
 ## End-to-end tests
 
-`npm run e2e` builds the app and serves it with the headers Firebase Hosting sends, its security policy included. It then drives the app with Playwright in Chromium, as a desktop, and in WebKit, as an iPad and an iPhone held upright and sideways. Google's sign-in script and the Drive API are replaced by made-up ones (`e2e/fake-google.ts`), so the tests need no account and never reach Google. A test fails on any page error and on anything the security policy blocks.
+`pnpm run e2e` builds the app and serves it with the headers Firebase Hosting sends, its security policy included. It then drives the app with Playwright in Chromium, as a desktop, and in WebKit, as an iPad and an iPhone held upright and sideways. Google's sign-in script and the Drive API are replaced by made-up ones (`e2e/fake-google.ts`), so the tests need no account and never reach Google. A test fails on any page error and on anything the security policy blocks.
 
-Before the first run, download the browsers once with `npx playwright install chromium webkit`: they go to `~/.cache/ms-playwright`, shared by every project on the machine. WebKit also needs system libraries, which `sudo npx playwright install-deps webkit` installs. CI runs the tests in Microsoft's Playwright image, which holds both, and deploys only once they pass. The image's version must be the locked `@playwright/test`'s, as CI checks, and Dependabot does not update it: its Playwright pull request fails until you set, on the same branch, the image's tag in `.github/workflows/ci.yml` with the digest that `docker buildx imagetools inspect mcr.microsoft.com/playwright:v<version>-noble` prints. The tests record no traces, screenshots or videos, which would keep the requests the app makes.
+Before the first run, download the browsers once with `pnpm exec playwright install chromium webkit`: they go to `~/.cache/ms-playwright`, shared by every project on the machine. WebKit also needs system libraries, which `pnpm exec playwright install-deps webkit` installs, asking for `sudo`. CI runs the tests in Microsoft's Playwright image, which holds both, and deploys only once they pass. The image's version must be the locked `@playwright/test`'s, as CI checks, and Dependabot does not update it: its Playwright pull request fails until you set, on the same branch, the image's tag in `.github/workflows/ci.yml` with the digest that `docker buildx imagetools inspect mcr.microsoft.com/playwright:v<version>-noble` prints. The tests record no traces, screenshots or videos, which would keep the requests the app makes.
 
 ## Device checks
 
@@ -104,11 +104,11 @@ The unit tests replace Google Drive with mocked answers, so a few behaviors can 
 To set up, once:
 
 1. Create an OAuth client of type **Desktop app** in the Google Cloud project, download its JSON, and save it as `client.json` in that folder, then `chmod 700` the folder and `chmod 600` the file.
-2. In your own terminal, since it asks you to paste an address, run `DRIVEMD_LIVE_ACCOUNT=<test account> npm run live-check:login`. Open the address it prints, sign in as the test account and allow access; the browser then fails to load `127.0.0.1`, and you paste its address back. The script keeps the grant only if the test account signed in, and revokes any grant it cannot keep or that it replaces; it saves the grant as `grant.json`, readable only by you.
+2. In your own terminal, since it asks you to paste an address, run `DRIVEMD_LIVE_ACCOUNT=<test account> pnpm run live-check:login`. Open the address it prints, sign in as the test account and allow access; the browser then fails to load `127.0.0.1`, and you paste its address back. The script keeps the grant only if the test account signed in, and revokes any grant it cannot keep or that it replaces; it saves the grant as `grant.json`, readable only by you.
 
-Then `npm run live-check` runs the checks, which CI never does. Among them, notes written as another tool would, with CRLF and a byte order mark, LF or CR line breaks, are opened, decoded and saved with one task checked, and Drive must then hold the same bytes but that one; a note that is not UTF-8 must open read-only, and a save over someone else's change must write nothing. A file must also be found by its exact name, whatever its case, as Obsidian's links find notes, accented names included; and Drive must name no folder of a file shared alone that the account cannot reach. The shared drive's top folder, which Drive names "Drive", must come under the drive's own name, and so must a vault there, for which one check puts an `.obsidian` folder at the top of the shared drive, unless one is there, and trashes it after. The others make what they need in a folder of their own in the test account's Drive and trash it at the end, and they compare IDs rather than listings, so that no failure prints the names of other files. A check that needs one of the made-up files or the shared drive is skipped until it exists.
+Then `pnpm run live-check` runs the checks, which CI never does. Among them, notes written as another tool would, with CRLF and a byte order mark, LF or CR line breaks, are opened, decoded and saved with one task checked, and Drive must then hold the same bytes but that one; a note that is not UTF-8 must open read-only, and a save over someone else's change must write nothing. A file must also be found by its exact name, whatever its case, as Obsidian's links find notes, accented names included; and Drive must name no folder of a file shared alone that the account cannot reach. The shared drive's top folder, which Drive names "Drive", must come under the drive's own name, and so must a vault there, for which one check puts an `.obsidian` folder at the top of the shared drive, unless one is there, and trashes it after. The others make what they need in a folder of their own in the test account's Drive and trash it at the end, and they compare IDs rather than listings, so that no failure prints the names of other files. A check that needs one of the made-up files or the shared drive is skipped until it exists.
 
-`npm run live-check:ui` checks the deployed app the same way, in Chromium as a desktop and WebKit as an iPhone: staging by default, or the address in `DRIVEMD_LIVE_URL`. It hands the page the test account's session as a sign-in would leave it, so Google's window never opens; it then reaches notes in My Drive, a shared drive, a vault and behind a shortcut, finds one on Home and by search, and creates, renames, moves and trashes one, in a folder of its own that it trashes at the end. It also checks a task and edits a note's source in the deployed app, and finds Drive holding the bytes it should. It opens a note from Drive's **Open with** address, which the tab then holds alone, and a folder from a Drive link pasted in the search box, and creates a note from Drive's **New** address in the folder it names. Last, it opens a note of a vault written as Obsidian would, with a callout, a highlight, a tag, a comment, a link and embeds of a note's section and a picture, which must show and lead to the files they name. It fails on any page error and on anything the security policy blocks that the app depends on. It records no traces, screenshots or videos, which would keep the token.
+`pnpm run live-check:ui` checks the deployed app the same way, in Chromium as a desktop and WebKit as an iPhone: staging by default, or the address in `DRIVEMD_LIVE_URL`. It hands the page the test account's session as a sign-in would leave it, so Google's window never opens; it then reaches notes in My Drive, a shared drive, a vault and behind a shortcut, finds one on Home and by search, and creates, renames, moves and trashes one, in a folder of its own that it trashes at the end. It also checks a task and edits a note's source in the deployed app, and finds Drive holding the bytes it should. It opens a note from Drive's **Open with** address, which the tab then holds alone, and a folder from a Drive link pasted in the search box, and creates a note from Drive's **New** address in the folder it names. Last, it opens a note of a vault written as Obsidian would, with a callout, a highlight, a tag, a comment, a link and embeds of a note's section and a picture, which must show and lead to the files they name. It fails on any page error and on anything the security policy blocks that the app depends on. It records no traces, screenshots or videos, which would keep the token.
 
 ## Security
 
@@ -117,9 +117,9 @@ The app's access token can read and write the user's whole Drive, so the reposit
 - Strict TypeScript and type-aware ESLint, whose rules reject `eval` and unsanitized DOM sinks such as `innerHTML` and `dangerouslySetInnerHTML`.
 - The Drive client sends the token only in the `Authorization` header, refuses an ID that is not shaped like a Drive ID before it reaches a URL or a query, escapes search text, and keeps Drive's answers out of the browser's HTTP cache.
 - `firebase.json` serves a strict Content Security Policy that enforces Trusted Types and allows no images but the app's own and the object URLs it makes for images read from Drive, nor any inline style: the editor styles itself in a shadow root, through constructed style sheets, along with HSTS, isolation from other origins' windows and requests, and no MIME sniffing. `src/security-headers.test.ts` fails if any of them weakens.
-- `.npmrc` saves exact versions in `package.json`, turns off dependency install scripts and refuses Node.js versions outside `engines`. After adding a dependency, check that it works without its install script.
-- CI installs from the lockfile with `npm ci`, verifies registry signatures, blocks malware and critical advisories in any dependency, and blocks any advisory in the dependencies that ship.
-- Dependabot proposes npm and GitHub Actions updates weekly, for releases at least 7 days old.
+- `pnpm-workspace.yaml` saves exact versions in `package.json`, refuses a dependency whose `engines` exclude the project's Node.js, installs only releases at least 7 days old, and refuses a release published with weaker evidence of where it comes from (provenance, trusted publisher) than an earlier one of the same package. It runs no dependency's install script, and an install fails on one it does not list: list it there, `false` unless the dependency cannot work without it, with the reason.
+- CI installs from the lockfile with `pnpm install --frozen-lockfile`, which checks every locked version against those rules again, verifies registry signatures, blocks critical advisories in any dependency, and blocks any advisory in the dependencies that ship. GitHub's dependency graph does not read pnpm 12's lockfile yet ([dependabot-core#15904](https://github.com/dependabot/dependabot-core/issues/15904)), so Dependabot raises no security alert: these audits are the advisory check, and the Audit workflow also runs them every day on `dev`, between pushes.
+- Dependabot proposes dependency and GitHub Actions updates weekly, for releases at least 7 days old. pnpm (`packageManager` in `package.json`) and Node.js (`devEngines`) follow the same rule, Node.js on an LTS line.
 - Workflows pin every action to a commit SHA, start from no permissions and grant each job only what it needs; zizmor audits them in CI, and gitleaks scans the full history on every push and every pull request from a fork. The zizmor and gitleaks versions are pinned in the workflows and bumped by hand.
 
 ## Contributing
@@ -174,15 +174,15 @@ gh variable set GCP_SERVICE_ACCOUNT --repo "$REPO" --body "$SA"
 gh variable set GCP_WORKLOAD_IDENTITY_PROVIDER --repo "$REPO" --body "projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/drivemd"
 ```
 
-Releases follow the spec's [Versions](docs/SPEC.md#recommended-tech-stack): `package.json` on `dev` names the next one, and a pull request to `main` fails CI if that version is already tagged. Once production is deployed, the release job tags the merge commit `v<version>` and publishes a GitHub release with the merge commit's body as notes; a rerun on the same commit changes nothing. A release whose run never deployed, because a later push to `main` overtook it, gets no tag: create it by hand with `gh release create v<version> --target <merge commit>`. Right after a release, give `package.json` on `dev` the next version with `npm version <version> --no-git-tag-version`, in a pull request of its own.
+Releases follow the spec's [Versions](docs/SPEC.md#recommended-tech-stack): `package.json` on `dev` names the next one, and a pull request to `main` fails CI if that version is already tagged. Once production is deployed, the release job tags the merge commit `v<version>` and publishes a GitHub release with the merge commit's body as notes; a rerun on the same commit changes nothing. A release whose run never deployed, because a later push to `main` overtook it, gets no tag: create it by hand with `gh release create v<version> --target <merge commit>`. Right after a release, give `package.json` on `dev` the next version with `pnpm version <version> --no-git-tag-version`, in a pull request of its own.
 
 A run deploys only its branch's latest commit: re-running an older one fails rather than putting its older build back, and Hosting's release history, in the Firebase console, rolls a site back.
 
 Both sites belong to one project, which also holds the OAuth client, the Drive UI integration and the Marketplace listing. Firebase grants Hosting rights on a whole project, not on a site, so the deploy account can deploy either site: whatever reaches `dev` must be trusted as much as what reaches `main`.
 
-CI deploys by itself. To deploy by hand, map the target to a site first, which writes a `.firebaserc` that git ignores: `npm exec --no -- firebase target:apply hosting app <site-id> --project <project-id>`, then `npm run deploy -- --project <project-id>`.
+CI deploys by itself. To deploy by hand, map the target to a site first, which writes a `.firebaserc` that git ignores: `pnpm exec firebase target:apply hosting app <site-id> --project <project-id>`, then `pnpm run deploy --project <project-id>`.
 
-To see the headers and cache rules as Hosting serves them, run `npm run build`, map the target once with `npm exec --no -- firebase target:apply hosting app demo-drivemd --project demo-drivemd`, then run `npm exec --no -- firebase emulators:start --only hosting --project demo-drivemd` and open http://127.0.0.1:5000 (sign-in does not work on that origin).
+To see the headers and cache rules as Hosting serves them, run `pnpm run build`, map the target once with `pnpm exec firebase target:apply hosting app demo-drivemd --project demo-drivemd`, then run `pnpm exec firebase emulators:start --only hosting --project demo-drivemd` and open http://127.0.0.1:5000 (sign-in does not work on that origin).
 
 ## Drive integration
 
