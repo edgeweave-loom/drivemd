@@ -303,6 +303,20 @@ test("shows Find in note's panel under the app bar, mid-note", async ({
   const panel = await page.locator(".cm-panels-top").boundingBox();
   if (!appBar || !panel) throw new Error("Not shown");
   expect(panel.y).toBe(appBar.y + appBar.height);
+  // Drawn over the note's text, which runs under it, in the editor's
+  // shadow root.
+  const onTop = await field.evaluate((input) => {
+    const box = input.getBoundingClientRect();
+    return (
+      document
+        .querySelector(".editor")
+        ?.shadowRoot?.elementFromPoint(
+          box.x + box.width / 2,
+          box.y + box.height / 2,
+        ) === input
+    );
+  });
+  expect(onTop).toBe(true);
 });
 
 test("saves with Ctrl+S, and follows a link with Ctrl+click in the source", async ({
