@@ -95,6 +95,8 @@ const LIGHT_YAML = HighlightStyle.define(
  * any surface where the line's own color does not.
  */
 const ON_SHEET = EditorView.theme({
+  // The editor's layers stack among themselves, all under the app bar.
+  "&": { isolation: "isolate" },
   "&.cm-focused": { outline: "none" },
   // 26 px lines at 16 px, as the note's own.
   ".cm-scroller": { lineHeight: "1.625" },
@@ -104,8 +106,9 @@ const ON_SHEET = EditorView.theme({
     backgroundColor: "var(--surface-container-low)",
     boxShadow: "inset 2px 0 0 var(--primary)",
   },
-  // Find in note's panel sticks under the app bar, never over it.
-  ".cm-panels-top": { top: "var(--app-bar-bottom)", zIndex: "0" },
+  // Find in note's panel sticks under the app bar, over the text, whose
+  // scroller CodeMirror stacks at 0.
+  ".cm-panels-top": { top: "var(--app-bar-bottom)", zIndex: "1" },
 });
 
 const CODE_LINE = Decoration.line({ class: "cm-code-line" });
