@@ -8,6 +8,10 @@ export default defineConfig({
   // The runs share the test account's Drive, and each browser makes its own.
   workers: 1,
   timeout: 60_000,
+  // Staging's Drive has taken longer than the 5 s Playwright waits by default
+  // to answer reads and writes alike: a page's lists, a note's content, a
+  // vault's lookups of links and embeds, a first save's three calls in turn.
+  expect: { timeout: 20_000 },
   reporter: "list",
   use: {
     baseURL:

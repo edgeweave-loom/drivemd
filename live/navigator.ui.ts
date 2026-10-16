@@ -29,16 +29,6 @@ const INDEX_TEST_TIMEOUT_MS = INDEX_TIMEOUT_MS + 60_000;
 // A token just minted lives an hour; the app asks for Continue in its last
 // 5 minutes, which a test cannot tap.
 const TOKEN_LIFETIME_MS = 50 * 60_000;
-// What waits on a write to Drive: a first save checks the revision, keeps
-// the one before the edits, then writes, three calls in turn, and creating,
-// renaming, moving or trashing a note, which staging's Drive has taken
-// longer than the 5 s Playwright waits by default to answer.
-const WRITE = { timeout: 20_000 };
-// What waits on Drive's answer to a read: a page's lists, a note's content,
-// and in a vault the lookups of its links and embeds by name and the download
-// of a picture, which staging's Drive has also taken longer than 5 s to
-// answer.
-const READ = { timeout: 20_000 };
 
 interface Run {
   /** The run's folder, named after the browser, which makes its own. */
@@ -321,7 +311,7 @@ async function searchBox(page: Page) {
  */
 async function loaded(page: Page) {
   await expect(page.getByText("Opening your session…")).toHaveCount(0);
-  await expect(page.getByText("Loading…")).toHaveCount(0, READ);
+  await expect(page.getByText("Loading…")).toHaveCount(0);
   await expect(page.getByRole("alert")).toHaveCount(0);
 }
 
@@ -443,20 +433,20 @@ test("creates, renames, moves and trashes a note", async ({ page, run }) => {
   const create = page.getByRole("dialog", { name: "New Markdown file" });
   await create.getByRole("textbox", { name: "Name" }).fill(`${RUN} idea`);
   await create.getByRole("button", { name: "Create" }).click();
-  await expect(noteName(page, `${RUN} idea.md`)).toBeVisible(WRITE);
+  await expect(noteName(page, `${RUN} idea.md`)).toBeVisible();
   const id = new URL(page.url()).searchParams.get("id") ?? "";
   // Once the note shows, as a person would rename it: before the vault check
   // has answered, renaming asks first.
   await loaded(page);
 
   await renameNote(page, `${RUN} idea.md`, `${RUN} plan`);
-  await expect(noteName(page, `${RUN} plan.md`)).toBeVisible(WRITE);
+  await expect(noteName(page, `${RUN} plan.md`)).toBeVisible();
 
   await noteAction(page, "Move");
   const move = page.getByRole("dialog", { name: `Move ${RUN} plan.md` });
   await move.getByRole("button", { name: `${RUN} Archive` }).click();
   await move.getByRole("button", { name: "Move here" }).click();
-  await expect(move).toHaveCount(0, WRITE);
+  await expect(move).toHaveCount(0);
   await expect(folderLink(page, `${RUN} Archive`)).toBeVisible();
 
   await noteAction(page, "Move to trash");
@@ -464,7 +454,7 @@ test("creates, renames, moves and trashes a note", async ({ page, run }) => {
     .getByRole("dialog", { name: "Move to trash?" })
     .getByRole("button", { name: "Move to trash" })
     .click();
-  await expect(heading(page, `${RUN} Archive`)).toBeVisible(WRITE);
+  await expect(heading(page, `${RUN} Archive`)).toBeVisible();
   await loaded(page);
 
   // Drive agrees with what the pages showed.
@@ -529,7 +519,7 @@ test("opens what Drive's Open with, New and pasted links name", async ({
   const create = page.getByRole("dialog", { name: "New Markdown file" });
   await create.getByRole("textbox", { name: "Name" }).fill(`${RUN} from Drive`);
   await create.getByRole("button", { name: "Create" }).click();
-  await expect(noteName(page, `${RUN} from Drive.md`)).toBeVisible(WRITE);
+  await expect(noteName(page, `${RUN} from Drive.md`)).toBeVisible();
   await loaded(page);
   const id = new URL(page.url()).searchParams.get("id") ?? "";
 
@@ -575,7 +565,7 @@ test("checks a task in a CRLF note with a byte order mark, saving that byte only
 
   // Ticked while viewing, a task saves at once.
   await note.getByRole("checkbox").last().check();
-  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible(WRITE);
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
 
   const after = before.slice();
   // The space between the brackets of "- [ ] Pour\r\n", 9 bytes from the end.
@@ -606,7 +596,7 @@ test("edits a note's source and saves it, keeping its line breaks", async ({
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("Black.");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible(WRITE);
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
 
   expect(await bytesOf(run, id)).toEqual(utf8("# Tea\r\n\r\nGreen.\r\nBlack."));
 });
@@ -646,7 +636,7 @@ test("renders a note of a vault as Obsidian does, its links and embeds leading t
   await page.goto(`/edit?id=${run.ids.obsidian}`);
 
   const note = page.locator(".markdown").first();
-  await expect(note.locator("p br").first()).toBeAttached(READ);
+  await expect(note.locator("p br").first()).toBeAttached();
   await expect(note.locator(".callout")).toHaveAttribute("data-callout", "tip");
   await expect(note.locator("mark")).toHaveText("Lit");
   await expect(note.locator(".tag")).toHaveText("#live-tag");
@@ -655,20 +645,13 @@ test("renders a note of a vault as Obsidian does, its links and embeds leading t
   await expect(link).toHaveAttribute(
     "href",
     `/edit?id=${run.ids.guide}#brewing`,
-    READ,
   );
-  await expect(note.getByText(`${RUN} Missing`)).toHaveClass(
-    "unresolved",
-    READ,
-  );
-  await expect(note.locator(".embed").getByText("Wait.")).toBeVisible(READ);
+  await expect(note.getByText(`${RUN} Missing`)).toHaveClass("unresolved");
+  await expect(note.locator(".embed").getByText("Wait.")).toBeVisible();
   const pixel = note.getByRole("img", { name: `${RUN} pixel.png` });
-  await expect(pixel).toHaveAttribute("width", "40", READ);
+  await expect(pixel).toHaveAttribute("width", "40");
   await expect
-    .poll(
-      () => pixel.evaluate((image: HTMLImageElement) => image.naturalWidth),
-      READ,
-    )
+    .poll(() => pixel.evaluate((image: HTMLImageElement) => image.naturalWidth))
     .toBe(1);
   await loaded(page);
 
@@ -678,6 +661,6 @@ test("renders a note of a vault as Obsidian does, its links and embeds leading t
   );
   await expect(
     page.locator(".markdown").getByRole("heading", { name: "Brewing" }),
-  ).toBeInViewport(READ);
+  ).toBeInViewport();
   await loaded(page);
 });
