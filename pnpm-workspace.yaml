@@ -15,7 +15,8 @@ minimumReleaseAgeExclude:
 trustPolicy: no-downgrade
 trustPolicyExclude:
   # The 6.x backport of a fix, published in 2023 without provenance after 7.x
-  # had it; @babel/core, which the React hooks lint rule uses, needs 6.x.
+  # had it; @babel/core, which the React hooks lint rule uses, and
+  # firebase-tools need 6.x.
   - semver@6.3.1
 # Dependency build scripts are blocked, and an unlisted one fails the
 # install: allow them one by one, each with its reason.

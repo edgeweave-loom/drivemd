@@ -2,8 +2,8 @@
   "mcpServers": {
     "mobile": {
       "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@mobilenext/mobile-mcp@1.0.8"],
+      "command": "pnpm",
+      "args": ["dlx", "@mobilenext/mobile-mcp@1.0.8"],
       "env": { "MOBILEMCP_DISABLE_TELEMETRY": "1" }
     }
   }

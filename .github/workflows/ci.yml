@@ -83,7 +83,10 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: package.json
-          cache: pnpm
+          # This job builds what deploys, so it restores no cache: whoever
+          # could write one could alter both a package in pnpm's store and the
+          # hashes pnpm checks it against.
+          package-manager-cache: false
       - run: pnpm install --frozen-lockfile
       - name: Verify the registry signatures of the installed packages
         run: pnpm audit signatures
