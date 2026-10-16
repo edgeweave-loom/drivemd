@@ -269,7 +269,7 @@ test("leaves the note's end clear of the keyboard toolbar", async ({
   }
 });
 
-test("shows Find in note's panel under the app bar, mid-note", async ({
+test("shows Find in note in the app bar on a phone, or under it, mid-note", async ({
   page,
   drive,
 }, info) => {
@@ -299,10 +299,24 @@ test("shows Find in note's panel under the app bar, mid-note", async ({
 
   const field = page.getByRole("textbox", { name: "Find" });
   await expect(field).toBeFocused();
-  const appBar = await page.getByRole("banner").boundingBox();
-  const panel = await page.locator(".cm-panels-top").boundingBox();
-  if (!appBar || !panel) throw new Error("Not shown");
-  expect(panel.y).toBe(appBar.y + appBar.height);
+  // Safari zooms in on a field whose text is smaller.
+  await expect(field).toHaveCSS("font-size", "16px");
+  const appBar = page.getByRole("banner");
+  const bar = page.getByRole("search", { name: "Find in note" });
+  if (info.project.metadata.layout === "phone") {
+    // It holds the app bar alone, until it closes.
+    await expect(appBar.getByRole("search")).toBeVisible();
+    await expect(appBar.getByRole("button", { name: "Done" })).toBeHidden();
+    await bar.getByRole("button", { name: "Close find" }).click();
+    await expect(appBar.getByRole("button", { name: "Done" })).toBeVisible();
+    return;
+  }
+  const [above, below] = await Promise.all([
+    appBar.boundingBox(),
+    bar.boundingBox(),
+  ]);
+  if (!above || !below) throw new Error("Not shown");
+  expect(below.y).toBe(above.y + above.height);
 });
 
 test("saves with Ctrl+S, and follows a link with Ctrl+click in the source", async ({

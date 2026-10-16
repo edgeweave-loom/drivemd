@@ -9,10 +9,13 @@ import {
 } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import {
+  getSearchQuery,
   highlightSelectionMatches,
   search,
   searchKeymap,
   searchPanelOpen,
+  setSearchQuery,
+  type SearchQuery,
 } from "@codemirror/search";
 import {
   EditorState,
@@ -25,7 +28,9 @@ import {
   EditorView,
   highlightActiveLine,
   keymap,
+  runScopeHandlers,
   ViewPlugin,
+  type Command,
   type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view";
@@ -39,12 +44,16 @@ import {
   useState,
   type Ref,
 } from "react";
+import { flushSync } from "react-dom";
 import { mountIn, THEME } from "./codemirror.ts";
+import { countMatches, findInNote, findsInNote, type Matches } from "./find.ts";
+import { FindBar } from "./FindBar.tsx";
 import { indentLines, outdentLines } from "./formatting.ts";
 import { withFrontmatter } from "./frontmatter.ts";
 import { KeyboardToolbar, TOOLBAR_HEIGHT } from "./KeyboardToolbar.tsx";
+import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
-import { useTouch } from "./layout.ts";
+import { useLayout, useTouch } from "./layout.ts";
 import { linkAt } from "./source-links.ts";
 import type { LineBreak } from "./text.ts";
 import { keepVisible } from "./visual-viewport.ts";
@@ -104,8 +113,9 @@ const ON_SHEET = EditorView.theme({
     backgroundColor: "var(--surface-container-low)",
     boxShadow: "inset 2px 0 0 var(--primary)",
   },
-  // Find in note's panel sticks under the app bar, never over it.
-  ".cm-panels-top": { top: "var(--app-bar-bottom)", zIndex: "0" },
+  // Find in note's bar is the page's own (FindBar.tsx): CodeMirror's panel
+  // only holds that the search is open, which shows its matches.
+  ".cm-panels": { display: "none" },
 });
 
 const CODE_LINE = Decoration.line({ class: "cm-code-line" });
@@ -223,7 +233,10 @@ function extensions(
     ON_SHEET,
     highlightActiveLine(),
     // The browser's own find misses lines the editor has not drawn.
-    search({ top: true }),
+    // At the top, where its hidden panel takes no room from the cursor's.
+    search({
+      createPanel: () => ({ dom: document.createElement("div"), top: true }),
+    }),
     highlightSelectionMatches(),
     keymap.of([
       // A list item nests from the keyboard as from the toolbar's keys.
@@ -231,6 +244,8 @@ function extensions(
       { key: "Mod-[", run: outdentLines },
       ...defaultKeymap,
       ...historyKeymap,
+      // Its field is the page's, where CodeMirror's own Mod-f misses it.
+      { key: "Mod-f", run: findInNote, scope: "editor search-panel" },
       ...searchKeymap,
     ]),
     EditorView.lineWrapping,
@@ -284,44 +299,77 @@ export function Editor({
 }) {
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
+  const field = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
-  const [searching, setSearching] = useState(false);
+  // Find in note's query and matches, while it is open.
+  const [found, setFound] = useState<Found | null>(null);
+  const searching = found !== null;
   const touch = useTouch();
+  const phone = useLayout() === "phone";
   const toolbar = touch && focused;
   const opening = useEffectEvent(() => initial);
   const edited = useEffectEvent((update: ViewUpdate) => {
     if (update.docChanged) onChange(update.state.sliceDoc());
     if (update.focusChanged) setFocused(update.view.hasFocus);
-    const open = searchPanelOpen(update.state);
-    if (open !== searchPanelOpen(update.startState)) setSearching(open);
+    if (!searchPanelOpen(update.state)) {
+      if (searchPanelOpen(update.startState)) setFound(null);
+      return;
+    }
+    const asked = update.transactions.some(findsInNote);
+    if (
+      asked ||
+      update.docChanged ||
+      update.selectionSet ||
+      getSearchQuery(update.state) !== getSearchQuery(update.startState)
+    ) {
+      const next = finding(update.state);
+      if (!asked) {
+        setFound(next);
+        return;
+      }
+      // At once, so that the field takes the focus within the tap, which
+      // alone brings up a phone's keyboard.
+      flushSync(() => {
+        setFound(next);
+      });
+      field.current?.focus();
+      field.current?.select();
+    }
   });
-  // While the toolbar or Find in note's panel shows, the app bar stays on
-  // the screen, Done and Save with it, and the panel under it: iOS pans the
-  // visual viewport away from the page's top, where they stick.
+  // While the toolbar or Find in note shows, the app bar stays on the
+  // screen, Done and Save with it, and on a wider screen than a phone's,
+  // Find in note's bar under it: iOS pans the visual viewport away from the
+  // page's top, where they stick.
   const keeping = touch && (focused || searching);
   useLayoutEffect(() => {
     if (!keeping) return;
     const appBar = document.querySelector<HTMLElement>(".bar");
-    const panel = searching
-      ? editor.current?.dom.querySelector<HTMLElement>(".cm-panels-top")
-      : null;
+    const findBar =
+      searching && !phone
+        ? document.querySelector<HTMLElement>(".find-bar")
+        : null;
     const stops = [
       appBar && keepVisible(appBar),
-      panel && keepVisible(panel, { below: appBar }),
+      findBar && keepVisible(findBar, { below: appBar }),
     ];
     return () => {
       for (const stop of stops) stop?.();
     };
-  }, [keeping, searching]);
-  // The app bar stays over the page's top while the toolbar shows.
+  }, [keeping, searching, phone]);
+  // The cursor and the matches stay clear of the bars over the page's top,
+  // and of the toolbar.
   const clearance = useEffectEvent(() =>
-    toolbar
+    toolbar || searching
       ? {
           top: Math.max(
             0,
-            document.querySelector(".bar")?.getBoundingClientRect().bottom ?? 0,
+            ...[".bar", ".find-bar"].map(
+              (bar) =>
+                document.querySelector(bar)?.getBoundingClientRect().bottom ??
+                0,
+            ),
           ),
-          bottom: TOOLBAR_HEIGHT,
+          bottom: toolbar ? TOOLBAR_HEIGHT : 0,
         }
       : null,
   );
@@ -358,8 +406,45 @@ export function Editor({
     [lineBreak],
   );
 
+  // Leaving Find in note gives the focus back to the text, at the match
+  // last found, which iOS may have panned under the keyboard, clear of the
+  // toolbar that the focus brings back on a touch screen.
+  const searched = (view: EditorView) => {
+    if (searchPanelOpen(view.state)) return;
+    view.focus();
+    view.dispatch({
+      effects: EditorView.scrollIntoView(view.state.selection.main, {
+        yMargin: touch ? TOOLBAR_HEIGHT : 5,
+      }),
+    });
+  };
+  const bar = found && (
+    <FindBar
+      query={found.query}
+      matches={found.matches}
+      field={field}
+      onQuery={(query) => {
+        editor.current?.dispatch({ effects: setSearchQuery.of(query) });
+      }}
+      onCommand={(command: Command) => {
+        const view = editor.current;
+        if (!view) return;
+        command(view);
+        searched(view);
+      }}
+      onKey={(event) => {
+        const view = editor.current;
+        if (!view) return false;
+        const handled = runScopeHandlers(view, event, "search-panel");
+        searched(view);
+        return handled;
+      }}
+    />
+  );
+
   return (
     <>
+      {phone ? <InSlot name="find">{bar}</InSlot> : bar}
       <div className="editor" ref={host} />
       {toolbar && (
         <KeyboardToolbar
@@ -378,6 +463,16 @@ export function Editor({
       )}
     </>
   );
+}
+
+interface Found {
+  query: SearchQuery;
+  matches: Matches;
+}
+
+function finding(state: EditorState): Found {
+  const query = getSearchQuery(state);
+  return { query, matches: countMatches(state, query) };
 }
 
 /**

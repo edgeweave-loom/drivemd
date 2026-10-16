@@ -2048,3 +2048,118 @@ body:has(> .keyboard-toolbar) .editor {
 .keyboard-toolbar button::after {
   content: none;
 }
+
+/* Find in note (docs/DESIGN.md, Find in note): over the source's top, under
+   the app bar, from edge to edge of its sheet; on a phone, in the app bar's
+   place. */
+.find-bar {
+  position: sticky;
+  top: var(--app-bar-bottom);
+  z-index: 1;
+  display: grid;
+  gap: var(--space-2);
+  margin-inline: calc(-1 * var(--text-inset));
+  padding: var(--space-2) var(--text-inset);
+  border-bottom: 1px solid var(--outline-variant);
+  background: var(--sheet);
+  container-type: inline-size;
+}
+
+.find-row {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.find-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.find-field > .icon {
+  position: absolute;
+  top: 50%;
+  left: var(--space-4);
+  translate: 0 -50%;
+  color: var(--on-surface-variant);
+  pointer-events: none;
+}
+
+.find-field input {
+  width: 100%;
+  min-height: var(--control-height);
+  padding: 0 var(--space-4);
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--surface-container-high);
+  color: inherit;
+  font: inherit;
+  /* Safari zooms in on a field whose text is smaller. */
+  font-size: max(16px, 1rem);
+}
+
+.find-field > .icon + input {
+  padding-left: 52px;
+}
+
+/* A tablet's sheet leaves the field too little room for its icon. */
+@container (width < 480px) {
+  .find-field > .icon {
+    display: none;
+  }
+
+  .find-field > .icon + input {
+    padding-left: var(--space-4);
+  }
+}
+
+.find-field input[aria-invalid="true"] {
+  color: var(--error);
+}
+
+.find-count {
+  flex: none;
+  padding-inline: var(--space-2);
+  color: var(--on-surface-variant);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  line-height: 20px;
+}
+
+/* An option's check shows while it is on. */
+.find-menu > [aria-checked="false"] > .icon {
+  visibility: hidden;
+}
+
+button.find-more {
+  anchor-name: --find-more;
+}
+
+.find-menu {
+  inset: calc(var(--app-bar-bottom) - var(--space-2))
+    calc(var(--space-4) + env(safe-area-inset-right)) auto auto;
+}
+
+@supports (anchor-name: --find-more) {
+  .find-menu {
+    position-anchor: --find-more;
+    inset: anchor(bottom) anchor(right) auto auto;
+    margin: var(--space-1) 0 0;
+    position-try-fallbacks: flip-inline;
+  }
+}
+
+/* On a phone, the app bar holds Find in note alone. */
+.bar.note:has(> .find > .find-bar) > :not(.find) {
+  display: none;
+}
+
+.bar .find-bar {
+  position: static;
+  flex: 1;
+  margin: 0 0 0 calc(-1 * var(--space-2));
+  padding: var(--space-2) 0;
+  border: none;
+  background: none;
+}

@@ -86,6 +86,7 @@ export function Navigator({
       mode: place("mode"),
       save: place("save"),
       more: place("more"),
+      find: place("find"),
     };
   }, []);
   return (
@@ -143,7 +144,7 @@ function NoteBar({
   file,
   email,
   onSignOut,
-  places: { lead, title, mode, save, more },
+  places: { lead, title, mode, save, more, find },
 }: {
   file: FileRef;
   email: string;
@@ -182,6 +183,8 @@ function NoteBar({
         <span className="slot" ref={more} />
       </div>
       {account === "bar" && <Account email={email} onSignOut={onSignOut} />}
+      {/* Where a phone's Find in note takes the whole bar's place. */}
+      {phone && <span className="slot find" ref={find} />}
     </header>
   );
 }

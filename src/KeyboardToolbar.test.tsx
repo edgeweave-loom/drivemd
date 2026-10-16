@@ -10,7 +10,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Editor } from "./Editor.tsx";
-import { holdTouch } from "./test/screen.ts";
+import { holdScreen, holdTouch } from "./test/screen.ts";
 
 function open(text: string) {
   const { container } = render(
@@ -165,15 +165,16 @@ describe("the keyboard toolbar", () => {
     expect(view.state.sliceDoc()).toBe("teas");
   });
 
-  it("finds text in the note", async () => {
+  it("finds text in the note, its field taking the focus within the tap", async () => {
     const view = await editing("tea");
 
     tap("Find in note");
 
     expect(searchPanelOpen(view.state)).toBe(true);
+    expect(screen.getByRole("textbox", { name: "Find" })).toHaveFocus();
   });
 
-  it("keeps the app bar and Find in note's panel in view while it is open", async () => {
+  it("keeps the app bar, which a phone's Find in note takes, in view while it is open", async () => {
     const viewport = new Viewport();
     Object.defineProperty(window, "visualViewport", {
       value: viewport,
@@ -183,16 +184,39 @@ describe("the keyboard toolbar", () => {
     appBar.className = "bar";
     let top = 0;
     sitAt(appBar, () => top, 56);
-    const view = await editing("tea");
+    await editing("tea");
 
     tap("Find in note");
-    const panel = view.dom.querySelector<HTMLElement>(".cm-panels-top");
-    if (!panel) throw new Error("No panel");
-    sitAt(panel, () => top + 56, 82);
-    // Its field has the focus, and iOS pans the page away from the bar.
-    act(() => {
-      view.contentDOM.blur();
+    await waitFor(() => {
+      expect(toolbar()).toBeNull();
     });
+    // iOS pans the page away from the bar.
+    top = -120;
+    act(() => {
+      viewport.show(400);
+    });
+
+    expect(appBar.style.transform).toBe("translateY(120px)");
+    appBar.remove();
+  });
+
+  it("keeps the app bar and Find in note's bar under it in view on a tablet", async () => {
+    holdScreen("tablet");
+    const viewport = new Viewport();
+    Object.defineProperty(window, "visualViewport", {
+      value: viewport,
+      configurable: true,
+    });
+    const appBar = document.body.appendChild(document.createElement("header"));
+    appBar.className = "bar";
+    let top = 0;
+    sitAt(appBar, () => top, 56);
+    await editing("tea");
+
+    tap("Find in note");
+    const findBar = screen.getByRole("search", { name: "Find in note" });
+    sitAt(findBar, () => top + 56, 56);
+    // Its field has the focus, and iOS pans the page away from the bar.
     await waitFor(() => {
       expect(toolbar()).toBeNull();
     });
@@ -202,7 +226,7 @@ describe("the keyboard toolbar", () => {
     });
 
     expect(appBar.style.transform).toBe("translateY(120px)");
-    expect(panel.style.transform).toBe("translateY(120px)");
+    expect(findBar.style.transform).toBe("translateY(120px)");
     appBar.remove();
   });
 
