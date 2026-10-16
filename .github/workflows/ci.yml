@@ -79,14 +79,11 @@ jobs:
             fi
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+      # pnpm installs the Node.js that package.json's devEngines pins, and runs
+      # the scripts with it. This job builds what deploys, so it restores no
+      # cache: whoever could write one could alter both a package in pnpm's
+      # store and the hashes pnpm checks it against.
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: package.json
-          # This job builds what deploys, so it restores no cache: whoever
-          # could write one could alter both a package in pnpm's store and the
-          # hashes pnpm checks it against.
-          package-manager-cache: false
       - run: pnpm install --frozen-lockfile
       - name: Verify the registry signatures of the installed packages
         run: pnpm audit signatures
@@ -141,10 +138,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version-file: package.json
-          cache: pnpm
+          cache: true
       - run: pnpm install --frozen-lockfile
       - name: Require the image's Playwright to be the locked one
         run: |
@@ -184,10 +179,6 @@ jobs:
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: package.json
-          package-manager-cache: false
       - run: pnpm install --frozen-lockfile
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
