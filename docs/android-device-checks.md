@@ -14,7 +14,7 @@ The rules of [`apple-device-checks.md`](apple-device-checks.md#rules-for-the-age
 
 ### Devices
 
-Use the newest Android API level that the SDK offers with Google Play (`sdkmanager --list | grep google_apis_playstore`): Chrome installs a web app as an app of its own, a WebAPK, which the share target needs, through the Play Store, which the `default` and `google_apis` images lack. When the image has no Gboard, section D runs with its keyboard, which the report names.
+Use the newest Android version that the SDK offers with Google Play, beta and canary left aside (`android sdk list --all | grep google_apis_playstore`), such as `system-images;android-37.2;google_apis_playstore_ps16k;arm64-v8a`; the newest come only with 16 KB pages (`_ps16k`). Chrome installs a web app as an app of its own, a WebAPK, which the share target needs, through the Play Store, which the `default` and `google_apis` images lack. When the image has no Gboard, section D runs with its keyboard, which the report names.
 
 | Name             | Device (`avdmanager list device`) | Why                                                                                                                                   |
 | ---------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
@@ -24,7 +24,7 @@ Use the newest Android API level that the SDK offers with Google Play (`sdkmanag
 Create each one fresh for a run, so that no installed app, `localStorage` or Google session is left from the last one:
 
 ```sh
-IMAGE="system-images;android-<API>;google_apis_playstore;arm64-v8a"
+IMAGE="system-images;android-<version>;google_apis_playstore_ps16k;arm64-v8a"
 avdmanager delete avd -n DriveMD_Phone
 echo no | avdmanager create avd -n DriveMD_Phone -k "$IMAGE" -d pixel_9
 echo hw.keyboard=yes >> ~/.android/avd/DriveMD_Phone.avd/config.ini
@@ -48,11 +48,11 @@ The phone must show its camera's cutout in screenshots: when it shows none, turn
 
 Once per Mac, besides Node.js 24, pnpm, uv and mobile-mcp, as [`apple-device-checks.md`](apple-device-checks.md#install) says:
 
-- Android Studio, or its command-line tools alone, with the SDK in `~/Library/Android/sdk`, where mobile-mcp looks for `adb` unless `ANDROID_HOME` says otherwise. In Android Studio's **Settings ▸ Languages & Frameworks ▸ Android SDK ▸ SDK Tools**, tick **Android SDK Command-line Tools (latest)**, **Android Emulator** and **Android SDK Platform-Tools**, then fetch the image: `sdkmanager "system-images;android-<API>;google_apis_playstore;arm64-v8a"`.
-- `sdkmanager` and `avdmanager` need Java 17 or newer: when `java -version` says older, use Android Studio's, `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`.
+- The Android SDK in `~/Library/Android/sdk`, where mobile-mcp looks for `adb` unless `ANDROID_HOME` says otherwise, with its command-line tools in `cmdline-tools/latest`: from Android Studio's **Settings ▸ Languages & Frameworks ▸ Android SDK ▸ SDK Tools**, **Android SDK Command-line Tools (latest)**, or without Android Studio, the archive that Google's repository (`https://dl.google.com/android/repository/repository2-3.xml`) lists for `cmdline-tools;latest` and `macosx`, checked against its SHA-1 there and unzipped. Then install the emulator, `adb` and the image with the Android CLI, which replaces `sdkmanager`: `android sdk install emulator platform-tools "$IMAGE"`. Its `android` command is a launcher that fetches the CLI's newest version into `~/.android/cli`, which no file pins. Leave the Android tools' usage statistics off (`"hasOptedIn":false` in `~/.android/analytics.settings`).
+- `avdmanager`, which the devices still need since `android emulator create` takes no device type, image or name, runs on Java 17 or newer: when `java -version` says older, use Android Studio's, `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`.
 - Put `~/Library/Android/sdk/platform-tools`, `emulator` and `cmdline-tools/latest/bin` on the `PATH`.
 
-Before the first check, the agent checks these with `adb version`, `emulator -version`, `sdkmanager --list_installed`, `node -v`, `pnpm -v`, `uv --version` and whether the `mobile` tools are available, and tells the developer what is missing. `mobile_list_available_devices` also lists a phone plugged into the Mac: use only the emulators' serials.
+Before the first check, the agent checks these with `adb version`, `emulator -version`, `android sdk list`, `node -v`, `pnpm -v`, `uv --version` and whether the `mobile` tools are available, and tells the developer what is missing. `mobile_list_available_devices` also lists a phone plugged into the Mac: use only the emulators' serials.
 
 ### Tools
 
