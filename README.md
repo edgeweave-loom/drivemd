@@ -87,7 +87,7 @@ Before the first run, download the browsers once with `pnpm exec playwright inst
 
 ## Device checks
 
-Neither the end-to-end tests nor the live checks run iOS itself: Safari's bars, the on-screen keyboard, the notch and the home bar, the Home Screen app and Google's sign-in window. [`docs/apple-device-checks.md`](docs/apple-device-checks.md) lists the checks for those, on staging, written for Claude Code driving the iOS Simulator on a Mac, and readable by a person with a real iPhone or iPad. The MCP server that drives the Simulator is declared in `.mcp.json`: Claude Code offers it to whoever opens the repository, and only those who run these checks need accept it. Run them before a milestone that changes the interface closes, and before a release.
+Neither the end-to-end tests nor the live checks run iOS or Android themselves: the browser's bars, the on-screen keyboard, the notch and the home bar, the Home Screen app or the installed one, Android's Back and share sheet, and Google's sign-in window. [`docs/apple-device-checks.md`](docs/apple-device-checks.md) lists the checks for those, on staging, written for Claude Code driving the iOS Simulator on a Mac, and readable by a person with a real iPhone or iPad; [`docs/android-device-checks.md`](docs/android-device-checks.md) does the same with the Android Emulator, which needs Android Studio or its command-line tools. The MCP server that drives the Simulator and the emulator is declared in `.mcp.json`: Claude Code offers it to whoever opens the repository, and only those who run these checks need accept it. Run them before a milestone that changes the interface closes, and before a release.
 
 ## Configuration
 
