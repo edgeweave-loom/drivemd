@@ -46,6 +46,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { mountIn, THEME } from "./codemirror.ts";
+import { keepDoubleSpace } from "./double-space.ts";
 import { countMatches, findInNote, findsInNote, type Matches } from "./find.ts";
 import { FindBar } from "./FindBar.tsx";
 import { indentLines, outdentLines } from "./formatting.ts";
@@ -223,6 +224,7 @@ function extensions(
     EditorState.lineSeparator.of(lineBreak),
     writable(lineBreak),
     history(),
+    keepDoubleSpace,
     // GitHub's Markdown, its fences highlighted in their language and its
     // front matter in YAML; Enter continues lists and task lists.
     withFrontmatter(
