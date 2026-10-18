@@ -3,7 +3,11 @@
     "mobile": {
       "type": "stdio",
       "command": "pnpm",
-      "args": ["dlx", "@mobilenext/mobile-mcp@1.0.8"],
+      "args": [
+        "--config.node-linker=hoisted",
+        "dlx",
+        "@mobilenext/mobile-mcp@1.0.8"
+      ],
       "env": { "MOBILEMCP_DISABLE_TELEMETRY": "1" }
     }
   }
