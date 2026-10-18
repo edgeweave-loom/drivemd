@@ -73,6 +73,16 @@ test("lets the page take the whole screen, notch and home bar included", async (
   ).toBeEnabled();
 });
 
+test("shrinks the page with Android's keyboard, so the note's end scrolls above it", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.locator('meta[name="viewport"]')).toHaveAttribute(
+    "content",
+    /(^|, )interactive-widget=resizes-content(,|$)/,
+  );
+});
+
 test("keeps the sign-in screen clear of the notch and the home bar", async ({
   page,
 }) => {
