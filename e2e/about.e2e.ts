@@ -41,6 +41,17 @@ test("says how DriveMD treats data, its terms, where to get help and its source,
   await expect(
     page.locator("#source").getByRole("link", { name: "Apache License 2.0" }),
   ).toHaveAttribute("href", "https://www.apache.org/licenses/LICENSE-2.0");
+  // So do the callouts' icons, and the Feather icons among them.
+  for (const [name, href] of [
+    ["Lucide", "https://lucide.dev"],
+    ["ISC License", "https://opensource.org/license/isc-license-txt"],
+    ["Feather", "https://github.com/feathericons/feather"],
+    ["MIT License", "https://opensource.org/license/mit"],
+  ] as const) {
+    await expect(
+      page.locator("#source").getByRole("link", { name, exact: true }),
+    ).toHaveAttribute("href", href);
+  }
   // So do its fonts.
   for (const [name, href] of [
     ["Google Sans Flex", "https://fonts.google.com/specimen/Google+Sans+Flex"],

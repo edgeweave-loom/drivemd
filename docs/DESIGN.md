@@ -141,6 +141,6 @@ Measurements are in CSS pixels; colors are tokens.
 
 ## In the app
 
-- The tokens are `src/tokens.css`, which `src/index.css` imports, and the editor's theme takes the same ones through CodeMirror's constructed style sheets. Obsidian's callouts and highlights keep Obsidian's own colors, as the spec says.
+- The tokens are `src/tokens.css`, which `src/index.css` imports, and the editor's theme takes the same ones through CodeMirror's constructed style sheets. Obsidian's callouts and highlights keep Obsidian's own colors, and callouts its Lucide icons, as the spec says.
 - The security policy loads nothing from other sites: the fonts ship with the app as woff2 subsets, with their license in `LICENSES/`, and icons are inline SVG rather than an icon font, which would also show its ligature words while it loads.
 - No inline `style` attribute: the policy blocks them.

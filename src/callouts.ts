@@ -3,26 +3,34 @@ import { visit } from "unist-util-visit";
 import { sliceText, writtenAt } from "./written.ts";
 
 /** Obsidian's callout types, and the aliases that show as one of them. */
-const TYPES = new Map(
-  Object.entries({
-    note: ["note"],
-    abstract: ["abstract", "summary", "tldr"],
-    info: ["info"],
-    todo: ["todo"],
-    tip: ["tip", "hint", "important"],
-    success: ["success", "check", "done"],
-    question: ["question", "help", "faq"],
-    warning: ["warning", "caution", "attention"],
-    failure: ["failure", "fail", "missing"],
-    danger: ["danger", "error"],
-    bug: ["bug"],
-    example: ["example"],
-    quote: ["quote", "cite"],
-  }).flatMap(([type, names]) => names.map((name) => [name, type])),
-);
+const ALIASES = {
+  note: ["note"],
+  abstract: ["abstract", "summary", "tldr"],
+  info: ["info"],
+  todo: ["todo"],
+  tip: ["tip", "hint", "important"],
+  success: ["success", "check", "done"],
+  question: ["question", "help", "faq"],
+  warning: ["warning", "caution", "attention"],
+  failure: ["failure", "fail", "missing"],
+  danger: ["danger", "error"],
+  bug: ["bug"],
+  example: ["example"],
+  quote: ["quote", "cite"],
+};
+
+export type CalloutType = keyof typeof ALIASES;
 
 /** The types a callout shows as, which the sanitizer lets through. */
-export const CALLOUT_TYPES = [...new Set(TYPES.values())];
+export const CALLOUT_TYPES = Object.keys(ALIASES) as CalloutType[];
+
+const TYPES = new Map(
+  CALLOUT_TYPES.flatMap((type) => ALIASES[type].map((name) => [name, type])),
+);
+
+export function isCalloutType(value: unknown): value is CalloutType {
+  return typeof value === "string" && Object.hasOwn(ALIASES, value);
+}
 
 // `[!type]` opens a callout's first line, then `-` or `+` if it folds.
 const MARKER = /^\[!([^\]\s]+)\]([+-]?)(?:[ \t]+|(?=[\r\n]|$))/;
@@ -59,11 +67,12 @@ export function remarkCallouts() {
         data: { hName: "div", hProperties: { className: ["callout-content"] } },
       };
       contents.add(content);
+      const type = TYPES.get(name.toLowerCase()) ?? "note";
       quote.data = {
         hName: fold ? "details" : "div",
         hProperties: {
           className: ["callout"],
-          dataCallout: TYPES.get(name.toLowerCase()) ?? "note",
+          dataCallout: type,
           ...(fold === "+" && { open: true }),
         },
       };
@@ -74,7 +83,8 @@ export function remarkCallouts() {
           ),
           data: {
             hName: fold ? "summary" : "div",
-            hProperties: { className: ["callout-title"] },
+            // The type again, for the icon the title starts with.
+            hProperties: { className: ["callout-title"], dataCallout: type },
           },
         },
         ...(blocks.length > 0 ? [content] : []),
