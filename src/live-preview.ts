@@ -1,9 +1,11 @@
+import { isolateHistory } from "@codemirror/commands";
 import { syntaxTree } from "@codemirror/language";
 import type { EditorState, Extension, Range } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
   ViewPlugin,
+  WidgetType,
   type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view";
@@ -15,6 +17,44 @@ interface Stretch {
 }
 
 const HIDDEN = Decoration.replace({});
+
+/** A bullet list's `-`, `*` or `+`, drawn as the preview draws it. */
+class Bullet extends WidgetType {
+  toDOM(): HTMLElement {
+    const bullet = document.createElement("span");
+    bullet.className = "cm-bullet";
+    bullet.textContent = "•";
+    return bullet;
+  }
+}
+
+// Each widget is shared, and CodeMirror keeps the drawing of the same one
+// where it stays.
+const BULLET = Decoration.replace({ widget: new Bullet() });
+
+/** A task's marker, its list's included, drawn as a box that a tap ticks. */
+class TaskBox extends WidgetType {
+  readonly checked: boolean;
+  constructor(checked: boolean) {
+    super();
+    this.checked = checked;
+  }
+  toDOM(): HTMLElement {
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.className = "cm-task";
+    box.checked = this.checked;
+    box.tabIndex = -1;
+    return box;
+  }
+  // The editor takes the box's taps, which tick the task in the text.
+  override ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+const OPEN_TASK = Decoration.replace({ widget: new TaskBox(false) });
+const DONE_TASK = Decoration.replace({ widget: new TaskBox(true) });
 
 /**
  * Visual's symbols, hidden where the screen shows them, but on the lines
@@ -43,6 +83,38 @@ const hiding = ViewPlugin.fromClass(
 );
 
 /**
+ * A tap on a task's box ticks the task, as one edit that undo reverts,
+ * where the cursor stays: neither the focus nor the selection moves, nor
+ * does the box but with the text.
+ */
+const ticking = EditorView.domEventHandlers({
+  mousedown(event, view) {
+    if (!(event.target instanceof HTMLInputElement)) return false;
+    if (!event.target.classList.contains("cm-task")) return false;
+    event.preventDefault();
+    tick(view, view.posAtDOM(event.target));
+    return true;
+  },
+  click(event) {
+    if (!(event.target instanceof HTMLInputElement)) return false;
+    if (!event.target.classList.contains("cm-task")) return false;
+    event.preventDefault();
+    return true;
+  },
+});
+
+const LOOK = EditorView.theme({
+  // As the preview's.
+  ".cm-task": {
+    width: "18px",
+    height: "18px",
+    margin: "0",
+    verticalAlign: "-3px",
+    accentColor: "var(--primary)",
+  },
+});
+
+/**
  * Visual: the note as it reads, its Markdown hidden off the lines being
  * written, a hidden symbol being one unit, which the cursor skips and no
  * edit splits.
@@ -52,7 +124,28 @@ export const livePreview: Extension = [
   EditorView.atomicRanges.of(
     (view) => view.plugin(hiding)?.decorations ?? Decoration.none,
   ),
+  ticking,
+  LOOK,
 ];
+
+/** Ticks or unticks the task whose list item's marker starts at `at`. */
+function tick(view: EditorView, at: number): void {
+  const marker = syntaxTree(view.state)
+    .resolveInner(at, 1)
+    .parent?.getChild("Task")
+    ?.getChild("TaskMarker");
+  if (!marker) return;
+  const mark = marker.from + 1;
+  view.dispatch({
+    changes: {
+      from: mark,
+      to: mark + 1,
+      insert: view.state.sliceDoc(mark, mark + 1) === " " ? "x" : " ",
+    },
+    userEvent: "input",
+    annotations: isolateHistory.of("full"),
+  });
+}
 
 function hidden(view: EditorView): DecorationSet {
   const { state } = view;
@@ -63,13 +156,13 @@ function hidden(view: EditorView): DecorationSet {
       from,
       to,
       enter: (node) => {
-        for (const stretch of symbols(state, node)) {
+        for (const symbol of symbols(state, node)) {
           if (
             !writing.some(
-              (line) => stretch.from <= line.to && stretch.to >= line.from,
+              (line) => symbol.from <= line.to && symbol.to >= line.from,
             )
           ) {
-            ranges.push(HIDDEN.range(stretch.from, stretch.to));
+            ranges.push(symbol);
           }
         }
       },
@@ -88,24 +181,49 @@ function linesWritten(state: EditorState): Stretch[] {
 }
 
 /**
- * The stretches Visual's symbols take: emphasis' `*` and `_`,
- * strikethrough's `~~`, inline code's backticks, a heading's `#` and a
- * link's brackets and address.
+ * Visual's symbols, hidden or drawn: emphasis' `*` and `_`,
+ * strikethrough's `~~`, inline code's backticks, a heading's `#`, a link's
+ * brackets and address, and a list item's marker.
  */
-function symbols(state: EditorState, node: SyntaxNodeRef): Stretch[] {
+function symbols(state: EditorState, node: SyntaxNodeRef): Range<Decoration>[] {
   switch (node.name) {
     case "EmphasisMark":
     case "StrikethroughMark":
-      return [node];
+      return [hide(node)];
     case "CodeMark":
-      return node.node.parent?.name === "InlineCode" ? [node] : [];
+      return node.node.parent?.name === "InlineCode" ? [hide(node)] : [];
     case "HeaderMark":
-      return headerMark(state, node);
+      return headerMark(state, node).map(hide);
     case "Link":
-      return linkSyntax(node);
+      return linkSyntax(node).map(hide);
+    case "ListMark":
+      return listMark(state, node);
     default:
       return [];
   }
+}
+
+function hide({ from, to }: Stretch): Range<Decoration> {
+  return HIDDEN.range(from, to);
+}
+
+/**
+ * A list item's marker: a task's, with its own, drawn as its box, a bullet
+ * list's as a bullet, while a numbered list's stays as written.
+ */
+function listMark(
+  state: EditorState,
+  node: SyntaxNodeRef,
+): Range<Decoration>[] {
+  const item = node.node.parent;
+  const task = item?.getChild("Task")?.getChild("TaskMarker");
+  if (task) {
+    const done = state.sliceDoc(task.from + 1, task.from + 2) !== " ";
+    return [(done ? DONE_TASK : OPEN_TASK).range(node.from, task.to)];
+  }
+  return item?.parent?.name === "BulletList"
+    ? [BULLET.range(node.from, node.to)]
+    : [];
 }
 
 /**
