@@ -2,11 +2,12 @@ import type { ReactNode } from "react";
 import type { CalloutType } from "./callouts.ts";
 
 // Lucide's icons, as lucide-static 1.26.0 draws them, which are the ones
-// Obsidian 1.14 gives each type (its stylesheet's --callout-icon), by their
-// names in Lucide, prefixed with lucide- as Obsidian does. Copyright Lucide
-// Icons and Contributors, under the ISC License; check, circle-question-mark,
-// info, triangle-alert and x come from Feather, copyright Cole Bemis, under
-// the MIT License (LICENSES/Lucide.txt): lucide.dev.
+// Obsidian 1.14 gives each type (its stylesheet's --callout-icon) and a
+// folding title (chevron-down), by their names in Lucide, prefixed with
+// lucide- as Obsidian does. Copyright Lucide Icons and Contributors, under
+// the ISC License; check, chevron-down, circle-question-mark, info,
+// triangle-alert and x come from Feather, copyright Cole Bemis, under the MIT
+// License (LICENSES/Lucide.txt): lucide.dev.
 const ICONS: Record<CalloutType, [name: string, drawing: ReactNode]> = {
   note: [
     "pencil",
@@ -125,8 +126,37 @@ const ICONS: Record<CalloutType, [name: string, drawing: ReactNode]> = {
 export function CalloutIcon({ type }: { type: CalloutType }) {
   const [name, drawing] = ICONS[type];
   return (
+    <Lucide name={name} className="callout-icon">
+      {drawing}
+    </Lucide>
+  );
+}
+
+/**
+ * The chevron that ends a folding callout's title, which the stylesheet
+ * turns while the callout is folded.
+ */
+export function CalloutFold() {
+  return (
+    <Lucide name="chevron-down" className="callout-fold">
+      <path d="m6 9 6 6 6-6" />
+    </Lucide>
+  );
+}
+
+/** A Lucide icon, drawn in the text's color; its meaning is the text's. */
+function Lucide({
+  name,
+  className,
+  children,
+}: {
+  name: string;
+  className: string;
+  children: ReactNode;
+}) {
+  return (
     <svg
-      className="callout-icon"
+      className={className}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -136,7 +166,7 @@ export function CalloutIcon({ type }: { type: CalloutType }) {
       aria-hidden="true"
       data-icon={`lucide-${name}`}
     >
-      {drawing}
+      {children}
     </svg>
   );
 }

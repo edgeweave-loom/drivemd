@@ -32,7 +32,7 @@ import rehypeSlug from "rehype-slug";
 import remarkBreaks from "remark-breaks";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
-import { CalloutIcon } from "./CalloutIcon.tsx";
+import { CalloutFold, CalloutIcon } from "./CalloutIcon.tsx";
 import { CALLOUT_TYPES, isCalloutType, remarkCallouts } from "./callouts.ts";
 import { useDrive } from "./drive-context.ts";
 import { inDrive } from "./drive-web.ts";
@@ -867,22 +867,25 @@ function Division({
   // What an Obsidian embed shows, as written: `Note#Heading`.
   const embed = node?.properties.dataEmbed;
   if (typeof embed !== "string" || !vault) {
-    return <div {...attributes}>{withCalloutIcon(node, children)}</div>;
+    return <div {...attributes}>{calloutTitle(node, children)}</div>;
   }
   return <NoteEmbed target={embed} id={attributes.id} />;
 }
 
-/** A folded callout's title. */
+/** A folding callout's title. */
 function Summary({
   node,
   children,
   ...attributes
 }: ComponentProps<"summary"> & ExtraProps) {
-  return <summary {...attributes}>{withCalloutIcon(node, children)}</summary>;
+  return <summary {...attributes}>{calloutTitle(node, children)}</summary>;
 }
 
-/** What an element shows, after its type's icon if it titles a callout. */
-function withCalloutIcon(
+/**
+ * What an element shows, laid out as Obsidian's callout titles if it titles
+ * one: its type's icon, its text, then a chevron if it folds.
+ */
+function calloutTitle(
   node: ExtraProps["node"],
   children: ReactNode,
 ): ReactNode {
@@ -893,7 +896,8 @@ function withCalloutIcon(
   return (
     <>
       <CalloutIcon type={type} />
-      {children}
+      <span className="callout-title-inner">{children}</span>
+      {node?.tagName === "summary" && <CalloutFold />}
     </>
   );
 }
