@@ -99,6 +99,7 @@ test("switches between Editing and Viewing from the mode menu, saving first", as
   await expect(bar.getByRole("button", { name: "Viewing" })).toBeVisible();
   await expect(source).toHaveCount(0);
   await expect(bar.getByRole("button", { name: "Saved" })).toBeVisible();
+  await expect(page.getByText("Saved to Google Drive")).toBeVisible();
   expect(drive.writes).toEqual(["keep plan revision-1", "save plan"]);
 });
 
@@ -132,6 +133,13 @@ test("ends a phone's editing with a check in place of Back, which saves first", 
   await page.keyboard.type("Tea.");
   await done.click();
   await expect(bar.getByRole("button", { name: "Saved" })).toBeVisible();
+  // Above the floating Edit, which it leaves in reach.
+  const [said, edit] = await Promise.all([
+    page.getByText("Saved to Google Drive").boundingBox(),
+    page.getByRole("button", { name: "Edit", exact: true }).boundingBox(),
+  ]);
+  if (!said || !edit) throw new Error("Neither shows");
+  expect(said.y + said.height).toBeLessThanOrEqual(edit.y);
   await expect(back).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Edit", exact: true }),

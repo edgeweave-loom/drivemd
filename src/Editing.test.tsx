@@ -62,6 +62,8 @@ describe("Save", () => {
     expect(saving).toHaveAttribute("aria-disabled", "true");
     written(SAVED);
     expect(await screen.findByRole("button", { name: "Saved" })).toBeVisible();
+    // Save says Saved itself.
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 
   it("writes nothing when Saved is pressed", async () => {
@@ -149,6 +151,9 @@ describe("editing a note in the viewer", () => {
       );
     });
     expect(await screen.findByRole("button", { name: "Saved" })).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Saved to Google Drive",
+    );
   });
 
   it("has nothing to save once the task is back as it was", async () => {

@@ -126,6 +126,10 @@ describe("the mode menu", () => {
     ).toBeVisible();
     expect(editorShown()).toBe(false);
     expect(screen.getByRole("button", { name: "Saved" })).toBeVisible();
+    // Which Save did not say, as it was not pressed.
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Saved to Google Drive",
+    );
   });
 
   it("stays in Editing when more was typed while it saved", async () => {
@@ -164,6 +168,7 @@ describe("the mode menu", () => {
     ).toBeVisible();
     expect(editorShown()).toBe(false);
     expect(drive.saveContent).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 
   it("stays in Editing when someone else changed the note, saying so", async () => {
@@ -182,6 +187,7 @@ describe("the mode menu", () => {
     expect(screen.getByRole("button", { name: "Editing" })).toBeVisible();
     expect(editorShown()).toBe(true);
     expect(drive.saveContent).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 
   it("stays in Editing when the save fails, saying why", async () => {
@@ -198,6 +204,7 @@ describe("the mode menu", () => {
     );
     expect(screen.getByRole("button", { name: "Editing" })).toBeVisible();
     expect(editorShown()).toBe(true);
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 
   it("is not on a phone, which floats Edit and keeps Done", async () => {
