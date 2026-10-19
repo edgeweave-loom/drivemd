@@ -1,5 +1,5 @@
 import { contrast, looks, token } from "./color.ts";
-import { expect, signIn, test } from "./fake-google.ts";
+import { expect, signIn, test, tickWhileEditing } from "./fake-google.ts";
 
 test("weighs the conflict's choices by risk, on the banner's colors", async ({
   page,
@@ -67,4 +67,41 @@ test("weighs the conflict's choices by risk, on the banner's colors", async ({
   } else {
     expect(second.y).toBe(first.y);
   }
+});
+
+test("keeps a phone's bar and switch through the conflict", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.metadata.layout !== "phone",
+    "a wider screen has no switch",
+  );
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  await tickWhileEditing(page);
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content = `${String(plan.content)}\nTheir line.\n`;
+  plan.revision = 2;
+  const bar = page.getByRole("banner");
+  await bar.getByRole("button", { name: "Save" }).click();
+
+  // Back takes the place of Done, and More actions stays.
+  const differences = page.locator(".differences .cm-content");
+  await expect(differences).toBeVisible();
+  await expect(bar.getByRole("link", { name: "Back to Work" })).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Done" })).toHaveCount(0);
+  await expect(bar.getByRole("button", { name: "More actions" })).toBeVisible();
+  // The switch, under the differences, right above the note it switches.
+  const show = page.getByRole("group", { name: "Show" });
+  await expect(show).toBeVisible();
+  const [above, switches, note] = await Promise.all(
+    [differences, show, page.locator(".sheet")].map((part) =>
+      part.boundingBox(),
+    ),
+  );
+  if (!above || !switches || !note) throw new Error("Not shown");
+  expect(switches.y).toBeGreaterThan(above.y + above.height);
+  expect(note.y).toBeGreaterThan(switches.y + switches.height);
 });

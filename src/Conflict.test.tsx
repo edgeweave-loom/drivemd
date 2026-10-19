@@ -227,6 +227,19 @@ describe("a save that finds someone else's change", () => {
     expect(banner().querySelector(".differences")).not.toBeNull();
   });
 
+  it("keeps a phone's switch under the differences, above the note it switches", async () => {
+    holdScreen("phone");
+    await conflict();
+
+    const show = screen.getByRole("group", { name: "Show" });
+    expect(banner().compareDocumentPosition(show)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(
+      within(show).getByRole("button", { name: "Preview" }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("stays in Editing with the choice open when Viewing would save", async () => {
     holdScreen("wide");
     const { drive } = await conflict();

@@ -1888,11 +1888,10 @@ dialog.drawer > .close {
   margin-right: auto;
 }
 
-/* A phone's Source and Preview, at the bar's start: one outlined pill cut
-   in two, the half shown on secondary-container (docs/DESIGN.md). */
+/* A phone's Source and Preview, over the note: one outlined pill cut in
+   two, the half shown on secondary-container (docs/DESIGN.md). */
 .segmented {
   display: flex;
-  margin-right: auto;
 }
 
 .segmented > button {
