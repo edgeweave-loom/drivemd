@@ -255,11 +255,14 @@ test("searches Markdown files by name", async ({ page }) => {
   await search.fill("pla");
   await search.press("Enter");
   await expect(
-    page.getByRole("heading", { level: 2, name: "Search: pla" }),
+    page.getByRole("heading", { level: 2, name: "Results for “pla”" }),
   ).toBeVisible();
   await expect(entries(page).getByRole("link").locator(".name")).toHaveText([
     "plan.md",
   ]);
+  await expect(
+    page.getByText(/with a word .*that starts with “pla”/),
+  ).toBeVisible();
   await expect(search).toBeFocused();
 });
 
