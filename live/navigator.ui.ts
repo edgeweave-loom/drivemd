@@ -584,6 +584,7 @@ test("edits a note's source and saves it, keeping its line breaks", async ({
 
   if (phone()) {
     await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await page.getByRole("button", { name: "Source", exact: true }).click();
   } else {
     await page.getByRole("button", { name: "Viewing" }).click();
     await page

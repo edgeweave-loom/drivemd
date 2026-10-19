@@ -32,15 +32,13 @@ function open() {
   return renderWithDrive(<FileContent file={PLAN} />, drive);
 }
 
-/** The editor, once it has loaded, in its shadow root. */
+/** The editor, once it has loaded, in its shadow root, in either mode. */
 async function editor() {
   return waitFor(() => {
-    const source = document
+    const content = document
       .querySelector(".editor")
-      ?.shadowRoot?.querySelector<HTMLElement>(
-        '[aria-label="Markdown source"]',
-      );
-    const view = source && EditorView.findFromDOM(source);
+      ?.shadowRoot?.querySelector<HTMLElement>(".cm-content");
+    const view = content && EditorView.findFromDOM(content);
     if (!view) throw new Error("No editor yet");
     return view;
   });

@@ -133,7 +133,7 @@ test("ends a phone's editing with a check in place of Back, which saves first", 
   if (!checked || !named) throw new Error("The bar has no place for them");
   expect(checked.x).toBeLessThan(named.x);
 
-  await page.getByRole("textbox", { name: "Markdown source" }).click();
+  await page.getByRole("textbox", { name: "Note" }).click();
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("Tea.");
   await done.click();
