@@ -47,25 +47,51 @@ test("renders a note of a vault as Obsidian does", async ({ page }) => {
   await expect(note.locator("section[data-footnotes] li")).toContainText(
     "From Japan.",
   );
-  // A folded callout, in its type's color, opens with a tap on its title.
+  // A folded callout, in its type's color, opens with a tap on its title,
+  // whose chevron turns from right to down, as in Obsidian.
   const callout = note.locator(".callout");
+  const summary = callout.locator("summary");
+  const fold = summary.locator(".callout-fold");
+  const turn = () =>
+    fold.evaluate((chevron) => {
+      const { a, b } = new DOMMatrix(getComputedStyle(chevron).transform);
+      return Math.round((Math.atan2(b, a) * 180) / Math.PI);
+    });
   await expect(callout).toHaveCSS("border-left-color", "rgb(0, 191, 188)");
   await expect(callout.getByText("Water at 90 °C.")).toBeHidden();
+  await expect(fold).toHaveAttribute("data-icon", "lucide-chevron-down");
+  await expect.poll(turn).toBe(-90);
+  // The chevron stands for the browser's marker: the title starts with its
+  // type's icon.
+  const start = await summary.evaluate((title) => {
+    const { left } = title.getBoundingClientRect();
+    return left + parseFloat(getComputedStyle(title).paddingLeft);
+  });
+  expect((await summary.locator(".callout-icon").boundingBox())?.x).toBeCloseTo(
+    start,
+    0,
+  );
   await callout.getByText("Brew it hot").click();
   await expect(callout.getByText("Water at 90 °C.")).toBeVisible();
-  const title = await callout.locator("summary").boundingBox();
+  await expect.poll(turn).toBe(0);
+  const title = await summary.boundingBox();
   expect(title?.height).toBeGreaterThanOrEqual(44);
   // Its title starts with its type's icon, at the text's size, in the type's
-  // color in either theme.
-  const icon = callout.locator("summary > svg");
+  // color in either theme; both icons sit on the title's first line.
+  const icon = summary.locator(".callout-icon");
   await expect(icon).toHaveAttribute("data-icon", "lucide-flame");
   await expect(icon).toHaveCSS("stroke", "rgb(0, 191, 188)");
   const size = await icon.boundingBox();
-  const text = await callout
-    .locator("summary")
-    .evaluate((summary) => parseFloat(getComputedStyle(summary).fontSize));
-  expect(size?.width).toBeCloseTo(text);
-  expect(size?.height).toBeCloseTo(text);
+  const text = await summary.evaluate((title) => {
+    const style = getComputedStyle(title);
+    return {
+      size: parseFloat(style.fontSize),
+      line: parseFloat(style.lineHeight),
+    };
+  });
+  expect(size?.width).toBeCloseTo(text.size, 0);
+  expect(size?.height).toBeCloseTo(text.line, 0);
+  expect((await fold.boundingBox())?.y).toBeCloseTo(size?.y ?? NaN);
   await page.emulateMedia({ colorScheme: "dark" });
   // A computer keeps the light theme.
   await expect(icon).toHaveCSS(
