@@ -55,7 +55,7 @@ Read the version that staging serves with `curl -s https://md-staging.corp.edgew
 
 ### Notes for the checks
 
-Make three made-up notes in the test account's My Drive, from the app on the iPhone, after check A1: on **My Drive**, tap **New note**, name it, then **Edit**, paste the text, and tap **Done**. When they exist from a previous run, paste their text again, so that each run starts from the same notes.
+Make four made-up notes in the test account's My Drive, from the app on the iPhone, after check A1: on **My Drive**, tap **New note**, name it, then **Edit**, paste the text, and tap **Done**. When they exist from a previous run, paste their text again, so that each run starts from the same notes.
 
 - `device-check-long.md`, enough lines to scroll past two screens:
 
@@ -86,18 +86,46 @@ Make three made-up notes in the test account's My Drive, from the app on the iPh
   A short made-up note that the tasks link to.
   ```
 
+- `device-check-visual.md`, with something of each kind that Visual hides or draws, and of those it leaves as written:
+
+  ````text
+  # Visual check
+
+  Some **bold words**, _an italic phrase_, ~~a struck word~~ and `inline code`, in a paragraph long enough to wrap onto a second line on a phone held upright.
+
+  ## A heading with closing marks ##
+
+  - A bullet
+  - [ ] An open task
+  - [x] A done task
+
+  1. A numbered item
+  2. Another one
+
+  See [the other note](device-check-other.md), [a web page](https://example.com) and a [reference link][ref].
+
+  ```js
+  const tea = "green";
+  ```
+
+  Setext heading
+  ==============
+
+  [ref]: https://example.com
+  ````
+
 ## Order
 
 Run the sections in this order, so that each context is set up once:
 
-1. iPhone, Safari: A, B, C, D, G, H, J.
+1. iPhone, Safari: A, B, C, D, G, H, J, K.
 2. iPhone, Home Screen app: E, then C and D again in it.
-3. iPad, Safari: A, B, C, D, G.
+3. iPad, Safari: A, B, C, D, G, K.
 4. iPad, Home Screen app: E, then C and D again in it.
 5. Both devices, both themes: F.
 6. I, only if staging deploys a new version during the run.
 
-Run every check in the light theme unless it says otherwise: E3, section F and H2 also run the dark one. Once such a check ends, set the device back to light (`xcrun simctl ui <device> appearance light`) before the next one.
+Run every check in the light theme unless it says otherwise: E3, section F, H2 and K17 also run the dark one. Once such a check ends, set the device back to light (`xcrun simctl ui <device> appearance light`) before the next one.
 
 ## Checks
 
@@ -183,6 +211,29 @@ To make a conflict, open `device-check-other.md` in two Safari tabs (the second 
 
 - **J1.** In the editor, tap on the on-screen keyboard: `"quoted" -- it's` and a new line starting with `next`. The text stays as typed: straight quotes, two hyphens, a straight apostrophe, and no capital on `next`.
 - **J2.** Type a word, then two spaces with quick taps on the space bar. iOS turns them into a period and a space (issue #119): record what the source holds, and if the developer has the Web Inspector open, the `beforeinput` events' `inputType` and `data`, which the issue needs.
+
+### K. Visual, Source and Viewing (v2, stage 1)
+
+On `device-check-visual.md`, which **Edit** opens in Visual, the editor's default mode, on a device that never chose another. The spec's v2 section says what Visual hides and draws. Stage 1 is done once typing, selecting and deleting across formatted text work on a real iPhone: the report says which of these checks a real iPhone must repeat, K4 to K10 and K14 at least, since the Simulator's text input is not the device's.
+
+- **K1. Modes.** On the iPhone, **Edit** shows **Visual**, **Source** and **Preview** over the note, Visual chosen, the three within the screen's width upright and sideways. Source shows the Markdown in light styling, Preview the rendered note, and Visual the editor again. On the iPad sideways, the mode menu offers **Visual**, **Source** and **Viewing**, each with its line ("Edit the note as it reads", "Edit the Markdown beside its preview", "Save, then read the note"): Visual shows the note on one sheet, Source the Markdown beside the preview, and Viewing the note alone.
+- **K2. Remembered.** On the iPhone, pick Source, tap the check, reload, and tap **Edit**: the editor opens in Source. Pick Visual before going on.
+- **K3. Reading.** In Visual, the keyboard down and no line tapped: no `#`, `**`, `_`, `~~`, backtick, `[` or `](…)` shows; the bullet shows as •, the tasks as boxes, the done one ticked, and the links as their text in the accent. The numbered list, the code block's fences, the reference link, the setext heading's underline and the line that defines `[ref]` show as written. Take a screenshot beside one of Preview.
+- **K4. A tap shows a line's Markdown.** Tap inside "bold words": the keyboard comes up with the toolbar, the paragraph shows its symbols, dimmed, and no other line does; the cursor sits in the word tapped, or the report says where it landed. Tap the heading with closing marks: it shows `## … ##`, and the paragraph hides its symbols again. A line may wrap anew as its symbols show; no other line moves.
+- **K5. Typing.** At the end of the paragraph's first sentence, type ` and **more**`, then tap another line: the paragraph shows "and more" with "more" in bold, without its `**`.
+- **K6. Moving the cursor.** Touch and hold the space bar, then slide, to move the cursor up into the heading and down into the list: each line shows its Markdown as the cursor enters it, and the cursor follows the finger without jumping back or skipping a line.
+- **K7. Selecting.** Double-tap "italic", then drag the selection's end handle down to the bullet: every line the selection touches shows its Markdown, the handles stay on the text as lines change, and the menu's **Copy** copies the Markdown, symbols included (paste it in Find in note's field to read it, then close Find in note).
+- **K8. Deleting across formatted text.** Select from the middle of "bold words" to the middle of "struck" and tap the keyboard's delete key: the paragraph loses what was selected, its symbols with it, and nothing else, as Source then shows. **Undo** in the toolbar brings the text back whole.
+- **K9. Task boxes.** The keyboard down, tap the box of "An open task": it ticks, the keyboard stays down, and the line keeps its box. Then tap "Some" to bring the keyboard up, and tap the box of "A done task": it unticks, the keyboard stays up, and the cursor stays in the paragraph. **Undo** takes back the last tick alone, then the first. Playwright's WebKit cannot check this one: iOS may move the cursor, or bring the keyboard up, on a tap inside the text.
+- **K10. Links.** Tap "the other note": the cursor lands in it, the line shows `[the other note](device-check-other.md)`, and the toolbar shows **Open link** (`open_in_new`) in Link's place. Save, so that nothing asks to leave, then tap it: the other note opens. Come back, tap **Edit**, tap "a web page", then **Open link**: it opens in a new Safari tab. Tap a word outside the links: the key is **Link** again. In Source, the same.
+- **K11. Long press.** Touch and hold "a web page": iOS shows its loupe or selects a word, as in any text, and no link opens.
+- **K12. Typed text.** J1 and J2 on the paragraph, in Visual: the same as in Source.
+- **K13. Dictation** (BLOCKED where the Simulator cannot dictate). On the paragraph, dictate "green tea and cups": the words land at the cursor, once, and the line's symbols stay as they were.
+- **K14. Japanese and Chinese input.** Add the Japanese (Romaji) and the Chinese (Simplified, Pinyin) keyboards in Settings ▸ General ▸ Keyboard ▸ Keyboards. Inside "bold words", type `ocha` with the Japanese keyboard and pick お茶, then `cha` with Pinyin and pick 茶: the marked text shows while composing, the candidate replaces it once, nothing is doubled or lost, and the line's symbols stay shown meanwhile. Tap another line: the new words show inside the bold text, without its `**`.
+- **K15. Find in note.** From the toolbar, find "word": the matches show in Visual, the bar sits in the app bar's place on the iPhone and over the sheet's top on the iPad, and stepping to a match scrolls to it, clear of the keyboard. While its field has the focus, every line keeps its symbols hidden, as the spec says.
+- **K16. Saved as typed.** After K5 to K15, tap the check (iPhone) or pick Viewing (iPad): the note saves, and Source shows the edits only, with no symbol lost or added elsewhere, and the code block, the numbered list and the reference link as written.
+- **K17. Dark theme.** K3's screen and a tapped line in the dark appearance: the boxes, the bullets, the links and the dimmed symbols stay legible.
+- **K18. iPad, hardware keyboard.** With Simulate Hardware Keyboard on, the arrow keys move through the note: from the line above the heading, the down arrow takes the cursor into the heading, which then shows its `## `, at its start or in its text, never between two of its `#`. Shift and the arrows select across formatted lines, which show their Markdown.
 
 ## Report
 
