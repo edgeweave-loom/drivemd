@@ -924,8 +924,11 @@ button:is(.entry, .link):disabled {
   }
 }
 
+/* A tablet's folder drawer: headed by the folder, which leads back to it,
+   with Close at its top right, and its right corners rounded
+   (docs/DESIGN.md, tablet-note). */
 dialog.drawer {
-  width: min(22rem, 85vw);
+  width: min(20rem, 85vw);
   max-width: none;
   height: 100%;
   max-height: none;
@@ -934,9 +937,27 @@ dialog.drawer {
     calc(1rem + env(safe-area-inset-bottom))
     calc(1rem + env(safe-area-inset-left));
   border: none;
-  border-right: 1px solid var(--outline-variant);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
   background: var(--surface);
   color: inherit;
+}
+
+dialog.drawer > h2 {
+  display: flex;
+  margin: 0 var(--control-height) var(--space-2) 0;
+  font-size: inherit;
+  font-weight: 500;
+}
+
+dialog.drawer > h2 > .entry {
+  flex: 1;
+  min-width: 0;
+}
+
+dialog.drawer > .close {
+  position: absolute;
+  top: calc(1rem + env(safe-area-inset-top));
+  right: var(--space-2);
 }
 
 /* On a wide screen, Home, folders and search sit on a panel beside the
@@ -1383,7 +1404,7 @@ dialog.drawer {
   min-width: 0;
 }
 
-.entry > .icon:last-child {
+.entry > .icon:last-child:not(:first-child) {
   margin-left: auto;
   color: var(--on-surface-variant);
 }
