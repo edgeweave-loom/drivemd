@@ -42,6 +42,7 @@ import {
 import { SearchPage } from "./SearchPage.tsx";
 import { SlotsContext, type SlotName, type Slots } from "./slots.ts";
 import type { Session } from "./session.ts";
+import { useSearchBars } from "./theme-color.ts";
 
 const HOME = hrefOf({ name: "home" });
 
@@ -213,6 +214,7 @@ function BrowsingBar({
       : undefined;
   const titled = phone && (route.name === "folder" || root !== undefined);
   const looks = route.name === "search" ? "searching" : titled && "titled";
+  useSearchBars(phone && route.name === "search");
   return (
     <header className={looks ? `bar ${looks}` : "bar"}>
       {route.name === "folder" && titled ? (
