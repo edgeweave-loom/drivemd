@@ -89,3 +89,25 @@ test("opens a link from the keyboard toolbar on a touch screen", async ({
   ).toBeVisible();
   await expect(page).toHaveURL(/\/edit\?id=notes#later$/);
 });
+
+test("ticks a task from its box in Visual, as one edit to save", async ({
+  page,
+  drive,
+}, info) => {
+  const note = await editInVisual(page);
+  const boxes = note.locator(".cm-task");
+  await expect(boxes).toHaveCount(2);
+  await expect(boxes.first()).not.toBeChecked();
+
+  if (info.project.name === "desktop-chromium") await boxes.first().click();
+  else await boxes.first().tap();
+  await expect(boxes.first()).toBeChecked();
+  // The cursor stays away: the task still shows as its box.
+  await expect(boxes).toHaveCount(2);
+
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("plan")?.content)).toContain(
+    "\n- [x] Boil water\n- [x] Find cups\n",
+  );
+});

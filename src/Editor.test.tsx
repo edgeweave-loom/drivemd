@@ -344,6 +344,54 @@ describe("Visual", () => {
     ]);
   });
 
+  it("draws a bullet list's markers as bullets, and a task's as its box", async () => {
+    const { view } = open(
+      "- Tea\n- [ ] Boil\n* [x] Cups\n1. One\n2. [X] Two",
+      "\n",
+      true,
+    );
+    await parsed(view);
+
+    expect(looks(view)).toEqual([
+      "• Tea",
+      " Boil",
+      " Cups",
+      "‹1.› One",
+      " Two",
+    ]);
+    expect(
+      [...view.contentDOM.querySelectorAll<HTMLInputElement>(".cm-task")].map(
+        (box) => box.checked,
+      ),
+    ).toEqual([false, true, true]);
+    // Drawn as they were, as the text changes around them.
+    const bullet = view.contentDOM.querySelector(".cm-bullet");
+    view.dispatch({ changes: { from: 5, insert: "s" } });
+    expect(view.contentDOM.querySelector(".cm-bullet")).toBe(bullet);
+  });
+
+  it("ticks a task from its box, as one edit that undo reverts, the cursor staying", async () => {
+    const { view, onChange } = open("Tea\n- [ ] Boil", "\n", true);
+    await parsed(view);
+    view.dispatch({ selection: { anchor: 1 } });
+    const box = () =>
+      view.contentDOM.querySelector<HTMLInputElement>(".cm-task");
+
+    fireEvent.mouseDown(box() ?? view.contentDOM);
+    // The box shows what the text says, not what its click would.
+    expect(fireEvent.click(box() ?? view.contentDOM)).toBe(false);
+    expect(onChange).toHaveBeenLastCalledWith("Tea\n- [x] Boil");
+    expect(box()?.checked).toBe(true);
+    expect(view.state.selection.main.head).toBe(1);
+    fireEvent.mouseDown(box() ?? view.contentDOM);
+    expect(view.state.sliceDoc()).toBe("Tea\n- [ ] Boil");
+
+    undo(view);
+    expect(view.state.sliceDoc()).toBe("Tea\n- [x] Boil");
+    undo(view);
+    expect(view.state.sliceDoc()).toBe("Tea\n- [ ] Boil");
+  });
+
   it("skips a hidden symbol as one unit", async () => {
     const { view } = open("**Tea**", "\n", true);
     await parsed(view);
