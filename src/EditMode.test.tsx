@@ -1,6 +1,12 @@
 import { EditorView } from "@codemirror/view";
 import { onlineManager } from "@tanstack/react-query";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { DriveError, type FileMetadata } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
@@ -128,11 +134,20 @@ describe("editing a note's source", () => {
     expect(screen.queryByRole("heading", { name: "Tea" })).toBeNull();
     // The switch names what shows, which needs no label of its own.
     expect(screen.queryByRole("region", { name: "Markdown" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    const show = screen.getByRole("group", { name: "Show" });
+    const source = within(show).getByRole("button", { name: "Source" });
+    const preview = within(show).getByRole("button", { name: "Preview" });
+    expect(source).toHaveAttribute("aria-pressed", "true");
+    expect(preview).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(preview);
     expect(screen.getByText("Green.")).toBeVisible();
     expect(editorShown()).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "Source" }));
+    expect(preview).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(preview);
+    expect(editorShown()).toBe(false);
+    fireEvent.click(source);
     expect((await editor()).state.sliceDoc()).toContain("Green.");
+    expect(source).toHaveAttribute("aria-pressed", "true");
   });
 
   it("keeps the revision opened while editing, and shows Drive's newer one once viewing", async () => {

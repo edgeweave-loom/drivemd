@@ -584,6 +584,34 @@ function Restore({
 }
 
 /**
+ * A phone's choice of the source or the preview while editing: a segmented
+ * button, the half shown checked (docs/DESIGN.md, Source and Preview).
+ */
+function Panes({ pane, onPane }: { pane: Pane; onPane: (pane: Pane) => void }) {
+  const halves = [
+    { shows: "source", name: "Source", icon: "code" },
+    { shows: "preview", name: "Preview", icon: "visibility" },
+  ] as const;
+  return (
+    <div className="segmented" role="group" aria-label="Show">
+      {halves.map(({ shows, name, icon }) => (
+        <button
+          key={shows}
+          type="button"
+          aria-pressed={pane === shows}
+          onClick={() => {
+            onPane(shows);
+          }}
+        >
+          <Icon name={pane === shows ? "check" : icon} />
+          {name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
  * Save, always in the same place and at the same width, so that nothing
  * beside it moves: "Saved", a status that stays legible, "Save", or
  * "Saving…" while Drive writes. Saved and Saving… stay reachable, to say
@@ -818,14 +846,7 @@ function NoteView({
       <div className="note-bar">
         {reason && <p className="badge read-only">{reason}</p>}
         {editable && layout === "phone" && editing && (
-          <button
-            type="button"
-            onClick={() => {
-              onPane(pane === "source" ? "preview" : "source");
-            }}
-          >
-            {pane === "source" ? "Preview" : "Source"}
-          </button>
+          <Panes pane={pane} onPane={onPane} />
         )}
         {editable &&
           !floats &&
