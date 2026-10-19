@@ -454,9 +454,9 @@ export function Editor({
           onCommand={(command) => {
             if (editor.current) command(editor.current);
           }}
-          onResize={() => {
+          onResize={(before) => {
             const view = editor.current;
-            if (view && onScreen(view)) {
+            if (view && onScreen(view, before)) {
               view.dispatch({
                 effects: EditorView.scrollIntoView(view.state.selection.main),
               });
@@ -480,16 +480,20 @@ function finding(state: EditorState): Found {
 
 /**
  * Whether the cursor shows in the visual viewport, perhaps under the
- * keyboard toolbar, rather than where the user scrolled away from it:
- * Safari resizes the visual viewport as its bars fold while the page
- * scrolls, not only as the keyboard comes or goes.
+ * keyboard toolbar, or showed in it at its height `before`, rather than
+ * where the user scrolled away from it: Safari resizes the visual viewport
+ * as its bars fold while the page scrolls, not only as the keyboard comes
+ * or goes. Chrome on Android scrolls neither to the cursor that a tap
+ * brings the keyboard up over, which then hides it.
  */
-function onScreen(view: EditorView): boolean {
+function onScreen(view: EditorView, before: number): boolean {
   const cursor = view.coordsAtPos(view.state.selection.main.head);
   const viewport = window.visualViewport;
   if (!cursor || !viewport) return false;
   const top = viewport.pageTop - window.scrollY;
-  return cursor.bottom > top && cursor.top < top + viewport.height;
+  return (
+    cursor.bottom > top && cursor.top < top + Math.max(before, viewport.height)
+  );
 }
 
 /**

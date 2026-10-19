@@ -298,14 +298,16 @@ describe("the keyboard toolbar", () => {
     appBar.remove();
   });
 
-  it("scrolls to the cursor once the keyboard has come, unless scrolled away", async () => {
+  it("scrolls to the cursor once the keyboard has come over it, unless scrolled away", async () => {
     const viewport = new Viewport();
     Object.defineProperty(window, "visualViewport", {
       value: viewport,
       configurable: true,
     });
     const view = await editing("tea");
-    let cursor = 450;
+    // Under the keyboard, as Chrome on Android leaves the cursor that a tap
+    // brought the keyboard up over.
+    let cursor = 600;
     vi.spyOn(view, "coordsAtPos").mockImplementation(() => ({
       left: 0,
       right: 0,

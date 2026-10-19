@@ -83,8 +83,11 @@ export function KeyboardToolbar({
   onResize,
 }: {
   onCommand: (command: Command) => void;
-  /** Runs once the keyboard has come or gone. */
-  onResize: () => void;
+  /**
+   * Runs once the keyboard has come or gone, with the visual viewport's
+   * height before.
+   */
+  onResize: (before: number) => void;
 }) {
   const bar = useRef<HTMLDivElement>(null);
   const resized = useEffectEvent(onResize);
@@ -92,8 +95,8 @@ export function KeyboardToolbar({
     () =>
       bar.current
         ? keepVisible(bar.current, {
-            onResize: () => {
-              resized();
+            onResize: (before) => {
+              resized(before);
             },
           })
         : undefined,
