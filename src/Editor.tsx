@@ -318,7 +318,7 @@ export function Editor({
   lineBreak: LineBreak;
   visual?: boolean;
   onChange: (text: string) => void;
-  /** Follows a link the user Cmd or Ctrl+clicks. */
+  /** Follows a link the user Cmd or Ctrl+clicks, or opens from the toolbar. */
   onFollow: (href: string) => void;
   ref?: Ref<EditorHandle>;
 }) {
@@ -326,6 +326,8 @@ export function Editor({
   const editor = useRef<EditorView | null>(null);
   const field = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
+  // The address of the link the cursor is in, which the toolbar follows.
+  const [link, setLink] = useState<string>();
   // Find in note's query and matches, while it is open.
   const [found, setFound] = useState<Found | null>(null);
   const searching = found !== null;
@@ -336,6 +338,9 @@ export function Editor({
   const edited = useEffectEvent((update: ViewUpdate) => {
     if (update.docChanged) onChange(update.state.sliceDoc());
     if (update.focusChanged) setFocused(update.view.hasFocus);
+    if (update.docChanged || update.selectionSet) {
+      setLink(linkAt(update.state, update.state.selection.main.head));
+    }
     if (!searchPanelOpen(update.state)) {
       if (searchPanelOpen(update.startState)) setFound(null);
       return;
@@ -478,9 +483,11 @@ export function Editor({
       <div className="editor" ref={host} />
       {toolbar && (
         <KeyboardToolbar
+          link={link}
           onCommand={(command) => {
             if (editor.current) command(editor.current);
           }}
+          onFollow={onFollow}
           onResize={(before) => {
             const view = editor.current;
             if (view && onScreen(view, before)) {

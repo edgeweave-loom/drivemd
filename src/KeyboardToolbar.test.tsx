@@ -12,13 +12,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Editor } from "./Editor.tsx";
 import { holdScreen, holdTouch } from "./test/screen.ts";
 
-function open(text: string) {
+function open(
+  text: string,
+  onFollow: (href: string) => void = () => undefined,
+) {
   const { container } = render(
     <Editor
       initial={text}
       lineBreak={"\n"}
       onChange={() => undefined}
-      onFollow={() => undefined}
+      onFollow={onFollow}
     />,
   );
   const element = container
@@ -30,9 +33,12 @@ function open(text: string) {
 }
 
 /** Opens the editor on a touch screen and gives it the focus. */
-async function editing(text: string) {
+async function editing(
+  text: string,
+  onFollow: (href: string) => void = () => undefined,
+) {
   holdTouch(true);
-  const view = open(text);
+  const view = open(text, onFollow);
   act(() => {
     view.focus();
   });
@@ -163,6 +169,26 @@ describe("the keyboard toolbar", () => {
     expect(view.state.sliceDoc()).toBe("tea");
     tap("Redo");
     expect(view.state.sliceDoc()).toBe("teas");
+  });
+
+  it("turns Link to Open link in a link, which it follows", async () => {
+    const onFollow = vi.fn<(href: string) => void>();
+    const view = await editing("Tea at [noon](plan.md#noon).", onFollow);
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 9 } });
+    });
+    expect(screen.queryByRole("button", { name: "Link" })).toBeNull();
+    tap("Open link");
+    expect(onFollow).toHaveBeenCalledExactlyOnceWith("plan.md#noon");
+    expect(view.state.sliceDoc()).toBe("Tea at [noon](plan.md#noon).");
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 2 } });
+    });
+    expect(screen.queryByRole("button", { name: "Open link" })).toBeNull();
+    tap("Link");
+    expect(view.state.sliceDoc()).toBe("Te[]()a at [noon](plan.md#noon).");
   });
 
   it("finds text in the note, its field taking the focus within the tap", async () => {

@@ -323,6 +323,27 @@ describe("Visual", () => {
     });
   });
 
+  it("hides an inline link's brackets and address, leaving its text", async () => {
+    const { view } = open(
+      [
+        'See [the *docs*](https://example.com "Docs") and <https://example.com>.',
+        "A [reference][docs], [](empty.md) and [docs].",
+        "",
+        "[docs]: https://example.com",
+      ].join("\n"),
+      "\n",
+      true,
+    );
+    await parsed(view);
+
+    expect(looks(view)).toEqual([
+      "See the docs and ‹<https://example.com>›.",
+      "A ‹[›reference‹]›[docs], ‹[](empty.md)› and ‹[›docs‹]›.",
+      "",
+      "[docs]‹:› ‹https://example.com›",
+    ]);
+  });
+
   it("skips a hidden symbol as one unit", async () => {
     const { view } = open("**Tea**", "\n", true);
     await parsed(view);
