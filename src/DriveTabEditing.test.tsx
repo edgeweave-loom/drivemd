@@ -1,6 +1,7 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { markTab } from "./drive-tab.ts";
+import { rememberEditMode } from "./edit-mode.ts";
 import { FileContent } from "./FileContent.tsx";
 import { driveItem, metadata } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
@@ -29,18 +30,33 @@ afterEach(() => {
 
 describe("A note opened from Drive", () => {
   it.each(["wide", "tablet"] as const)(
-    "opens in Editing on a %s screen, the source beside the preview",
+    "opens in Visual on a %s screen, the note on one sheet",
     async (layout) => {
       holdScreen(layout);
       openFromDrive();
 
       expect(
-        await screen.findByRole("region", { name: "Markdown" }),
+        await screen.findByRole("button", { name: "Visual" }),
       ).toBeVisible();
-      expect(screen.getByRole("heading", { name: "The plan" })).toBeVisible();
-      expect(screen.getByRole("button", { name: "Editing" })).toBeVisible();
+      await waitFor(() => {
+        expect(document.querySelector(".editor")).not.toBeNull();
+      });
+      expect(screen.queryByRole("region", { name: "Markdown" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: "The plan" })).toBeNull();
     },
   );
+
+  it("opens in Source when the device chose it last, beside the preview", async () => {
+    holdScreen("wide");
+    rememberEditMode("source");
+    openFromDrive();
+
+    expect(
+      await screen.findByRole("region", { name: "Markdown" }),
+    ).toBeVisible();
+    expect(screen.getByRole("heading", { name: "The plan" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Source" })).toBeVisible();
+  });
 
   it("opens in reading on a phone", async () => {
     openFromDrive();
@@ -49,8 +65,9 @@ describe("A note opened from Drive", () => {
     expect(screen.queryByRole("region", { name: "Markdown" })).toBeNull();
   });
 
-  it("holds to the revision it opened with, as Editing does", async () => {
+  it("holds to the revision it opened with, as the editor does", async () => {
     holdScreen("wide");
+    rememberEditMode("source");
     const { drive, rerender } = openFromDrive();
     await screen.findByRole("region", { name: "Markdown" });
     drive.getContent.mockResolvedValue(utf8("# Their plan\n"));

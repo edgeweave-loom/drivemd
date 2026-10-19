@@ -7,9 +7,9 @@ export async function moreActions() {
 }
 
 /** Picks a mode from the note's mode menu, as a wider screen than a phone's has. */
-export async function pickMode(name: "Editing" | "Viewing") {
+export async function pickMode(name: "Visual" | "Source" | "Viewing") {
   fireEvent.click(
-    await screen.findByRole("button", { name: /^(Editing|Viewing)$/ }),
+    await screen.findByRole("button", { name: /^(Visual|Source|Viewing)$/ }),
   );
   fireEvent.click(
     within(screen.getByRole("menu", { name: "Mode" })).getByRole(
@@ -21,7 +21,7 @@ export async function pickMode(name: "Editing" | "Viewing") {
 
 /**
  * Starts editing, where a ticked task waits to be saved, as one ticked while
- * viewing does not: in a phone's preview, or beside the source on a wider
+ * viewing does not: in a phone's preview, or beside Source on a wider
  * screen.
  */
 export async function editInPreview() {
@@ -29,7 +29,7 @@ export async function editInPreview() {
     name: /^(Edit|Viewing)$/,
   });
   if (start.textContent === "Viewing") {
-    await pickMode("Editing");
+    await pickMode("Source");
     return;
   }
   fireEvent.click(start);

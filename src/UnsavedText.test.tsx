@@ -213,11 +213,11 @@ describe("unsaved text kept on the device", () => {
 
     await screen.findByRole("button", { name: "Restore" });
     expect(
-      screen.queryByRole("button", { name: /^(Edit|Editing|Viewing)$/ }),
+      screen.queryByRole("button", { name: /^(Edit|Visual|Source|Viewing)$/ }),
     ).toBeNull();
     expect(screen.getByRole("checkbox")).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Restore" }));
-    await pickMode("Editing");
+    await pickMode("Source");
 
     await waitFor(() => {
       const content = document

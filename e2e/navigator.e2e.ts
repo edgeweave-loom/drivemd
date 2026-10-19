@@ -104,7 +104,7 @@ test("opens the file that Drive's Open with names, the user picking the account"
 
   await page.getByRole("button", { name: "Sign in with Google" }).click();
   await expect(
-    page.getByRole("heading", { level: 1, name: "The plan" }),
+    page.getByRole("heading", { level: 1, name: "plan.md" }),
   ).toBeVisible();
   expect(
     await page.evaluate(

@@ -59,7 +59,7 @@ test("names the note in the app bar, with what it lets the user do", async ({
   }
 });
 
-test("switches between Editing and Viewing from the mode menu, saving first", async ({
+test("switches between Visual, Source and Viewing from the mode menu, saving first", async ({
   page,
   drive,
 }, info) => {
@@ -74,7 +74,8 @@ test("switches between Editing and Viewing from the mode menu, saving first", as
   await mode.click();
   const menu = page.getByRole("menu", { name: "Mode" });
   await expect(menu.getByRole("menuitemradio")).toHaveText([
-    /^Editing\s*Edit the Markdown beside its preview$/,
+    /^Visual\s*Edit the note as it reads$/,
+    /^Source\s*Edit the Markdown beside its preview$/,
     /^Viewing\s*Save, then read the note$/,
   ]);
   // It drops from its button.
@@ -89,12 +90,16 @@ test("switches between Editing and Viewing from the mode menu, saving first", as
     page.viewportSize()?.width ?? 0,
   );
 
-  await menu.getByRole("menuitemradio", { name: "Editing" }).click();
+  await menu.getByRole("menuitemradio", { name: "Visual" }).click();
+  await expect(page.getByRole("region", { name: "Preview" })).toHaveCount(0);
+  await bar.getByRole("button", { name: "Visual" }).click();
+  await menu.getByRole("menuitemradio", { name: "Source" }).click();
+  await expect(page.getByRole("region", { name: "Preview" })).toBeVisible();
   const source = page.getByRole("textbox", { name: "Markdown source" });
   await source.click();
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("Tea.");
-  await bar.getByRole("button", { name: "Editing" }).click();
+  await bar.getByRole("button", { name: "Source" }).click();
   await menu.getByRole("menuitemradio", { name: "Viewing" }).click();
   await expect(bar.getByRole("button", { name: "Viewing" })).toBeVisible();
   await expect(source).toHaveCount(0);

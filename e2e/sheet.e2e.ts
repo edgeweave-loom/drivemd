@@ -169,3 +169,46 @@ test("edits a note on two sheets side by side, on a wide screen", async ({
   expect((await editor.boundingBox())?.x).toBe(first.x);
   expect((await editor.boundingBox())?.width).toBe(first.width);
 });
+
+test("edits a note in Visual on one sheet, as Viewing shows it", async ({
+  page,
+}, info) => {
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  const phone = info.project.metadata.layout === "phone";
+  if (phone) {
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    // Visual, Source and Preview fit within the page's gutters.
+    const [show, main] = await Promise.all([
+      page.getByRole("group", { name: "Show" }).boundingBox(),
+      page.getByRole("main").boundingBox(),
+    ]);
+    if (!show || !main) throw new Error("No switch on the screen");
+    expect(show.x + show.width).toBeLessThanOrEqual(main.x + main.width - 16);
+    return;
+  }
+  await page
+    .getByRole("banner")
+    .getByRole("button", { name: "Viewing" })
+    .click();
+  await page
+    .getByRole("menu", { name: "Mode" })
+    .getByRole("menuitemradio", { name: "Visual" })
+    .click();
+  const editor = page.locator(".cm-editor");
+  await expect(editor).toBeVisible();
+  await expect(page.getByRole("main").getByRole("region")).toHaveCount(0);
+  const sheet = page.locator(".sheet");
+  await expect(sheet).toHaveCount(1);
+  // Its lines run from edge to edge of it, their text where Viewing's starts.
+  await expect(page.locator(".cm-line").first()).toHaveCSS(
+    "padding-left",
+    "72px",
+  );
+  const [box, around] = await Promise.all([
+    editor.boundingBox(),
+    sheet.boundingBox(),
+  ]);
+  expect(box?.x).toBe(around?.x);
+  expect(box?.width).toBe(around?.width);
+});

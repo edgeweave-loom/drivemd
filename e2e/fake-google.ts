@@ -688,19 +688,23 @@ export async function renameNote(
   await name.press("Enter");
 }
 
-/** Starts editing the note: by the floating Edit on a phone, or else from the mode menu. */
+/**
+ * Starts editing the note's source, in Source: by the floating Edit, then
+ * the switch over the note, on a phone, or else from the mode menu.
+ */
 export async function startEditing(page: Page): Promise<void> {
   if (test.info().project.metadata.layout === "phone") {
     await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await page.getByRole("button", { name: "Source", exact: true }).click();
     return;
   }
   await page
     .getByRole("banner")
-    .getByRole("button", { name: /^(Editing|Viewing)$/ })
+    .getByRole("button", { name: /^(Visual|Source|Viewing)$/ })
     .click();
   await page
     .getByRole("menu", { name: "Mode" })
-    .getByRole("menuitemradio", { name: "Editing" })
+    .getByRole("menuitemradio", { name: "Source" })
     .click();
 }
 

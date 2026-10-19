@@ -78,7 +78,7 @@ describe("editing a note's source", () => {
   it("shows the source beside the preview on a wide screen, and saves it", async () => {
     holdScreen("wide");
     const { drive } = open();
-    await pickMode("Editing");
+    await pickMode("Source");
 
     const view = await editor();
     expect(view.state.sliceDoc()).toBe("# Tea\r\n\r\n- [ ] Boil\r\n");
@@ -102,7 +102,7 @@ describe("editing a note's source", () => {
     open();
     await screen.findByRole("heading", { name: "Tea" });
     const shown = document.querySelector(".markdown");
-    await pickMode("Editing");
+    await pickMode("Source");
     await editor();
 
     // As regions, which leave the note's own headings as they are.
@@ -117,7 +117,7 @@ describe("editing a note's source", () => {
   it("brings a task tapped in the preview into the source", async () => {
     holdScreen("wide");
     open();
-    await pickMode("Editing");
+    await pickMode("Source");
     const view = await editor();
 
     fireEvent.click(screen.getByRole("checkbox"));
@@ -125,20 +125,27 @@ describe("editing a note's source", () => {
     expect(view.state.sliceDoc()).toBe("# Tea\r\n\r\n- [x] Boil\r\n");
   });
 
-  it("switches between the source and the preview on a phone", async () => {
+  it("switches between Visual, Source and the preview on a phone", async () => {
     holdScreen("phone");
     open();
     fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
-    type(await editor(), "\r\nGreen.");
+    const view = await editor();
+    type(view, "\r\nGreen.");
 
     expect(screen.queryByRole("heading", { name: "Tea" })).toBeNull();
     // The switch names what shows, which needs no label of its own.
     expect(screen.queryByRole("region", { name: "Markdown" })).toBeNull();
     const show = screen.getByRole("group", { name: "Show" });
+    const visual = within(show).getByRole("button", { name: "Visual" });
     const source = within(show).getByRole("button", { name: "Source" });
     const preview = within(show).getByRole("button", { name: "Preview" });
-    expect(source).toHaveAttribute("aria-pressed", "true");
+    expect(visual).toHaveAttribute("aria-pressed", "true");
+    expect(source).toHaveAttribute("aria-pressed", "false");
     expect(preview).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(source);
+    expect(await editor()).toBe(view);
+    expect(source).toHaveAttribute("aria-pressed", "true");
+    expect(visual).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(preview);
     expect(screen.getByText("Green.")).toBeVisible();
     expect(editorShown()).toBe(false);
@@ -150,10 +157,31 @@ describe("editing a note's source", () => {
     expect(source).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("starts editing in the mode chosen last on the device, never in the preview", async () => {
+    holdScreen("phone");
+    const { unmount } = open();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Source" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    expect(
+      await screen.findByRole("button", { name: "Source" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    unmount();
+
+    open();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    expect(
+      await screen.findByRole("button", { name: "Source" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await editor();
+  });
+
   it("keeps the revision opened while editing, and shows Drive's newer one once viewing", async () => {
     holdScreen("wide");
     const { drive, rerender } = open();
-    await pickMode("Editing");
+    await pickMode("Source");
     const view = await editor();
     type(view, "x");
 
@@ -189,7 +217,7 @@ describe("editing a note's source", () => {
           answer = resolve;
         }),
     );
-    await pickMode("Editing");
+    await pickMode("Source");
     const view = await editor();
     type(view, "x");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -209,7 +237,7 @@ describe("editing a note's source", () => {
   it("keeps the same editor, its cursor and history, after a save", async () => {
     holdScreen("wide");
     const { drive, rerender } = open();
-    await pickMode("Editing");
+    await pickMode("Source");
     const view = await editor();
     type(view, "\r\nGreen.");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));

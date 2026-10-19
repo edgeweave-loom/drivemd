@@ -123,7 +123,7 @@ On each of these screens: Home, a folder (My Drive), `device-check-tasks.md` rea
 
 ### D. The keyboard toolbar
 
-With the on-screen keyboard (**Simulate Hardware Keyboard** off in DeviceHub, **Connect Hardware Keyboard** off in the Simulator app; see Typing, under Tools). Open `device-check-long.md`, then **Edit**, or on the iPad the mode menu ▸ **Editing**.
+With the on-screen keyboard (**Simulate Hardware Keyboard** off in DeviceHub, **Connect Hardware Keyboard** off in the Simulator app; see Typing, under Tools). Open `device-check-long.md`, then **Edit** ▸ **Source**, or on the iPad the mode menu ▸ **Source**.
 
 - **D1. Shown.** Tap the first line: the on-screen keyboard comes up, and the toolbar right above it, one row of keys (Undo, Redo, Heading, Bold, List, Checkbox, Link, Indent, Outdent, Find in note), with no empty second row under them. In Safari it sits on the address bar that floats above the keyboard. Swipe the row sideways when its keys do not fit.
 - **D2. Typing at the note's end.** Scroll to the end, tap after the last line, then ten times: tap Return and type `x`. Each time, the line being typed shows fully above the toolbar. In Safari, the toolbar may first sit above the keyboard and move down onto it as lines are typed: the spec describes it, and it is a PASS as long as no typed line hides under the toolbar.
@@ -155,7 +155,7 @@ Compare each screen with its mockup in `docs/design/mockups/` (the table in `doc
 | `conflict-phone`, `conflict`                                                    | iPhone upright, then iPad sideways: a conflict (below)                                                            |
 | `tablet-folder`, `tablet-note`                                                  | iPad upright: My Drive with the navigation rail, then `device-check-long.md` edited with its folder's drawer open |
 | `home`, `folder`, `note`, `search`                                              | iPad sideways: Home, My Drive, `device-check-tasks.md`, search                                                    |
-| `drive-tab-sign-in`, `drive-tab-editing`, `drive-tab-viewing`                   | iPad sideways, a tab opened from Drive: before sign-in, in Editing with a change, then Viewing                    |
+| `drive-tab-sign-in`, `drive-tab-editing`, `drive-tab-viewing`                   | iPad sideways, a tab opened from Drive: before sign-in, in Source with a change, then Viewing                     |
 
 To make a conflict, open `device-check-other.md` in two Safari tabs (the second asks for **Continue**), add a line in the second and save it, then add another in the first and save: a banner says that someone changed the file, over the differences, with its choices. Choose **Keep the Drive version**, and confirm, to leave.
 
@@ -163,7 +163,7 @@ To make a conflict, open `device-check-other.md` in two Safari tabs (the second 
 
 - **G1. Open.** In Safari, open drive.google.com, where the developer signs in to Drive, find `device-check-tasks.md` and open it with DriveMD (**Open with ▸ DriveMD**). If Drive does not offer it there, build the address Drive would open instead: take the note's ID from the app's `/edit?id=<ID>` address, and open `https://md-staging.corp.edgeweave.tech/open?state=` followed by `{"ids":["<ID>"],"action":"open"}` encoded as a URL component; then say in the report that Drive's own part went unchecked.
 - **G2. Before sign-in.** Run it in a Safari that never saw the account: once A1 has signed in, the tab shows **Welcome back** instead, so on the iPhone open the address in a private tab, and close it afterwards. The page says "Google Drive asked DriveMD to open a Markdown file. Sign in with your Google account to see it." with **Sign in**, which opens Google's account chooser.
-- **G3. The note alone.** No search, no breadcrumbs, no Back and no folders; DriveMD's mark is no link. On the iPhone the note opens read, and More actions holds **Move**, **Move to trash**, the account's email, **About DriveMD** and **Sign out**. On the iPad sideways it opens in Editing, the source beside the preview.
+- **G3. The note alone.** No search, no breadcrumbs, no Back and no folders; DriveMD's mark is no link. On the iPhone the note opens read, and More actions holds **Move**, **Move to trash**, the account's email, **About DriveMD** and **Sign out**. On the iPad sideways it opens in the editor, in the mode chosen last: Visual on one sheet at first, or Source beside the preview.
 - **G4. A link opens a new tab.** Tap "the other note": it opens in a new Safari tab, in the same mode (G3 holds there too), without asking to sign in or to **Continue**. Close that tab and do it twice more, since a race used to drop the mode now and then.
 - **G5. A heading link** ("the end") scrolls to its heading, in the same tab.
 - **G6. Reload** keeps the mode.

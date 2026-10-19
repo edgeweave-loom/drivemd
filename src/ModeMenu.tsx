@@ -1,44 +1,56 @@
 import { useCallback, useId, useRef } from "react";
+import type { EditMode } from "./edit-mode.ts";
 import { Icon } from "./Icon.tsx";
 import type { IconName } from "./icons.ts";
 import { moveInMenu } from "./menu.ts";
 
-interface Mode {
-  editing: boolean;
+/** The note's mode: one of the editor's, or reading it. */
+export type Mode = EditMode | "viewing";
+
+interface Choice {
+  mode: Mode;
   icon: IconName;
   name: string;
   does: string;
 }
 
-const EDITING: Mode = {
-  editing: true,
-  icon: "edit",
-  name: "Editing",
-  does: "Edit the Markdown beside its preview",
-};
-const VIEWING: Mode = {
-  editing: false,
-  icon: "visibility",
-  name: "Viewing",
-  does: "Save, then read the note",
+const CHOICES: Record<Mode, Choice> = {
+  visual: {
+    mode: "visual",
+    icon: "edit",
+    name: "Visual",
+    does: "Edit the note as it reads",
+  },
+  source: {
+    mode: "source",
+    icon: "code",
+    name: "Source",
+    does: "Edit the Markdown beside its preview",
+  },
+  viewing: {
+    mode: "viewing",
+    icon: "visibility",
+    name: "Viewing",
+    does: "Save, then read the note",
+  },
 };
 
 /**
  * The note's mode, as Docs's menu gives it on a wider screen than a phone's:
- * a button naming the mode, and a menu of both, each saying what it does,
- * the one chosen checked. The focus starts at it, the arrows, Home and End
- * move it, and Tab leaves the menu, which closes.
+ * a button naming the mode, and a menu of all three, each saying what it
+ * does, the one chosen checked. The focus starts at it, the arrows, Home and
+ * End move it, and Tab leaves the menu, which closes.
  */
 export function ModeMenu({
-  editing,
+  mode,
   onPick,
 }: {
-  editing: boolean;
-  onPick: (editing: boolean) => void;
+  mode: Mode;
+  onPick: (mode: Mode) => void;
 }) {
   const id = useId();
   const menu = useRef<HTMLDivElement>(null);
-  const current = editing ? EDITING : VIEWING;
+  const current = CHOICES[mode];
   // The menu opens at the mode chosen.
   const holding = useCallback((element: HTMLDivElement | null) => {
     menu.current = element;
@@ -74,24 +86,24 @@ export function ModeMenu({
         className="menu mode-menu"
         onKeyDown={moveInMenu}
       >
-        {[EDITING, VIEWING].map((mode) => (
+        {Object.values(CHOICES).map((choice) => (
           <button
-            key={mode.name}
+            key={choice.mode}
             type="button"
             role="menuitemradio"
-            aria-checked={mode.editing === editing}
-            aria-labelledby={`${id}-${mode.name}`}
-            aria-describedby={`${id}-${mode.name}-does`}
+            aria-checked={choice.mode === mode}
+            aria-labelledby={`${id}-${choice.mode}`}
+            aria-describedby={`${id}-${choice.mode}-does`}
             onClick={() => {
               menu.current?.hidePopover();
-              if (mode.editing !== editing) onPick(mode.editing);
+              if (choice.mode !== mode) onPick(choice.mode);
             }}
           >
-            <Icon name={mode.icon} />
+            <Icon name={choice.icon} />
             <span className="mode-label">
-              <span id={`${id}-${mode.name}`}>{mode.name}</span>
-              <span id={`${id}-${mode.name}-does`} className="hint">
-                {mode.does}
+              <span id={`${id}-${choice.mode}`}>{choice.name}</span>
+              <span id={`${id}-${choice.mode}-does`} className="hint">
+                {choice.does}
               </span>
             </span>
           </button>
