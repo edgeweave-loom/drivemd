@@ -37,7 +37,7 @@ The interface is in English. On a phone or a tablet, it follows the system's lig
 
 **Out of scope for v1**
 
-- WYSIWYG editing (source editing keeps files byte-identical), and full Obsidian-style live preview (planned for v2, see Editor)
+- Rich-text editing, which rebuilds the Markdown (source editing keeps files byte-identical), and full Obsidian-style live preview, the Visual mode planned for v2 (see Editor)
 - Real-time multi-user collaboration
 - Offline editing: unsaved text is kept on the device, but nothing reaches Drive while offline
 - Converting to or from Google Docs
@@ -85,7 +85,7 @@ The interface is in English. On a phone or a tablet, it follows the system's lig
    - A tap or click in the editor only places the cursor; checkboxes and links react in the viewer and the preview. On desktop, Cmd/Ctrl+click opens a link from the editor, as in Obsidian: an inline link, an autolink or a bare web address, where a tap in the preview would lead.
    - Enter continues lists and task lists.
    - **Find in note** finds text in the file, from Cmd/Ctrl+F or the keyboard toolbar. The browser's own find misses text that CodeMirror has not drawn, since it renders only the visible part of the file. Its bar counts the matches, up to 1,000, steps to the previous and the next, matches case, whole words or a regular expression, and replaces the match or all of them; it starts from the selected text. On a phone it takes the app bar's place, Done and Save included, until Back closes it; on a wider screen it sticks over the source's top, under the app bar. Its buttons never take the focus, so that the keyboard stays up and nothing moves: when the keyboard left as a button took the focus, iOS panned the page back after its menu opened, which stayed where the bar had been (seen in the iOS 27 simulator). Closing it gives the focus back to the text, at the match last found, clear of the keyboard toolbar. The bar is the page's own, in the app's styles, rather than CodeMirror's panel, whose styles the editor's shadow root keeps from the app's: CodeMirror's search still finds, highlights and replaces, its panel kept hidden, at the top so that it takes no room from the cursor when the editor scrolls (docs/DESIGN.md, Find in note).
-   - **Full Obsidian-style live preview (v2).** Symbols hidden except on the line being edited, and images and tables rendered in the editor. A setting switches between full live preview, light styling and plain source. Details in the v2 live preview section.
+   - **Full Obsidian-style live preview (v2).** Symbols hidden except on the line being edited, and images and tables rendered in the editor: the **Visual** mode, editing's default, on one sheet on a wide screen. **Source** keeps the light styling, with the preview beside it on a wide screen, and **Viewing** the rendered note. Details in the v2 live preview section.
    - All modes are CodeMirror 6 decorations over the same source text, so files stay byte-identical and v2 builds on v1 without rework.
 6. **Save.** Explicit Save button plus Cmd/Ctrl+S, from the editor or the viewer; there is no autosave, and Cmd/Ctrl+S never saves the page itself. The Save button shows whenever the file has unsaved changes, in the viewer too.
    - Unsaved text is kept on the device (IndexedDB) as the user types, half a second after the last change and at once when the page hides or goes, so it survives a reload, a crash or iOS closing the app. It is kept per account, with the revision it was edited from and the note's name and resource key, so that Home lists it at once and opens it even when shared by link. Reopening the file offers to restore it or discard it, with or without a connection, and editing waits for the answer; restoring writes nothing, and the next save of a note that changed in Drive since leads to the conflict choice. The device forgets the text once nothing is unsaved while the page shows, after a save, edits undone by hand or Drive's version kept after a conflict, when a copy is saved after one, and when the note opens with the very text the device holds. A device that keeps nothing still lets the user edit.
@@ -403,7 +403,7 @@ Build in nine milestones, each ending with something that runs; give Claude Code
 
 ## v2: Obsidian-style live preview
 
-We will build our own live preview as a CodeMirror 6 extension, delivered in three stages: symbol hiding, then images, then tables.
+We will build our own live preview as a CodeMirror 6 extension, the editor's **Visual** mode, delivered in three stages: symbol hiding, then images, then tables.
 
 **Decisions**
 
@@ -414,6 +414,23 @@ We will build our own live preview as a CodeMirror 6 extension, delivered in thr
 | Typora-style editors (Vditor instant rendering, Muya) | Rejected                                                                   | Same re-generation risk; weaker mobile support                                                          |
 | Existing live-preview packages                        | Not used as dependencies, not copied                                       | We own the core of the editing experience; packages are read as a reference only                        |
 | Implementation                                        | Our own extension on `@codemirror/lang-markdown` syntax tree + decorations | Builds directly on the v1 light styling                                                                 |
+| Modes                                                 | Visual, Source and Viewing                                                 | Visual cannot match the rendered note everywhere, so Viewing keeps it; Source is v1's editor            |
+| Plain source, without styling                         | Rejected                                                                   | Source already hides nothing, so it is the fallback; a third editing mode would only add checks         |
+| Visual on a wide screen                               | One sheet, without the preview beside it                                   | The text already reads formatted, so a preview beside it would repeat it                                |
+
+**Modes**
+
+| Mode                    | Wide screen                                                                       | Phone                                         |
+| ----------------------- | --------------------------------------------------------------------------------- | --------------------------------------------- |
+| **Visual**, the default | The note on one sheet, as Viewing shows it, the Markdown shown where it is edited | The same, in the phone's one column           |
+| **Source**              | v1's editor, unchanged: the source in light styling, beside the preview           | v1's editor, unchanged                        |
+| **Viewing**             | The rendered note on a sheet, saved first                                         | Reading, which the ✓ returns to, saving first |
+
+- On a wide screen, the mode menu offers **Visual**, **Source** and **Viewing**, each with a line that says what it does: "Edit the note as it reads", "Edit the Markdown beside its preview", "Save, then read the note". Choosing **Viewing** saves first, as it does today.
+- On a phone, the segmented button over the note offers **Visual**, **Source** and **Preview**, in that order. **Preview** shows the rendered note without saving or leaving the editor, so that the user can check what Visual does not show as the note renders. The floating **Edit** button and the ✓ keep their roles.
+- A note opens as today: in reading, and in editing on a wide screen in a tab opened from Drive. Editing starts in the mode last chosen between Visual and Source, which the device remembers (`localStorage`); it is Visual at first, and wherever the device keeps nothing. **Preview** is a look, and is not remembered.
+- Find in note sticks over the top of Visual's sheet, as it does over the source's.
+- The modes come with stage 1, and each stage rewrites the requirements and `docs/DESIGN.md` where it changes them.
 
 **Stages**
 
@@ -424,13 +441,13 @@ We will build our own live preview as a CodeMirror 6 extension, delivered in thr
 3. **Tables.** Show a formatted table; tapping it reveals its raw markdown for editing.
    - Done when: editing a table on a phone never corrupts its rows.
 
-If a stage proves too costly on phones, that element stays unhidden in the editor and the Preview toggle covers it.
+If a stage proves too costly on phones, that element stays unhidden in Visual, as in Source, and Preview covers it.
 
 **Design rules**
 
 - **No jumping text.** Revealing or hiding symbols never changes line heights.
 - **Hidden symbols stay intact.** Hidden ranges are atomic: the cursor skips them as one unit, and autocorrect or backspace cannot half-delete a `**`.
-- **Three modes.** A setting switches between live preview, light styling (v1) and plain source. Source mode is always available as the fallback.
+- **Source is the fallback.** Source hides nothing, so cursor and selection behave there as in v1, and it stays one tap away wherever Visual misbehaves.
 - **Byte-identical.** Decorations only change how text looks; the saved file changes only where the user typed.
 
 **Testing**
@@ -445,6 +462,7 @@ Every stage is tested on a real iPhone first, then an Android phone, with our me
 - [x] Which icon does DriveMD get? The Markdown mark, which its author dedicated to the public domain, in white on a teal plate: `public/icon.svg`, also the browser tab's icon. The Home Screen and Android's launcher get the mark on a plate that fills the square, `public/icon-maskable.svg`, since they cut it to their own shape.
 - [x] Do the Drive iOS and Android apps show web apps under Open with? The iPhone app does not: it opens no .md file and lists no web app, as Google's Drive help says of both apps. The Android app does, and opens DriveMD in Chrome. Drive in a phone's browser opens DriveMD too (see Phone limit).
 - [x] How does a tab that a tab opened from Drive opens get its token, so that the user does not sign in again? The browser copies the opening tab's `sessionStorage` into a tab it opens with `window.open` and the opener kept, which the security review in Handing the token to a new tab chose over a message or shared storage (milestone 9, step 12).
+- [ ] In Visual, does a tap on a task's checkbox tick it, as one edit that undo reverts, and does a tap on a link follow it, as in Obsidian's live preview, or only place the cursor, as in Source today?
 
 ## Sources
 
