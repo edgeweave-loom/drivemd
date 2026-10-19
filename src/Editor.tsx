@@ -77,9 +77,14 @@ const LIGHT = HighlightStyle.define([
   { tag: tags.strikethrough, textDecoration: "line-through" },
   { tag: tags.monospace, fontFamily: "var(--font-mono)" },
   { tag: tags.link, color: "var(--primary)" },
+  { tag: tags.url, color: "var(--on-surface-variant)" },
+  // A heading's or bold text's marks take its tag too: they stay at the
+  // text's size and weight.
   {
-    tag: [tags.processingInstruction, tags.url],
+    tag: tags.processingInstruction,
     color: "var(--on-surface-variant)",
+    fontSize: "1em",
+    fontWeight: "normal",
   },
 ]);
 

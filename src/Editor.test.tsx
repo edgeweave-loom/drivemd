@@ -42,23 +42,26 @@ function open(text: string, lineBreak: LineBreak = "\n") {
 }
 
 /**
- * Each line as the editor shows it: dimmed text in ‹›, and "(larger)" after
- * a line with text larger than the editor's.
+ * Each line as the editor shows it: dimmed text in ‹›, text larger than the
+ * editor's in ⟨⟩, and bold text in **.
  */
 function looks(view: EditorView) {
   const size = getComputedStyle(view.contentDOM).fontSize;
   return [...view.contentDOM.querySelectorAll(".cm-line")].map((line) => {
     let shown = "";
-    let larger = false;
     const texts = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
     for (let text = texts.nextNode(); text; text = texts.nextNode()) {
       const style = getComputedStyle(text.parentElement ?? line);
-      const value = text.textContent ?? "";
-      larger ||= style.fontSize !== size;
-      shown +=
-        style.color === "var(--on-surface-variant)" ? `‹${value}›` : value;
+      let value = text.textContent ?? "";
+      if (style.fontWeight === "700") value = `**${value}**`;
+      if (style.fontSize !== size) value = `⟨${value}⟩`;
+      if (style.color === "var(--on-surface-variant)") value = `‹${value}›`;
+      shown += value;
     }
-    return shown.replaceAll("›‹", "") + (larger ? " (larger)" : "");
+    return shown
+      .replaceAll("›‹", "")
+      .replaceAll("⟩⟨", "")
+      .replaceAll("****", "");
   });
 }
 
@@ -213,7 +216,24 @@ describe("Editor", () => {
       "‹tags:› ‹[›tea‹,› cups‹]›",
       "‹---›",
       "",
-      "‹#› The plan (larger)",
+      "‹#›⟨** The plan**⟩",
+      "",
+    ]);
+  });
+
+  it("dims headings' and bold text's marks at the text's size and weight", async () => {
+    const { view } = open("# Plan\n\n## Tasks\n\nTea\n===\n\nSome __tea__\n");
+    await parsed(view);
+
+    expect(looks(view)).toEqual([
+      "‹#›⟨** Plan**⟩",
+      "",
+      "‹##›⟨** Tasks**⟩",
+      "",
+      "⟨**Tea**⟩",
+      "‹===›",
+      "",
+      "Some ‹__›**tea**‹__›",
       "",
     ]);
   });
