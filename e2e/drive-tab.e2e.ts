@@ -9,12 +9,14 @@ import {
 
 /**
  * Opens plan.md as Drive's Open with does: in a new tab, which has no token
- * yet, on a device that remembers the account.
+ * yet, on a device that remembers the account, and Source as the editor's
+ * mode, which shows the preview, and its links, beside the source.
  */
 async function openFromDrive(page: Page) {
   await signIn(page);
   await page.evaluate(() => {
     sessionStorage.clear();
+    localStorage.setItem("drivemd.editMode", "source");
   });
   const state = {
     ids: ["plan"],
@@ -63,15 +65,16 @@ test("holds the note alone, through a reload, until another address opens", asyn
   await expect(bar.getByRole("link")).toHaveCount(0);
   await expect(page.getByRole("complementary")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Folder" })).toHaveCount(0);
-  // Editing on a wide screen, the source beside the preview, as Docs opens a
-  // document on a computer; reading on a phone.
+  // In the editor on a wide screen, in the mode chosen last, as Docs opens a
+  // document on a computer: here Source, beside the preview; reading on a
+  // phone.
   await expect(page.getByRole("region", { name: "Markdown" })).toHaveCount(
     phone ? 0 : 1,
   );
   await expect(
     phone
       ? page.getByRole("button", { name: "Edit", exact: true })
-      : bar.getByRole("button", { name: "Editing" }),
+      : bar.getByRole("button", { name: "Source" }),
   ).toBeVisible();
   if (phone) {
     // A phone's Done takes the mark's place while editing.

@@ -96,7 +96,7 @@ describe("a save that finds someone else's change", () => {
     async () => {
       holdScreen("wide");
       await conflict();
-      await pickMode("Editing");
+      await pickMode("Source");
       const view = await differences();
       const source = await waitFor(() => {
         const content = document
@@ -240,10 +240,10 @@ describe("a save that finds someone else's change", () => {
     ).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("stays in Editing with the choice open when Viewing would save", async () => {
+  it("stays in Source with the choice open when Viewing would save", async () => {
     holdScreen("wide");
     const { drive } = await conflict();
-    await pickMode("Editing");
+    await pickMode("Source");
     const asked = drive.getMetadata.mock.calls.length;
 
     await pickMode("Viewing");
@@ -297,7 +297,7 @@ describe("a save that finds someone else's change", () => {
   it("keeps Drive's version after the editor closes, and tells the page of it", async () => {
     holdScreen("wide");
     await conflict();
-    await pickMode("Editing");
+    await pickMode("Source");
 
     keepTheirs();
     await pickMode("Viewing");

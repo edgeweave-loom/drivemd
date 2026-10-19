@@ -78,6 +78,8 @@ if ("window" in globalThis) {
 
 afterEach(() => {
   cleanup();
+  // The editor's mode, which the device remembers.
+  if ("window" in globalThis) localStorage.clear();
   holdScreen("phone");
   holdTouch(false);
   onlineManager.setOnline(true);

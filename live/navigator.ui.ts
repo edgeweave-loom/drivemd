@@ -493,11 +493,11 @@ test("opens what Drive's Open with, New and pasted links name", async ({
   await expect(bar.getByRole("img", { name: "DriveMD" })).toBeVisible();
   await expect(bar.getByRole("link")).toHaveCount(0);
   await expect(page.getByRole("complementary")).toHaveCount(0);
-  // Editing on a computer, reading on a phone.
+  // In the editor on a computer, in Visual at first, reading on a phone.
   await expect(
     phone()
       ? page.getByRole("button", { name: "Edit", exact: true })
-      : bar.getByRole("button", { name: "Editing" }),
+      : bar.getByRole("button", { name: "Visual" }),
   ).toBeVisible();
   await loaded(page);
 
@@ -588,7 +588,7 @@ test("edits a note's source and saves it, keeping its line breaks", async ({
     await page.getByRole("button", { name: "Viewing" }).click();
     await page
       .getByRole("menu", { name: "Mode" })
-      .getByRole("menuitemradio", { name: "Editing" })
+      .getByRole("menuitemradio", { name: "Source" })
       .click();
   }
   const source = page.getByRole("textbox", { name: "Markdown source" });

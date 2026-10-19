@@ -73,7 +73,8 @@ describe("A tab opened from Drive", () => {
     holdScreen("wide");
     openFromDrive();
 
-    await screen.findByRole("heading", { name: "The plan" });
+    // In the editor, in Visual.
+    await screen.findByRole("button", { name: "Visual" });
     expect(screen.queryByRole("complementary")).toBeNull();
     expect(screen.queryByRole("link", { name: "notes.md" })).toBeNull();
   });
@@ -82,7 +83,8 @@ describe("A tab opened from Drive", () => {
     holdScreen("tablet");
     openFromDrive();
 
-    await screen.findByRole("heading", { name: "The plan" });
+    // In the editor, in Visual.
+    await screen.findByRole("button", { name: "Visual" });
     expect(screen.queryByRole("button", { name: "Folder" })).toBeNull();
   });
 

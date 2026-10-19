@@ -61,17 +61,20 @@ beforeEach(() => {
 });
 
 describe("the mode menu", () => {
-  it("names the mode and offers both, saying what each does", async () => {
+  it("names the mode and offers all three, saying what each does", async () => {
     open();
 
     const mode = await screen.findByRole("button", { name: "Viewing" });
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
     fireEvent.click(mode);
     const menu = within(screen.getByRole("menu", { name: "Mode" }));
-    const editing = menu.getByRole("menuitemradio", { name: "Editing" });
+    const visual = menu.getByRole("menuitemradio", { name: "Visual" });
+    const source = menu.getByRole("menuitemradio", { name: "Source" });
     const viewing = menu.getByRole("menuitemradio", { name: "Viewing" });
-    expect(editing).toHaveAttribute("aria-checked", "false");
-    expect(editing).toHaveAccessibleDescription(
+    expect(visual).toHaveAttribute("aria-checked", "false");
+    expect(visual).toHaveAccessibleDescription("Edit the note as it reads");
+    expect(source).toHaveAttribute("aria-checked", "false");
+    expect(source).toHaveAccessibleDescription(
       "Edit the Markdown beside its preview",
     );
     expect(viewing).toHaveAttribute("aria-checked", "true");
@@ -79,20 +82,39 @@ describe("the mode menu", () => {
     // The focus starts at the mode chosen, and the arrows move it.
     expect(viewing).toHaveFocus();
     fireEvent.keyDown(viewing, { key: "ArrowUp" });
-    expect(editing).toHaveFocus();
-    fireEvent.keyDown(editing, { key: "ArrowDown" });
+    expect(source).toHaveFocus();
+    fireEvent.keyDown(source, { key: "ArrowDown" });
     expect(viewing).toHaveFocus();
     fireEvent.keyDown(viewing, { key: "Home" });
-    expect(editing).toHaveFocus();
-    fireEvent.keyDown(editing, { key: "End" });
+    expect(visual).toHaveFocus();
+    fireEvent.keyDown(visual, { key: "End" });
     expect(viewing).toHaveFocus();
 
-    fireEvent.click(editing);
+    fireEvent.click(visual);
     expect(screen.queryByRole("menu", { name: "Mode" })).toBeNull();
-    expect(
-      await screen.findByRole("button", { name: "Editing" }),
-    ).toBeVisible();
+    expect(await screen.findByRole("button", { name: "Visual" })).toBeVisible();
     await editor();
+    // On one sheet, without the preview beside it.
+    expect(screen.queryByRole("region")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Tea" })).toBeNull();
+  });
+
+  it("keeps the editor, its text and history, from Visual to Source and back", async () => {
+    open();
+    await pickMode("Visual");
+    const view = await editor();
+    type(view, "Green.\n");
+
+    await pickMode("Source");
+    expect(
+      await screen.findByRole("region", { name: "Markdown" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText("Green.", { selector: ".markdown p" }),
+    ).toBeVisible();
+    await pickMode("Visual");
+    expect(await editor()).toBe(view);
+    expect(screen.queryByRole("region")).toBeNull();
   });
 
   it("closes as the focus leaves it by Tab", async () => {
@@ -111,7 +133,7 @@ describe("the mode menu", () => {
 
   it("saves before viewing, then shows the note alone", async () => {
     const { drive } = open();
-    await pickMode("Editing");
+    await pickMode("Source");
     type(await editor(), "Green.\n");
 
     await pickMode("Viewing");
@@ -132,7 +154,7 @@ describe("the mode menu", () => {
     );
   });
 
-  it("stays in Editing when more was typed while it saved", async () => {
+  it("stays in the editor when more was typed while it saved", async () => {
     const { drive } = open();
     let written: (file: FileMetadata) => void = () => undefined;
     drive.saveContent.mockReturnValue(
@@ -140,7 +162,7 @@ describe("the mode menu", () => {
         written = resolve;
       }),
     );
-    await pickMode("Editing");
+    await pickMode("Source");
     const view = await editor();
     type(view, "Green.\n");
 
@@ -153,13 +175,13 @@ describe("the mode menu", () => {
       metadata(PLAN, { md5Checksum: "bbbb", headRevisionId: "revision-2" }),
     );
     expect(await screen.findByRole("button", { name: "Save" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Editing" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Source" })).toBeVisible();
     expect(editorShown()).toBe(true);
   });
 
   it("writes nothing when viewing a note left as it was", async () => {
     const { drive } = open();
-    await pickMode("Editing");
+    await pickMode("Source");
     await editor();
 
     await pickMode("Viewing");
@@ -171,9 +193,9 @@ describe("the mode menu", () => {
     expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 
-  it("stays in Editing when someone else changed the note, saying so", async () => {
+  it("stays in the editor when someone else changed the note, saying so", async () => {
     const { drive } = open();
-    await pickMode("Editing");
+    await pickMode("Source");
     type(await editor(), "Green.\n");
     drive.getMetadata.mockResolvedValue(
       metadata(PLAN, { md5Checksum: "cccc", headRevisionId: "revision-9" }),
@@ -184,25 +206,25 @@ describe("the mode menu", () => {
     expect(
       await screen.findByRole("heading", { name: /Someone changed/ }),
     ).toBeVisible();
-    expect(screen.getByRole("button", { name: "Editing" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Source" })).toBeVisible();
     expect(editorShown()).toBe(true);
     expect(drive.saveContent).not.toHaveBeenCalled();
     expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 
-  it("stays in Editing when the save fails, saying why", async () => {
+  it("stays in the editor when the save fails, saying why", async () => {
     const { drive } = open();
     drive.saveContent.mockRejectedValue(
       new DriveError(403, "The user does not have sufficient permissions."),
     );
-    await pickMode("Editing");
+    await pickMode("Source");
     type(await editor(), "Green.\n");
 
     await pickMode("Viewing");
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The user does not have sufficient permissions.",
     );
-    expect(screen.getByRole("button", { name: "Editing" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Source" })).toBeVisible();
     expect(editorShown()).toBe(true);
     expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
