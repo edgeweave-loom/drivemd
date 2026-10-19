@@ -978,6 +978,7 @@ function NoteView({
                 ref={editor}
                 initial={text}
                 lineBreak={note.lineBreak}
+                visual={mode === "visual"}
                 onChange={onEdit}
                 onFollow={follow}
               />

@@ -1,3 +1,4 @@
+import { cursorCharRight, undo } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import {
   ensureSyntaxTree,
@@ -21,24 +22,34 @@ import { Editor, type EditorHandle } from "./Editor.tsx";
 import { linkAt } from "./source-links.ts";
 import type { LineBreak } from "./text.ts";
 
-function open(text: string, lineBreak: LineBreak = "\n") {
+function open(text: string, lineBreak: LineBreak = "\n", visual = false) {
   const onChange = vi.fn<(text: string) => void>();
   const handle = createRef<EditorHandle>();
-  const { container } = render(
+  const editor = (inVisual: boolean) => (
     <Editor
       ref={handle}
       initial={text}
       lineBreak={lineBreak}
+      visual={inVisual}
       onChange={onChange}
       onFollow={() => undefined}
-    />,
+    />
   );
+  const { container, rerender } = render(editor(visual));
   const element = container
     .querySelector(".editor")
     ?.shadowRoot?.querySelector<HTMLElement>(".cm-editor");
   const view = element && EditorView.findFromDOM(element);
   if (!view) throw new Error("No editor");
-  return { view, onChange, handle };
+  return {
+    view,
+    onChange,
+    handle,
+    /** Shows the editor in Visual, or in Source. */
+    showIn: (inVisual: boolean) => {
+      rerender(editor(inVisual));
+    },
+  };
 }
 
 /**
@@ -249,6 +260,91 @@ describe("Editor", () => {
       "const cups = { tea: 2 };",
       "‹```›",
     ]);
+  });
+});
+
+describe("Visual", () => {
+  beforeEach(() => {
+    // jsdom names Apple as its vendor, so CodeMirror reads the selection in
+    // a shadow root as Safari needs, through a command jsdom lacks.
+    Object.defineProperty(document, "execCommand", {
+      value: () => false,
+      configurable: true,
+    });
+  });
+
+  const NOTE = [
+    "# The plan ##",
+    "",
+    "Some **tea**, _cups_, ~~coffee~~ and `water`.",
+    "",
+    "Tea",
+    "===",
+    "#",
+  ].join("\n");
+
+  it("hides Markdown's symbols, where no line is being written", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+
+    expect(looks(view)).toEqual([
+      "⟨**The plan**⟩",
+      "",
+      "Some **tea**, cups, coffee and water.",
+      "",
+      "⟨**Tea**⟩",
+      "‹===›",
+      "‹#›",
+    ]);
+    expect(view.contentDOM).toHaveAccessibleName("Note");
+  });
+
+  it("shows the symbols of the lines the selection touches while it has the focus", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 3, head: 20 } });
+    });
+
+    await waitFor(() => {
+      expect(looks(view).slice(0, 3)).toEqual([
+        "‹#›⟨** The plan **⟩‹##›",
+        "",
+        "Some ‹**›**tea**‹**›, ‹_›cups‹_›, ‹~~›coffee‹~~› and ‹`›water‹`›.",
+      ]);
+    });
+    act(() => {
+      view.contentDOM.blur();
+    });
+    await waitFor(() => {
+      expect(looks(view)[0]).toBe("⟨**The plan**⟩");
+    });
+  });
+
+  it("skips a hidden symbol as one unit", async () => {
+    const { view } = open("**Tea**", "\n", true);
+    await parsed(view);
+
+    view.dispatch({ selection: { anchor: 0 } });
+    cursorCharRight(view);
+
+    expect(view.state.selection.main.head).toBe(2);
+  });
+
+  it("switches to Source and back, keeping the text and its history", async () => {
+    const { view, showIn } = open("**Tea**", "\n", true);
+    await parsed(view);
+    view.dispatch({ changes: { from: 7, insert: " cups" } });
+
+    showIn(false);
+    expect(looks(view)).toEqual(["‹**›**Tea**‹**› cups"]);
+    expect(view.contentDOM).toHaveAccessibleName("Markdown source");
+    showIn(true);
+    expect(looks(view)).toEqual(["**Tea** cups"]);
+    undo(view);
+    expect(view.state.sliceDoc()).toBe("**Tea**");
   });
 });
 

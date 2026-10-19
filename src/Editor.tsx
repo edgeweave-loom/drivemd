@@ -18,6 +18,7 @@ import {
   type SearchQuery,
 } from "@codemirror/search";
 import {
+  Compartment,
   EditorState,
   RangeSetBuilder,
   type ChangeSpec,
@@ -55,6 +56,7 @@ import { KeyboardToolbar, TOOLBAR_HEIGHT } from "./KeyboardToolbar.tsx";
 import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
 import { useLayout, useTouch } from "./layout.ts";
+import { livePreview } from "./live-preview.ts";
 import { linkAt } from "./source-links.ts";
 import type { LineBreak } from "./text.ts";
 import { keepVisible } from "./visual-viewport.ts";
@@ -218,8 +220,18 @@ function followLinks(follow: (href: string) => void): Extension {
   });
 }
 
+// Visual or Source, which the editor switches between as it stays.
+const MODE = new Compartment();
+
+function inMode(visual: boolean): Extension {
+  return visual
+    ? [livePreview, EditorView.contentAttributes.of({ "aria-label": "Note" })]
+    : EditorView.contentAttributes.of({ "aria-label": "Markdown source" });
+}
+
 function extensions(
   lineBreak: LineBreak,
+  visual: boolean,
   changed: (update: ViewUpdate) => void,
   follow: (href: string) => void,
   clearance: () => { top: number; bottom: number } | null,
@@ -259,7 +271,7 @@ function extensions(
       ...searchKeymap,
     ]),
     EditorView.lineWrapping,
-    EditorView.contentAttributes.of({ "aria-label": "Markdown source" }),
+    MODE.of(inMode(visual)),
     EditorView.updateListener.of(changed),
     followLinks(follow),
     // The cursor stays clear of the keyboard toolbar and the app bar when
@@ -291,17 +303,20 @@ export interface EditorHandle {
 /**
  * The note's Markdown source, in CodeMirror, which holds the text while it
  * shows: it starts from `initial` and reports every edit, keeping the file's
- * line breaks.
+ * line breaks. In Visual, the note reads as it renders, its Markdown shown
+ * only where it is being written.
  */
 export function Editor({
   initial,
   lineBreak,
+  visual = false,
   onChange,
   onFollow,
   ref,
 }: {
   initial: string;
   lineBreak: LineBreak;
+  visual?: boolean;
   onChange: (text: string) => void;
   /** Follows a link the user Cmd or Ctrl+clicks. */
   onFollow: (href: string) => void;
@@ -317,7 +332,7 @@ export function Editor({
   const touch = useTouch();
   const phone = useLayout() === "phone";
   const toolbar = touch && focused;
-  const opening = useEffectEvent(() => initial);
+  const opening = useEffectEvent(() => ({ initial, visual }));
   const edited = useEffectEvent((update: ViewUpdate) => {
     if (update.docChanged) onChange(update.state.sliceDoc());
     if (update.focusChanged) setFocused(update.view.hasFocus);
@@ -390,11 +405,12 @@ export function Editor({
   useEffect(() => {
     const element = host.current;
     if (!element) return;
+    const { initial, visual } = opening();
     const view = mountIn(
       element,
       EditorState.create({
-        doc: opening(),
-        extensions: extensions(lineBreak, edited, followed, clearance),
+        doc: initial,
+        extensions: extensions(lineBreak, visual, edited, followed, clearance),
       }),
     );
     editor.current = view;
@@ -403,6 +419,10 @@ export function Editor({
       editor.current = null;
     };
   }, [lineBreak]);
+
+  useEffect(() => {
+    editor.current?.dispatch({ effects: MODE.reconfigure(inMode(visual)) });
+  }, [visual]);
 
   useImperativeHandle(
     ref,
