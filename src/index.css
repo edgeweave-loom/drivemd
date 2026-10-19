@@ -1160,6 +1160,12 @@ dialog.drawer {
 }
 
 /* The about page, which the Marketplace listing links to. */
+/* How the search's names match, in body-medium. */
+.matched {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
 .about h1,
 .about ul {
   margin: 0;

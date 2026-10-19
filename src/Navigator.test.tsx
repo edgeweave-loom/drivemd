@@ -88,7 +88,7 @@ describe("Navigator", () => {
     expect(session.renew).toHaveBeenCalledOnce();
     expect(getPlace().href).toBe("/search?q=weekly+plan");
     expect(
-      screen.getByRole("heading", { name: "Search: weekly plan" }),
+      screen.getByRole("heading", { name: "Results for “weekly plan”" }),
     ).toBeVisible();
   });
 
