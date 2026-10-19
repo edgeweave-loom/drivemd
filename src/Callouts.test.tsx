@@ -135,11 +135,39 @@ describe("callouts in a note of a vault", () => {
     const [untitled, folded] = page.querySelectorAll(".callout");
     expect(icon(untitled)).toBe("clipboard-list");
     expect(icon(folded)).toBe("circle-question-mark");
-    expect(folded?.querySelector("summary > svg")).toHaveAttribute(
+    expect(folded?.querySelector("summary > .callout-icon")).toHaveAttribute(
       "aria-hidden",
       "true",
     );
     expect(callouts(page).map(({ title }) => title)).toEqual(["Tldr", "Why?"]);
+  });
+
+  it("lay their title out as Obsidian's, with a chevron when they fold, to the eye only", () => {
+    const page = show(
+      "> [!faq]- Closed\n> Hidden.\n\n> [!faq]+ Open\n> Shown.\n\n> [!note] Still\n> Body.\n\n<details><summary>Plain</summary>Text</details>",
+    );
+
+    const parts = (title: Element | undefined) =>
+      [...(title?.children ?? [])].map((part) => part.getAttribute("class"));
+    const [closed, open, still] = page.querySelectorAll(".callout-title");
+    for (const title of [closed, open]) {
+      expect(parts(title)).toEqual([
+        "callout-icon",
+        "callout-title-inner",
+        "callout-fold",
+      ]);
+      const end = title?.lastElementChild;
+      expect(end?.tagName.toLowerCase()).toBe("svg");
+      expect(end).toHaveAttribute("data-icon", "lucide-chevron-down");
+      expect(end).toHaveAttribute("aria-hidden", "true");
+    }
+    expect(parts(still)).toEqual(["callout-icon", "callout-title-inner"]);
+    expect(callouts(page).map(({ title }) => title)).toEqual([
+      "Closed",
+      "Open",
+      "Still",
+    ]);
+    expect(screen.getByText("Plain").querySelector("svg")).toBeNull();
   });
 
   it("show an icon in HTML on a title with its type only, as raw HTML may use their classes", () => {
