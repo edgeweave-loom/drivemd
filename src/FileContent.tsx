@@ -853,9 +853,6 @@ function NoteView({
     <>
       <div className="note-bar">
         {reason && <p className="badge read-only">{reason}</p>}
-        {editable && layout === "phone" && editing && (
-          <Panes pane={pane} onPane={onPane} />
-        )}
         {editable &&
           !floats &&
           (layout === "phone" ? (
@@ -934,6 +931,11 @@ function NoteView({
         <p role="alert" className="failure">
           {describeError(save.error)}
         </p>
+      )}
+      {/* Under the banners, which are about the whole note, right above
+          what it switches. */}
+      {editable && layout === "phone" && editing && (
+        <Panes pane={pane} onPane={onPane} />
       )}
       {/* On a sheet, as Docs shows a page on a wide screen, or while
           editing there, the source and the preview on two, side by side.
