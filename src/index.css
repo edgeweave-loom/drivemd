@@ -924,6 +924,40 @@ button:is(.entry, .link):disabled {
   }
 }
 
+/* A sentence that goes after a few seconds, at the bottom left, or along a
+   phone's bottom, above the home bar and the floating button
+   (docs/DESIGN.md, Snackbar). Its place takes no room from the page. */
+.snackbars {
+  position: fixed;
+  bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+  left: calc(var(--space-4) + env(safe-area-inset-left));
+  z-index: 3;
+  max-width: calc(100% - 2 * var(--space-4));
+}
+
+.snackbar {
+  margin: 0;
+  padding: 14px var(--space-4);
+  border-radius: var(--radius-xs);
+  background: var(--inverse-surface);
+  color: var(--inverse-on-surface);
+  box-shadow: var(--elevation-3);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+@media (width < 768px), (pointer: coarse) and (height < 500px) {
+  .snackbars {
+    right: calc(var(--space-4) + env(safe-area-inset-right));
+  }
+
+  :root:has(.fab) .snackbars {
+    bottom: calc(
+      var(--fab-size) + 2 * var(--space-4) + env(safe-area-inset-bottom)
+    );
+  }
+}
+
 /* A tablet's folder drawer: headed by the folder, which leads back to it,
    with Close at its top right, and its right corners rounded
    (docs/DESIGN.md, tablet-note). */

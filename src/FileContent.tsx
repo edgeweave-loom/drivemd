@@ -59,6 +59,7 @@ import {
   type Place,
 } from "./router.ts";
 import { saveText, type SaveResult } from "./save.ts";
+import { Snackbar } from "./Snackbar.tsx";
 import { decode, encode, sameBytes, type FileText } from "./text.ts";
 import { useNoteVault, type NoteVault } from "./vaults.ts";
 
@@ -739,6 +740,12 @@ function NoteView({
   // Edit and Done are then two buttons: the focus goes from the one pressed
   // to the one that takes its place.
   const toggled = useRef(false);
+  // A save the user did not ask for with Save says that it saved, since
+  // nothing else shows it: the switch to reading, and a task ticked there.
+  const [saidSaved, setSaidSaved] = useState(0);
+  const saySaved = () => {
+    setSaidSaved((times) => times + 1);
+  };
   const toggling = useCallback((button: HTMLButtonElement | null) => {
     if (!button || !toggled.current) return;
     toggled.current = false;
@@ -786,6 +793,7 @@ function NoteView({
     }
     const saving = text;
     saveThen(() => {
+      saySaved();
       if (latest.current === saving) leave();
     });
   }
@@ -831,7 +839,7 @@ function NoteView({
           ? onEdit
           : (toggled: string) => {
               onEdit(toggled);
-              write(toggled);
+              write(toggled, saySaved);
             };
   const shown = rendered && vault.state !== "checking";
   // The part of the note the address leads to shows once the note does,
@@ -986,6 +994,7 @@ function NoteView({
           Edit
         </button>
       )}
+      <Snackbar times={saidSaved} message="Saved to Google Drive" />
     </>
   );
 }

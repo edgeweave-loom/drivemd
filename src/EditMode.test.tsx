@@ -242,6 +242,9 @@ describe("editing a note's source", () => {
     expect(editorShown()).toBe(false);
     expect(screen.getByText("Green.")).toBeVisible();
     expect(screen.getByRole("button", { name: "Saved" })).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Saved to Google Drive",
+    );
   });
 
   it("stays in a phone's editor when Done cannot save, saying why", async () => {
