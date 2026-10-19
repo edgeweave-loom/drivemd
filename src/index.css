@@ -1678,6 +1678,14 @@ dialog.drawer > .close {
   font-weight: 600;
 }
 
+/* Its type's icon, at the text's size and centered on its first line. */
+.markdown .callout-icon {
+  width: 1em;
+  height: 1em;
+  margin-inline-end: 0.25rem;
+  vertical-align: -0.125em;
+}
+
 /* A tap target of 44 px, which takes no more room than the title. */
 .markdown .callout > summary.callout-title {
   margin-block: -0.625rem;

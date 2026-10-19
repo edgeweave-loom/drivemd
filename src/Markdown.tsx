@@ -32,7 +32,8 @@ import rehypeSlug from "rehype-slug";
 import remarkBreaks from "remark-breaks";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
-import { CALLOUT_TYPES, remarkCallouts } from "./callouts.ts";
+import { CalloutIcon } from "./CalloutIcon.tsx";
+import { CALLOUT_TYPES, isCalloutType, remarkCallouts } from "./callouts.ts";
 import { useDrive } from "./drive-context.ts";
 import { inDrive } from "./drive-web.ts";
 import {
@@ -111,6 +112,7 @@ const VAULT_SCHEMA: Schema = {
     summary: [
       ...(defaultSchema.attributes?.summary ?? []),
       ["className", "callout-title"],
+      ["dataCallout", ...CALLOUT_TYPES],
     ],
   },
 };
@@ -168,6 +170,7 @@ const COMPONENTS: Components = {
   img: Image,
   li: ListItem,
   input: Checkbox,
+  summary: Summary,
 };
 
 // Embeds of notes in embeds of notes show this deep at most.
@@ -855,12 +858,44 @@ function BlobImage({
 }
 
 /** A block of the note: an embed of a note shows that note. */
-function Division({ node, ...attributes }: ComponentProps<"div"> & ExtraProps) {
+function Division({
+  node,
+  children,
+  ...attributes
+}: ComponentProps<"div"> & ExtraProps) {
   const vault = useContext(NoteVault);
   // What an Obsidian embed shows, as written: `Note#Heading`.
   const embed = node?.properties.dataEmbed;
-  if (typeof embed !== "string" || !vault) return <div {...attributes} />;
+  if (typeof embed !== "string" || !vault) {
+    return <div {...attributes}>{withCalloutIcon(node, children)}</div>;
+  }
   return <NoteEmbed target={embed} id={attributes.id} />;
+}
+
+/** A folded callout's title. */
+function Summary({
+  node,
+  children,
+  ...attributes
+}: ComponentProps<"summary"> & ExtraProps) {
+  return <summary {...attributes}>{withCalloutIcon(node, children)}</summary>;
+}
+
+/** What an element shows, after its type's icon if it titles a callout. */
+function withCalloutIcon(
+  node: ExtraProps["node"],
+  children: ReactNode,
+): ReactNode {
+  const type = node?.properties.dataCallout;
+  const className = node?.properties.className;
+  const title = Array.isArray(className) && className.includes("callout-title");
+  if (!title || !isCalloutType(type)) return children;
+  return (
+    <>
+      <CalloutIcon type={type} />
+      {children}
+    </>
+  );
 }
 
 /**

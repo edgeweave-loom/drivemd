@@ -1,3 +1,4 @@
+import { touchScreen } from "./color.ts";
 import { expect, signIn, test } from "./fake-google.ts";
 
 test("renders a note of a vault as Obsidian does", async ({ page }) => {
@@ -54,6 +55,23 @@ test("renders a note of a vault as Obsidian does", async ({ page }) => {
   await expect(callout.getByText("Water at 90 °C.")).toBeVisible();
   const title = await callout.locator("summary").boundingBox();
   expect(title?.height).toBeGreaterThanOrEqual(44);
+  // Its title starts with its type's icon, at the text's size, in the type's
+  // color in either theme.
+  const icon = callout.locator("summary > svg");
+  await expect(icon).toHaveAttribute("data-icon", "lucide-flame");
+  await expect(icon).toHaveCSS("stroke", "rgb(0, 191, 188)");
+  const size = await icon.boundingBox();
+  const text = await callout
+    .locator("summary")
+    .evaluate((summary) => parseFloat(getComputedStyle(summary).fontSize));
+  expect(size?.width).toBeCloseTo(text);
+  expect(size?.height).toBeCloseTo(text);
+  await page.emulateMedia({ colorScheme: "dark" });
+  // A computer keeps the light theme.
+  await expect(icon).toHaveCSS(
+    "stroke",
+    (await touchScreen(page)) ? "rgb(83, 223, 221)" : "rgb(0, 191, 188)",
+  );
 });
 
 test("opens the note an internal link names, at its heading", async ({
