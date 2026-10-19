@@ -14,7 +14,8 @@ export function Dialog({
   onClose,
   children,
 }: {
-  title: string;
+  /** What heads it and names it. */
+  title: ReactNode;
   className?: string;
   onClose?: (() => void) | undefined;
   children: ReactNode;

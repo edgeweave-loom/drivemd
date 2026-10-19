@@ -14,7 +14,8 @@ import {
   MoveButton,
   type Action,
 } from "./FileActions.tsx";
-import { FolderPane } from "./FolderPane.tsx";
+import { FolderLink, FolderPane } from "./FolderPane.tsx";
+import { Icon } from "./Icon.tsx";
 import { InSlot } from "./InSlot.tsx";
 import { Link } from "./Link.tsx";
 import { kindOf } from "./listing.ts";
@@ -79,6 +80,7 @@ export function FileView({
       folder={folder.ref}
       path={folder.path}
       current={file.id}
+      headed={layout === "tablet"}
     />
   );
   return (
@@ -95,7 +97,7 @@ export function FileView({
         drawer={
           pane &&
           layout === "tablet" && (
-            <FolderDrawer name={folder.name}>{pane}</FolderDrawer>
+            <FolderDrawer path={folder.path}>{pane}</FolderDrawer>
           )
         }
       />
@@ -113,12 +115,15 @@ function folderOf(path: Crumb[] | undefined) {
   return { ref: route.folder, name: parent.name, path: above };
 }
 
-/** The folder's list, in a drawer the user opens and closes with a tap. */
+/**
+ * The folder's list, in a drawer the user opens and closes with a tap,
+ * headed by the folder, which leads back to it.
+ */
 function FolderDrawer({
-  name,
+  path,
   children,
 }: {
-  name: string;
+  path: Crumb[];
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -136,13 +141,21 @@ function FolderDrawer({
         Folder
       </button>
       {open && (
-        <Dialog title={name} className="drawer" onClose={close}>
-          <div className="stack">
-            {children}
-            <button type="button" onClick={close}>
-              Close
-            </button>
-          </div>
+        <Dialog
+          title={<FolderLink path={path} />}
+          className="drawer"
+          onClose={close}
+        >
+          <button
+            type="button"
+            className="icon-button close"
+            aria-label="Close"
+            title="Close"
+            onClick={close}
+          >
+            <Icon name="close" />
+          </button>
+          <div className="stack">{children}</div>
         </Dialog>
       )}
     </>

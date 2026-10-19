@@ -331,7 +331,7 @@ Milestone 9 gives DriveMD the look and the habits of Google's own Workspace apps
 
 - On a wide screen, a navigation drawer, as Google Drive's, lists Home, My Drive, Shortcuts, Shared drives, Shared with me and the vaults beside Home, folders and search; from 768 to 1023 px, a navigation rail does. Their lists are tables: the name, then when and by whom the item was last modified; Recent and search results also give the folder each note sits in, which costs one request per note, filled in as Drive answers. Home then shows the notes with unsaved changes and Recent, the roots and vaults being in the drawer.
 - On a phone, Home keeps its four lists; search is a button that opens a full-screen search; a folder shows Back, its name, Search and the account in its app bar, then its breadcrumbs and a floating **New note** button.
-- A note opened from the navigator shows its folder's list beside it on a wide screen, in a drawer on a tablet, headed by the folder, which leads back to it, and opens in reading, as today. Breadcrumbs show on folder pages only.
+- A note opened from the navigator shows its folder's list beside it on a wide screen, in a drawer on a tablet, headed by the folder, which leads back to it, with **Close** (✕) beside it, and opens in reading, as today. Breadcrumbs show on folder pages only.
 - The account is a round button with its initial, since Google gives DriveMD no photo, which opens a menu: the account's email, **About DriveMD**, so that the offer of the source that the AGPL asks for stays one tap away once signed in, **Sign out**, the version running, and **Reload to update** once a new version is served (see Versions).
 
 ## Risks and gotchas
