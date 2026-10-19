@@ -1678,12 +1678,19 @@ dialog.drawer > .close {
   font-weight: 600;
 }
 
-/* Its type's icon, at the text's size and centered on its first line. */
-.markdown .callout-icon {
+/* Obsidian's layout: its type's icon, its text, then a chevron if it folds,
+   each icon at the text's size, centered on the first line. A title without
+   its type, which shows no icon, keeps the flow of its text. */
+.markdown .callout-title:has(> .callout-title-inner) {
+  display: flex;
+  gap: 0.25rem;
+  align-items: flex-start;
+}
+
+.markdown :is(.callout-icon, .callout-fold) {
+  flex: none;
   width: 1em;
-  height: 1em;
-  margin-inline-end: 0.25rem;
-  vertical-align: -0.125em;
+  height: 1lh;
 }
 
 /* A tap target of 44 px, which takes no more room than the title. */
@@ -1691,6 +1698,30 @@ dialog.drawer > .close {
   margin-block: -0.625rem;
   padding-block: 0.625rem;
   cursor: pointer;
+}
+
+/* Obsidian's chevron stands for the browser's marker. */
+.markdown summary.callout-title {
+  list-style: none;
+}
+
+.markdown summary.callout-title::-webkit-details-marker {
+  display: none;
+}
+
+/* Down while the callout is open, right while it is folded, as in Obsidian. */
+.markdown .callout-fold {
+  transition: transform 100ms ease-in-out;
+}
+
+.markdown details:not([open]) > summary > .callout-fold {
+  transform: rotate(-90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .markdown .callout-fold {
+    transition: none;
+  }
 }
 
 .markdown .callout-content {
