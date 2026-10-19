@@ -1,0 +1,4 @@
+#!/bin/sh
+# Before each push: the checks of CI's Check job, so that CI is not the first
+# to run them. The end-to-end tests stay a step of their own (pnpm run e2e).
+exec pnpm run check

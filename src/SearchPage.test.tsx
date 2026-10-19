@@ -5,6 +5,7 @@ import { SearchPage } from "./SearchPage.tsx";
 import { driveItem } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 import { renderWithDrive } from "./test/render.tsx";
+import { holdScreen } from "./test/screen.ts";
 
 function results() {
   const [list] = screen
@@ -29,12 +30,60 @@ describe("SearchPage", () => {
     });
     renderWithDrive(<SearchPage text="plan" />, drive);
 
-    expect(screen.getByRole("heading", { name: "Search: plan" })).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Results for “plan”" }),
+    ).toBeVisible();
     await screen.findByRole("link", { name: "weekly plan.md" });
     expect(results()).toEqual(["weekly plan.md", "Plan B.md"]);
     expect(drive.search).toHaveBeenCalledWith("plan");
     expect(screen.queryByText(/did not search every drive/)).toBeNull();
   });
+
+  it.each([
+    [
+      "plan",
+      "Names with a word that starts with “plan”. Paste a Drive link to open it.",
+    ],
+    [
+      "weekly plan",
+      "Names with words that start with “weekly” and “plan”. Paste a Drive link to open it.",
+    ],
+  ])("says under a phone's results how names match: %s", async (text, line) => {
+    const drive = fakeDrive();
+    drive.search.mockResolvedValue({
+      items: [driveItem("weekly plan.md")],
+      incomplete: false,
+    });
+    renderWithDrive(<SearchPage text={text} />, drive);
+
+    const said = await screen.findByText(line);
+    expect(said.previousElementSibling).toBe(screen.getByRole("list"));
+  });
+
+  it.each([
+    [
+      "plan",
+      "Markdown files with a word in their name that starts with “plan”, most recently modified first.",
+    ],
+    [
+      "weekly plan",
+      "Markdown files with words in their name that start with “weekly” and “plan”, most recently modified first.",
+    ],
+  ])(
+    "says over a wider screen's results how names match: %s",
+    async (text, line) => {
+      holdScreen("tablet");
+      const drive = fakeDrive();
+      drive.search.mockResolvedValue({
+        items: [driveItem("weekly plan.md")],
+        incomplete: false,
+      });
+      renderWithDrive(<SearchPage text={text} />, drive);
+
+      const said = await screen.findByText(line);
+      expect(said.previousElementSibling).toBe(screen.getByRole("heading"));
+    },
+  );
 
   it.each([
     ["myplan", "a word starting with “myplan”"],
@@ -52,6 +101,7 @@ describe("SearchPage", () => {
         `Among Drive's first 100 matches, no Markdown file has a name with ${words}. Drive matches the start of words: “plan” finds planning.md, not myplan.md.`,
       ),
     ).toBeVisible();
+    expect(screen.queryByText(/^Names with/)).toBeNull();
   });
 
   it("says when Drive left some drives out of the search", async () => {

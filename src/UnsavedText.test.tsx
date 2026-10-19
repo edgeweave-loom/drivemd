@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { EditorView } from "@codemirror/view";
 import { onlineManager } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { rememberAccount, signOut } from "./auth.ts";
 import { deleteDrafts, readDraft, writeDraft } from "./drafts.ts";
 import { resumeKeeping } from "./keep-draft.ts";
@@ -10,8 +10,9 @@ import type { FileMetadata } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
 import { metadataQuery } from "./queries.ts";
 import { driveItem, metadata } from "./test/drive-items.ts";
+import { editInPreview, pickMode } from "./test/actions.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
-import { ACCOUNT, renderWithDrive } from "./test/render.tsx";
+import { ACCOUNT, keepFresh, renderWithDrive } from "./test/render.tsx";
 import { holdScreen } from "./test/screen.ts";
 
 const PLAN = metadata(driveItem("plan.md", { id: "plan", parents: ["work"] }), {
@@ -50,13 +51,10 @@ beforeEach(async () => {
   await deleteDrafts(ACCOUNT);
 });
 
-afterEach(() => {
-  onlineManager.setOnline(true);
-});
-
 describe("unsaved text kept on the device", () => {
   it("is kept as the user edits, with the revision edited and the note's name", async () => {
     open({ ...PLAN, resourceKey: "key-1" });
+    await editInPreview();
     fireEvent.click(await screen.findByRole("checkbox"));
 
     await waitFor(async () => {
@@ -88,6 +86,7 @@ describe("unsaved text kept on the device", () => {
     ["while waiting to be kept", 50],
   ])("is forgotten when the edits are undone by hand, %s", async (_, wait) => {
     const { unmount } = open();
+    await editInPreview();
     fireEvent.click(await screen.findByRole("checkbox"));
     await new Promise((settle) => setTimeout(settle, wait));
     fireEvent.click(screen.getByRole("checkbox"));
@@ -110,6 +109,7 @@ describe("unsaved text kept on the device", () => {
       }),
     );
     const { unmount } = renderWithDrive(<FileContent file={PLAN} />, drive);
+    await editInPreview();
     const [boil] = await screen.findAllByRole("checkbox");
     if (boil) fireEvent.click(boil);
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -164,10 +164,12 @@ describe("unsaved text kept on the device", () => {
     expect(
       await screen.findByText(/^You have unsaved changes to this note from /),
     ).toBeVisible();
+    // Save keeps its place meanwhile, with nothing to save yet.
+    expect(screen.getByRole("button", { name: "Saved" })).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Restore" }));
 
     expect(await screen.findByRole("checkbox")).toBeChecked();
-    expect(screen.getByText("Unsaved changes")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "Restore" })).toBeNull();
   });
 
@@ -210,10 +212,12 @@ describe("unsaved text kept on the device", () => {
     open();
 
     await screen.findByRole("button", { name: "Restore" });
-    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /^(Edit|Editing|Viewing)$/ }),
+    ).toBeNull();
     expect(screen.getByRole("checkbox")).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Restore" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await pickMode("Editing");
 
     await waitFor(() => {
       const content = document
@@ -292,7 +296,7 @@ describe("unsaved text kept on the device", () => {
     await kept("- [ ] Boil\n", "revision-2", "bbbb");
     const { drive, client } = open();
     // As the file's page left it, fresh for half a minute as in the app.
-    client.setDefaultOptions({ queries: { retry: false, staleTime: 30_000 } });
+    keepFresh(client);
     client.setQueryData(metadataQuery(drive, PLAN).queryKey, PLAN);
     drive.getMetadata.mockResolvedValue(
       metadata(PLAN, { md5Checksum: "bbbb", headRevisionId: "revision-2" }),
@@ -339,9 +343,10 @@ describe("unsaved text kept on the device", () => {
     });
     open();
 
+    await editInPreview();
     fireEvent.click(await screen.findByRole("checkbox"));
 
-    expect(screen.getByText("Unsaved changes")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
     await new Promise((settle) => setTimeout(settle, 700));
     vi.unstubAllGlobals();
   });

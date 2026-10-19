@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>DriveMD</title>
+  <!-- The Markdown mark, by Dustin Curtis, in the public domain, on a plate
+       that fills the square, which the Home Screen or the launcher rounds:
+       the mark keeps within the middle circle that every mask keeps. -->
+  <rect width="256" height="256" fill="#0f766e"/>
+  <path transform="translate(20.5 64)" d="M30 98V30h20l20 25 20-25h20v68H90V59L70 84 50 59v39zm125 0l-30-33h20V30h20v35h20z" fill="#fff"/>
+</svg>

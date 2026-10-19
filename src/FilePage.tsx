@@ -4,17 +4,26 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
-import { Breadcrumbs } from "./Breadcrumbs.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
-import type { FileMetadata, FileRef } from "./drive.ts";
-import { FileActions } from "./FileActions.tsx";
-import { FolderPane } from "./FolderPane.tsx";
+import { openedFromDrive, useNoteAccount } from "./drive-tab.ts";
+import { mayMove, type FileMetadata, type FileRef } from "./drive.ts";
+import {
+  ActionDialog,
+  MoreActions,
+  MoveButton,
+  type Action,
+} from "./FileActions.tsx";
+import { FolderLink, FolderPane } from "./FolderPane.tsx";
+import { Icon } from "./Icon.tsx";
+import { InSlot } from "./InSlot.tsx";
 import { Link } from "./Link.tsx";
 import { kindOf } from "./listing.ts";
 import { useLayout } from "./layout.ts";
 import { Loaded } from "./Loaded.tsx";
 import { Missing } from "./Missing.tsx";
+import { NewVersion } from "./NewVersion.tsx";
+import { NoteName } from "./NoteName.tsx";
 import { usePath } from "./path.ts";
 import { metadataQuery, refreshRecent } from "./queries.ts";
 import { hrefOf, routeOf, type Crumb } from "./router.ts";
@@ -40,7 +49,8 @@ const WHEN = new Intl.DateTimeFormat(undefined, {
 
 /**
  * A file's page, with the folder it sits in beside it on a wide screen or in
- * a drawer on a tablet. The folder stays as another of its files opens.
+ * a drawer on a tablet, but in a tab opened from Drive, which holds the file
+ * alone. The folder stays as another of its files opens.
  */
 export function FileView({
   file,
@@ -58,7 +68,10 @@ export function FileView({
   });
   const path = usePath(file, trail);
   const folder =
-    layout !== "phone" && details.data && opensHere(details.data)
+    layout !== "phone" &&
+    !openedFromDrive() &&
+    details.data &&
+    opensHere(details.data)
       ? folderOf(path)
       : undefined;
   const pane = folder && (
@@ -67,6 +80,7 @@ export function FileView({
       folder={folder.ref}
       path={folder.path}
       current={file.id}
+      headed={layout === "tablet"}
     />
   );
   return (
@@ -83,7 +97,7 @@ export function FileView({
         drawer={
           pane &&
           layout === "tablet" && (
-            <FolderDrawer name={folder.name}>{pane}</FolderDrawer>
+            <FolderDrawer path={folder.path}>{pane}</FolderDrawer>
           )
         }
       />
@@ -101,12 +115,15 @@ function folderOf(path: Crumb[] | undefined) {
   return { ref: route.folder, name: parent.name, path: above };
 }
 
-/** The folder's list, in a drawer the user opens and closes with a tap. */
+/**
+ * The folder's list, in a drawer the user opens and closes with a tap,
+ * headed by the folder, which leads back to it.
+ */
 function FolderDrawer({
-  name,
+  path,
   children,
 }: {
-  name: string;
+  path: Crumb[];
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -124,13 +141,21 @@ function FolderDrawer({
         Folder
       </button>
       {open && (
-        <Dialog title={name} className="drawer" onClose={close}>
-          <div className="stack">
-            {children}
-            <button type="button" onClick={close}>
-              Close
-            </button>
-          </div>
+        <Dialog
+          title={<FolderLink path={path} />}
+          className="drawer"
+          onClose={close}
+        >
+          <button
+            type="button"
+            className="icon-button close"
+            aria-label="Close"
+            title="Close"
+            onClick={close}
+          >
+            <Icon name="close" />
+          </button>
+          <div className="stack">{children}</div>
         </Dialog>
       )}
     </>
@@ -154,6 +179,12 @@ export function FilePage({
   const details = useQuery(metadataQuery(drive, file));
   const path = usePath(file, trail);
   const opens = details.data !== undefined && opensHere(details.data);
+  const [action, setAction] = useState<Action>();
+  const phone = useLayout() === "phone";
+  // Beside the name, or in More actions on a phone, which has no room there.
+  const movable = opens && mayMove(details.data);
+  const moveBeside = movable && !phone;
+  const account = useNoteAccount() === "more-actions";
 
   useEffect(() => {
     if (!opens) return;
@@ -166,16 +197,54 @@ export function FilePage({
 
   return (
     <div className="main">
-      <Breadcrumbs path={path} />
-      <div className="heading">
-        <h2>
-          {path?.at(-1)?.name ??
-            details.data?.name ??
-            (details.isError ? "File" : "…")}
-        </h2>
-        {drawer}
-        {opens && <FileActions file={details.data} page={file} path={path} />}
-      </div>
+      {/* In the app bar, which names the note and when it last changed. */}
+      <InSlot name="title">
+        <div className="name">
+          <h1 className="title">
+            <NoteName
+              name={
+                path?.at(-1)?.name ??
+                details.data?.name ??
+                (details.isError ? "File" : "…")
+              }
+              file={opens ? details.data : undefined}
+              page={file}
+              path={path}
+            />
+          </h1>
+          {moveBeside && (
+            <MoveButton
+              onPick={() => {
+                setAction("move");
+              }}
+            />
+          )}
+        </div>
+        {opens && <Changed file={details.data} />}
+      </InSlot>
+      {(opens || account) && (
+        <InSlot name="more">
+          <MoreActions
+            file={opens ? details.data : undefined}
+            moves={movable && !moveBeside}
+            account={account}
+            onPick={setAction}
+          />
+        </InSlot>
+      )}
+      {opens && action && (
+        <ActionDialog
+          action={action}
+          file={details.data}
+          page={file}
+          path={path}
+          onClose={() => {
+            setAction(undefined);
+          }}
+        />
+      )}
+      {drawer && <div className="heading">{drawer}</div>}
+      <NewVersion />
       <Loaded
         query={details}
         missing="This file does not exist, or it is not shared with you."
@@ -232,7 +301,6 @@ function About({
   }
   return (
     <>
-      <Changed file={file} />
       <Suspense fallback={<p className="hint">Loading…</p>}>
         <FileContent file={file} />
       </Suspense>

@@ -10,9 +10,11 @@ import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.tsx";
 import { deleteDrafts, writeDraft } from "./drafts.ts";
+import { markTab } from "./drive-tab.ts";
 import type { Session, SessionState } from "./session.ts";
 import { driveItem } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
+import { comeBack, deployNewVersion } from "./test/new-version.ts";
 import { visit } from "./test/render.tsx";
 
 const EMAIL = "ada@example.com";
@@ -24,6 +26,7 @@ function fakeSession(initial: Partial<SessionState> = {}) {
     waiting: false,
     message: undefined,
     blocked: undefined,
+    driveAccount: false,
     ...initial,
   };
   const listeners = new Set<() => void>();
@@ -174,7 +177,9 @@ describe("App", () => {
 
     // Behind Welcome back, nobody has signed in to Google yet.
     await new Promise((settle) => setTimeout(settle, 50));
-    expect(screen.queryByText("Unsaved changes")).toBeNull();
+    expect(
+      screen.queryByRole("region", { name: "Unsaved changes" }),
+    ).toBeNull();
     act(() => {
       change({ screen: { name: "home", email: EMAIL } });
     });
@@ -189,11 +194,34 @@ describe("App", () => {
     render(<App session={session} />);
 
     expect(screen.getByRole("heading", { name: "Home" })).toBeInTheDocument();
-    expect(screen.getByText(EMAIL)).toBeInTheDocument();
+    fireEvent.click(button(`Account, ${EMAIL}`));
     fireEvent.click(button("Sign out"));
     await waitFor(() => {
       expect(session.signOut).toHaveBeenCalledOnce();
     });
+  });
+
+  it("names the running version in the account's menu", () => {
+    const { session } = fakeSession({ screen: { name: "home", email: EMAIL } });
+    render(<App session={session} />);
+
+    fireEvent.click(button(`Account, ${EMAIL}`));
+    expect(
+      screen.getByText(/^DriveMD \d+\.\d+\.\d+(-beta(\.\d+)?(\+[0-9a-f]+)?)?$/),
+    ).toBeInTheDocument();
+  });
+
+  it("offers a new version under the app bar", async () => {
+    deployNewVersion();
+    const { session } = fakeSession({ screen: { name: "home", email: EMAIL } });
+    render(<App session={session} />);
+
+    comeBack();
+
+    const offer = await screen.findByRole("region", {
+      name: "A new version of DriveMD is ready",
+    });
+    expect(screen.getByRole("main")).toContainElement(offer);
   });
 
   it("shows another account nothing the first one loaded", async () => {
@@ -295,5 +323,99 @@ describe("App", () => {
       change({ screen: { name: "home", email: EMAIL } });
     });
     expect(screen.getByText(EMAIL)).toBeInTheDocument();
+  });
+});
+
+describe("A tab opened from Drive, before sign-in", () => {
+  afterEach(() => {
+    markTab(false);
+  });
+
+  it("says that Drive asked DriveMD to open a note, choosing from Drive's account", () => {
+    markTab(true);
+    const { session } = fakeSession({ driveAccount: true });
+    render(<App session={session} />);
+
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: "Open a note from Google Drive",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "Google Drive asked DriveMD to open a Markdown file. Sign in with your Google account to see it.",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "Google lets you choose the account, starting with the one Drive used.",
+      ),
+    ).toBeVisible();
+    fireEvent.click(button("Sign in with Google"));
+    expect(session.signIn).toHaveBeenCalledOnce();
+    expect(
+      screen.getByRole("link", { name: "Privacy, terms and support" }),
+    ).toHaveAttribute("href", "/about.html");
+  });
+
+  it("names no account to start from once Drive's is forgotten", () => {
+    markTab(true);
+    render(<App session={fakeSession().session} />);
+
+    expect(
+      screen.getByText("Google lets you choose the account."),
+    ).toBeVisible();
+  });
+
+  it("names what Drive asked for while the session reopens", () => {
+    markTab(true);
+    render(
+      <App
+        session={
+          fakeSession({ screen: { name: "loading", email: EMAIL } }).session
+        }
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: "Open a note from Google Drive",
+      }),
+    ).toBeVisible();
+  });
+
+  it("promises no account chooser while Google's script failed", () => {
+    markTab(true);
+    render(
+      <App
+        session={fakeSession({ driveAccount: true, google: "failed" }).session}
+      />,
+    );
+
+    expect(button("Try again")).toBeVisible();
+    expect(screen.queryByText(/^Google lets you choose/)).toBeNull();
+  });
+
+  it("says Google starts from Drive's account in a tab Drive's New opened", () => {
+    render(<App session={fakeSession({ driveAccount: true }).session} />);
+
+    expect(
+      screen.getByText(
+        "Google lets you choose the account, starting with the one Drive used.",
+      ),
+    ).toBeVisible();
+  });
+
+  it("keeps the app's own words in a tab of the app's own", () => {
+    render(<App session={fakeSession().session} />);
+
+    expect(
+      screen.getByText(
+        "Browse and edit the Markdown files in your Google Drive.",
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText(/^Google lets you choose/)).toBeNull();
   });
 });

@@ -1,0 +1,38 @@
+name: Report a problem
+description: Something in DriveMD does not work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Anyone can read this issue. Leave out page addresses, file and folder
+        names, email addresses and what your notes hold, and show the problem
+        with a note made up for it. Report a vulnerability privately instead,
+        as SECURITY.md explains.
+  - type: textarea
+    id: steps
+    attributes:
+      label: What you did
+      description: The steps, from the page you started on, and the made-up note if one is needed.
+    validations:
+      required: true
+  - type: textarea
+    id: seen
+    attributes:
+      label: What you saw, and what you expected
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and browser
+      description: For example "iPhone, Safari, from the Home Screen" or "Windows, Edge".
+    validations:
+      required: true
+  - type: checkboxes
+    id: private
+    attributes:
+      label: Privacy
+      options:
+        - label: This issue names no real file, folder, address or account, and holds no note's content.
+          required: true

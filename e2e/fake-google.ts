@@ -1,4 +1,10 @@
-import { test as base, expect, type Page, type Route } from "@playwright/test";
+import {
+  test as base,
+  expect,
+  type Locator,
+  type Page,
+  type Route,
+} from "@playwright/test";
 import { createHash } from "node:crypto";
 
 // Made-up data only: no real account, Drive ID or note.
@@ -6,6 +12,8 @@ export const EMAIL = "ada@example.com";
 
 const FOLDER = "application/vnd.google-apps.folder";
 const SHORTCUT = "application/vnd.google-apps.shortcut";
+/** The shared drives the user is a member of. */
+const SHARED_DRIVES = [{ id: "team", name: "Team" }];
 const SCOPE =
   "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.install";
 
@@ -51,6 +59,8 @@ interface FakeFile {
   content?: string | Buffer;
   /** How many times it was saved, from 1. */
   revision?: number;
+  /** Whether the signed-in user changed it last, rather than Ada's double. */
+  changedByMe?: boolean;
 }
 
 /** A small Drive: My Drive, a vault, shortcuts, a shared drive, a share. */
@@ -105,6 +115,7 @@ function seed(): FakeFile[] {
       name: "notes.md",
       mimeType: markdown,
       parents: ["work"],
+      changedByMe: true,
       // Long enough that its last heading starts off the screen.
       content: [
         "# Notes",
@@ -208,8 +219,10 @@ function seed(): FakeFile[] {
       ownedByMe: true,
     },
     {
+      // Drive names every shared drive's top folder "Drive": its own name
+      // comes from the drive (SHARED_DRIVES).
       id: "team",
-      name: "Team",
+      name: "Drive",
       mimeType: FOLDER,
       parents: [],
       driveId: "team",
@@ -332,9 +345,9 @@ export class FakeDrive {
     data: string | null,
   ): [number, unknown] | undefined {
     if (path === "/about") return [200, { user: { emailAddress: EMAIL } }];
-    if (path === "/drives") {
-      return [200, { drives: [{ id: "team", name: "Team" }] }];
-    }
+    if (path === "/drives") return [200, { drives: SHARED_DRIVES }];
+    const drive = SHARED_DRIVES.find(({ id }) => path === `/drives/${id}`);
+    if (drive) return [200, { name: drive.name }];
     if (path === "/files" && method === "GET") {
       return [200, { files: this.search(params.get("q") ?? "").map(asJson) }];
     }
@@ -479,7 +492,10 @@ function asJson(file: FakeFile) {
       canTrash: true,
     },
     modifiedTime: "2026-09-01T10:00:00.000Z",
-    lastModifyingUser: { displayName: "Ada Lovelace" },
+    lastModifyingUser: {
+      displayName: "Ada Lovelace",
+      ...(file.changedByMe && { me: true }),
+    },
     md5Checksum: createHash("md5")
       .update(file.content ?? "")
       .digest("hex"),
@@ -502,11 +518,11 @@ declare global {
  */
 export const test = base.extend<{ drive: FakeDrive }>({
   drive: [
-    async ({ page, baseURL }, use) => {
+    async ({ context, baseURL }, use) => {
       const drive = new FakeDrive();
       const problems: string[] = [];
       // Routes added later come first: this one catches what the others don't.
-      await page.route("**", (route) => {
+      await context.route("**", (route) => {
         const url = route.request().url();
         // WebKit routes the object URLs the app makes for Drive's images too.
         const app = baseURL && new URL(baseURL).origin;
@@ -519,18 +535,19 @@ export const test = base.extend<{ drive: FakeDrive }>({
         problems.push(`request to ${url}`);
         return route.abort();
       });
-      await page.route("https://accounts.google.com/gsi/client", (route) =>
+      await context.route("https://accounts.google.com/gsi/client", (route) =>
         route.fulfill({ contentType: "text/javascript", body: FAKE_GIS }),
       );
-      await page.route("https://www.googleapis.com/**", (route) =>
+      await context.route("https://www.googleapis.com/**", (route) =>
         drive.handle(route),
       );
-      page.on("pageerror", (error) => problems.push(error.message));
-      // Collected here, since every page the test opens starts afresh.
-      await page.exposeFunction("reportViolation", (violation: string) => {
+      context.on("weberror", (error) => problems.push(error.error().message));
+      // Collected here, since every page the test opens starts afresh, the tabs
+      // the app opens included.
+      await context.exposeFunction("reportViolation", (violation: string) => {
         problems.push(`blocked: ${violation}`);
       });
-      await page.addInitScript(() => {
+      await context.addInitScript(() => {
         document.addEventListener("securitypolicyviolation", (event) => {
           void window.reportViolation?.(
             `${event.effectiveDirective} ${event.blockedURI}`,
@@ -559,11 +576,175 @@ export async function signIn(page: Page): Promise<void> {
     "require-trusted-types-for 'script'",
   );
   await page.getByRole("button", { name: "Sign in with Google" }).click();
-  await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
   await expect(
-    page.getByRole("region", { name: "Recent" }).getByRole("link"),
-  ).toHaveText(["plan.md"]);
+    page.getByRole("heading", { name: "Home", exact: true }),
+  ).toBeVisible();
+  const recent = page.getByRole("region", { name: "Recent" }).getByRole("link");
+  await expect(recent.locator(".name")).toHaveText(["plan.md"]);
+  // And the folder it sits in, which Drive names after the list.
+  await expect(recent.locator(".location")).not.toBeEmpty();
+  await expect(vault(page)).toBeVisible();
+}
+
+/**
+ * The made-up vault, on Home or in the drawer that a wide screen shows, or
+ * else the item of a tablet's rail that holds it.
+ */
+export function vault(page: Page) {
+  const drive = page.getByRole("navigation", { name: "Drive" });
+  return page
+    .getByRole("region", { name: "Vaults" })
+    .or(drive)
+    .getByRole("link", { name: "Journal" })
+    .or(drive.getByRole("button", { name: "Vaults" }));
+}
+
+/**
+ * The link from a note to the folder it sits in, as the screen offers it:
+ * heading the folder pane on a wide screen, or its drawer on a tablet, which
+ * opens first, or Back on a phone.
+ */
+export async function folderLink(page: Page, name: string): Promise<Locator> {
+  switch (test.info().project.metadata.layout) {
+    case "wide":
+      return page
+        .getByRole("complementary", { name })
+        .getByRole("link", { name, exact: true });
+    case "tablet":
+      await page.getByRole("button", { name: "Folder" }).click();
+      return page
+        .getByRole("dialog", { name })
+        .getByRole("link", { name, exact: true });
+    default:
+      return page
+        .getByRole("banner")
+        .getByRole("link", { name: `Back to ${name}` });
+  }
+}
+
+/**
+ * Goes Home from plan.md, in My Drive › Work: by DriveMD's mark, or up its
+ * path on a phone, each folder listed before it is left, since WebKit takes
+ * Drive's answer cancelled for an error.
+ */
+export async function goHome(page: Page): Promise<void> {
+  // A phone editing has no Back but the browser's.
+  if (
+    await page
+      .getByRole("banner")
+      .getByRole("button", { name: "Done" })
+      .isVisible()
+  ) {
+    await page.goto("/");
+    return;
+  }
+  if (test.info().project.metadata.layout !== "phone") {
+    await page.getByRole("link", { name: "DriveMD" }).click();
+    return;
+  }
+  await page.getByRole("link", { name: "Back to Work" }).click();
+  await expect(page.getByRole("link", { name: "Archive" })).toBeVisible();
+  await page.getByRole("link", { name: "Back to My Drive" }).click();
   await expect(
-    page.getByRole("region", { name: "Vaults" }).getByRole("link"),
-  ).toHaveText(["Journal"]);
+    page.getByRole("link", { name: "Work", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Back to Home" }).click();
+}
+
+/**
+ * Picks one of a note's actions: Move by the note's name, but on a phone,
+ * and the others from More actions.
+ */
+export async function noteAction(
+  page: Page,
+  name: "Move" | "Move to trash",
+): Promise<void> {
+  const bar = page.getByRole("banner");
+  if (name === "Move" && test.info().project.metadata.layout !== "phone") {
+    await bar.getByRole("button", { name, exact: true }).click();
+    return;
+  }
+  await bar.getByRole("button", { name: "More actions" }).click();
+  await page
+    .getByRole("dialog", { name: "More actions" })
+    .getByRole("button", { name, exact: true })
+    .click();
+}
+
+/**
+ * Renames a note by its name in the app bar, as a click on it does, once the
+ * note shows, as a person would: before the vault check that the note waits
+ * for has answered, renaming asks first.
+ */
+export async function renameNote(
+  page: Page,
+  from: string,
+  to: string,
+): Promise<void> {
+  await expect(page.locator(".markdown")).toBeAttached();
+  await page.getByRole("banner").getByRole("button", { name: from }).click();
+  const name = page.getByRole("textbox", { name: "Name" });
+  await name.fill(to);
+  await name.press("Enter");
+}
+
+/** Starts editing the note: by the floating Edit on a phone, or else from the mode menu. */
+export async function startEditing(page: Page): Promise<void> {
+  if (test.info().project.metadata.layout === "phone") {
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    return;
+  }
+  await page
+    .getByRole("banner")
+    .getByRole("button", { name: /^(Editing|Viewing)$/ })
+    .click();
+  await page
+    .getByRole("menu", { name: "Mode" })
+    .getByRole("menuitemradio", { name: "Editing" })
+    .click();
+}
+
+/**
+ * Ticks the note's first task while editing, which leaves the change to
+ * save, as one ticked while viewing does not: in the preview, which a phone
+ * shows in turn with the source.
+ */
+export async function tickWhileEditing(page: Page): Promise<void> {
+  await startEditing(page);
+  if (test.info().project.metadata.layout === "phone") {
+    await page.getByRole("button", { name: "Preview" }).click();
+  } else {
+    // Beside the source, which takes the tick once it has loaded.
+    await expect(
+      page.getByRole("textbox", { name: "Markdown source" }),
+    ).toBeVisible();
+  }
+  // Beside the source, the tick shows once the source has it.
+  const task = page.locator(".markdown").getByRole("checkbox").first();
+  await task.click();
+  await expect(task).toBeChecked();
+}
+
+/** How many notes have unsaved changes kept on the device. */
+export function draftsKept(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const opening = indexedDB.open("drivemd");
+        opening.onsuccess = () => {
+          const database = opening.result;
+          if (!database.objectStoreNames.contains("drafts")) {
+            resolve(0);
+            return;
+          }
+          const counting = database
+            .transaction("drafts")
+            .objectStore("drafts")
+            .count();
+          counting.onsuccess = () => {
+            resolve(counting.result);
+          };
+        };
+      }),
+  );
 }

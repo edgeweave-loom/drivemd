@@ -17,6 +17,24 @@ export interface Entry {
   opens: FileRef;
   /** Where a shortcut points, for checking that its target still opens. */
   target: ShortcutTarget | undefined;
+  /** The folder the item sits in, when Drive names one. */
+  parent: string | undefined;
+  modifiedTime: string | undefined;
+  /** Who changed the item last: "you", when the signed-in user did. */
+  modifiedBy: string | undefined;
+}
+
+const DAY = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
+
+/** When and by whom an entry last changed, as its row says it. */
+export function modifiedLine({
+  modifiedTime,
+  modifiedBy,
+}: Entry): string | undefined {
+  const time = new Date(modifiedTime ?? Number.NaN);
+  if (Number.isNaN(time.getTime())) return;
+  const day = DAY.format(time);
+  return modifiedBy === undefined ? day : `${day}, by ${modifiedBy}`;
 }
 
 /** Why an item that the user reached before no longer opens. */
@@ -52,6 +70,9 @@ export function entriesOf(
         name,
         opens: { id: opens.id, resourceKey: opens.resourceKey },
         target,
+        parent: item.parents[0],
+        modifiedTime: item.modifiedTime,
+        modifiedBy: item.lastModifiedByMe ? "you" : item.lastModifiedBy,
       },
     ];
   });

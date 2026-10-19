@@ -158,6 +158,21 @@ function defineChecks(auth: DriveAuth): void {
     expect(ids(lower.items), "the file found in small letters").toContain(id);
   });
 
+  it("searches names whatever their case, accented letters included", async () => {
+    // The search box takes no capital from a phone, but Drive's search would
+    // find the note either way, unlike its exact name match.
+    const id = await make({
+      name: `${RUN} élan.md`,
+      mimeType: "text/markdown",
+    });
+
+    await eventually("the file by a word of its name", async () =>
+      ids((await drive.search(`${RUN} élan`)).items).includes(id),
+    );
+    const capital = await drive.search(`${RUN} Élan`);
+    expect(ids(capital.items), "the file found with a capital").toContain(id);
+  });
+
   it.each(["text/markdown", "text/plain", "application/octet-stream"])(
     "keeps the type of a file saved as %s, and its exact bytes",
     async (mimeType) => {
@@ -458,6 +473,33 @@ function defineChecks(auth: DriveAuth): void {
       );
     } finally {
       await drive.trashFile(created);
+    }
+  });
+
+  it("names a shared drive's top folder, and a vault there, after the drive", async (context) => {
+    const shared = await testDrive();
+    if (!shared)
+      return context.skip(`It is in no shared drive named ${SHARED_DRIVE}`);
+
+    const top = await drive.getMetadata(shared);
+    expect(top.name === SHARED_DRIVE, "the drive's top folder").toBe(true);
+    // A run cut short leaves its .obsidian folder, which the next one uses.
+    const [left] = await found(
+      `'${shared.id}' in parents and name = '.obsidian' and trashed = false`,
+      { corpora: "drive", driveId: shared.id },
+    );
+    const made =
+      left === undefined
+        ? await make({ name: ".obsidian", mimeType: FOLDER }, shared.id)
+        : undefined;
+    try {
+      await eventually("the vault at the drive's top", async () =>
+        (await drive.findVaults()).some(
+          ({ id, name }) => id === shared.id && name === SHARED_DRIVE,
+        ),
+      );
+    } finally {
+      if (made !== undefined) await drive.trashFile({ id: made });
     }
   });
 

@@ -1,29 +1,15 @@
-import type { Page } from "@playwright/test";
-import { expect, signIn, test } from "./fake-google.ts";
-
-/** How many notes have unsaved changes kept on the device. */
-function draftsKept(page: Page): Promise<number> {
-  return page.evaluate(
-    () =>
-      new Promise<number>((resolve) => {
-        const opening = indexedDB.open("drivemd");
-        opening.onsuccess = () => {
-          const database = opening.result;
-          if (!database.objectStoreNames.contains("drafts")) {
-            resolve(0);
-            return;
-          }
-          const counting = database
-            .transaction("drafts")
-            .objectStore("drafts")
-            .count();
-          counting.onsuccess = () => {
-            resolve(counting.result);
-          };
-        };
-      }),
-  );
-}
+import { contrast, luminance, token, touchScreen } from "./color.ts";
+import {
+  expect,
+  draftsKept,
+  folderLink,
+  goHome,
+  startEditing,
+  tickWhileEditing,
+  signIn,
+  test,
+  vault,
+} from "./fake-google.ts";
 
 test("renders a note as GitHub does, under the security policy", async ({
   page,
@@ -88,10 +74,11 @@ test("opens a note a relative link leads to", async ({ page }) => {
   await note.getByText(/^Next:/).scrollIntoViewIfNeeded();
   await note.getByRole("link", { name: "the notes" }).click();
   await expect(
-    page.getByRole("heading", { level: 2, name: "notes.md" }),
+    page.getByRole("heading", { level: 1, name: "notes.md" }),
   ).toBeVisible();
   await expect(page).toHaveURL(/\/edit\?id=notes#later$/);
-  await expect(page.getByText(/^Last modified by/)).toBeVisible();
+  // Drive described it: the line under its name, which a phone leaves out.
+  await expect(page.getByText(/^Last modified by/)).toBeAttached();
   // It opens at the heading the link names, below the app's header.
   const later = page
     .locator(".markdown")
@@ -109,11 +96,9 @@ test("checks a task and saves that change only", async ({ page, drive }) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
 
+  // Ticked while viewing, a task saves at once.
   await page.locator(".markdown").getByRole("checkbox").first().check();
-  await expect(page.getByText("Unsaved changes")).toBeVisible();
-  await page.getByRole("button", { name: "Save" }).click();
-
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   await expect(
     page.locator(".markdown").getByRole("checkbox").first(),
   ).toBeChecked();
@@ -128,7 +113,7 @@ test("edits the source and saves it", async ({ page, drive }, info) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
 
-  await page.getByRole("button", { name: "Edit" }).click();
+  await startEditing(page);
   const source = page.getByRole("textbox", { name: "Markdown source" });
   // Front matter shows as YAML at the text's size, its keys dimmed as
   // Markdown's symbols are.
@@ -158,9 +143,9 @@ test("edits the source and saves it", async ({ page, drive }, info) => {
   await expect(
     page.locator(".markdown p").filter({ hasText: "Green tea." }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
 
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("plan")?.content)).toBe(
     `${before}\nGreen tea.`,
   );
@@ -175,17 +160,174 @@ test("keeps one kind of line break whatever an input method types", async ({
   await signIn(page);
   await page.goto("/edit?id=notes");
 
-  await page.getByRole("button", { name: "Edit" }).click();
+  await startEditing(page);
   const source = page.getByRole("textbox", { name: "Markdown source" });
   await source.locator(".cm-line").first().click();
   await page.keyboard.press("End");
   // As an input method, or a phone keyboard typing copied text, inserts it.
   await page.keyboard.insertText("A\r\nB\rC\u0000");
-  await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
-  await page.getByRole("button", { name: "Save" }).click();
+  await expect(
+    page.getByRole("button", { name: "Save", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
 
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("notes")?.content)).toBe("oneA\nB\nC\ntwo\n");
+});
+
+test("formats the source from the keyboard toolbar on touch screens", async ({
+  page,
+  drive,
+}, info) => {
+  const notes = drive.files.get("notes");
+  if (notes) notes.content = "one\ntwo\n";
+  await signIn(page);
+  await page.goto("/edit?id=notes");
+
+  await startEditing(page);
+  const source = page.getByRole("textbox", { name: "Markdown source" });
+  await source.locator(".cm-line").nth(1).click();
+  const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+  if (info.project.name === "desktop-chromium") {
+    await expect(source).toBeFocused();
+    await expect(toolbar).toHaveCount(0);
+    return;
+  }
+  await expect(toolbar).toBeVisible();
+  // Along the screen's bottom edge, where the keyboard would rise.
+  const bar = await toolbar.boundingBox();
+  expect((bar?.y ?? 0) + (bar?.height ?? 0)).toBe(page.viewportSize()?.height);
+  const checkbox = toolbar.getByRole("button", { name: "Checkbox" });
+  expect((await checkbox.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  // Each key's icon sits in its middle.
+  for (const key of await toolbar.getByRole("button").all()) {
+    const button = await key.boundingBox();
+    const icon = await key.locator("svg").boundingBox();
+    if (!button || !icon) throw new Error("Not shown");
+    expect(icon.x + icon.width / 2).toBeCloseTo(button.x + button.width / 2, 0);
+  }
+
+  await checkbox.tap();
+  await expect(source.locator(".cm-line").nth(1)).toHaveText("- [ ] two");
+  // The key left the focus, and the keyboard, with the editor.
+  await expect(source).toBeFocused();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("notes")?.content)).toBe("one\n- [ ] two\n");
+});
+
+test("leaves the note's end clear of the keyboard toolbar", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.name === "desktop-chromium",
+    "A mouse has no keyboard toolbar",
+  );
+  const notes = drive.files.get("notes");
+  if (notes) {
+    notes.content = Array.from(
+      { length: 80 },
+      (_, line) => `line ${String(line + 1)}\n`,
+    ).join("");
+  }
+  await signIn(page);
+  await page.goto("/edit?id=notes");
+  await startEditing(page);
+  const source = page.getByRole("textbox", { name: "Markdown source" });
+  await source.locator(".cm-line").first().click();
+  const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+  await expect(toolbar).toBeVisible();
+
+  await page.evaluate(() => {
+    window.scrollTo(0, document.documentElement.scrollHeight);
+  });
+  // Down to the empty line after the last line break.
+  await expect(source.getByText("line 80")).toBeVisible();
+  const bar = await toolbar.boundingBox();
+  if (!bar) throw new Error("Not shown");
+  // CodeMirror draws its lines afresh as the page scrolls.
+  await expect
+    .poll(async () => {
+      const line = await source.locator(".cm-line").last().boundingBox();
+      return line ? line.y + line.height : Infinity;
+    })
+    .toBeLessThanOrEqual(bar.y);
+
+  // The lines typed at the note's end stay above it too.
+  await source.getByText("line 80").click();
+  await page.keyboard.press("End");
+  for (let line = 0; line < 6; line += 1) {
+    await page.keyboard.press("Enter");
+    await expect
+      .poll(async () => {
+        const typed = await source.locator(".cm-activeLine").boundingBox();
+        return typed ? typed.y + typed.height : Infinity;
+      })
+      .toBeLessThanOrEqual(bar.y);
+  }
+});
+
+test("shows Find in note in the app bar on a phone, or under it, mid-note", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.name === "desktop-chromium",
+    "A mouse has no keyboard toolbar",
+  );
+  const notes = drive.files.get("notes");
+  if (notes) {
+    notes.content = Array.from(
+      { length: 80 },
+      (_, line) => `line ${String(line + 1)}\n`,
+    ).join("");
+  }
+  await signIn(page);
+  await page.goto("/edit?id=notes");
+  await startEditing(page);
+  const source = page.getByRole("textbox", { name: "Markdown source" });
+  await source.locator(".cm-line").first().click();
+  await page.evaluate(() => {
+    window.scrollTo(0, document.documentElement.scrollHeight / 2);
+  });
+  await page
+    .getByRole("toolbar", { name: "Formatting" })
+    .getByRole("button", { name: "Find in note" })
+    .click();
+
+  const field = page.getByRole("textbox", { name: "Find" });
+  await expect(field).toBeFocused();
+  // Safari zooms in on a field whose text is smaller.
+  await expect(field).toHaveCSS("font-size", "16px");
+  // Drawn over the note's text, which runs under it.
+  const onTop = await field.evaluate((input) => {
+    const box = input.getBoundingClientRect();
+    return (
+      document.elementFromPoint(
+        box.x + box.width / 2,
+        box.y + box.height / 2,
+      ) === input
+    );
+  });
+  expect(onTop).toBe(true);
+  const appBar = page.getByRole("banner");
+  const bar = page.getByRole("search", { name: "Find in note" });
+  if (info.project.metadata.layout === "phone") {
+    // It holds the app bar alone, until it closes.
+    await expect(appBar.getByRole("search")).toBeVisible();
+    await expect(appBar.getByRole("button", { name: "Done" })).toBeHidden();
+    await bar.getByRole("button", { name: "Close find" }).click();
+    await expect(appBar.getByRole("button", { name: "Done" })).toBeVisible();
+    return;
+  }
+  const [above, below] = await Promise.all([
+    appBar.boundingBox(),
+    bar.boundingBox(),
+  ]);
+  if (!above || !below) throw new Error("Not shown");
+  expect(below.y).toBe(above.y + above.height);
 });
 
 test("saves with Ctrl+S, and follows a link with Ctrl+click in the source", async ({
@@ -199,21 +341,21 @@ test("saves with Ctrl+S, and follows a link with Ctrl+click in the source", asyn
   const before = String(drive.files.get("plan")?.content);
   await signIn(page);
   await page.goto("/edit?id=plan");
-  await page.getByRole("button", { name: "Edit" }).click();
+  await startEditing(page);
   const source = page.getByRole("textbox", { name: "Markdown source" });
   await source.click();
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("Tea.");
 
   await page.keyboard.press("ControlOrMeta+s");
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("plan")?.content)).toBe(`${before}Tea.`);
 
   await source.getByText("the notes", { exact: true }).click({
     modifiers: ["ControlOrMeta"],
   });
   await expect(
-    page.getByRole("heading", { level: 2, name: "notes.md" }),
+    page.getByRole("heading", { level: 1, name: "notes.md" }),
   ).toBeVisible();
   await expect(page.getByText(/^Last modified by/)).toBeVisible();
   await expect(page.locator(".markdown")).toBeAttached();
@@ -225,14 +367,16 @@ test("shows someone else's change at save, and overwrites it when asked", async 
 }) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
-  await page.locator(".markdown").getByRole("checkbox").first().check();
-  // Someone else saves the note meanwhile.
+  // Once the note shows, someone else saves it.
+  await expect(
+    page.locator(".markdown").getByRole("checkbox").first(),
+  ).toBeVisible();
   const plan = drive.files.get("plan");
   if (!plan) throw new Error("No plan");
   plan.content = `${String(plan.content)}\nTheir line.\n`;
   plan.revision = 2;
-
-  await page.getByRole("button", { name: "Save" }).click();
+  // Ticked while viewing, a task saves at once, which finds their change.
+  await page.locator(".markdown").getByRole("checkbox").first().check();
   await expect(
     page.getByRole("heading", {
       name: "Someone changed this file in Google Drive",
@@ -243,15 +387,120 @@ test("shows someone else's change at save, and overwrites it when asked", async 
   expect(drive.writes).toEqual([]);
 
   await page.getByRole("button", { name: "Overwrite with mine" }).click();
-  // The panel goes at once; the writes follow.
+  // The banner stays until Drive holds the user's version.
   await expect
     .poll(() => drive.writes)
     .toEqual(["keep plan revision-2", "save plan"]);
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("plan")?.content)).not.toContain("Their line.");
   expect(String(drive.files.get("plan")?.content)).toContain(
     "- [x] Boil water",
   );
+});
+
+test("folds the lines alike in the theme's colors, as the system's changes", async ({
+  page,
+  drive,
+}) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  // Once the note shows, someone else saves it.
+  await expect(
+    page.locator(".markdown").getByRole("checkbox").first(),
+  ).toBeVisible();
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content = `${String(plan.content)}\nTheir line.\n`;
+  plan.revision = 2;
+  // Ticked while viewing, a task saves at once, which finds their change.
+  await page.locator(".markdown").getByRole("checkbox").first().check();
+
+  const folded = page.locator(".differences .cm-collapsedLines").first();
+  await expect(folded).toContainText("unchanged lines");
+  const colors = () =>
+    folded.evaluate((bar) => {
+      const style = getComputedStyle(bar);
+      return {
+        text: style.color,
+        // Its color, or a gradient's, but not what it lets through.
+        backgrounds: [
+          style.backgroundColor,
+          ...(style.backgroundImage.match(/rgba?\([^)]*\)/g) ?? []),
+        ].filter((color) => !color.endsWith(", 0)")),
+      };
+    });
+  const { text, backgrounds } = await colors();
+  expect(backgrounds.length).toBeGreaterThan(0);
+  for (const background of backgrounds) {
+    // Dark on a touch screen; a computer keeps the light theme.
+    expect(luminance(background) < 0.1).toBe(await touchScreen(page));
+    expect(contrast(text, background)).toBeGreaterThanOrEqual(4.5);
+  }
+
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect
+    .poll(async () => luminance((await colors()).text))
+    .toBeLessThan(0.1);
+  for (const background of (await colors()).backgrounds) {
+    expect(luminance(background)).toBeGreaterThan(0.5);
+  }
+});
+
+test("sets the differences in code type on a sheet, the folds centered", async ({
+  page,
+  drive,
+}) => {
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  // Once the note shows, someone else saves it.
+  await expect(
+    page.locator(".markdown").getByRole("checkbox").first(),
+  ).toBeVisible();
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content = `${String(plan.content)}\nTheir line.\n`;
+  plan.revision = 2;
+  // Ticked while viewing, a task saves at once, which finds their change.
+  await page.locator(".markdown").getByRole("checkbox").first().check();
+
+  const differences = page.locator(".differences .cm-editor");
+  await expect(differences.locator(".cm-content")).toBeVisible();
+  expect(
+    await differences.evaluate((editor) => {
+      const style = getComputedStyle(editor);
+      const line = editor.querySelector(".cm-line");
+      const text = line && getComputedStyle(line);
+      return {
+        background: style.backgroundColor,
+        radius: style.borderTopLeftRadius,
+        family: text?.fontFamily,
+        size: text?.fontSize,
+        height: text?.lineHeight,
+        padding: text?.paddingLeft,
+      };
+    }),
+  ).toMatchObject({
+    background: await token(page, "--sheet"),
+    radius: "12px",
+    family: expect.stringMatching(/^"?Google Sans Code\b/),
+    size: "14px",
+    height: "22px",
+    padding: "12px",
+  });
+  // The lines it removes start where the others do, with no gutter.
+  const starts = await differences.evaluate((editor) =>
+    [".cm-line", ".cm-deletedChunk .cm-deletedLine"].map((selector) => {
+      const range = document.createRange();
+      range.selectNodeContents(editor.querySelector(selector) ?? editor);
+      return range.getClientRects()[0]?.left;
+    }),
+  );
+  expect(starts[1]).toBe(starts[0]);
+  await expect(differences.locator(".cm-gutters")).toHaveCount(0);
+  const folded = differences.locator(".cm-collapsedLines").first();
+  await expect(folded).toHaveText(/^\d+ unchanged lines$/);
+  await expect(folded).toHaveCSS("text-align", "center");
 });
 
 test("keeps unsaved changes on the device across a reload", async ({
@@ -260,8 +509,10 @@ test("keeps unsaved changes on the device across a reload", async ({
 }) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
-  await page.locator(".markdown").getByRole("checkbox").first().check();
-  await expect(page.getByText("Unsaved changes")).toBeVisible();
+  await tickWhileEditing(page);
+  await expect(
+    page.getByRole("button", { name: "Save", exact: true }),
+  ).toBeVisible();
   // Kept on the device half a second after the last change.
   await expect.poll(() => draftsKept(page)).toBe(1);
 
@@ -273,9 +524,9 @@ test("keeps unsaved changes on the device across a reload", async ({
   await expect(
     page.locator(".markdown").getByRole("checkbox").first(),
   ).toBeChecked();
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
 
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(drive.writes).toEqual(["keep plan revision-1", "save plan"]);
 });
 
@@ -285,28 +536,24 @@ test("lists a note with unsaved changes first on Home, then offers them back", a
 }) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
-  await page.locator(".markdown").getByRole("checkbox").first().check();
+  await tickWhileEditing(page);
   await expect.poll(() => draftsKept(page)).toBe(1);
 
   page.once("dialog", (dialog) => void dialog.accept());
-  await page.getByRole("link", { name: "DriveMD" }).click();
+  await goHome(page);
   const unsaved = page.getByRole("region", { name: "Unsaved changes" });
   await expect(page.getByRole("region").first()).toHaveAccessibleName(
     "Unsaved changes",
   );
   await expect(unsaved.getByRole("link")).toHaveText([/^plan\.md/]);
-  await expect(
-    page.getByRole("region", { name: "Vaults" }).getByRole("link"),
-  ).toHaveText(["Journal"]);
+  await expect(vault(page)).toBeVisible();
   await unsaved.getByRole("link").click();
   await page.getByRole("button", { name: "Restore" }).click();
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
 
-  await page.getByRole("link", { name: "DriveMD" }).click();
-  await expect(
-    page.getByRole("region", { name: "Vaults" }).getByRole("link"),
-  ).toHaveText(["Journal"]);
+  await goHome(page);
+  await expect(vault(page)).toBeVisible();
   await expect(unsaved).toHaveCount(0);
   expect(drive.writes).toEqual(["keep plan revision-1", "save plan"]);
 });
@@ -316,9 +563,15 @@ test("signs out once the user agrees to discard unsaved changes", async ({
 }) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
-  await page.locator(".markdown").getByRole("checkbox").first().check();
+  await tickWhileEditing(page);
   await expect.poll(() => draftsKept(page)).toBe(1);
 
+  if (test.info().project.metadata.layout === "phone") {
+    // A phone leaves the account to Home.
+    page.once("dialog", (dialog) => void dialog.accept());
+    await goHome(page);
+  }
+  await page.getByRole("button", { name: /^Account, / }).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(
     page.getByRole("dialog", { name: "Discard unsaved changes?" }),
@@ -336,23 +589,30 @@ test("asks before leaving a note with unsaved changes for another page", async (
 }) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
-  await page.locator(".markdown").getByRole("checkbox").first().check();
-  const crumbs = page.getByRole("navigation", { name: "Breadcrumbs" });
+  await tickWhileEditing(page);
+  // The folder's link where the screen has one beside the note, or else a
+  // link of the note's, to another page of the app, which a phone's preview
+  // shows while editing, its bar then having no Back.
+  const phone = test.info().project.metadata.layout === "phone";
+  const away = phone
+    ? page.locator(".markdown").getByRole("link", { name: "the archive" })
+    : await folderLink(page, "Work");
 
   const refused = page.waitForEvent("dialog");
-  void crumbs.getByRole("link", { name: "Work" }).click();
+  void away.click();
   const asked = await refused;
   expect(asked.message()).toBe(
     "This note has unsaved changes. Leave it anyway?",
   );
   await asked.dismiss();
   await expect(page).toHaveURL(/\/edit\?id=plan$/);
-  await expect(page.getByText("Unsaved changes")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Save", exact: true }),
+  ).toBeVisible();
 
   page.once("dialog", (dialog) => void dialog.accept());
-  await crumbs.getByRole("link", { name: "Work" }).click();
+  await away.click();
   await expect(
-    page.getByRole("heading", { level: 2, name: "Work" }),
+    page.getByRole("heading", { level: 2, name: phone ? "Archive" : "Work" }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Archive" })).toBeVisible();
 });

@@ -9,9 +9,13 @@ import {
 } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import {
+  getSearchQuery,
   highlightSelectionMatches,
   search,
   searchKeymap,
+  searchPanelOpen,
+  setSearchQuery,
+  type SearchQuery,
 } from "@codemirror/search";
 import {
   EditorState,
@@ -22,8 +26,11 @@ import {
 import {
   Decoration,
   EditorView,
+  highlightActiveLine,
   keymap,
+  runScopeHandlers,
   ViewPlugin,
+  type Command,
   type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view";
@@ -32,14 +39,25 @@ import {
   useEffect,
   useEffectEvent,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
+  useState,
   type Ref,
 } from "react";
+import { flushSync } from "react-dom";
 import { mountIn, THEME } from "./codemirror.ts";
+import { keepDoubleSpace } from "./double-space.ts";
+import { countMatches, findInNote, findsInNote, type Matches } from "./find.ts";
+import { FindBar } from "./FindBar.tsx";
+import { indentLines, outdentLines } from "./formatting.ts";
 import { withFrontmatter } from "./frontmatter.ts";
+import { KeyboardToolbar, TOOLBAR_HEIGHT } from "./KeyboardToolbar.tsx";
+import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
+import { useLayout, useTouch } from "./layout.ts";
 import { linkAt } from "./source-links.ts";
 import type { LineBreak } from "./text.ts";
+import { keepVisible } from "./visual-viewport.ts";
 
 /**
  * Light live styling: headings larger, bold and italic as such, code in
@@ -57,9 +75,12 @@ const LIGHT = HighlightStyle.define([
   { tag: tags.strong, fontWeight: "bold" },
   { tag: tags.emphasis, fontStyle: "italic" },
   { tag: tags.strikethrough, textDecoration: "line-through" },
-  { tag: tags.monospace, fontFamily: "var(--monospace)" },
-  { tag: tags.link, color: "var(--link)" },
-  { tag: [tags.processingInstruction, tags.url], color: "var(--muted)" },
+  { tag: tags.monospace, fontFamily: "var(--font-mono)" },
+  { tag: tags.link, color: "var(--primary)" },
+  {
+    tag: [tags.processingInstruction, tags.url],
+    color: "var(--on-surface-variant)",
+  },
 ]);
 
 /**
@@ -70,11 +91,36 @@ const LIGHT_YAML = HighlightStyle.define(
   [
     {
       tag: [tags.propertyName, tags.punctuation, tags.comment],
-      color: "var(--muted)",
+      color: "var(--on-surface-variant)",
     },
   ],
   { scope: yamlLanguage },
 );
+
+/**
+ * The source on its sheet, or on a phone's page, without a frame of its
+ * own: its lines run from edge to edge, their text as far in as the text
+ * beside it, and the cursor's line shows where the focus is, as in Docs,
+ * marked at its start in the focus ring's color, which stands out from
+ * any surface where the line's own color does not.
+ */
+const ON_SHEET = EditorView.theme({
+  // The editor's layers stack among themselves, all under the app bar and
+  // Find in note's bar.
+  "&": { isolation: "isolate" },
+  "&.cm-focused": { outline: "none" },
+  // 26 px lines at 16 px, as the note's own.
+  ".cm-scroller": { lineHeight: "1.625" },
+  ".cm-line": { padding: "0 var(--text-inset)" },
+  ".cm-activeLine": { backgroundColor: "transparent" },
+  "&.cm-focused .cm-activeLine": {
+    backgroundColor: "var(--surface-container-low)",
+    boxShadow: "inset 2px 0 0 var(--primary)",
+  },
+  // Find in note's bar is the page's own (FindBar.tsx): CodeMirror's panel
+  // only holds that the search is open, which shows its matches.
+  ".cm-panels": { display: "none" },
+});
 
 const CODE_LINE = Decoration.line({ class: "cm-code-line" });
 
@@ -171,12 +217,14 @@ function extensions(
   lineBreak: LineBreak,
   changed: (update: ViewUpdate) => void,
   follow: (href: string) => void,
+  clearance: () => { top: number; bottom: number } | null,
 ): Extension[] {
   return [
     // Lines join with the file's own break, whatever the browser sends.
     EditorState.lineSeparator.of(lineBreak),
     writable(lineBreak),
     history(),
+    keepDoubleSpace,
     // GitHub's Markdown, its fences highlighted in their language and its
     // front matter in YAML; Enter continues lists and task lists.
     withFrontmatter(
@@ -187,14 +235,41 @@ function extensions(
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     codeBlocks,
     THEME,
+    ON_SHEET,
+    highlightActiveLine(),
     // The browser's own find misses lines the editor has not drawn.
-    search({ top: true }),
+    // At the top, where its hidden panel takes no room from the cursor's.
+    search({
+      createPanel: () => ({ dom: document.createElement("div"), top: true }),
+    }),
     highlightSelectionMatches(),
-    keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+    keymap.of([
+      // A list item nests from the keyboard as from the toolbar's keys.
+      { key: "Mod-]", run: indentLines },
+      { key: "Mod-[", run: outdentLines },
+      ...defaultKeymap,
+      ...historyKeymap,
+      // Its field is the page's, where CodeMirror's own Mod-f misses it.
+      { key: "Mod-f", run: findInNote, scope: "editor search-panel" },
+      ...searchKeymap,
+    ]),
     EditorView.lineWrapping,
     EditorView.contentAttributes.of({ "aria-label": "Markdown source" }),
     EditorView.updateListener.of(changed),
     followLinks(follow),
+    // The cursor stays clear of the keyboard toolbar and the app bar when
+    // the editor scrolls to it.
+    EditorView.scrollMargins.of(clearance),
+    // A tap places the cursor without scrolling to it, where the toolbar
+    // may cover it.
+    EditorState.transactionExtender.of((transaction) =>
+      transaction.selection &&
+      transaction.isUserEvent("select") &&
+      !transaction.scrollIntoView &&
+      clearance()
+        ? { effects: EditorView.scrollIntoView(transaction.newSelection.main) }
+        : null,
+    ),
   ];
 }
 
@@ -229,10 +304,80 @@ export function Editor({
 }) {
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
+  const field = useRef<HTMLInputElement>(null);
+  const [focused, setFocused] = useState(false);
+  // Find in note's query and matches, while it is open.
+  const [found, setFound] = useState<Found | null>(null);
+  const searching = found !== null;
+  const touch = useTouch();
+  const phone = useLayout() === "phone";
+  const toolbar = touch && focused;
   const opening = useEffectEvent(() => initial);
   const edited = useEffectEvent((update: ViewUpdate) => {
     if (update.docChanged) onChange(update.state.sliceDoc());
+    if (update.focusChanged) setFocused(update.view.hasFocus);
+    if (!searchPanelOpen(update.state)) {
+      if (searchPanelOpen(update.startState)) setFound(null);
+      return;
+    }
+    const asked = update.transactions.some(findsInNote);
+    if (
+      asked ||
+      update.docChanged ||
+      update.selectionSet ||
+      getSearchQuery(update.state) !== getSearchQuery(update.startState)
+    ) {
+      const next = finding(update.state);
+      if (!asked) {
+        setFound(next);
+        return;
+      }
+      // At once, so that the field takes the focus within the tap, which
+      // alone brings up a phone's keyboard.
+      flushSync(() => {
+        setFound(next);
+      });
+      field.current?.focus();
+      field.current?.select();
+    }
   });
+  // While the toolbar or Find in note shows, the app bar stays on the
+  // screen, Done and Save with it, and on a wider screen than a phone's,
+  // Find in note's bar under it: iOS pans the visual viewport away from the
+  // page's top, where they stick.
+  const keeping = touch && (focused || searching);
+  useLayoutEffect(() => {
+    if (!keeping) return;
+    const appBar = document.querySelector<HTMLElement>(".bar");
+    const findBar =
+      searching && !phone
+        ? document.querySelector<HTMLElement>(".find-bar")
+        : null;
+    const stops = [
+      appBar && keepVisible(appBar),
+      findBar && keepVisible(findBar, { below: appBar }),
+    ];
+    return () => {
+      for (const stop of stops) stop?.();
+    };
+  }, [keeping, searching, phone]);
+  // The cursor and the matches stay clear of the bars over the page's top,
+  // and of the toolbar.
+  const clearance = useEffectEvent(() =>
+    toolbar || searching
+      ? {
+          top: Math.max(
+            0,
+            ...[".bar", ".find-bar"].map(
+              (bar) =>
+                document.querySelector(bar)?.getBoundingClientRect().bottom ??
+                0,
+            ),
+          ),
+          bottom: toolbar ? TOOLBAR_HEIGHT : 0,
+        }
+      : null,
+  );
   const followed = useEffectEvent((href: string) => {
     onFollow(href);
   });
@@ -244,7 +389,7 @@ export function Editor({
       element,
       EditorState.create({
         doc: opening(),
-        extensions: extensions(lineBreak, edited, followed),
+        extensions: extensions(lineBreak, edited, followed, clearance),
       }),
     );
     editor.current = view;
@@ -266,7 +411,91 @@ export function Editor({
     [lineBreak],
   );
 
-  return <div className="editor" ref={host} />;
+  // Leaving Find in note gives the focus back to the text, at the match
+  // last found, which iOS may have panned under the keyboard, clear of the
+  // toolbar that the focus brings back on a touch screen.
+  const searched = (view: EditorView) => {
+    if (searchPanelOpen(view.state)) return;
+    view.focus();
+    view.dispatch({
+      effects: EditorView.scrollIntoView(view.state.selection.main, {
+        yMargin: touch ? TOOLBAR_HEIGHT : 5,
+      }),
+    });
+  };
+  const bar = found && (
+    <FindBar
+      query={found.query}
+      matches={found.matches}
+      field={field}
+      onQuery={(query) => {
+        editor.current?.dispatch({ effects: setSearchQuery.of(query) });
+      }}
+      onCommand={(command: Command) => {
+        const view = editor.current;
+        if (!view) return;
+        command(view);
+        searched(view);
+      }}
+      onKey={(event) => {
+        const view = editor.current;
+        if (!view) return false;
+        const handled = runScopeHandlers(view, event, "search-panel");
+        searched(view);
+        return handled;
+      }}
+    />
+  );
+
+  return (
+    <>
+      {phone ? <InSlot name="find">{bar}</InSlot> : bar}
+      <div className="editor" ref={host} />
+      {toolbar && (
+        <KeyboardToolbar
+          onCommand={(command) => {
+            if (editor.current) command(editor.current);
+          }}
+          onResize={(before) => {
+            const view = editor.current;
+            if (view && onScreen(view, before)) {
+              view.dispatch({
+                effects: EditorView.scrollIntoView(view.state.selection.main),
+              });
+            }
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+interface Found {
+  query: SearchQuery;
+  matches: Matches;
+}
+
+function finding(state: EditorState): Found {
+  const query = getSearchQuery(state);
+  return { query, matches: countMatches(state, query) };
+}
+
+/**
+ * Whether the cursor shows in the visual viewport, perhaps under the
+ * keyboard toolbar, or showed in it at its height `before`, rather than
+ * where the user scrolled away from it: Safari resizes the visual viewport
+ * as its bars fold while the page scrolls, not only as the keyboard comes
+ * or goes. Chrome on Android scrolls neither to the cursor that a tap
+ * brings the keyboard up over, which then hides it.
+ */
+function onScreen(view: EditorView, before: number): boolean {
+  const cursor = view.coordsAtPos(view.state.selection.main.head);
+  const viewport = window.visualViewport;
+  if (!cursor || !viewport) return false;
+  const top = viewport.pageTop - window.scrollY;
+  return (
+    cursor.bottom > top && cursor.top < top + Math.max(before, viewport.height)
+  );
 }
 
 /**

@@ -1,10 +1,17 @@
 import { EditorView } from "@codemirror/view";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { DriveError } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
 import { getPlace } from "./router.ts";
 import { driveItem, metadata } from "./test/drive-items.ts";
+import { editInPreview, pickMode } from "./test/actions.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 import { renderWithDrive, visit } from "./test/render.tsx";
 import { holdScreen } from "./test/screen.ts";
@@ -18,9 +25,13 @@ const THEIRS = metadata(PLAN, {
   headRevisionId: "revision-3",
 });
 const utf8 = (text: string) => new TextEncoder().encode(text);
+const WHEN = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
 
 /** A note whose save finds that someone else changed it in Drive. */
-async function conflict() {
+async function conflict(theirs = THEIRS) {
   const drive = fakeDrive();
   drive.getContent.mockImplementation((file) =>
     Promise.resolve(
@@ -31,18 +42,26 @@ async function conflict() {
       ),
     ),
   );
-  drive.getMetadata.mockResolvedValue(THEIRS);
+  drive.getMetadata.mockResolvedValue(theirs);
   drive.keepRevision.mockResolvedValue();
   drive.saveContent.mockImplementation((file) =>
     Promise.resolve(metadata(file, { headRevisionId: "revision-4" })),
   );
   const rendered = renderWithDrive(<FileContent file={PLAN} />, drive);
+  await editInPreview();
   fireEvent.click(await screen.findByRole("checkbox"));
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await screen.findByRole("heading", {
     name: "Someone changed this file in Google Drive",
   });
   return { ...rendered, drive };
+}
+
+/** The banner that offers the choice. */
+function banner() {
+  return screen.getByRole("region", {
+    name: "Someone changed this file in Google Drive",
+  });
 }
 
 /** Keeps Drive's version, confirming that the user's changes go. */
@@ -77,7 +96,7 @@ describe("a save that finds someone else's change", () => {
     async () => {
       holdScreen("wide");
       await conflict();
-      fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+      await pickMode("Editing");
       const view = await differences();
       const source = await waitFor(() => {
         const content = document
@@ -112,13 +131,151 @@ describe("a save that finds someone else's change", () => {
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   });
 
+  it("offers the choices by risk: a copy, then overwriting, then Drive's version", async () => {
+    await conflict();
+
+    expect(
+      within(banner())
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual([
+      "Save mine as a copy",
+      "Overwrite with mine",
+      "Keep the Drive version",
+    ]);
+  });
+
+  it.each([
+    [
+      "someone else",
+      { lastModifiedBy: "Ada Lovelace" },
+      "Ada Lovelace changed it on WHEN, after you opened it",
+    ],
+    [
+      "the user, elsewhere",
+      { lastModifiedBy: "Grace Hopper", lastModifiedByMe: true },
+      "You changed it elsewhere on WHEN, after you opened it here",
+    ],
+    [
+      "a user Drive does not name",
+      { lastModifiedBy: undefined },
+      "Someone changed it on WHEN, after you opened it",
+    ],
+  ])("says who changed the file, %s, and when", async (_, who, said) => {
+    const modifiedTime = "2026-09-01T10:42:00.000Z";
+    await conflict(metadata(THEIRS, { ...who, modifiedTime }));
+
+    expect(banner()).toHaveTextContent(
+      `${said.replace("WHEN", WHEN.format(new Date(modifiedTime)))}, so DriveMD saved nothing.`,
+    );
+  });
+
+  it("leaves out when the file changed, if Drive does not say", async () => {
+    await conflict(metadata(THEIRS, { modifiedTime: undefined }));
+
+    expect(banner()).toHaveTextContent(
+      "Ada Lovelace changed it after you opened it, so DriveMD saved nothing.",
+    );
+  });
+
+  it("keeps the choice open while overwriting, and after Drive refuses it", async () => {
+    const { drive } = await conflict();
+    let refuse: (error: Error) => void = () => undefined;
+    drive.saveContent.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          refuse = reject;
+        }),
+    );
+    const overwrite = () =>
+      within(banner()).getByRole("button", { name: "Overwrite with mine" });
+
+    fireEvent.click(overwrite());
+    await waitFor(() => {
+      expect(overwrite()).toBeDisabled();
+    });
+    expect(screen.getByRole("button", { name: "Saving…" })).toBeVisible();
+    act(() => {
+      refuse(new DriveError(503, "Backend error"));
+    });
+
+    expect(await within(banner()).findByRole("alert")).toHaveTextContent(
+      "Backend error",
+    );
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(overwrite()).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    // Saving in another way would find the conflict again: nothing saves.
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
+    await new Promise((settle) => setTimeout(settle, 50));
+    expect(banner()).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent("Backend error");
+    expect(drive.saveContent).toHaveBeenCalledOnce();
+    fireEvent.click(overwrite());
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: /Someone changed/ }),
+      ).toBeNull();
+    });
+    expect(drive.saveContent).toHaveBeenCalledTimes(2);
+  });
+
+  it("holds the differences in the banner's region", async () => {
+    await conflict();
+
+    await differences();
+    expect(banner().querySelector(".differences")).not.toBeNull();
+  });
+
+  it("stays in Editing with the choice open when Viewing would save", async () => {
+    holdScreen("wide");
+    const { drive } = await conflict();
+    await pickMode("Editing");
+    const asked = drive.getMetadata.mock.calls.length;
+
+    await pickMode("Viewing");
+
+    await new Promise((settle) => setTimeout(settle, 50));
+    expect(banner()).toBeVisible();
+    expect(screen.getByRole("region", { name: "Markdown" })).toBeVisible();
+    expect(drive.getMetadata).toHaveBeenCalledTimes(asked);
+  });
+
+  it("says only why the choice made last failed", async () => {
+    const { drive } = await conflict();
+    drive.createFile.mockRejectedValue(
+      new DriveError(403, "The user does not have permission"),
+    );
+    drive.saveContent.mockRejectedValue(new DriveError(503, "Backend error"));
+
+    fireEvent.click(
+      within(banner()).getByRole("button", { name: "Save mine as a copy" }),
+    );
+    await within(banner()).findByText(/does not have permission/);
+    fireEvent.click(
+      within(banner()).getByRole("button", { name: "Overwrite with mine" }),
+    );
+
+    await within(banner()).findByText(/Backend error/);
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    // A new attempt clears the last one's reason.
+    drive.createFile.mockReturnValueOnce(new Promise(() => undefined));
+    fireEvent.click(
+      within(banner()).getByRole("button", { name: "Save mine as a copy" }),
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+  });
+
   it("keeps Drive's version, dropping the user's", async () => {
     await conflict();
 
     keepTheirs();
 
     expect(await screen.findByText("Serve")).toBeVisible();
-    expect(screen.queryByText("Unsaved changes")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(await screen.findByRole("button", { name: "Saved" })).toBeVisible();
     expect(
       screen.queryByRole("heading", { name: /Someone changed/ }),
     ).toBeNull();
@@ -127,10 +284,10 @@ describe("a save that finds someone else's change", () => {
   it("keeps Drive's version after the editor closes, and tells the page of it", async () => {
     holdScreen("wide");
     await conflict();
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await pickMode("Editing");
 
     keepTheirs();
-    fireEvent.click(await screen.findByRole("button", { name: "Done" }));
+    await pickMode("Viewing");
 
     await new Promise((settle) => setTimeout(settle, 50));
     expect(screen.getByText("Serve")).toBeVisible();
@@ -207,7 +364,7 @@ describe("a save that finds someone else's change", () => {
       "revision-3",
     );
     await waitFor(() => {
-      expect(screen.queryByText("Unsaved changes")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     });
     expect(
       screen.queryByRole("heading", { name: /Someone changed/ }),
@@ -307,8 +464,8 @@ describe("a save that finds someone else's change", () => {
     drive.getContent.mockResolvedValue(utf8("- [ ] Boil\n"));
     drive.getMetadata.mockResolvedValue({ ...THEIRS, parents: [] });
     renderWithDrive(<FileContent file={alone} />, drive);
+    // Ticked while viewing, the task saves at once, which finds the change.
     fireEvent.click(await screen.findByRole("checkbox"));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await screen.findByRole("heading", { name: /Someone changed/ });
     expect(

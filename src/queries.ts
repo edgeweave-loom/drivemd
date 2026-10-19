@@ -15,8 +15,10 @@ import {
   GOOGLE_TYPES,
   TooLargeError,
   type Drive,
+  type DriveItem,
   type FileMetadata,
   type FileRef,
+  type SearchResult,
   type ShortcutTarget,
 } from "./drive.ts";
 
@@ -33,6 +35,10 @@ export function createQueryClient(): QueryClient {
       // A page opened again within half a minute shows what it had, without
       // asking Drive again.
       queries: { retry: mayPassLater, staleTime: 30_000 },
+      // A write runs when asked, even offline, so that it fails and says
+      // why: one that waited for the connection would run later, unasked,
+      // perhaps once the user has left the page.
+      mutations: { networkMode: "always" },
     },
   });
 }
@@ -164,6 +170,22 @@ export const MAX_IMAGE = 10_000_000;
 // The links and images of a note ask Drive a few at a time, however many of
 // them come near the screen together.
 const lookups = pool(4);
+
+/**
+ * The name of a folder that a list gives as a note's location: the folder's
+ * details, which the rest of the app reads too, asked for a few at a time,
+ * as links and images are.
+ */
+export function locationQuery(drive: Drive, folder: string | undefined) {
+  const item = folder === undefined ? undefined : { id: folder };
+  return queryOptions({
+    ...metadataQuery(drive, item),
+    queryFn: item
+      ? ({ signal }) => lookups(() => drive.getMetadata(item), signal)
+      : skipToken,
+    select: (details) => details.name,
+  });
+}
 
 /**
  * A file's bytes, from the revision its details name on. Drive sends the
@@ -458,11 +480,39 @@ export function setParents(
   );
 }
 
-/** Shows the file's new details at once, as a save answered them. */
+/** Puts the file in the trash, before Drive's details say so. */
+export function setTrashed(client: QueryClient, file: FileRef): void {
+  client.setQueriesData<FileMetadata>(
+    { queryKey: key("metadata", file.id) },
+    (before) => before && { ...before, trashed: true },
+  );
+}
+
+/**
+ * Shows the file's new details at once, as a save answered them, and its new
+ * time of change in the lists that hold it.
+ */
 export function setDetails(client: QueryClient, file: FileMetadata): void {
   client.setQueriesData<FileMetadata>(
     { queryKey: key("metadata", file.id) },
     file,
+  );
+  const { modifiedTime, lastModifiedBy, lastModifiedByMe } = file;
+  const changed = (items: DriveItem[]) =>
+    items.map((item) =>
+      item.id === file.id
+        ? { ...item, modifiedTime, lastModifiedBy, lastModifiedByMe }
+        : item,
+    );
+  for (const list of [key("children"), key("recent")]) {
+    client.setQueriesData<DriveItem[]>(
+      { queryKey: list },
+      (items) => items && changed(items),
+    );
+  }
+  client.setQueriesData<SearchResult>(
+    { queryKey: key("search") },
+    (found) => found && { ...found, items: changed(found.items) },
   );
 }
 

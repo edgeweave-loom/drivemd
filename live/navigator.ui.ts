@@ -243,10 +243,66 @@ function heading(page: Page, name: string) {
   return page.getByRole("heading", { level: 2, name, exact: true });
 }
 
+/** A note's name, which its app bar gives. */
+function noteName(page: Page, name: string) {
+  return page
+    .getByRole("banner")
+    .getByRole("heading", { level: 1, name, exact: true });
+}
+
 function crumbs(page: Page) {
   return page
     .getByRole("navigation", { name: "Breadcrumbs" })
     .getByRole("link");
+}
+
+function phone() {
+  return test.info().project.metadata.layout === "phone";
+}
+
+/**
+ * The link from a note to the folder it sits in: heading the folder pane on
+ * a wide screen, or Back on a phone.
+ */
+function folderLink(page: Page, name: string) {
+  return phone()
+    ? page.getByRole("banner").getByRole("link", { name: `Back to ${name}` })
+    : page
+        .getByRole("complementary", { name })
+        .getByRole("link", { name, exact: true });
+}
+
+/**
+ * Picks one of a note's actions: Move by the note's name, but on a phone,
+ * and the others from More actions.
+ */
+async function noteAction(page: Page, name: "Move" | "Move to trash") {
+  const bar = page.getByRole("banner");
+  if (name === "Move" && !phone()) {
+    await bar.getByRole("button", { name, exact: true }).click();
+    return;
+  }
+  await bar.getByRole("button", { name: "More actions" }).click();
+  await page
+    .getByRole("dialog", { name: "More actions" })
+    .getByRole("button", { name, exact: true })
+    .click();
+}
+
+/** Renames a note by its name in the app bar, as a click on it does. */
+async function renameNote(page: Page, from: string, to: string) {
+  await page.getByRole("banner").getByRole("button", { name: from }).click();
+  const name = page.getByRole("textbox", { name: "Name" });
+  await name.fill(to);
+  await name.press("Enter");
+}
+
+/** The search box, opened first where a phone keeps it behind a button. */
+async function searchBox(page: Page) {
+  if (phone()) {
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+  }
+  return page.getByRole("searchbox", { name: "Search Markdown files by name" });
 }
 
 /**
@@ -268,7 +324,7 @@ async function openHome(page: Page) {
 
 async function openRunFolder(page: Page, run: Run) {
   await page.goto("/");
-  await page.getByRole("link", { name: "My Drive" }).click();
+  await page.getByRole("link", { name: "My Drive", exact: true }).click();
   await page.getByRole("link", { name: run.name, exact: true }).click();
   await expect(heading(page, run.name)).toBeVisible();
   await loaded(page);
@@ -292,14 +348,10 @@ test("reaches a note in My Drive, through its folders", async ({
     .getByRole("link", { name: `${RUN} note.md` })
     .first()
     .click();
-  await expect(heading(page, `${RUN} note.md`)).toBeVisible();
-  await expect(page.getByText(/^Last modified/)).toBeVisible();
-  await expect(crumbs(page)).toHaveText([
-    "Home",
-    "My Drive",
-    run.name,
-    `${RUN} Notes`,
-  ]);
+  await expect(noteName(page, `${RUN} note.md`)).toBeVisible();
+  // Under its name, but on a phone.
+  await expect(page.getByText(/^Last modified/)).toBeAttached();
+  await expect(folderLink(page, `${RUN} Notes`)).toBeVisible();
   expect((await viewed).ok()).toBe(true);
 });
 
@@ -332,7 +384,7 @@ test("reaches a note behind a shortcut", async ({ page, run }) => {
   await openRunFolder(page, run);
   await page.getByRole("link", { name: `${RUN} Linked note.md` }).click();
   await expect(page).toHaveURL(new RegExp(`/edit\\?id=${run.ids.note}$`));
-  await expect(page.getByText(/^Last modified/)).toBeVisible();
+  await expect(page.getByText(/^Last modified/)).toBeAttached();
 });
 
 test("reaches a note in a shared drive", async ({ page }) => {
@@ -343,15 +395,17 @@ test("reaches a note in a shared drive", async ({ page }) => {
   test.skip((await listed.count()) === 0, `needs the ${SHARED_DRIVE} drive`);
   await listed.click();
   await page.getByRole("link", { name: FROM_ANOTHER }).click();
-  await expect(heading(page, FROM_ANOTHER)).toBeVisible();
+  await expect(noteName(page, FROM_ANOTHER)).toBeVisible();
 });
 
 test("finds the vault on Home, and warns before renaming a note in it", async ({
   page,
 }) => {
   test.setTimeout(INDEX_TEST_TIMEOUT_MS);
+  // On Home on a phone, or in the drawer beside it on a wide screen.
   const vault = page
     .getByRole("region", { name: "Vaults" })
+    .or(page.getByRole("navigation", { name: "Drive" }))
     .getByRole("link", { name: `${RUN} Vault` });
   // Drive's search, which finds vaults, can take a while to see a new one.
   await expect(async () => {
@@ -363,7 +417,8 @@ test("finds the vault on Home, and warns before renaming a note in it", async ({
     .getByRole("link", { name: `${RUN} daily.md` })
     .first()
     .click();
-  await page.getByRole("button", { name: "Rename" }).click();
+  // Inside a vault, renaming asks first.
+  await renameNote(page, `${RUN} daily.md`, `${RUN} weekly`);
   const rename = page.getByRole("dialog", { name: "Rename" });
   await expect(
     rename.getByText(/^This note is in an Obsidian vault\./),
@@ -378,28 +433,23 @@ test("creates, renames, moves and trashes a note", async ({ page, run }) => {
   const create = page.getByRole("dialog", { name: "New Markdown file" });
   await create.getByRole("textbox", { name: "Name" }).fill(`${RUN} idea`);
   await create.getByRole("button", { name: "Create" }).click();
-  await expect(heading(page, `${RUN} idea.md`)).toBeVisible();
+  await expect(noteName(page, `${RUN} idea.md`)).toBeVisible();
   const id = new URL(page.url()).searchParams.get("id") ?? "";
+  // Once the note shows, as a person would rename it: before the vault check
+  // has answered, renaming asks first.
+  await loaded(page);
 
-  await page.getByRole("button", { name: "Rename" }).click();
-  const rename = page.getByRole("dialog", { name: "Rename" });
-  await rename.getByRole("textbox", { name: "Name" }).fill(`${RUN} plan.md`);
-  await rename.getByRole("button", { name: "Rename" }).click();
-  await expect(heading(page, `${RUN} plan.md`)).toBeVisible();
+  await renameNote(page, `${RUN} idea.md`, `${RUN} plan`);
+  await expect(noteName(page, `${RUN} plan.md`)).toBeVisible();
 
-  await page.getByRole("button", { name: "Move", exact: true }).click();
+  await noteAction(page, "Move");
   const move = page.getByRole("dialog", { name: `Move ${RUN} plan.md` });
   await move.getByRole("button", { name: `${RUN} Archive` }).click();
   await move.getByRole("button", { name: "Move here" }).click();
   await expect(move).toHaveCount(0);
-  await expect(crumbs(page)).toHaveText([
-    "Home",
-    "My Drive",
-    run.name,
-    `${RUN} Archive`,
-  ]);
+  await expect(folderLink(page, `${RUN} Archive`)).toBeVisible();
 
-  await page.getByRole("button", { name: "Move to trash" }).click();
+  await noteAction(page, "Move to trash");
   await page
     .getByRole("dialog", { name: "Move to trash?" })
     .getByRole("button", { name: "Move to trash" })
@@ -436,18 +486,25 @@ test("opens what Drive's Open with, New and pasted links name", async ({
     }),
   );
   await expect(page).toHaveURL(new RegExp(`/edit\\?id=${run.ids.note}$`));
-  await expect(heading(page, `${RUN} note.md`)).toBeVisible();
-  await expect(crumbs(page)).toHaveText([
-    "Home",
-    "My Drive",
-    run.name,
-    `${RUN} Notes`,
-  ]);
+  await expect(noteName(page, `${RUN} note.md`)).toBeVisible();
+  // The tab holds the note alone: its mark leads nowhere, and no folder or
+  // way up shows.
+  const bar = page.getByRole("banner");
+  await expect(bar.getByRole("img", { name: "DriveMD" })).toBeVisible();
+  await expect(bar.getByRole("link")).toHaveCount(0);
+  await expect(page.getByRole("complementary")).toHaveCount(0);
+  // Editing on a computer, reading on a phone.
+  await expect(
+    phone()
+      ? page.getByRole("button", { name: "Edit", exact: true })
+      : bar.getByRole("button", { name: "Editing" }),
+  ).toBeVisible();
   await loaded(page);
 
-  const search = page.getByRole("searchbox", {
-    name: "Search Markdown files by name",
-  });
+  // An address typed in the tab ends that; a note's bar holds no search,
+  // which Home's does.
+  await openHome(page);
+  const search = await searchBox(page);
   await search.fill(
     `https://drive.google.com/drive/folders/${run.ids.notes}?usp=sharing`,
   );
@@ -462,7 +519,7 @@ test("opens what Drive's Open with, New and pasted links name", async ({
   const create = page.getByRole("dialog", { name: "New Markdown file" });
   await create.getByRole("textbox", { name: "Name" }).fill(`${RUN} from Drive`);
   await create.getByRole("button", { name: "Create" }).click();
-  await expect(heading(page, `${RUN} from Drive.md`)).toBeVisible();
+  await expect(noteName(page, `${RUN} from Drive.md`)).toBeVisible();
   await loaded(page);
   const id = new URL(page.url()).searchParams.get("id") ?? "";
 
@@ -506,9 +563,9 @@ test("checks a task in a CRLF note with a byte order mark, saving that byte only
   await expect(note.getByRole("checkbox")).toHaveCount(2);
   await loaded(page);
 
+  // Ticked while viewing, a task saves at once.
   await note.getByRole("checkbox").last().check();
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
 
   const after = before.slice();
   // The space between the brackets of "- [ ] Pour\r\n", 9 bytes from the end.
@@ -525,13 +582,21 @@ test("edits a note's source and saves it, keeping its line breaks", async ({
   await expect(page.locator(".markdown").getByText("Green.")).toBeVisible();
   await loaded(page);
 
-  await page.getByRole("button", { name: "Edit" }).click();
+  if (phone()) {
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+  } else {
+    await page.getByRole("button", { name: "Viewing" }).click();
+    await page
+      .getByRole("menu", { name: "Mode" })
+      .getByRole("menuitemradio", { name: "Editing" })
+      .click();
+  }
   const source = page.getByRole("textbox", { name: "Markdown source" });
   await source.click();
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("Black.");
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
 
   expect(await bytesOf(run, id)).toEqual(utf8("# Tea\r\n\r\nGreen.\r\nBlack."));
 });
@@ -548,7 +613,9 @@ test("shows a note that is not UTF-8 read-only", async ({ page, run }) => {
     page.getByText("Not UTF-8 text: DriveMD only shows it"),
   ).toBeVisible();
   await loaded(page);
-  await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: /^(Edit|Viewing)$/ }),
+  ).toHaveCount(0);
 });
 
 test("renders a note of a vault as Obsidian does, its links and embeds leading to the right files", async ({

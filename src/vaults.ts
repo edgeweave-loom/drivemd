@@ -34,11 +34,12 @@ export function vaultNote(
 export function useVaultCheck(item: FileRef, enabled: boolean): VaultCheck {
   const { drive } = useDrive();
   const configs = useQuery({ ...vaultConfigsQuery(drive), enabled });
-  // Where the item really is, whatever path the user took to it.
-  const climb = useClimb(item, enabled);
-  if (!configs.data || !climb.data) {
-    return failed(configs) || failed(climb) ? "unknown" : "checking";
-  }
+  // Where the item really is, whatever path the user took to it, which only
+  // matters where Drive holds a vault.
+  const climb = useClimb(item, enabled && Boolean(configs.data?.length));
+  if (!configs.data) return failed(configs) ? "unknown" : "checking";
+  if (configs.data.length === 0) return "outside";
+  if (!climb.data) return failed(climb) ? "unknown" : "checking";
   const inVault = nearestVault(climb.data.chain, configs.data) !== undefined;
   return inVault ? "in-vault" : "outside";
 }

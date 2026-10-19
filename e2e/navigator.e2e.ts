@@ -1,5 +1,14 @@
 import type { Page } from "@playwright/test";
-import { EMAIL, expect, signIn, test } from "./fake-google.ts";
+import {
+  EMAIL,
+  expect,
+  folderLink,
+  noteAction,
+  renameNote,
+  signIn,
+  test,
+  vault,
+} from "./fake-google.ts";
 
 function crumbs(page: Page) {
   return page.getByRole("navigation", { name: "Breadcrumbs" });
@@ -8,6 +17,14 @@ function crumbs(page: Page) {
 /** The page's own list, apart from the breadcrumbs and the folder pane. */
 function entries(page: Page) {
   return page.locator(".main .entries, main > .entries").last();
+}
+
+/** The search box, opened first where a phone keeps it behind a button. */
+async function searchBox(page: Page) {
+  if (test.info().project.metadata.layout === "phone") {
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+  }
+  return page.getByRole("searchbox", { name: "Search Markdown files by name" });
 }
 
 async function openWork(page: Page) {
@@ -23,7 +40,9 @@ test("signs in, browses to a file and back, and keeps the path on reload", async
   page,
 }) => {
   await signIn(page);
-  await expect(page.getByText(EMAIL)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: `Account, ${EMAIL}` }),
+  ).toBeVisible();
 
   await page.getByRole("link", { name: "My Drive" }).click();
   await page.getByRole("link", { name: "Work", exact: true }).click();
@@ -36,17 +55,12 @@ test("signs in, browses to a file and back, and keeps the path on reload", async
 
   await page.getByRole("link", { name: "plan.md" }).first().click();
   await expect(
-    page.getByRole("heading", { level: 2, name: "plan.md" }),
+    page.getByRole("banner").getByRole("heading", { name: "plan.md" }),
   ).toBeVisible();
-  await expect(page.getByText(/^Last modified by Ada Lovelace/)).toBeVisible();
   await expect(
     page.getByRole("heading", { level: 1, name: "The plan" }),
   ).toBeVisible();
-  await expect(crumbs(page).getByRole("link")).toHaveText([
-    "Home",
-    "My Drive",
-    "Work",
-  ]);
+  await expect(await folderLink(page, "Work")).toBeVisible();
 
   await page.goBack();
   await expect(
@@ -57,16 +71,17 @@ test("signs in, browses to a file and back, and keeps the path on reload", async
   await expect(crumbs(page).getByRole("link")).toHaveText(["Home", "My Drive"]);
 });
 
-test("rebuilds the breadcrumbs of a page opened by its address", async ({
-  page,
-}) => {
+test("rebuilds the path to a note opened by its address", async ({ page }) => {
   await signIn(page);
   await page.goto("/edit?id=plan");
-  await expect(crumbs(page).getByRole("link")).toHaveText([
-    "Home",
-    "My Drive",
-    "Work",
-  ]);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "The plan" }),
+  ).toBeVisible();
+  await (await folderLink(page, "Work")).click();
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Work" }),
+  ).toBeVisible();
+  await expect(crumbs(page).getByRole("link")).toHaveText(["Home", "My Drive"]);
 });
 
 test("opens the file that Drive's Open with names, the user picking the account", async ({
@@ -91,11 +106,6 @@ test("opens the file that Drive's Open with names, the user picking the account"
   await expect(
     page.getByRole("heading", { level: 1, name: "The plan" }),
   ).toBeVisible();
-  await expect(crumbs(page).getByRole("link")).toHaveText([
-    "Home",
-    "My Drive",
-    "Work",
-  ]);
   expect(
     await page.evaluate(
       () => (window as unknown as { tokenRequests: unknown[] }).tokenRequests,
@@ -129,20 +139,49 @@ test("creates a file where Drive's New asks, then opens it in its place", async 
   await name.fill("ideas");
   await create.getByRole("button", { name: "Create" }).click();
   await expect(
-    page.getByRole("heading", { level: 2, name: "ideas.md" }),
+    page.getByRole("heading", { level: 1, name: "ideas.md" }),
   ).toBeVisible();
   await expect(page).toHaveURL(/\/edit\?id=created-1$/);
-  await expect(crumbs(page).getByRole("link")).toHaveText([
-    "Home",
-    "My Drive",
-    "Work",
-  ]);
+  await expect(await folderLink(page, "Work")).toBeVisible();
   expect(drive.writes).toEqual(["create ideas.md"]);
+});
+
+test("keeps a broken shortcut's badge after its name, however long", async ({
+  page,
+  drive,
+}, info) => {
+  const gone = drive.files.get("to-gone");
+  if (!gone) throw new Error("No shortcut");
+  gone.name = "Quarterly planning notes for the whole team, kept since 2019";
+  await signIn(page);
+  await page.getByRole("link", { name: "My Drive" }).click();
+  const entry = page.getByRole("link", { name: /^Quarterly planning/ });
+  await expect(entry).toHaveAttribute("aria-disabled", "true");
+
+  const name = await entry.locator(".name").evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const lines = [...range.getClientRects()];
+    const last = lines.at(-1);
+    return last && { top: last.top, right: last.right };
+  });
+  const badge = await entry.locator(".badge").boundingBox();
+  const reason = await entry.locator(".reason").boundingBox();
+  if (!name || !badge || !reason) throw new Error("Not shown");
+  // On the name's last line, or the one right under it, but never alone
+  // with the reason, which a phone puts under it and a wider screen in a
+  // column of its own.
+  expect(badge.x).toBeGreaterThanOrEqual(name.right - 1);
+  if (info.project.metadata.layout === "phone") {
+    expect(badge.y + badge.height).toBeLessThanOrEqual(reason.y + 1);
+  } else {
+    expect(reason.x).toBeGreaterThan(badge.x + badge.width);
+  }
 });
 
 test("follows a shortcut, and greys out one whose target is gone", async ({
   page,
-}) => {
+}, info) => {
   await signIn(page);
   await page.getByRole("link", { name: "My Drive" }).click();
 
@@ -151,16 +190,41 @@ test("follows a shortcut, and greys out one whose target is gone", async ({
     "true",
   );
   await expect(page.getByText("Deleted, or not shared with you")).toBeVisible();
+  // Its reason goes under its name on a phone, or in a column of its own,
+  // and its name keeps its one word whole.
+  const gone = page.getByRole("link", { name: "Gone" });
+  const lines = await gone.locator(".name").evaluate((name) => {
+    const range = document.createRange();
+    range.selectNodeContents(name);
+    return range.getClientRects().length;
+  });
+  expect(lines).toBe(1);
+  const name = await gone.locator(".name").boundingBox();
+  const reason = await gone.locator(".reason").boundingBox();
+  if (!name || !reason) throw new Error("Not shown");
+  if (info.project.metadata.layout === "phone") {
+    expect(reason.y).toBeGreaterThanOrEqual(name.y + name.height);
+    expect(reason.x).toBeCloseTo(name.x);
+  } else {
+    expect(reason.x).toBeGreaterThan(name.x + name.width);
+  }
   await page.getByRole("link", { name: /Plan shortcut\.md/ }).click();
   await expect(page).toHaveURL(/\/edit\?id=plan$/);
+
+  // Move opens where the file sits, not where its shortcut does.
+  await noteAction(page, "Move");
+  const move = page.getByRole("dialog", { name: "Move plan.md" });
+  await expect(move.getByRole("heading", { name: "Work" })).toBeVisible();
+  await expect(move.getByRole("button", { name: "Archive" })).toBeVisible();
+  await expect(move.getByText("plan.md is already here.")).toBeVisible();
+  await move.getByRole("button", { name: "Cancel" }).click();
 });
 
 test("shows Recent, the vaults, and the other roots", async ({ page }) => {
   await signIn(page);
   const recent = page.getByRole("region", { name: "Recent" });
   await expect(recent.getByRole("link", { name: "plan.md" })).toBeVisible();
-  const vaults = page.getByRole("region", { name: "Vaults" });
-  await expect(vaults.getByRole("link", { name: "Journal" })).toBeVisible();
+  await expect(vault(page)).toBeVisible();
 
   await page.getByRole("link", { name: "Shared drives" }).click();
   await page.getByRole("link", { name: "Team" }).click();
@@ -171,30 +235,48 @@ test("shows Recent, the vaults, and the other roots", async ({ page }) => {
   await expect(page.getByRole("link", { name: "shared.md" })).toBeVisible();
 });
 
+test("names a shared drive reached without a path after the drive", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/folder/team");
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Team" }),
+  ).toBeVisible();
+  await expect(crumbs(page).getByRole("link")).toHaveText([
+    "Home",
+    "Shared drives",
+  ]);
+});
+
 test("searches Markdown files by name", async ({ page }) => {
   await signIn(page);
-  const search = page.getByRole("searchbox", {
-    name: "Search Markdown files by name",
-  });
+  const search = await searchBox(page);
   await search.fill("pla");
   await search.press("Enter");
   await expect(
-    page.getByRole("heading", { level: 2, name: "Search: pla" }),
+    page.getByRole("heading", { level: 2, name: "Results for “pla”" }),
   ).toBeVisible();
-  await expect(entries(page).getByRole("link")).toHaveText(["plan.md"]);
+  await expect(entries(page).getByRole("link").locator(".name")).toHaveText([
+    "plan.md",
+  ]);
+  await expect(
+    page.getByText(/with a word .*that starts with “pla”/),
+  ).toBeVisible();
   await expect(search).toBeFocused();
 });
 
 test("opens a Drive link pasted in the search box", async ({ page }) => {
   await signIn(page);
-  const search = page.getByRole("searchbox", {
-    name: "Search Markdown files by name",
-  });
+  let search = await searchBox(page);
   await search.fill("https://drive.google.com/drive/folders/work?usp=sharing");
   await search.press("Enter");
   await expect(page).toHaveURL(/\/folder\/work$/);
   await expect(page.getByRole("link", { name: "Archive" })).toBeVisible();
   await expect(crumbs(page).getByRole("link")).toHaveText(["Home", "My Drive"]);
+  // The link leaves no words behind for the next search.
+  search = await searchBox(page);
+  await expect(search).toHaveValue("");
 
   await search.fill("https://drive.google.com/file/d/plan/view?usp=sharing");
   await search.press("Enter");
@@ -202,41 +284,70 @@ test("opens a Drive link pasted in the search box", async ({ page }) => {
   await expect(
     page.getByRole("heading", { level: 1, name: "The plan" }),
   ).toBeVisible();
-  await expect(search).toHaveValue("");
 });
 
-test("creates, renames, moves and trashes a file", async ({ page, drive }) => {
+test("opens the Drive link shared with the installed app, and forgets the share", async ({
+  page,
+}) => {
+  await signIn(page);
+  const words = new URLSearchParams({ text: "Tea at four" });
+  await page.goto(`/share?${words.toString()}`);
+  // What was shared leaves the address, even when it leads nowhere.
+  await expect(page).toHaveURL(/\/share$/);
+  await expect(
+    page.getByRole("heading", { name: "Nothing to open" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: `Account, ${EMAIL}` }),
+  ).toBeVisible();
+
+  const entries = await page.evaluate(() => history.length);
+  // As Android's share sheet sends a link, with the words around it.
+  const shared = new URLSearchParams({
+    title: "plan.md",
+    text: "Have a look: https://drive.google.com/file/d/plan/view?usp=sharing",
+  });
+  await page.goto(`/share?${shared.toString()}`);
+  await expect(page).toHaveURL(/\/edit\?id=plan$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "The plan" }),
+  ).toBeVisible();
+  // The file took the share's place, so that Back skips the share; going
+  // Back here would leave the note while its image loads.
+  expect(await page.evaluate(() => history.length)).toBe(entries + 1);
+});
+
+test("creates, renames, moves and trashes a file", async ({
+  page,
+  drive,
+}, info) => {
   await openWork(page);
 
-  await page.getByRole("button", { name: "New" }).click();
+  await page.getByRole("button", { name: "New note" }).click();
   const create = page.getByRole("dialog", { name: "New Markdown file" });
   await create.getByRole("textbox", { name: "Name" }).fill("ideas");
   await create.getByRole("button", { name: "Create" }).click();
   await expect(
-    page.getByRole("heading", { level: 2, name: "ideas.md" }),
+    page.getByRole("heading", { level: 1, name: "ideas.md" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Rename" }).click();
-  const rename = page.getByRole("dialog", { name: "Rename" });
-  await rename.getByRole("textbox", { name: "Name" }).fill("roadmap.md");
-  await rename.getByRole("button", { name: "Rename" }).click();
+  await renameNote(page, "ideas.md", "roadmap");
   await expect(
-    page.getByRole("heading", { level: 2, name: "roadmap.md" }),
+    page.getByRole("heading", { level: 1, name: "roadmap.md" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Move", exact: true }).click();
+  await noteAction(page, "Move");
   const move = page.getByRole("dialog", { name: "Move roadmap.md" });
   await move.getByRole("button", { name: "Archive" }).click();
   await move.getByRole("button", { name: "Move here" }).click();
   await expect(move).toHaveCount(0);
-  await expect(crumbs(page).getByRole("link")).toHaveText([
-    "Home",
-    "My Drive",
-    "Work",
-    "Archive",
-  ]);
+  // The note's path follows it.
+  await expect(await folderLink(page, "Archive")).toBeVisible();
+  if (info.project.metadata.layout === "tablet") {
+    await page.getByRole("button", { name: "Close" }).click();
+  }
 
-  await page.getByRole("button", { name: "Move to trash" }).click();
+  await noteAction(page, "Move to trash");
   const trash = page.getByRole("dialog", { name: "Move to trash?" });
   await trash.getByRole("button", { name: "Move to trash" }).click();
   await expect(
@@ -255,7 +366,7 @@ test("asks to Continue over an open dialog when Drive refuses the token", async 
   drive,
 }) => {
   await openWork(page);
-  await page.getByRole("button", { name: "New" }).click();
+  await page.getByRole("button", { name: "New note" }).click();
   const create = page.getByRole("dialog", { name: "New Markdown file" });
 
   drive.expireToken();
@@ -273,7 +384,7 @@ test("asks to Continue over an open dialog when Drive refuses the token", async 
   await expect(create).toBeVisible();
   await renew.click();
   await expect(
-    page.getByRole("heading", { level: 2, name: "Untitled.md" }),
+    page.getByRole("heading", { level: 1, name: "Untitled.md" }),
   ).toBeVisible();
 });
 
@@ -281,7 +392,7 @@ test("lists a file's folder as the screen allows", async ({ page }, info) => {
   await openWork(page);
   await page.getByRole("link", { name: "plan.md" }).click();
   await expect(
-    page.getByRole("heading", { level: 2, name: "plan.md" }),
+    page.getByRole("heading", { level: 1, name: "plan.md" }),
   ).toBeVisible();
   const pane = page.getByRole("complementary", { name: "Work" });
   const folder = page.getByRole("button", { name: "Folder" });

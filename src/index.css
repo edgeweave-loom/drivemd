@@ -1,26 +1,21 @@
-/* Code highlighting as on GitHub, in the system's theme. */
-@import "highlight.js/styles/github.css" (prefers-color-scheme: light);
-@import "highlight.js/styles/github-dark.css" (prefers-color-scheme: dark);
+/* The design's colors, type and measures (docs/DESIGN.md). */
+@import "./tokens.css";
+/* Google's fonts, served by the app, each script's subset loading only
+   when a page shows its letters, with their own slant for emphasis:
+   Google Sans Flex's slant axis, and Google Sans Code's italic. */
+@import "@fontsource-variable/google-sans-flex/slnt.css";
+@import "@fontsource-variable/google-sans-code/wght.css";
+@import "@fontsource-variable/google-sans-code/wght-italic.css";
 
 :root {
-  --text: light-dark(#1f2328, #f0f6fc);
-  --muted: light-dark(#59636e, #9198a1);
-  --background: light-dark(#ffffff, #0d1117);
-  --surface: light-dark(#f6f8fa, #212830);
-  --border: light-dark(#d1d9e0, #3d444d);
-  --accent: light-dark(#0969da, #1f6feb);
-  --link: light-dark(#0969da, #4493f8);
-  --monospace: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--background);
-  font-family:
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    sans-serif;
+  /* The keyboard toolbar's, over the keyboard (TOOLBAR_HEIGHT). */
+  --keyboard-toolbar-height: 48px;
+  /* Where the app bar ends, under which what sticks to the page's top
+     stays, as Find in note's panel does (Editor.tsx). */
+  --app-bar-bottom: calc(var(--app-bar-height) + env(safe-area-inset-top));
+  color: var(--on-surface);
+  background: var(--surface);
+  font-family: var(--font-sans);
   line-height: 1.5;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
@@ -37,19 +32,85 @@ body {
 }
 
 a {
-  color: var(--link);
+  color: var(--primary);
 }
 
+/* The screen before sign-in: DriveMD's mark, a heading, what to do and the
+   way to the about page, on a card over the app's background on a wide
+   screen, or filling a phone's (mockups drive-tab-sign-in). */
 .app {
-  display: grid;
-  gap: 1rem;
-  max-width: 28rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 448px;
   margin: 0 auto;
-  padding: 2rem 1rem;
+  padding: calc(var(--space-7) + env(safe-area-inset-top))
+    calc(var(--space-5) + env(safe-area-inset-right))
+    calc(var(--space-5) + env(safe-area-inset-bottom))
+    calc(var(--space-5) + env(safe-area-inset-left));
+}
+
+.app > .mark {
+  width: 56px;
+  height: 56px;
+  margin-bottom: var(--space-4);
 }
 
 .app h1 {
   margin: 0;
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 36px;
+}
+
+.app > p {
+  color: var(--on-surface-variant);
+}
+
+.app > button {
+  margin-top: var(--space-2);
+}
+
+.app > .hint {
+  margin-top: var(--space-2);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.app > .foot {
+  margin-top: var(--space-2);
+}
+
+.app > .foot a {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  text-decoration: none;
+}
+
+@media (width < 768px), (pointer: coarse) and (height < 500px) {
+  /* The about page's link at the foot of the screen. */
+  .app {
+    min-height: 100dvh;
+  }
+
+  .app > .foot {
+    margin-top: auto;
+    padding-top: var(--space-5);
+  }
+}
+
+@media (width >= 768px) and (not ((pointer: coarse) and (height < 500px))) {
+  :root:has(main.app) {
+    background: var(--app-background);
+  }
+
+  .app {
+    margin-block: 20vh;
+    padding: var(--space-7);
+    border-radius: var(--radius-xl);
+    background: var(--sheet);
+  }
 }
 
 .app p,
@@ -58,87 +119,698 @@ a {
   overflow-wrap: anywhere;
 }
 
+/* The keyboard's focus, on every control. */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Buttons are pills, outlined unless their weight calls for another
+   emphasis (docs/DESIGN.md, Buttons). */
 button {
-  min-height: 44px;
-  padding: 0 1.25rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  background: var(--surface);
-  color: inherit;
+  position: relative;
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  min-height: var(--control-height);
+  padding: 0 var(--space-5);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--primary);
   font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
   cursor: pointer;
 }
 
-button.primary {
+button.filled {
   border-color: transparent;
-  background: var(--accent);
-  color: #ffffff;
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+button.tonal {
+  border-color: transparent;
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+button.danger {
+  border-color: transparent;
+  background: var(--error);
+  color: var(--on-error);
+}
+
+button.text {
+  padding: 0 var(--space-3);
+  border-color: transparent;
+}
+
+button.text.danger {
+  background: none;
+  color: var(--error);
+}
+
+/* The label's color laid over the control: 8% under the mouse, 10% under
+   the keyboard's focus or a press. */
+@media (hover: hover) {
+  button:hover:not(:disabled),
+  a.icon-button:hover {
+    background-image: linear-gradient(
+      color-mix(in srgb, currentColor 8%, transparent) 0 0
+    );
+  }
+}
+
+button:is(:focus-visible, :active):not(:disabled),
+a.icon-button:is(:focus-visible, :active) {
+  background-image: linear-gradient(
+    color-mix(in srgb, currentColor 10%, transparent) 0 0
+  );
 }
 
 button:disabled {
+  border-color: color-mix(in srgb, var(--on-surface) 12%, transparent);
+  color: color-mix(in srgb, var(--on-surface) 38%, transparent);
   cursor: default;
-  opacity: 0.6;
+}
+
+button:is(.filled, .tonal, .danger):not(.text):disabled {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--on-surface) 12%, transparent);
+}
+
+/* A touch screen reaches 48 px around a 40 px button. */
+@media (pointer: coarse) {
+  button::after {
+    position: absolute;
+    inset: calc((var(--control-height) - var(--touch-target)) / 2) 0;
+    content: "";
+  }
+}
+
+/* Icon buttons, and links that look like them such as the bar's way up:
+   40 px circles, named by a label and a tooltip. */
+.icon-button {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  color: var(--on-surface-variant);
+}
+
+@media (pointer: coarse) {
+  :is(button, a).icon-button::after {
+    position: absolute;
+    inset: calc((var(--control-height) - var(--touch-target)) / 2);
+    content: "";
+  }
+}
+
+/* New note: tonal beside the folder's name, floating on a phone. */
+button.new-note {
+  padding-left: var(--space-4);
+}
+
+button.new-note > .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
 }
 
 .hint,
 .message {
-  color: var(--muted);
+  color: var(--on-surface-variant);
 }
 
 .card {
-  border: 1px solid var(--border);
+  border: 1px solid var(--outline-variant);
   border-radius: 0.75rem;
-  background: var(--background);
+  background: var(--surface-container-high);
 }
 
+/* The app bar: DriveMD's mark and name, which lead Home, the search bar
+   and the account. Its background runs under the status bar and to the
+   screen's edges, its content clear of them (docs/DESIGN.md, Layout). */
 .bar {
   position: sticky;
   top: 0;
   z-index: 1;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem 0.75rem;
+  gap: var(--space-2) var(--space-4);
   align-items: center;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--background);
+  min-height: calc(var(--app-bar-height) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top)
+    calc(var(--space-4) + env(safe-area-inset-right)) 0
+    calc(var(--space-4) + env(safe-area-inset-left));
+  border-bottom: 1px solid var(--outline-variant);
+  background: var(--surface);
 }
 
 .bar h1 {
   margin: 0;
-  font-size: 1.125rem;
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 28px;
 }
 
 .bar h1 a {
   display: inline-flex;
+  gap: var(--space-2);
   align-items: center;
-  min-height: 44px;
+  min-height: var(--touch-target);
   color: inherit;
   text-decoration: none;
 }
 
-.search {
-  flex: 1 1 12rem;
+.bar h1 img,
+.bar .mark img {
+  width: 40px;
+  height: 40px;
 }
 
-.search input,
-.stack input {
+/* A note's app bar: its name and when it last changed, beside what the
+   user can do with it (docs/DESIGN.md, App bar). */
+.bar.note {
+  flex-wrap: nowrap;
+}
+
+.bar .mark {
+  display: inline-flex;
+  flex: none;
+}
+
+.note-title {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.note-title :is(.title, .hint) {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The name, and Move beside it, which keeps the row to the name's height. */
+.note-title > .name {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  min-width: 0;
+}
+
+.note-title > .name > .icon-button {
+  margin-block: calc((28px - var(--control-height)) / 2);
+}
+
+/* The name reads as text, outlined under the mouse, and renames the note
+   when clicked, in a field as wide as what it holds; the Markdown ending
+   stays out of it (docs/DESIGN.md, Note's name). Their rings sit inside,
+   where the name's row does not cut them. */
+.note-title .ending {
+  color: var(--on-surface-variant);
+}
+
+button.note-name,
+.name-field > input {
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0 var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+
+button.note-name {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+
+@media (hover: hover) {
+  button.note-name:hover {
+    border-color: var(--outline-variant);
+    background-image: none;
+  }
+}
+
+button.note-name:is(:focus-visible, :active) {
+  background-image: none;
+  outline-offset: -2px;
+}
+
+/* A long name scrolls in its field, which leaves the ending in view. */
+.note-title .title:has(> .name-field) {
+  display: flex;
+}
+
+.name-field {
+  display: grid;
+  grid-template-columns: minmax(0, auto);
+  min-width: 0;
+}
+
+.name-field::after,
+.name-field > input {
+  grid-area: 1 / 1;
+}
+
+.name-field::after {
+  overflow: hidden;
+  padding: 0 var(--space-1);
+  border: 1px solid transparent;
+  visibility: hidden;
+  content: attr(data-value) " ";
+  white-space: pre;
+}
+
+.name-field > input {
   width: 100%;
-  min-height: 44px;
-  padding: 0 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  background: var(--surface);
+}
+
+.name-field > input:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.note-title > .hint {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.note-tools {
+  display: flex;
+  flex: none;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.note-tools > .slot,
+.bar.note > .slot {
+  display: contents;
+}
+
+/* A phone's Done takes the place of Back, or of the mark, while editing. */
+.bar.note > .lead:not(:empty) + :is(.up, .mark) {
+  display: none;
+}
+
+/* The mode menu, as Docs's: a tonal button naming the mode, and a menu that
+   drops from it where the browser anchors one, or else under the bar
+   (docs/DESIGN.md, Mode menu). */
+button.mode {
+  padding: 0 var(--space-2) 0 var(--space-4);
+  anchor-name: --mode;
+}
+
+.mode-menu {
+  inset: calc(var(--app-bar-height) + env(safe-area-inset-top) - var(--space-2))
+    calc(var(--space-4) + env(safe-area-inset-right)) auto auto;
+}
+
+@supports (anchor-name: --mode) {
+  .mode-menu {
+    position-anchor: --mode;
+    inset: anchor(bottom) auto auto anchor(left);
+    margin: var(--space-1) 0 0;
+    /* From the button's right edge, where the screen ends first. */
+    position-try-fallbacks: flip-inline;
+  }
+}
+
+.mode-menu > button {
+  min-height: 56px;
+  padding: var(--space-2) var(--space-4);
+}
+
+.mode-menu > button[aria-checked="true"] {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+.mode-label {
+  display: grid;
+  text-align: start;
+}
+
+.mode-label > .hint {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+[aria-checked="true"] > .mode-label > .hint {
+  color: inherit;
+}
+
+/* Save keeps its place and width through its states; Saved is a status,
+   legible and without a container, and neither it nor Saving… reacts as a
+   control (docs/DESIGN.md, Save). */
+button.save {
+  min-width: 112px;
+  padding: 0 var(--space-4);
+}
+
+button.save.saved {
+  border-color: transparent;
+  color: var(--on-surface-variant);
+}
+
+button.save[aria-disabled="true"] {
+  background-image: none;
+  cursor: default;
+}
+
+.save .spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: var(--radius-full);
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .save .spinner {
+    animation: none;
+  }
+}
+
+.search {
+  position: relative;
+  flex: 1 1 12rem;
+  max-width: 720px;
+}
+
+.search > .icon {
+  position: absolute;
+  top: 50%;
+  left: var(--space-4);
+  translate: 0 -50%;
+  color: var(--on-surface-variant);
+  pointer-events: none;
+}
+
+.search input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 52px 0 56px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--surface-container-high);
   color: inherit;
   font: inherit;
   /* Safari zooms in on a field whose text is smaller. */
   font-size: max(16px, 1rem);
+  appearance: none;
+}
+
+/* The bar rises while it has the focus, which shows it. */
+.search input:focus {
+  background: var(--sheet);
+  box-shadow: var(--elevation-1);
+}
+
+/* Clear does what the browser's own button would. */
+.search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search .clear {
+  position: absolute;
+  top: 50%;
+  right: var(--space-1);
+  translate: 0 -50%;
+}
+
+/* The search's Back, and the phone's button that opens it. */
+.search .back,
+.open-search {
+  display: none;
+}
+
+/* A dialog's field, on the dialog's own color. */
+.stack input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--outline);
+  border-radius: 0.5rem;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: max(16px, 1rem);
+}
+
+button.account {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  min-height: 0;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+
+@media (pointer: coarse) {
+  button.account::after {
+    inset: -8px;
+  }
+}
+
+/* A menu that opens from a button, over the page. */
+.menu {
+  min-width: 240px;
+  margin: 0;
+  padding: var(--space-2) 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: var(--surface-container);
+  color: var(--on-surface);
+  box-shadow: var(--elevation-2);
+}
+
+.menu > p {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  color: var(--on-surface-variant);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.menu > :is(a, button),
+.menu li > a {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: 0 var(--space-4);
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  text-decoration: none;
+}
+
+.menu > button::after {
+  content: none;
+}
+
+.menu > hr {
+  margin: var(--space-2) 0;
+  border: none;
+  border-top: 1px solid var(--outline-variant);
+}
+
+@media (hover: hover) {
+  .menu > a:hover,
+  .menu li > a:hover {
+    background-image: linear-gradient(
+      color-mix(in srgb, currentColor 8%, transparent) 0 0
+    );
+  }
+}
+
+.account-menu,
+.actions-menu {
+  inset: calc(var(--app-bar-height) + env(safe-area-inset-top) - var(--space-2))
+    calc(var(--space-4) + env(safe-area-inset-right)) auto auto;
 }
 
 @media (width < 768px), (pointer: coarse) and (height < 500px) {
-  .search {
-    flex-basis: 100%;
-    order: 1;
+  :root {
+    --app-bar-bottom: calc(
+      var(--app-bar-height-compact) + env(safe-area-inset-top)
+    );
+  }
+
+  .bar {
+    min-height: calc(var(--app-bar-height-compact) + env(safe-area-inset-top));
+  }
+
+  .bar :is(h1, .mark) img {
+    width: 32px;
+    height: 32px;
+  }
+
+  .note-title .title {
+    font-size: 18px;
+    line-height: 24px;
+  }
+
+  /* As in Google's apps, a phone's bar leaves out when the note changed. */
+  .note-title > .hint {
+    display: none;
+  }
+
+  /* A folder or a root names itself in the bar, which its page's heading
+     then need not repeat but to the ear. */
+  .bar .title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .bar.titled .up {
+    margin-left: calc(-1 * var(--space-2));
+  }
+
+  /* Its heading row then holds nothing that takes room. */
+  :root:has(.bar.titled) .page > .heading {
+    display: contents;
+  }
+
+  /* The bar's title, or the search's field, names the page, which its
+     heading then names to the ear only. */
+  :root:has(.bar.titled) .page > h2,
+  :root:has(.bar.titled) .page > .heading > h2,
+  :root:has(.bar.searching) .page > h2 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* What a phone's page does first floats over it, out of the bar. */
+  button.fab {
+    position: fixed;
+    right: calc(var(--space-4) + env(safe-area-inset-right));
+    bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+    z-index: 1;
+    min-height: var(--fab-size);
+    padding: 0 var(--space-5) 0 var(--space-4);
+    border-radius: var(--radius-lg);
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+    box-shadow: var(--elevation-3);
+  }
+
+  button.fab > .icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* The page's last lines stay clear of it. */
+  .page:has(.fab) {
+    padding-bottom: calc(
+      var(--fab-size) + 2 * var(--space-4) + env(safe-area-inset-bottom)
+    );
+  }
+
+  /* The search opens full screen. */
+  .bar .search {
+    display: none;
+  }
+
+  button.open-search {
+    display: inline-flex;
+    margin-left: auto;
+  }
+
+  .bar button.account {
+    margin-left: 0;
+  }
+
+  :root:has(.bar.searching),
+  .bar.searching {
+    background: var(--surface-container-high);
+  }
+
+  .bar.searching > :not(.search) {
+    display: none;
+  }
+
+  .bar.searching .search {
+    display: flex;
+    flex: 1;
+    gap: var(--space-1);
+    align-items: center;
+    max-width: none;
+    margin-left: calc(-1 * var(--space-2));
+  }
+
+  .bar.searching .search > .icon {
+    display: none;
+  }
+
+  .bar.searching .search .back {
+    display: inline-flex;
+  }
+
+  .bar.searching .search input {
+    padding-left: var(--space-2);
+    background: none;
+    box-shadow: none;
+  }
+
+  .account-menu,
+  .actions-menu {
+    top: calc(
+      var(--app-bar-height-compact) + env(safe-area-inset-top) - var(--space-2)
+    );
   }
 }
 
@@ -149,7 +821,7 @@ dialog.card {
 }
 
 dialog::backdrop {
-  background: rgb(0 0 0 / 40%);
+  background: color-mix(in srgb, var(--scrim) 32%, transparent);
 }
 
 .card h2 {
@@ -190,11 +862,24 @@ dialog::backdrop {
   border: none;
 }
 
+/* Buttons that are list rows and links, not pills. */
+button:is(.entry, .link) {
+  justify-content: flex-start;
+  border-radius: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+}
+
+button:is(.entry, .link)::after {
+  content: none;
+}
+
 button.entry {
   width: 100%;
   border-width: 0 0 1px;
-  border-radius: 0;
   background: none;
+  color: inherit;
   text-align: start;
 }
 
@@ -203,7 +888,11 @@ button.link {
   padding: 0;
   border: none;
   background: none;
-  color: var(--link);
+  color: var(--primary);
+}
+
+button:is(.entry, .link):disabled {
+  color: color-mix(in srgb, var(--on-surface) 38%, transparent);
 }
 
 .split,
@@ -219,45 +908,298 @@ button.link {
   align-content: start;
 }
 
+/* The folder's list beside a note, as wide as the navigation drawer. */
 @media (width >= 1024px) {
-  .page:has(.pane) {
-    max-width: 72rem;
+  .page:has(> .split > .pane) {
+    padding-left: 0;
   }
 
   .split:has(.pane) {
-    grid-template-columns: minmax(14rem, 20rem) minmax(0, 1fr);
-    gap: 1.5rem;
+    grid-template-columns: 256px minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .pane {
+    padding: 0 var(--space-3);
   }
 }
 
+/* A sentence that goes after a few seconds, at the bottom left, or along a
+   phone's bottom, above the home bar and the floating button
+   (docs/DESIGN.md, Snackbar). Its place takes no room from the page. */
+.snackbars {
+  position: fixed;
+  bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+  left: calc(var(--space-4) + env(safe-area-inset-left));
+  z-index: 3;
+  max-width: calc(100% - 2 * var(--space-4));
+}
+
+.snackbar {
+  margin: 0;
+  padding: 14px var(--space-4);
+  border-radius: var(--radius-xs);
+  background: var(--inverse-surface);
+  color: var(--inverse-on-surface);
+  box-shadow: var(--elevation-3);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+@media (width < 768px), (pointer: coarse) and (height < 500px) {
+  .snackbars {
+    right: calc(var(--space-4) + env(safe-area-inset-right));
+  }
+
+  :root:has(.fab) .snackbars {
+    bottom: calc(
+      var(--fab-size) + 2 * var(--space-4) + env(safe-area-inset-bottom)
+    );
+  }
+}
+
+/* A tablet's folder drawer: headed by the folder, which leads back to it,
+   with Close at its top right, and its right corners rounded
+   (docs/DESIGN.md, tablet-note). */
 dialog.drawer {
-  width: min(22rem, 85vw);
+  width: min(20rem, 85vw);
   max-width: none;
   height: 100%;
   max-height: none;
   margin: 0;
-  padding: 1rem;
+  padding: calc(1rem + env(safe-area-inset-top)) 1rem
+    calc(1rem + env(safe-area-inset-bottom))
+    calc(1rem + env(safe-area-inset-left));
   border: none;
-  border-right: 1px solid var(--border);
-  background: var(--background);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+  background: var(--surface);
   color: inherit;
 }
 
-.bar .account {
-  min-width: 0;
-  margin-left: auto;
-  overflow: hidden;
-  color: var(--muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+dialog.drawer > h2 {
+  display: flex;
+  margin: 0 var(--control-height) var(--space-2) 0;
+  font-size: inherit;
+  font-weight: 500;
 }
 
+dialog.drawer > h2 > .entry {
+  flex: 1;
+  min-width: 0;
+}
+
+dialog.drawer > .close {
+  position: absolute;
+  top: calc(1rem + env(safe-area-inset-top));
+  right: var(--space-2);
+}
+
+/* On a wide screen, Home, folders and search sit on a panel beside the
+   navigation drawer, over the app's background (docs/DESIGN.md). */
+:root:has(.shell),
+:root:has(.shell) .bar {
+  background: var(--app-background);
+}
+
+:root:has(.shell) .bar {
+  border-bottom: none;
+}
+
+/* The bar keeps one row, which the drawer stays clear of. */
+:root:has(.shell) .bar {
+  flex-wrap: nowrap;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 256px minmax(0, 1fr);
+  align-items: start;
+  padding-right: var(--space-4);
+}
+
+.drawer-nav {
+  position: sticky;
+  top: calc(var(--app-bar-height) + env(safe-area-inset-top));
+  padding: 0 var(--space-3) var(--space-4);
+}
+
+.drawer-nav ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.drawer-nav a {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  min-height: var(--control-height);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-full);
+  color: var(--on-surface);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  text-decoration: none;
+}
+
+.drawer-nav a[aria-current] {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+@media (hover: hover) {
+  .drawer-nav a:hover {
+    background-image: linear-gradient(
+      color-mix(in srgb, currentColor 8%, transparent) 0 0
+    );
+  }
+}
+
+/* In the drawer, an icon sits beside its label; in the rail, in a pill
+   over it. */
+.drawer-nav .indicator {
+  display: contents;
+}
+
+.shell.rail {
+  grid-template-columns: 80px minmax(0, 1fr);
+}
+
+.drawer-nav.rail {
+  padding: 0 0 var(--space-4);
+}
+
+.drawer-nav.rail > ul > li > a,
+.drawer-nav.rail > button.vaults {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: center;
+  width: 100%;
+  min-height: 56px;
+  margin-bottom: var(--space-3);
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  text-align: center;
+}
+
+.drawer-nav.rail .indicator {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 32px;
+  border-radius: var(--radius-full);
+}
+
+.drawer-nav.rail > ul > li > a[aria-current],
+.drawer-nav.rail > button.vaults[aria-current] {
+  background: none;
+  color: var(--on-surface);
+}
+
+.drawer-nav.rail > ul > li > a[aria-current] .indicator,
+.drawer-nav.rail > button.vaults[aria-current] .indicator {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+.drawer-nav.rail > button.vaults::after {
+  content: none;
+}
+
+@media (hover: hover) {
+  .drawer-nav.rail > ul > li > a:hover,
+  .drawer-nav.rail > button.vaults:hover {
+    background-image: none;
+  }
+
+  .drawer-nav.rail > ul > li > a:hover .indicator,
+  .drawer-nav.rail > button.vaults:hover .indicator {
+    background-image: linear-gradient(
+      color-mix(in srgb, currentColor 8%, transparent) 0 0
+    );
+  }
+}
+
+.drawer-nav.rail > button.vaults:is(:focus-visible, :active) {
+  background-image: none;
+}
+
+.drawer-nav.rail > button.vaults:is(:focus-visible, :active) .indicator {
+  background-image: linear-gradient(
+    color-mix(in srgb, currentColor 10%, transparent) 0 0
+  );
+}
+
+/* The menu sits in the rail, but lists its vaults as the drawer does. */
+.drawer-nav .vaults-menu .indicator {
+  display: contents;
+}
+
+/* However many vaults there are. */
+.vaults-menu {
+  max-height: calc(100dvh - 2 * var(--space-4));
+  overflow-y: auto;
+}
+
+.vaults-menu > .hint {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+}
+
+/* Beside the Vaults item, where the browser can place it there. */
+@supports (anchor-name: --vaults) {
+  .drawer-nav.rail > button.vaults {
+    anchor-name: --vaults;
+  }
+
+  .vaults-menu {
+    position-anchor: --vaults;
+    position-try-fallbacks: flip-block;
+    inset: auto;
+    top: anchor(top);
+    left: anchor(right);
+    margin-left: var(--space-2);
+  }
+}
+
+.drawer-nav h2 {
+  margin: var(--space-4) 0 var(--space-2);
+  padding: 0 var(--space-4);
+  color: var(--on-surface-variant);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.page.panel {
+  align-content: start;
+  min-height: calc(100dvh - var(--app-bar-height) - env(safe-area-inset-top));
+  max-width: none;
+  margin: 0;
+  padding: var(--space-5);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--sheet);
+}
+
+/* How far in the page's text sits, which a note's source, running from
+   edge to edge, keeps too; beyond the screen's safe area. */
 .page {
+  --text-inset: var(--space-4);
   display: grid;
   gap: 1rem;
   max-width: 48rem;
   margin: 0 auto;
-  padding: 1rem;
+  padding: var(--text-inset)
+    calc(var(--text-inset) + env(safe-area-inset-right))
+    calc(var(--text-inset) + env(safe-area-inset-bottom))
+    calc(var(--text-inset) + env(safe-area-inset-left));
 }
 
 .page h2,
@@ -266,16 +1208,30 @@ dialog.drawer {
 }
 
 .page h3 {
-  color: var(--muted);
+  color: var(--on-surface-variant);
   font-size: 0.875rem;
   font-weight: 600;
   text-transform: uppercase;
 }
 
 /* The about page, which the Marketplace listing links to. */
+/* How the search's names match, in body-medium. */
+.matched {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
 .about h1,
 .about ul {
   margin: 0;
+}
+
+.about .close {
+  justify-self: start;
+}
+
+.about .close[hidden] {
+  display: none;
 }
 
 .about section {
@@ -289,14 +1245,20 @@ dialog.drawer {
   gap: 0 0.5rem;
   margin: 0;
   padding: 0;
-  color: var(--muted);
+  color: var(--on-surface-variant);
   font-size: 0.875rem;
   list-style: none;
 }
 
-.crumbs li + li::before {
-  margin-right: 0.5rem;
-  content: "›" / "";
+.crumbs li {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.crumbs .icon {
+  width: 18px;
+  height: 18px;
 }
 
 .crumbs a {
@@ -313,65 +1275,225 @@ dialog.drawer {
 
 .entry {
   display: flex;
-  gap: 0.75rem;
+  gap: var(--space-4);
   align-items: center;
-  min-height: 44px;
-  padding: 0.5rem 0.25rem;
-  border-bottom: 1px solid var(--border);
+  min-height: 48px;
+  padding: var(--space-1);
+  border-bottom: 1px solid var(--outline-variant);
   color: inherit;
   text-decoration: none;
   overflow-wrap: anywhere;
+}
+
+/* What the row is, by its icon (docs/DESIGN.md, Icons). */
+.entry > .icon:first-child {
+  color: var(--on-surface-variant);
+}
+
+@media (width < 768px), (pointer: coarse) and (height < 500px) {
+  .entry {
+    min-height: 56px;
+  }
+}
+
+/* The folder pane beside a note, or in a tablet's drawer: dense rows, the
+   open note on a pill, its icon in its label's color. */
+:is(.pane, dialog.drawer) .entry {
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  border-bottom: none;
+  border-radius: var(--radius-full);
+}
+
+@media (pointer: coarse) {
+  :is(.pane, dialog.drawer) .entry {
+    min-height: var(--touch-target);
+  }
+}
+
+:is(.pane, dialog.drawer) .entry[aria-current] {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+.entry[aria-current] > .icon {
+  color: inherit;
+}
+
+/* A row's name, then the folder it sits in where the list gives it, and
+   when it changed: in columns of their own, under a table's head, on a wide
+   screen; on a line under the name on a phone (docs/DESIGN.md, File table
+   and List row). */
+.entry > .title {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The phone's line joins the folder and the time. */
+.details > .separator {
+  display: none;
+}
+
+.entry > .details {
+  display: contents;
+  color: var(--on-surface-variant);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.details > :not(.separator),
+.entries-head > :not(:first-child) {
+  flex: none;
+  width: 16rem;
+  color: var(--on-surface-variant);
+}
+
+.details > .location,
+.entries-head > :nth-child(2):not(:last-child) {
+  width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entries-head {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  min-height: 48px;
+  padding: var(--space-1);
+  padding-left: calc(var(--space-1) + 24px + var(--space-4));
+  border-bottom: 1px solid var(--outline-variant);
+  color: var(--on-surface-variant);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.entries-head > :first-child {
+  flex: 1;
+}
+
+/* Rows on a wider screen, in a table or the folder pane, open their folders
+   without a chevron, as the mockups show them. */
+@media (width >= 768px) and (not ((pointer: coarse) and (height < 500px))) {
+  a.entry > .icon:last-child:not(:first-child) {
+    display: none;
+  }
+}
+
+@media (width < 768px), (pointer: coarse) and (height < 500px) {
+  .entries-head {
+    display: none;
+  }
+
+  .entry:has(> .details) {
+    display: grid;
+    align-content: center;
+    grid-template-areas:
+      "icon title chevron"
+      "icon details chevron";
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    gap: 2px var(--space-4);
+    min-height: 72px;
+  }
+
+  .entry:has(> .details) > .icon:first-child {
+    grid-area: icon;
+  }
+
+  .entry > .title {
+    grid-area: title;
+  }
+
+  .entry > .details {
+    display: block;
+    grid-area: details;
+  }
+
+  .details > .separator {
+    display: inline;
+  }
+
+  .details > * {
+    width: auto;
+  }
+
+  .entry:has(> .details) > .icon:last-child:not(:first-child) {
+    grid-area: chevron;
+  }
+}
+
+/* The folder pane, and a tablet's folder drawer, keep to the names, and
+   to why a shortcut opens nothing, under its name. */
+:is(.pane, dialog.drawer) :is(.entries-head, .details > :not(.reason)) {
+  display: none;
+}
+
+:is(.pane, dialog.drawer) .entry.broken {
+  flex-wrap: wrap;
+  row-gap: 0;
+}
+
+:is(.pane, dialog.drawer) .entry.broken .reason {
+  flex-basis: 100%;
+  width: auto;
+  padding-left: calc(24px + var(--space-4));
 }
 
 .entry .name {
   min-width: 0;
 }
 
-.entry.folder:not(.broken)::after {
+.entry > .icon:last-child:not(:first-child) {
   margin-left: auto;
-  color: var(--muted);
-  content: "›" / "";
+  color: var(--on-surface-variant);
 }
 
 .badge {
   padding: 0 0.5rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--outline-variant);
   border-radius: 1rem;
-  color: var(--muted);
+  color: var(--on-surface-variant);
   font-size: 0.75rem;
   white-space: nowrap;
 }
 
 .warning {
   padding: 0.5rem 0.75rem;
-  border-left: 3px solid light-dark(#9a6700, #d29922);
-  background: light-dark(#fff8c5, #272115);
+  border-left: 3px solid var(--attention);
+  background: var(--attention-container);
+  color: var(--on-attention-container);
 }
 
 .failure {
-  color: light-dark(#d1242f, #f85149);
+  color: var(--error);
 }
 
 .entry.broken {
-  color: var(--muted);
+  color: var(--on-surface-variant);
 }
 
-.entry.broken .reason,
 .entry .when {
   margin-left: auto;
+  color: var(--on-surface-variant);
   font-size: 0.875rem;
   text-align: end;
 }
 
-.entry .when {
-  color: var(--muted);
+/* In line with the times of the lists below it, on a wider screen. */
+@media (width >= 768px) and (not ((pointer: coarse) and (height < 500px))) {
+  .entry > .when {
+    flex: none;
+    width: 16rem;
+    text-align: start;
+  }
 }
 
 .entry .lines {
   display: grid;
   gap: 0.125rem;
   min-width: 0;
-  color: var(--muted);
+  color: var(--on-surface-variant);
 }
 
 .entry .lines small {
@@ -400,9 +1522,14 @@ dialog.drawer {
   border: 0;
 }
 
-/* A note, rendered as GitHub renders Markdown. */
+/* A note, rendered as GitHub renders Markdown, in the design's type: 16 px
+   on 26 px lines, at most 72 characters wide (docs/DESIGN.md, Type), in rem
+   so that it follows the reader's own size. */
 .markdown {
+  max-width: var(--note-measure);
   min-width: 0;
+  font-size: 1rem;
+  line-height: 1.625;
   overflow-wrap: break-word;
 }
 
@@ -418,42 +1545,47 @@ dialog.drawer {
   margin: 0 0 1rem;
 }
 
+/* Headings at 500, without GitHub's rules: the smaller ones at the body's
+   size, the least of them quieter. */
 .markdown :is(h1, h2, h3, h4, h5, h6) {
-  margin: 1.5rem 0 1rem;
+  margin: var(--space-6) 0 var(--space-3);
   color: inherit;
-  font-weight: 600;
-  line-height: 1.25;
+  font-size: 1em;
+  font-weight: 500;
+  line-height: inherit;
   text-transform: none;
 }
 
-.markdown :is(h1, h2) {
-  padding-bottom: 0.3em;
-  border-bottom: 1px solid var(--border);
-}
-
 .markdown h1 {
-  font-size: 2em;
+  font-size: 2rem;
+  line-height: 2.5rem;
 }
 
 .markdown h2 {
-  font-size: 1.5em;
+  font-size: 1.5rem;
+  line-height: 2rem;
 }
 
 .markdown h3 {
-  font-size: 1.25em;
-}
-
-.markdown h4 {
-  font-size: 1em;
-}
-
-.markdown h5 {
-  font-size: 0.875em;
+  font-size: 1.25rem;
+  line-height: 1.75rem;
 }
 
 .markdown h6 {
-  color: var(--muted);
-  font-size: 0.85em;
+  color: var(--on-surface-variant);
+}
+
+/* A step smaller on a phone. */
+@media (width < 768px), (pointer: coarse) and (height < 500px) {
+  .markdown h1 {
+    font-size: 1.75rem;
+    line-height: 2.25rem;
+  }
+
+  .markdown h2 {
+    font-size: 1.375rem;
+    line-height: 1.875rem;
+  }
 }
 
 .markdown :is(ul, ol) {
@@ -472,9 +1604,14 @@ dialog.drawer {
   list-style: none;
 }
 
+/* A task's box in the accent, as in Docs, before its text, which starts
+   where the list's does. */
 .markdown .task-list-item input {
-  margin: 0 0.35em 0.25em -1.4em;
-  vertical-align: middle;
+  width: 18px;
+  height: 18px;
+  margin: 0 var(--space-3) 0 calc(-18px - var(--space-3));
+  vertical-align: -3px;
+  accent-color: var(--primary);
 }
 
 /* In a vault, as in Obsidian, a checked task is struck through. */
@@ -483,14 +1620,14 @@ dialog.drawer {
     :has(> input:checked),
     :has(> p:first-child > input:checked)
   ) {
-  color: var(--muted);
+  color: var(--on-surface-variant);
   text-decoration: line-through;
 }
 
 .markdown blockquote {
   padding: 0 1em;
-  border-left: 0.25em solid var(--border);
-  color: var(--muted);
+  border-left: 0.25em solid var(--outline-variant);
+  color: var(--on-surface-variant);
 }
 
 /* Obsidian's callouts, in the colors of its light and dark themes. */
@@ -560,7 +1697,7 @@ dialog.drawer {
 .markdown .embed {
   margin: 0 0 1rem;
   padding: 0.25rem 0 0.25rem 1rem;
-  border-left: 0.25em solid var(--border);
+  border-left: 0.25em solid var(--outline-variant);
 }
 
 .markdown .embed-title {
@@ -577,35 +1714,103 @@ dialog.drawer {
 .markdown .tag {
   padding: 0.1em 0.5em;
   border-radius: 1em;
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  color: var(--link);
+  background: color-mix(in srgb, var(--primary) 15%, transparent);
+  color: var(--primary);
   font-size: 0.875em;
 }
 
-.markdown :is(code, pre) {
-  font-family: var(--monospace);
-  font-size: 85%;
+/* Code in Google Sans Code, 14 px in the body, its blocks on 22 px
+   lines. */
+.markdown :is(code, kbd, pre, samp) {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
 }
 
 .markdown code {
   padding: 0.2em 0.4em;
-  border-radius: 6px;
-  background: var(--surface);
+  border-radius: var(--radius-xs);
+  background: var(--surface-container-high);
 }
 
 .markdown pre {
   padding: 1rem;
   overflow: auto;
-  border-radius: 6px;
-  background: var(--surface);
-  line-height: 1.45;
+  border-radius: var(--radius-sm);
+  background: var(--surface-container-high);
+  line-height: 1.375rem;
 }
 
-.markdown pre code,
-.markdown pre code.hljs {
+.markdown pre code {
   padding: 0;
   background: none;
   font-size: 100%;
+}
+
+/* Highlighted code in the design's roles, each 5:1 or more on its block in
+   both themes (docs/DESIGN.md, Color). */
+.markdown .hljs-comment,
+.markdown .hljs-quote {
+  color: var(--on-surface-variant);
+  font-style: italic;
+}
+
+.markdown .hljs-meta,
+.markdown .hljs-bullet {
+  color: var(--on-surface-variant);
+}
+
+.markdown .hljs-keyword,
+.markdown .hljs-selector-tag,
+.markdown .hljs-built_in,
+.markdown .hljs-type,
+.markdown .hljs-doctag,
+.markdown .hljs-template-tag,
+.markdown .hljs-link {
+  color: var(--primary);
+}
+
+.markdown .hljs-string,
+.markdown .hljs-regexp,
+.markdown .hljs-number,
+.markdown .hljs-literal,
+.markdown .hljs-symbol {
+  color: var(--tertiary);
+}
+
+.markdown .hljs-attr,
+.markdown .hljs-attribute,
+.markdown .hljs-property,
+.markdown .hljs-variable,
+.markdown .hljs-template-variable,
+.markdown .hljs-params,
+.markdown .hljs-name,
+.markdown .hljs-selector-id,
+.markdown .hljs-selector-class,
+.markdown .hljs-selector-attr,
+.markdown .hljs-selector-pseudo {
+  color: var(--secondary);
+}
+
+.markdown .hljs-title,
+.markdown .hljs-section,
+.markdown .hljs-strong {
+  font-weight: 600;
+}
+
+.markdown .hljs-emphasis {
+  font-style: italic;
+}
+
+.markdown .hljs-addition {
+  background: var(--diff-added);
+  color: var(--on-tertiary-container);
+  text-decoration: underline;
+}
+
+.markdown .hljs-deletion {
+  background: var(--diff-removed);
+  color: var(--on-error-container);
+  text-decoration: line-through;
 }
 
 .markdown table {
@@ -616,26 +1821,31 @@ dialog.drawer {
   border-collapse: collapse;
 }
 
+/* Tables as Drive lists files: a rule under each row, the head quieter. */
 .markdown :is(th, td) {
-  padding: 6px 13px;
-  border: 1px solid var(--border);
+  padding: var(--space-2) var(--space-5) var(--space-2) 0;
+  border-bottom: 1px solid var(--outline-variant);
+  text-align: start;
 }
 
-.markdown tr:nth-child(2n) {
-  background: var(--surface);
+.markdown th {
+  color: var(--on-surface-variant);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
 }
 
 .markdown hr {
-  height: 0.25em;
+  height: 1px;
   padding: 0;
   border: 0;
-  background: var(--border);
+  background: var(--outline-variant);
 }
 
 .markdown .footnotes {
   padding-top: 1rem;
-  border-top: 1px solid var(--border);
-  color: var(--muted);
+  border-top: 1px solid var(--outline-variant);
+  color: var(--on-surface-variant);
   font-size: 0.875em;
 }
 
@@ -646,7 +1856,7 @@ dialog.drawer {
 }
 
 .markdown .unresolved {
-  color: var(--muted);
+  color: var(--on-surface-variant);
   text-decoration: underline dotted;
 }
 
@@ -662,6 +1872,10 @@ dialog.drawer {
   min-height: 3rem;
 }
 
+.note-bar:empty {
+  display: none;
+}
+
 .note-bar {
   display: flex;
   flex-wrap: wrap;
@@ -674,30 +1888,207 @@ dialog.drawer {
   margin-right: auto;
 }
 
+/* A phone's Source and Preview, at the bar's start: one outlined pill cut
+   in two, the half shown on secondary-container (docs/DESIGN.md). */
+.segmented {
+  display: flex;
+  margin-right: auto;
+}
+
+.segmented > button {
+  padding: 0 var(--space-4) 0 var(--space-3);
+  color: var(--on-surface);
+}
+
+.segmented > button > .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.segmented > button:first-child {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.segmented > button:last-child {
+  border-inline-start: none;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+
+.segmented > button[aria-pressed="true"] {
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
 .editing {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 1.5rem;
-  align-items: start;
+  gap: var(--space-4);
 }
 
+/* The source runs from edge to edge of what holds it, a phone's page or
+   its sheet, its lines as far in as the text beside it. */
+.editor {
+  margin-inline: calc(-1 * var(--text-inset));
+}
+
+.sheet > .label {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0 0 var(--space-4);
+  color: var(--on-surface-variant);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.sheet > .label > .icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* On a wide screen, a note shows as Docs shows a page: on a sheet raised
+   over the app's background, and while editing, the source and the
+   preview on two, sharing the width (docs/DESIGN.md). */
+@media (width >= 768px) and (not ((pointer: coarse) and (height < 500px))) {
+  :root:has(.bar.note),
+  .bar.note {
+    background: var(--app-background);
+  }
+
+  .bar.note {
+    border-bottom: none;
+  }
+
+  /* The page fills the window, down to its bottom, which the sheet reaches
+     whatever sits above it. */
+  .page:has(> .split) {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100dvh - var(--app-bar-height) - env(safe-area-inset-top));
+    max-width: none;
+    padding: var(--space-3) var(--space-4) 0;
+  }
+
+  .page > .split {
+    flex: 1;
+  }
+
+  .split > .main {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* What heads the note lines up with its sheet, or with both sheets while
+     editing. */
+  .split > .main:not(:has(> .editing)) {
+    width: 100%;
+    max-width: 816px;
+    margin-inline: auto;
+  }
+
+  .main > .sheets {
+    display: grid;
+    flex: 1;
+  }
+
+  .sheet {
+    padding: 64px 72px;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    background: var(--sheet);
+    box-shadow: var(--elevation-1);
+  }
+
+  .editing {
+    --text-inset: var(--space-5);
+  }
+
+  .editing > .sheet {
+    padding: var(--space-5) var(--text-inset);
+  }
+}
+
+@media (width >= 1024px) {
+  .editing {
+    --text-inset: var(--space-6);
+  }
+}
+
+/* A conflict: its banner, then the differences. */
 .conflict {
   display: grid;
-  gap: 0.75rem;
-  padding: 1rem;
-  border: 1px solid light-dark(#9a6700, #d29922);
-  border-radius: 0.5rem;
-  background: light-dark(#fff8c5, #272115);
+  gap: var(--space-4);
 }
 
-.page .conflict h3 {
+/* A banner under the app bar (docs/DESIGN.md, Banner): the icon beside the
+   title, and what follows under the title, or across on a phone. */
+.banner {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--attention-container);
+  color: var(--on-attention-container);
+}
+
+.banner > :not(.icon) {
+  grid-column: 2;
+}
+
+.page .banner h3 {
   color: inherit;
-  font-size: 1.125rem;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
   text-transform: none;
 }
 
-.conflict .actions {
+.banner > .actions {
   justify-content: flex-start;
+}
+
+/* The banner's own colors carry its actions' emphases. */
+.banner > .actions > button:not(:disabled) {
+  border-color: var(--on-attention-container);
+  color: var(--on-attention-container);
+}
+
+.banner > .actions > button.filled:not(:disabled) {
+  background: var(--on-attention-container);
+  color: var(--attention-container);
+}
+
+.banner > .actions > button.text:not(:disabled) {
+  border-color: transparent;
+}
+
+.banner > .actions > button.text.danger:not(:disabled) {
+  color: var(--error);
+}
+
+/* A tip, which asks for no decision. */
+.banner.tip {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+.banner.tip > .actions > button:not(:disabled) {
+  color: var(--on-secondary-container);
+}
+
+@media (width < 768px), (pointer: coarse) and (height < 500px) {
+  .banner > :not(.icon, h3) {
+    grid-column: 1 / -1;
+  }
+
+  .banner > .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 .restore {
@@ -707,4 +2098,162 @@ dialog.drawer {
 
 .restore .actions {
   justify-content: flex-start;
+}
+
+/* Pinned above a touch screen's keyboard, at the height the editor keeps
+   clear of the cursor (TOOLBAR_HEIGHT); it scrolls sideways on phones. Its
+   keys stay clear of the notch. A phone shows it over the keyboard only,
+   which covers the home bar, so it adds no inset under them. */
+.keyboard-toolbar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  height: var(--keyboard-toolbar-height);
+  padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  overflow-x: auto;
+  border-top: 1px solid var(--outline-variant);
+  background: var(--surface-container);
+  scrollbar-width: none;
+}
+
+/* The note's end scrolls clear of it; the page already keeps clear of the
+   home bar. The room is the editor's own: on a phone, the source runs past
+   the sides of what holds it, which CodeMirror then takes for scrollers,
+   keeping the cursor clear of the toolbar only within their bottom edge. */
+body:has(> .keyboard-toolbar) .editor {
+  padding-bottom: var(--keyboard-toolbar-height);
+}
+
+.keyboard-toolbar button {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--on-surface-variant);
+}
+
+.keyboard-toolbar button::after {
+  content: none;
+}
+
+/* Find in note (docs/DESIGN.md, Find in note): over the source's top, under
+   the app bar, from edge to edge of its sheet; on a phone, in the app bar's
+   place. */
+.find-bar {
+  position: sticky;
+  top: var(--app-bar-bottom);
+  z-index: 1;
+  display: grid;
+  gap: var(--space-2);
+  margin-inline: calc(-1 * var(--text-inset));
+  padding: var(--space-2) var(--text-inset);
+  border-bottom: 1px solid var(--outline-variant);
+  background: var(--sheet);
+  container-type: inline-size;
+}
+
+.find-row {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.find-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.find-field > .icon {
+  position: absolute;
+  top: 50%;
+  left: var(--space-4);
+  translate: 0 -50%;
+  color: var(--on-surface-variant);
+  pointer-events: none;
+}
+
+.find-field input {
+  width: 100%;
+  min-height: var(--control-height);
+  padding: 0 var(--space-4);
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--surface-container-high);
+  color: inherit;
+  font: inherit;
+  /* Safari zooms in on a field whose text is smaller. */
+  font-size: max(16px, 1rem);
+}
+
+.find-field > .icon + input {
+  padding-left: 52px;
+}
+
+/* A tablet's sheet leaves the field too little room for its icon. */
+@container (width < 480px) {
+  .find-field > .icon {
+    display: none;
+  }
+
+  .find-field > .icon + input {
+    padding-left: var(--space-4);
+  }
+}
+
+.find-field input[aria-invalid="true"] {
+  color: var(--error);
+}
+
+.find-count {
+  flex: none;
+  padding-inline: var(--space-2);
+  color: var(--on-surface-variant);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  line-height: 20px;
+}
+
+/* An option's check shows while it is on. */
+.find-menu > [aria-checked="false"] > .icon {
+  visibility: hidden;
+}
+
+button.find-more {
+  anchor-name: --find-more;
+}
+
+.find-menu {
+  inset: calc(var(--app-bar-bottom) - var(--space-2))
+    calc(var(--space-4) + env(safe-area-inset-right)) auto auto;
+}
+
+@supports (anchor-name: --find-more) {
+  .find-menu {
+    position-anchor: --find-more;
+    inset: anchor(bottom) anchor(right) auto auto;
+    margin: var(--space-1) 0 0;
+    position-try-fallbacks: flip-inline;
+  }
+}
+
+/* On a phone, the app bar holds Find in note alone. */
+.bar.note:has(> .find > .find-bar) > :not(.find) {
+  display: none;
+}
+
+.bar .find-bar {
+  position: static;
+  flex: 1;
+  margin: 0 0 0 calc(-1 * var(--space-2));
+  padding: var(--space-2) 0;
+  border: none;
+  background: none;
 }

@@ -14,6 +14,8 @@ export type Route =
   | { name: "file"; file: FileRef }
   /** Drive's New, which creates a Markdown file in the folder. */
   | { name: "new"; folder: FileRef }
+  /** What the installed app was given to share, which led to no page. */
+  | { name: "share" }
   | { name: "not-found" };
 
 /** A step of the path the user took, as the breadcrumbs show it. */
@@ -62,6 +64,8 @@ export function routeOf(url: URL): Route {
       const file = fileRef(searchParams.get("id"), searchParams);
       return file ? { name: "file", file } : NOT_FOUND;
     }
+    case "/share":
+      return { name: "share" };
     case "/open":
     case "/new": {
       // Drive's Open with, whose file has its own page, and Drive's New.
@@ -83,6 +87,7 @@ export function hrefOf(route: Exclude<Route, { name: "not-found" }>): string {
     case "shortcuts":
     case "shared-drives":
     case "shared-with-me":
+    case "share":
       return `/${route.name}`;
     case "folder": {
       const { id, resourceKey } = route.folder;

@@ -1,170 +1,187 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { ConfirmDialog, NameDialog } from "./Dialog.tsx";
+import { useId, useRef } from "react";
+import { createPortal } from "react-dom";
+import { AccountItems } from "./Account.tsx";
+import { ConfirmDialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
-import { Move } from "./Move.tsx";
-import { isMarkdown, type FileMetadata, type FileRef } from "./drive.ts";
-import { refreshAfterChange } from "./queries.ts";
+import { Icon } from "./Icon.tsx";
+import { MoveDialog } from "./Move.tsx";
+import type { FileMetadata, FileRef } from "./drive.ts";
+import { openedFromDrive } from "./drive-tab.ts";
+import { refreshAfterChange, setTrashed } from "./queries.ts";
 import { hrefOf, navigate, type Crumb } from "./router.ts";
-import { useVaultCheck, vaultNote } from "./vaults.ts";
 
 const HOME = hrefOf({ name: "home" });
 
-/** What the user may do with the file, as far as Drive allows. */
-export function FileActions({
-  file,
-  page,
-  path,
-}: {
-  file: FileMetadata;
-  /** The file as the page's address names it. */
-  page: FileRef;
-  path: Crumb[] | undefined;
-}) {
-  const { canRename, canTrash, canMoveItemWithinDrive, canMoveItemOutOfDrive } =
-    file.capabilities;
-  const canMove = canMoveItemWithinDrive || canMoveItemOutOfDrive;
-  if (!canRename && !canMove && !canTrash) return null;
+/** What the user may pick to do with a note. */
+export type Action = "move" | "trash";
+
+/** Move, as an icon beside the note's name. */
+export function MoveButton({ onPick }: { onPick: () => void }) {
   return (
-    <div className="actions">
-      {canRename && <Rename file={file} page={page} path={path} />}
-      {canMove && <Move file={file} page={page} path={path} />}
-      {canTrash && <Trash file={file} path={path} />}
-    </div>
+    <button
+      type="button"
+      className="icon-button"
+      aria-label="Move"
+      title="Move"
+      onClick={(event) => {
+        // The picker gives the focus back to what had it, which WebKit does
+        // not give a button it presses.
+        event.currentTarget.focus();
+        onPick();
+      }}
+    >
+      <Icon name="drive_file_move" />
+    </button>
   );
 }
 
 /**
- * Renames the file, warning first when links in a vault point to it: the
- * rename waits for the vault check.
+ * The rest of what the user may do with the file, as far as Drive allows, in
+ * a menu that closes as an action's dialog opens; Move among them where the
+ * page says so, and the account after them where the bar has no room for it.
  */
-function Rename({
+export function MoreActions({
   file,
-  page,
-  path,
+  moves,
+  account,
+  onPick,
 }: {
-  file: FileMetadata;
-  /** The file as the page's address names it. */
-  page: FileRef;
-  path: Crumb[] | undefined;
+  /** The file, while the page shows it. */
+  file: FileMetadata | undefined;
+  moves: boolean;
+  account: boolean;
+  onPick: (action: Action) => void;
 }) {
-  const { drive, renew } = useDrive();
-  const client = useQueryClient();
-  const [asking, setAsking] = useState(false);
-  const vault = useVaultCheck(page, asking);
-  const rename = useMutation({
-    mutationFn: (name: string) => drive.renameFile(file, name),
-    onSuccess: () => {
-      refreshAfterChange(client, file);
-    },
-  });
-  const note = vaultNote(vault, "renames");
+  const id = useId();
+  const button = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const { account: email, signOut } = useDrive();
+  const canTrash = file?.capabilities.canTrash ?? false;
+  if (!moves && !canTrash && !account) return null;
+  const item = (action: Action, label: string) => (
+    <button
+      type="button"
+      onClick={() => {
+        // The dialog gives the focus back to what had it as it opened.
+        button.current?.focus();
+        menu.current?.hidePopover();
+        onPick(action);
+      }}
+    >
+      {label}
+    </button>
+  );
   return (
     <>
       <button
+        ref={button}
         type="button"
-        onClick={() => {
-          rename.reset();
-          setAsking(true);
-        }}
+        className="icon-button"
+        popoverTarget={id}
+        aria-label="More actions"
+        title="More actions"
       >
-        Rename
+        <Icon name="more_vert" />
       </button>
-      {asking && (
-        <NameDialog
-          title="Rename"
-          initial={file.name}
-          hint={(name) =>
-            isMarkdown(name.trim())
-              ? undefined
-              : "Without .md or .markdown at the end, DriveMD will no longer list this file."
-          }
-          action="Rename"
-          pending={rename.isPending}
-          ready={vault !== "checking"}
-          error={rename.error}
-          onSubmit={(name) => {
-            renew();
-            // Only while the page shows: Back takes the user elsewhere.
-            rename.mutate(name, {
-              onSuccess: (renamed) => {
-                const href = hrefOf({ name: "file", file: renamed });
-                const trail = path?.slice(0, -1);
-                navigate(
-                  href,
-                  trail && [...trail, { name: renamed.name, href }],
-                );
-                setAsking(false);
-              },
-            });
-          }}
-          onClose={() => {
-            setAsking(false);
-          }}
-        >
-          {note && (
-            <p className={vault === "checking" ? "hint" : "warning"}>{note}</p>
-          )}
-        </NameDialog>
-      )}
+      <div
+        ref={menu}
+        id={id}
+        popover="auto"
+        role="dialog"
+        aria-label="More actions"
+        className="menu actions-menu"
+      >
+        {moves && item("move", "Move")}
+        {canTrash && item("trash", "Move to trash")}
+        {account && (moves || canTrash) && <hr />}
+        {account && (
+          <AccountItems
+            email={email}
+            onSignOut={signOut}
+            button={button}
+            menu={menu}
+          />
+        )}
+      </div>
     </>
   );
 }
 
-/** Moves the file to Drive's trash once the user confirms, then leaves it. */
+/**
+ * The dialog of the action picked, over the page and outside the app bar,
+ * whose styles would reach it.
+ */
+export function ActionDialog({
+  action,
+  file,
+  page,
+  path,
+  onClose,
+}: {
+  action: Action;
+  file: FileMetadata;
+  /** The file as the page's address names it. */
+  page: FileRef;
+  path: Crumb[] | undefined;
+  onClose: () => void;
+}) {
+  return createPortal(
+    action === "move" ? (
+      <MoveDialog file={file} page={page} onClose={onClose} />
+    ) : (
+      <Trash file={file} path={path} onClose={onClose} />
+    ),
+    document.body,
+  );
+}
+
+/**
+ * Moves the file to Drive's trash once the user confirms, then leaves it, but
+ * in a tab opened from Drive, which holds the file alone: its page then says
+ * where the file went.
+ */
 function Trash({
   file,
   path,
+  onClose,
 }: {
   file: FileMetadata;
   path: Crumb[] | undefined;
+  onClose: () => void;
 }) {
   const { drive, renew } = useDrive();
   const client = useQueryClient();
-  const [asking, setAsking] = useState(false);
+  const stays = openedFromDrive();
   const trash = useMutation({
     mutationFn: () => drive.trashFile(file),
     onSuccess: () => {
-      refreshAfterChange(client, file, { leaving: true });
+      if (stays) setTrashed(client, file);
+      refreshAfterChange(client, file, { leaving: !stays });
     },
   });
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => {
-          trash.reset();
-          setAsking(true);
-        }}
-      >
-        Move to trash
-      </button>
-      {asking && (
-        <ConfirmDialog
-          title="Move to trash?"
-          action="Move to trash"
-          pending={trash.isPending}
-          error={trash.error}
-          onConfirm={() => {
-            renew();
-            // Only while the page shows: Back takes the user elsewhere.
-            trash.mutate(undefined, {
-              onSuccess: () => {
-                leave(file, path);
-              },
-            });
-          }}
-          onClose={() => {
-            setAsking(false);
-          }}
-        >
-          <p>
-            {file.name} goes to Google Drive's trash, from which it can be
-            restored.
-          </p>
-        </ConfirmDialog>
-      )}
-    </>
+    <ConfirmDialog
+      title="Move to trash?"
+      action="Move to trash"
+      pending={trash.isPending}
+      error={trash.error}
+      onConfirm={() => {
+        renew();
+        // Only while the page shows: Back takes the user elsewhere.
+        trash.mutate(undefined, {
+          onSuccess: () => {
+            if (stays) onClose();
+            else leave(file, path);
+          },
+        });
+      }}
+      onClose={onClose}
+    >
+      <p>
+        {file.name} goes to Google Drive's trash, from which it can be restored.
+      </p>
+    </ConfirmDialog>
   );
 }
 

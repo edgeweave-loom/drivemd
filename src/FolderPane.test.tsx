@@ -73,7 +73,7 @@ describe("the folder pane", () => {
       { name: "notes.md", href: "/edit?id=notes" },
     ]);
     expect(
-      await screen.findByRole("heading", { level: 2, name: "notes.md" }),
+      await screen.findByRole("heading", { level: 1, name: "notes.md" }),
     ).toBeVisible();
     expect(pane().getByRole("link", { name: "notes.md" })).toHaveAttribute(
       "aria-current",
@@ -127,6 +127,11 @@ describe("the folder pane", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Folder" }));
     const drawer = within(screen.getByRole("dialog", { name: "Work" }));
     expect(await drawer.findByRole("link", { name: "notes.md" })).toBeVisible();
+    // Headed by the folder, which leads back to it, and listed once.
+    expect(
+      drawer.getByRole("heading", { name: "Work" }).querySelector("a"),
+    ).toHaveAttribute("href", "/folder/work");
+    expect(drawer.getAllByRole("link", { name: "Work" })).toHaveLength(1);
     fireEvent.click(drawer.getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();
   });

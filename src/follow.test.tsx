@@ -1,8 +1,9 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DriveItem } from "./drive.ts";
+import { markTab } from "./drive-tab.ts";
 import { useFollow } from "./follow.ts";
-import { getPlace } from "./router.ts";
+import { getPlace, hrefOf } from "./router.ts";
 import {
   driveItem,
   folderItem,
@@ -60,6 +61,7 @@ function follow(href: string, vault?: Vault) {
 afterEach(() => {
   visit("/");
   vi.restoreAllMocks();
+  markTab(false);
 });
 
 describe("useFollow", () => {
@@ -70,6 +72,26 @@ describe("useFollow", () => {
     await waitFor(() => {
       expect(getPlace().route).toEqual({ name: "file", file: { id: "plan" } });
     });
+  });
+
+  it("opens a note in a new tab from a tab opened from Drive", async () => {
+    vi.spyOn(performance, "getEntriesByType").mockReturnValue([
+      { type: "navigate" } as PerformanceNavigationTiming,
+    ]);
+    markTab(true);
+    const open = vi.spyOn(window, "open").mockReturnValue(window);
+    follow("plan.md#next");
+
+    await waitFor(() => {
+      expect(open).toHaveBeenCalledWith(
+        new URL(
+          `${hrefOf({ name: "file", file: { id: "plan" } })}#next`,
+          window.location.origin,
+        ),
+        expect.stringMatching(/^drivemd\.note\./),
+      );
+    });
+    expect(getPlace().route).toEqual({ name: "home" });
   });
 
   it("finds a note by name in a vault, at the heading the link names", async () => {

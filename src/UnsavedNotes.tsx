@@ -4,6 +4,7 @@ import { ConfirmDialog } from "./Dialog.tsx";
 import { deleteDraft, type DraftEntry } from "./drafts.ts";
 import { useDrive } from "./drive-context.ts";
 import { notFound, type FileMetadata } from "./drive.ts";
+import { Icon } from "./Icon.tsx";
 import { Link } from "./Link.tsx";
 import { BROKEN, kindOf } from "./listing.ts";
 import { draftsQuery, MAX_CONTENT, metadataQuery } from "./queries.ts";
@@ -57,6 +58,7 @@ function UnsavedNote({ draft }: { draft: DraftEntry }) {
   if (reason === undefined) {
     return (
       <Link to={hrefOf({ name: "file", file })} className="entry file">
+        <Icon name="description" />
         <span className="name">{name}</span>
         <time dateTime={draft.keptAt} className="when">
           {KEPT.format(new Date(draft.keptAt))}
@@ -101,12 +103,11 @@ function ClosedNote({
     mutationFn: () => deleteDraft(account, draft.fileId),
     onSuccess: () =>
       client.invalidateQueries({ queryKey: draftsQuery(account).queryKey }),
-    // The device answers, with or without a connection.
-    networkMode: "always",
   });
   return (
     <>
       <div className="entry file">
+        <Icon name="description" />
         <span className="lines">
           <span id={`${id}-name`} className="name">
             {name}
@@ -131,6 +132,7 @@ function ClosedNote({
         <ConfirmDialog
           title="Discard unsaved changes?"
           action="Discard"
+          danger
           pending={discard.isPending}
           error={discard.error}
           onConfirm={() => {

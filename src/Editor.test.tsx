@@ -5,11 +5,18 @@ import {
   syntaxTreeAvailable,
 } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
+import { searchPanelOpen } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
 import { runScopeHandlers, EditorView } from "@codemirror/view";
-import { render, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { createRef } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Editor, type EditorHandle } from "./Editor.tsx";
 import { linkAt } from "./source-links.ts";
 import type { LineBreak } from "./text.ts";
@@ -48,7 +55,8 @@ function looks(view: EditorView) {
       const style = getComputedStyle(text.parentElement ?? line);
       const value = text.textContent ?? "";
       larger ||= style.fontSize !== size;
-      shown += style.color === "var(--muted)" ? `‹${value}›` : value;
+      shown +=
+        style.color === "var(--on-surface-variant)" ? `‹${value}›` : value;
     }
     return shown.replaceAll("›‹", "") + (larger ? " (larger)" : "");
   });
@@ -138,15 +146,6 @@ describe("Editor", () => {
     expect(onChange).toHaveBeenLastCalledWith("- [ ] Boil\n- [ ] ");
   });
 
-  it("finds text in the whole file with its own search panel", () => {
-    const { view } = open("Tea");
-
-    press(view, "f", { ctrlKey: true });
-
-    // At the top, where a phone's keyboard does not hide it.
-    expect(view.dom.querySelector(".cm-panels-top .cm-search")).not.toBeNull();
-  });
-
   it("undoes an edit", () => {
     const { view, onChange } = open("Tea");
     view.dispatch({ changes: { from: 3, insert: "s" } });
@@ -154,6 +153,21 @@ describe("Editor", () => {
     press(view, "z", { ctrlKey: true });
 
     expect(onChange).toHaveBeenLastCalledWith("Tea");
+  });
+
+  it("indents and outdents a list item by its level from the keyboard, as the toolbar does", () => {
+    // Below front matter, which the editor parses apart from the Markdown.
+    const { view, onChange } = open("---\nowner: Ada\n---\n1. Tea\n2. Milk");
+    view.dispatch({ selection: { anchor: view.state.doc.length } });
+
+    press(view, "]", { ctrlKey: true });
+    expect(onChange).toHaveBeenLastCalledWith(
+      "---\nowner: Ada\n---\n1. Tea\n   1. Milk",
+    );
+    press(view, "[", { ctrlKey: true });
+    expect(onChange).toHaveBeenLastCalledWith(
+      "---\nowner: Ada\n---\n1. Tea\n1. Milk",
+    );
   });
 
   it("takes a task tapped in the preview as one edit, if it still holds the text shown", () => {
@@ -307,5 +321,191 @@ describe("linkAt", () => {
     ["a reference link", "[Plan][1]\n\n[1]: plan.md", "Plan"],
   ])("finds nothing in %s", (_, text, near) => {
     expect(linkAt(state(text), text.indexOf(near) + 1)).toBeUndefined();
+  });
+});
+
+describe("Find in note", () => {
+  beforeEach(() => {
+    // jsdom names Apple as its vendor, so CodeMirror reads the selection in
+    // a shadow root as Safari needs, through a command jsdom lacks.
+    Object.defineProperty(document, "execCommand", {
+      value: () => false,
+      configurable: true,
+    });
+    // Nor does it lay text out, which CodeMirror measures as it scrolls to
+    // the match: a range's boxes are an element's, none.
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      value: () => document.createElement("span").getClientRects(),
+      configurable: true,
+    });
+  });
+
+  /** Opens Find in note from the keyboard, as Cmd or Ctrl+F does. */
+  function find(view: EditorView) {
+    act(() => {
+      press(view, "f", { ctrlKey: true });
+    });
+    return screen.getByRole("textbox", { name: "Find" });
+  }
+
+  function type(field: HTMLElement, text: string) {
+    fireEvent.change(field, { target: { value: text } });
+  }
+
+  function count() {
+    return screen
+      .getByRole("search", { name: "Find in note" })
+      .querySelector(".find-count")?.textContent;
+  }
+
+  function pick(name: string) {
+    fireEvent.click(screen.getByRole("button", { name: "Find options" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name }));
+  }
+
+  it("finds text in the whole file from its own bar, its field focused", () => {
+    const { view } = open("Tea, then tea.");
+
+    const field = find(view);
+    expect(field).toHaveFocus();
+    type(field, "tea");
+    expect(count()).toBe("2 matches");
+
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(count()).toBe("1 of 2");
+    expect(view.state.selection.main).toMatchObject({ from: 0, to: 3 });
+    fireEvent.click(screen.getByRole("button", { name: "Next match" }));
+    expect(count()).toBe("2 of 2");
+    fireEvent.keyDown(field, { key: "Enter", shiftKey: true });
+    expect(count()).toBe("1 of 2");
+  });
+
+  it("starts from the selected text, and says when nothing matches", () => {
+    const { view } = open("Tea for two");
+    view.dispatch({ selection: { anchor: 4, head: 7 } });
+
+    const field = find(view);
+    expect(field).toHaveValue("for");
+    expect(count()).toBe("1 of 1");
+
+    type(field, "coffee");
+    expect(count()).toBe("No matches");
+    expect(screen.getByRole("button", { name: "Next match" })).toBeDisabled();
+  });
+
+  it("counts the matches up to a thousand", () => {
+    const { view } = open("a".repeat(1200));
+
+    type(find(view), "a");
+
+    expect(count()).toBe("1000+ matches");
+  });
+
+  it("matches case, whole words or a regular expression, as picked", () => {
+    const { view } = open("Tea, tea, teapot.");
+    const field = find(view);
+    type(field, "tea");
+    expect(count()).toBe("3 matches");
+
+    pick("Match case");
+    expect(count()).toBe("2 matches");
+    expect(field).toHaveFocus();
+    pick("Whole word");
+    expect(count()).toBe("1 match");
+    expect(
+      screen.getByRole("menuitemcheckbox", {
+        name: "Whole word",
+        hidden: true,
+      }),
+    ).toHaveAttribute("aria-checked", "true");
+
+    pick("Whole word");
+    pick("Regular expression");
+    type(field, "t[e");
+    expect(field).toHaveAttribute("aria-invalid", "true");
+    expect(count()).toBeUndefined();
+    type(field, "t.a");
+    expect(count()).toBe("2 matches");
+  });
+
+  it("replaces the match, or all of them", () => {
+    const { view, onChange } = open("tea, tea");
+    type(find(view), "tea");
+
+    pick("Replace");
+    const replacement = screen.getByRole("textbox", { name: "Replace with" });
+    expect(replacement).toHaveFocus();
+    type(replacement, "chai");
+    fireEvent.keyDown(replacement, { key: "Enter" });
+    fireEvent.keyDown(replacement, { key: "Enter" });
+    expect(onChange).toHaveBeenLastCalledWith("chai, tea");
+    fireEvent.click(screen.getByRole("button", { name: "Replace all" }));
+    expect(onChange).toHaveBeenLastCalledWith("chai, chai");
+  });
+
+  it("gives the focus back to the text as it closes, from Escape or its button", async () => {
+    const { view } = open("Tea");
+
+    fireEvent.keyDown(find(view), { key: "Escape" });
+    expect(searchPanelOpen(view.state)).toBe(false);
+    expect(view.hasFocus).toBe(true);
+    await waitFor(() => {
+      expect(screen.queryByRole("search")).toBeNull();
+    });
+
+    find(view);
+    fireEvent.click(screen.getByRole("button", { name: "Close find" }));
+    expect(searchPanelOpen(view.state)).toBe(false);
+    expect(view.hasFocus).toBe(true);
+  });
+
+  it("leaves the focus, and the keyboard, in its field as its buttons are pressed", () => {
+    const { view } = open("Tea, tea");
+    type(find(view), "tea");
+
+    // A false answer means the browser's default, the focus moving to the
+    // button, was prevented.
+    for (const name of ["Previous match", "Next match", "Find options"]) {
+      expect(fireEvent.mouseDown(screen.getByRole("button", { name }))).toBe(
+        false,
+      );
+    }
+    expect(
+      fireEvent.mouseDown(
+        screen.getByRole("menuitemcheckbox", {
+          name: "Match case",
+          hidden: true,
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("gives its field the focus again when asked while it is open", () => {
+    const { view } = open("Tea");
+    find(view);
+    act(() => {
+      view.focus();
+    });
+
+    expect(find(view)).toHaveFocus();
+  });
+
+  it("keeps the matches clear of the bars over the page's top", () => {
+    const appBar = document.body.appendChild(document.createElement("header"));
+    appBar.className = "bar";
+    vi.spyOn(appBar, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 0, 56),
+    );
+    const { view } = open("Tea");
+    find(view);
+    vi.spyOn(
+      screen.getByRole("search", { name: "Find in note" }),
+      "getBoundingClientRect",
+    ).mockReturnValue(new DOMRect(0, 56, 0, 56));
+
+    expect(
+      view.state.facet(EditorView.scrollMargins).map((of) => of(view)),
+    ).toContainEqual({ top: 112, bottom: 0 });
+    appBar.remove();
   });
 });

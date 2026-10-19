@@ -33,7 +33,7 @@ function openWork(canAddChildren: boolean) {
 }
 
 async function openDialog() {
-  fireEvent.click(await screen.findByRole("button", { name: "New" }));
+  fireEvent.click(await screen.findByRole("button", { name: "New note" }));
   return within(screen.getByRole("dialog", { name: "New Markdown file" }));
 }
 
@@ -46,7 +46,7 @@ describe("New", () => {
     openWork(false);
 
     await screen.findByText("No folders or Markdown files here.");
-    expect(screen.queryByRole("button", { name: "New" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "New note" })).toBeNull();
   });
 
   it("asks for a name, creates the file, then opens it", async () => {

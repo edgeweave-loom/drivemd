@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
 import { onlineManager } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteDraft, deleteDrafts, listDrafts, writeDraft } from "./drafts.ts";
 import { DriveError, type FileMetadata } from "./drive.ts";
 import { Home } from "./Home.tsx";
@@ -12,7 +12,8 @@ import {
   metadataOf,
 } from "./test/drive-items.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
-import { ACCOUNT, renderWithDrive } from "./test/render.tsx";
+import { holdStandalone, holdTouch } from "./test/screen.ts";
+import { ACCOUNT, keepFresh, renderWithDrive } from "./test/render.tsx";
 
 const PLAN = metadata(driveItem("plan.md", { id: "plan" }));
 const SHARED = metadata(
@@ -50,9 +51,17 @@ beforeEach(async () => {
   await deleteDrafts("grace@example.com");
 });
 
-afterEach(() => {
-  onlineManager.setOnline(true);
-});
+/** Home, with more files in Recent than it shows at first. */
+function manyRecent() {
+  const names = Array.from(
+    { length: 12 },
+    (_, index) => `note-${String(index + 1).padStart(2, "0")}.md`,
+  );
+  const drive = fakeDrive();
+  drive.listRecent.mockResolvedValue(names.map((name) => driveItem(name)));
+  drive.findVaults.mockResolvedValue([]);
+  return { ...renderWithDrive(<Home />, drive), names };
+}
 
 function section(name: string) {
   return within(screen.getByRole("region", { name }));
@@ -63,10 +72,11 @@ async function unsaved() {
   return within(await screen.findByRole("region", { name: "Unsaved changes" }));
 }
 
+/** The names of the section's links, without when each changed. */
 function linksIn(name: string) {
   return section(name)
     .getAllByRole("link")
-    .map((link) => link.textContent);
+    .map((link) => (link.querySelector(".name") ?? link).textContent);
 }
 
 describe("Home", () => {
@@ -94,6 +104,69 @@ describe("Home", () => {
       "Shared drives",
       "Shared with me",
     ]);
+  });
+
+  it("shows the 10 files opened last, then every one Drive sent once asked", async () => {
+    const { drive, names } = manyRecent();
+    await section("Recent").findByRole("link", { name: "note-01.md" });
+    expect(linksIn("Recent")).toEqual(names.slice(0, 10));
+
+    fireEvent.click(
+      section("Recent").getByRole("button", { name: "Show all" }),
+    );
+
+    expect(linksIn("Recent")).toEqual(names);
+    expect(
+      section("Recent").getByRole("link", { name: "note-11.md" }),
+    ).toHaveFocus();
+    expect(section("Recent").queryByRole("button")).toBeNull();
+    expect(drive.listRecent).toHaveBeenCalledOnce();
+  });
+
+  it("offers no Show all when Drive sent 10 files or fewer", async () => {
+    const drive = fakeDrive();
+    const names = Array.from(
+      { length: 10 },
+      (_, index) => `${String(index)}.md`,
+    );
+    drive.listRecent.mockResolvedValue(names.map((name) => driveItem(name)));
+    renderWithDrive(<Home />, drive);
+
+    await section("Recent").findByRole("link", { name: "0.md" });
+    expect(linksIn("Recent")).toEqual(names);
+    expect(section("Recent").queryByRole("button")).toBeNull();
+  });
+
+  it("shows the 10 files opened last again each time Home shows", async () => {
+    const { rerender } = manyRecent();
+    fireEvent.click(
+      await section("Recent").findByRole("button", { name: "Show all" }),
+    );
+    rerender(<p>Elsewhere</p>);
+
+    rerender(<Home />);
+
+    expect(
+      await section("Recent").findByRole("button", { name: "Show all" }),
+    ).toBeVisible();
+    expect(linksIn("Recent")).toHaveLength(10);
+  });
+
+  it("tells Safari's users how to add DriveMD to the Home Screen, before the files", async () => {
+    holdTouch(true);
+    holdStandalone(false);
+    try {
+      renderWithDrive(<Home />, fakeDrive());
+      const hint = await screen.findByRole("region", {
+        name: "Add DriveMD to your Home Screen",
+      });
+      expect(
+        hint.compareDocumentPosition(section("Recent").getByRole("heading")),
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    } finally {
+      holdTouch(false);
+      holdStandalone(undefined);
+    }
   });
 
   it("says what fills Recent and Vaults when they are empty", async () => {
@@ -231,7 +304,7 @@ describe("Home", () => {
     await keep(PLAN);
     const { client, rerender } = home(PLAN);
     // Answers stay fresh for half a minute, as in the app.
-    client.setDefaultOptions({ queries: { retry: false, staleTime: 30_000 } });
+    keepFresh(client);
     await (await unsaved()).findByRole("link", { name: /^plan\.md/ });
     rerender(<p>Elsewhere</p>);
     // Saved or discarded on the note's page.
@@ -342,7 +415,7 @@ describe("Home", () => {
     await keep(PLAN);
     const { drive, client, rerender } = home({ ...PLAN, trashed: true });
     // Drive's answers stay fresh for half a minute, as in the app.
-    client.setDefaultOptions({ queries: { retry: false, staleTime: 30_000 } });
+    keepFresh(client);
     await (await unsaved()).findByText("In the trash");
     rerender(<p>Elsewhere</p>);
     // Restored from Drive's trash.

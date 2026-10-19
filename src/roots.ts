@@ -1,4 +1,5 @@
 import { MY_DRIVE } from "./drive.ts";
+import type { IconName } from "./icons.ts";
 import { hrefOf, type Crumb } from "./router.ts";
 
 /** Where every path through the navigator starts. */
@@ -17,3 +18,21 @@ export const ROOTS = {
     href: hrefOf({ name: "shared-with-me" }),
   },
 } satisfies Record<string, Crumb>;
+
+/** How each root shows: My Drive as a cloud, never as Drive's logo. */
+export const ROOT_ICONS: Record<keyof typeof ROOTS, IconName> = {
+  myDrive: "cloud",
+  shortcuts: "shortcut",
+  sharedDrives: "folder_shared",
+  sharedWithMe: "group",
+};
+
+/** The roots, in the order the navigator lists them, each with its icon. */
+export const ROOT_PLACES = (
+  Object.keys(ROOT_ICONS) as (keyof typeof ROOTS)[]
+).map((key) => ({ root: ROOTS[key], icon: ROOT_ICONS[key] }));
+
+/** The icon of the root a page is, if it is one. */
+export function rootIcon(href: string): IconName | undefined {
+  return ROOT_PLACES.find(({ root }) => root.href === href)?.icon;
+}

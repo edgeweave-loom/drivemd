@@ -1,0 +1,23 @@
+name: Suggest a change
+description: Something DriveMD should do, or do differently.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Anyone can read this issue: leave out real file names, addresses and
+        notes. docs/SPEC.md says what DriveMD does and why; say which part your
+        idea would change.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The task, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+    validations:
+      required: true

@@ -2,7 +2,7 @@ import { createContext, useContext } from "react";
 import type { Session } from "./session.ts";
 
 /** The signed-in user's Drive, as the navigator's pages reach it. */
-export type DriveAccess = Pick<Session, "drive" | "renew"> & {
+export type DriveAccess = Pick<Session, "drive" | "renew" | "signOut"> & {
   /** The account's email, which keys what the device keeps for it. */
   account: string;
   /**

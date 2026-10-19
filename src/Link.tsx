@@ -1,11 +1,13 @@
 import type { ComponentProps, MouseEvent, ReactNode } from "react";
 import { useDrive } from "./drive-context.ts";
+import { openNoteTab } from "./drive-tab.ts";
 import { mayLeave, navigate, type Crumb } from "./router.ts";
 
 /**
  * A link to a page of the app. A plain tap renews an expired token before
- * anything else, since Google's popup needs the tap, then opens the page;
- * a click that opens a new tab or window is left to the browser.
+ * anything else, since Google's popup needs the tap, then opens the page,
+ * unless a tab that Drive opened opens a note in a new tab first; a click
+ * that opens a new tab or window is left to the browser.
  */
 export function Link({
   to,
@@ -28,6 +30,7 @@ export function Link({
     const { button, metaKey, ctrlKey, shiftKey, altKey } = event;
     if (button !== 0 || metaKey || ctrlKey || shiftKey || altKey) return;
     event.preventDefault();
+    if (openNoteTab(to)) return;
     // Asked first, so that a refusal opens no Google window.
     if (!mayLeave(to)) return;
     renew();
@@ -38,7 +41,7 @@ export function Link({
       {...attributes}
       href={to}
       className={className}
-      aria-current={current ? "page" : undefined}
+      aria-current={current ? "page" : attributes["aria-current"]}
       onClick={open}
     >
       {children}

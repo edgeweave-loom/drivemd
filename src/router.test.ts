@@ -48,6 +48,7 @@ describe("routes", () => {
       `/edit?id=${ID}&resourcekey=${KEY}`,
       { name: "file", file: { id: ID, resourceKey: KEY } },
     ],
+    ["/share", { name: "share" }],
   ])("reads and writes %s", (path, expected) => {
     expect(route(path)).toEqual(expected);
     expect(hrefOf(expected)).toBe(path);
@@ -59,6 +60,8 @@ describe("routes", () => {
     ["/folder/root", { name: "folder", folder: { id: "root" } }],
     ["/shortcuts/", { name: "shortcuts" }],
     [`/folder/${ID}/`, { name: "folder", folder: { id: ID } }],
+    // What the installed app was given to share, which the page reads.
+    ["/share?title=Plan&text=weekly+plan", { name: "share" }],
   ])("reads %s too", (path, expected) => {
     expect(route(path)).toEqual(expected);
   });

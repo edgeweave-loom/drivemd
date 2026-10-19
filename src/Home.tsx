@@ -1,18 +1,26 @@
 import { useQuery } from "@tanstack/react-query";
 import { useId, type ReactNode } from "react";
+import { useDrawer } from "./drawer.ts";
 import { useDrive } from "./drive-context.ts";
 import { ItemListing } from "./EntryList.tsx";
+import { Icon } from "./Icon.tsx";
+import { InstallHint } from "./InstallHint.tsx";
 import { Link } from "./Link.tsx";
 import { draftsQuery, recentQuery, vaultsQuery } from "./queries.ts";
-import { ROOTS } from "./roots.ts";
+import { ROOT_PLACES } from "./roots.ts";
 import { UnsavedNotes } from "./UnsavedNotes.tsx";
+
+/** How many notes Recent shows until the user asks for all. */
+const RECENT_SHOWN = 10;
 
 export function Home() {
   const { drive, account, signedIn } = useDrive();
   const drafts = useQuery({ ...draftsQuery(account), enabled: signedIn });
+  const drawer = useDrawer();
   return (
     <>
       <h2>Home</h2>
+      <InstallHint />
       {drafts.data && drafts.data.length > 0 && (
         <Section title="Unsaved changes">
           <UnsavedNotes drafts={drafts.data} />
@@ -25,27 +33,37 @@ export function Home() {
           order="as-listed"
           // Where a file sits comes from Drive.
           trail={undefined}
+          located
+          limit={RECENT_SHOWN}
           empty="The Markdown files you view, here or in Google Drive, show here."
         />
       </Section>
-      <Section title="Vaults">
-        <ItemListing
-          query={vaultsQuery(drive)}
-          trail={undefined}
-          empty="No Obsidian vault in your Drive: a vault is a folder with a .obsidian folder in it."
-        />
-      </Section>
-      <Section title="Browse">
-        <ul className="entries">
-          {Object.values(ROOTS).map((root) => (
-            <li key={root.href}>
-              <Link to={root.href} trail={[root]} className="entry folder">
-                {root.name}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </Section>
+      {/* The drawer or the rail beside it holds the vaults and the roots. */}
+      {drawer === undefined && (
+        <>
+          <Section title="Vaults">
+            <ItemListing
+              query={vaultsQuery(drive)}
+              trail={undefined}
+              folders="book"
+              empty="No Obsidian vault in your Drive: a vault is a folder with a .obsidian folder in it."
+            />
+          </Section>
+          <Section title="Browse">
+            <ul className="entries">
+              {ROOT_PLACES.map(({ root, icon }) => (
+                <li key={root.href}>
+                  <Link to={root.href} trail={[root]} className="entry folder">
+                    <Icon name={icon} />
+                    {root.name}
+                    <Icon name="chevron_right" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        </>
+      )}
     </>
   );
 }

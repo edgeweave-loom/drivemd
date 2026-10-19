@@ -15,6 +15,7 @@ import {
   useCallback,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import { useDrive } from "./drive-context.ts";
 import { inDrive } from "./drive-web.ts";
@@ -27,10 +28,16 @@ import {
   type FileMetadata,
   type FileRef,
 } from "./drive.ts";
+import { Icon } from "./Icon.tsx";
+import type { IconName } from "./icons.ts";
+import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
-import { useLayout } from "./layout.ts";
+import { openedFromDrive } from "./drive-tab.ts";
+import { PHONE, useLayout } from "./layout.ts";
 import { Loaded } from "./Loaded.tsx";
 import { Missing } from "./Missing.tsx";
+import { ModeMenu } from "./ModeMenu.tsx";
+import { useHoldNewVersion } from "./new-version.ts";
 import { useFollow } from "./follow.ts";
 import { Rendered } from "./Markdown.tsx";
 import { deleteDraftHolding, type Draft } from "./drafts.ts";
@@ -52,6 +59,7 @@ import {
   type Place,
 } from "./router.ts";
 import { saveText, type SaveResult } from "./save.ts";
+import { Snackbar } from "./Snackbar.tsx";
 import { decode, encode, sameBytes, type FileText } from "./text.ts";
 import { useNoteVault, type NoteVault } from "./vaults.ts";
 
@@ -79,7 +87,7 @@ function EditorMissing() {
   return <Missing part="editor" />;
 }
 
-const KEPT = new Intl.DateTimeFormat(undefined, {
+const WHEN = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
 });
@@ -154,6 +162,22 @@ function conflictName(name: string): string {
 }
 
 /**
+ * Who changed the file last, and when, as far as Drive says: maybe its
+ * details rather than its text, which the file's own fields do not tell.
+ */
+function changed({
+  modifiedTime,
+  lastModifiedBy,
+  lastModifiedByMe,
+}: FileMetadata): string {
+  const date = new Date(modifiedTime ?? Number.NaN);
+  const when = Number.isNaN(date.getTime()) ? "" : ` on ${WHEN.format(date)},`;
+  return lastModifiedByMe
+    ? `You changed it elsewhere${when} after you opened it here`
+    : `${lastModifiedBy ?? "Someone"} changed it${when} after you opened it`;
+}
+
+/**
  * Someone else saved the file since the user opened it: their version
  * against the user's, and the user's choice of which to keep.
  */
@@ -182,55 +206,67 @@ function Conflict({
   const [dropping, setDropping] = useState(false);
   return (
     <section className="conflict" aria-labelledby={id}>
-      <h3 id={id}>Someone changed this file in Google Drive</h3>
-      <p>
-        They saved a version since you opened yours, so DriveMD saved nothing.
-        Below, what yours removes from theirs is struck through, and what it
-        adds is highlighted.
-      </p>
-      <div className="actions">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => {
-            setDropping(true);
-          }}
-        >
-          Keep the Drive version
-        </button>
-        <button type="button" disabled={busy} onClick={onOverwrite}>
-          Overwrite with mine
-        </button>
-        {onCopy && (
-          <button type="button" disabled={busy} onClick={onCopy}>
-            Save mine as a copy
+      <div className="banner">
+        <Icon name="sync_problem" />
+        <h3 id={id}>Someone changed this file in Google Drive</h3>
+        <p>
+          {changed(theirs)}, so DriveMD saved nothing. Below, what your version
+          removes from Drive's is struck through, and what it adds is
+          underlined.
+        </p>
+        {/* By risk: the copy loses nothing, overwriting keeps Drive's version
+          in the history, and keeping Drive's drops the user's changes. */}
+        <div className="actions">
+          {onCopy && (
+            <button
+              type="button"
+              className="filled"
+              disabled={busy}
+              onClick={onCopy}
+            >
+              Save mine as a copy
+            </button>
+          )}
+          <button type="button" disabled={busy} onClick={onOverwrite}>
+            Overwrite with mine
           </button>
+          <button
+            type="button"
+            className="text danger"
+            disabled={busy}
+            onClick={() => {
+              setDropping(true);
+            }}
+          >
+            Keep the Drive version
+          </button>
+        </div>
+        {error && (
+          <p role="alert" className="failure">
+            {error instanceof CopyTakenError
+              ? error.message
+              : describeError(error)}
+          </p>
+        )}
+        {dropping && (
+          <ConfirmDialog
+            title="Drop your changes?"
+            action="Drop my changes"
+            danger
+            pending={false}
+            error={null}
+            onConfirm={onKeep}
+            onClose={() => {
+              setDropping(false);
+            }}
+          >
+            <p>
+              Your version of the note goes, and Google Drive's stays. This
+              cannot be undone.
+            </p>
+          </ConfirmDialog>
         )}
       </div>
-      {error && (
-        <p role="alert" className="failure">
-          {error instanceof CopyTakenError
-            ? error.message
-            : describeError(error)}
-        </p>
-      )}
-      {dropping && (
-        <ConfirmDialog
-          title="Drop your changes?"
-          action="Drop my changes"
-          pending={false}
-          error={null}
-          onConfirm={onKeep}
-          onClose={() => {
-            setDropping(false);
-          }}
-        >
-          <p>
-            Your version of the note goes, and Google Drive's stays. This cannot
-            be undone.
-          </p>
-        </ConfirmDialog>
-      )}
       <Loaded query={content}>
         {(note) => (
           <Suspense fallback={<p className="hint">Loading the differences…</p>}>
@@ -267,6 +303,17 @@ function Content({ file }: { file: FileMetadata }) {
   // Whether the editor shows, and on a phone, the source or the preview:
   // kept while another revision loads.
   const [editing, setEditing] = useState(false);
+  function edit(open: boolean) {
+    // The editor holds to the revision it opens with.
+    if (open) setHeld((now) => now ?? { opened: file });
+    setEditing(open);
+  }
+  // A tab opened from Drive opens the note in Editing on a wide screen, as
+  // Docs opens a document on a computer, and in reading on a phone: once,
+  // as the note first shows, if the user may edit it.
+  const [opening, setOpening] = useState(
+    () => openedFromDrive() && !window.matchMedia(PHONE).matches,
+  );
   const [pane, setPane] = useState<Pane>("source");
   // The revisions saved from this page, which the next save need not keep:
   // the one from before the first edit is kept, as is one someone else made.
@@ -339,12 +386,18 @@ function Content({ file }: { file: FileMetadata }) {
   useEffect(() => {
     if (keptAsIs !== undefined) void forgetKept(keptAsIs);
   }, [keptAsIs]);
+  if (opening && content.data) {
+    setOpening(false);
+    if (readOnly(file, content.data) === undefined) edit(true);
+  }
   // Out of the editor, the page shows Drive's latest again once it holds no
   // edits, or once it heard of the revision just saved; in the editor, Drive
   // never changes the text being typed.
   if (held && !editing && released(held, file, content.data)) {
     setHeld(undefined);
   }
+  // Someone else's revision, which a save found, until the user settles it.
+  const [conflict, setConflict] = useState<FileMetadata>();
   const save = useMutation({
     // Over the revision opened, or over someone else's, which the user chose
     // to overwrite after a conflict: theirs is kept in the history.
@@ -361,8 +414,10 @@ function Content({ file }: { file: FileMetadata }) {
       // Drive said which revision it holds: the page's details follow.
       if ("conflict" in result) {
         setDetails(client, result.conflict);
+        setConflict(result.conflict);
         return;
       }
+      setConflict(undefined);
       const { saved } = result;
       const revision = saved.headRevisionId;
       if (revision !== undefined) {
@@ -456,11 +511,7 @@ function Content({ file }: { file: FileMetadata }) {
             waiting={offered(kept.data, held, note)}
             session={shown.session}
             editing={editing}
-            onEditing={(open) => {
-              // The editor holds to the revision it opens with.
-              if (open) setHeld((now) => now ?? { opened: file });
-              setEditing(open);
-            }}
+            onEditing={edit}
             pane={pane}
             onPane={setPane}
             text={held?.text ?? note.text}
@@ -469,9 +520,11 @@ function Content({ file }: { file: FileMetadata }) {
             }}
             save={save}
             copy={copy}
+            conflict={conflict}
             onKeepTheirs={(theirs) => {
               // Their revision shows, in the editor too, without the edits.
               setHeld({ opened: theirs, newer: true });
+              setConflict(undefined);
               save.reset();
               copy.reset();
               madeCopy.current = undefined;
@@ -511,12 +564,12 @@ function Restore({
     <div className="warning restore">
       <p>
         You have unsaved changes to this note from{" "}
-        {KEPT.format(new Date(draft.keptAt))}, kept on this device.
+        {WHEN.format(new Date(draft.keptAt))}, kept on this device.
       </p>
       <div className="actions">
         <button
           type="button"
-          className="primary"
+          className="filled"
           onClick={() => {
             onRestore(draft);
           }}
@@ -528,6 +581,62 @@ function Restore({
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * A phone's choice of the source or the preview while editing: a segmented
+ * button, the half shown checked (docs/DESIGN.md, Source and Preview).
+ */
+function Panes({ pane, onPane }: { pane: Pane; onPane: (pane: Pane) => void }) {
+  const halves = [
+    { shows: "source", name: "Source", icon: "code" },
+    { shows: "preview", name: "Preview", icon: "visibility" },
+  ] as const;
+  return (
+    <div className="segmented" role="group" aria-label="Show">
+      {halves.map(({ shows, name, icon }) => (
+        <button
+          key={shows}
+          type="button"
+          aria-pressed={pane === shows}
+          onClick={() => {
+            onPane(shows);
+          }}
+        >
+          <Icon name={pane === shows ? "check" : icon} />
+          {name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Save, always in the same place and at the same width, so that nothing
+ * beside it moves: "Saved", a status that stays legible, "Save", or
+ * "Saving…" while Drive writes. Saved and Saving… stay reachable, to say
+ * where the note stands, but save nothing; a screen reader hears the change.
+ */
+function Save({
+  state,
+  onSave,
+}: {
+  state: "saved" | "save" | "saving";
+  onSave: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`save ${state === "save" ? "filled" : state === "saving" ? "tonal" : "saved"}`}
+      aria-disabled={state === "save" ? undefined : true}
+      aria-live="polite"
+      onClick={onSave}
+    >
+      {state === "saved" && <Icon name="cloud_done" />}
+      {state === "saving" && <span className="spinner" />}
+      {state === "saved" ? "Saved" : state === "saving" ? "Saving…" : "Save"}
+    </button>
   );
 }
 
@@ -550,6 +659,7 @@ function NoteView({
   onEdit,
   save,
   copy,
+  conflict,
   onKeepTheirs,
 }: {
   file: FileMetadata;
@@ -574,6 +684,8 @@ function NoteView({
     Error,
     { bytes: Uint8Array<ArrayBuffer>; folder: string }
   >;
+  /** Someone else's revision, which the user has yet to settle. */
+  conflict: FileMetadata | undefined;
   /** Drops the edits for the revision someone else saved. */
   onKeepTheirs: (theirs: FileMetadata) => void;
 }) {
@@ -611,13 +723,79 @@ function NoteView({
       guardLeaving(undefined);
     };
   }, [unsaved, file.id]);
-  const conflict =
-    save.data && "conflict" in save.data ? save.data.conflict : undefined;
+  // A new version waits for the changes to be saved, as they do meanwhile.
+  useHoldNewVersion(unsaved);
+  // The tab says that the note holds unsaved changes.
+  useEffect(() => {
+    if (!unsaved) return;
+    const title = document.title;
+    document.title = `• ${title}`;
+    return () => {
+      document.title = title;
+    };
+  }, [unsaved]);
   const [folder] = file.parents;
-  function saveNow() {
-    if (!unsaved || save.isPending) return;
+  // A phone reading the note floats Edit over it; Done is in the bar.
+  const floats = editable && layout === "phone" && !editing;
+  // Edit and Done are then two buttons: the focus goes from the one pressed
+  // to the one that takes its place.
+  const toggled = useRef(false);
+  // A save the user did not ask for with Save says that it saved, since
+  // nothing else shows it: the switch to reading, and a task ticked there.
+  const [saidSaved, setSaidSaved] = useState(0);
+  const saySaved = () => {
+    setSaidSaved((times) => times + 1);
+  };
+  const toggling = useCallback((button: HTMLButtonElement | null) => {
+    if (!button || !toggled.current) return;
+    toggled.current = false;
+    button.focus();
+  }, []);
+  /** Writes the text, then does `then` once saved without a conflict. */
+  function write(next: string, then?: () => void) {
     renew();
-    save.mutate({ bytes, text });
+    save.mutate(
+      { bytes: encode(next, note), text: next },
+      then && {
+        onSuccess: (result) => {
+          if (!("conflict" in result)) then();
+        },
+      },
+    );
+  }
+  /**
+   * Saves the note, if anything changed, then does `then` once saved; not
+   * while a conflict is open, which only the user's choice settles.
+   */
+  function saveThen(then?: () => void) {
+    if (!unsaved || save.isPending || conflict) return;
+    write(text, then);
+  }
+  function saveNow() {
+    saveThen();
+  }
+  // The text as it stands, which a save that ends compares with its own.
+  const latest = useRef(text);
+  useEffect(() => {
+    latest.current = text;
+  }, [text]);
+  // Viewing saves first: when someone else changed the note, or the save
+  // fails, the note stays in Editing with the banner that says why, and so
+  // it does when more was typed meanwhile, which is left to save.
+  function view(leaving?: () => void) {
+    const leave = () => {
+      leaving?.();
+      onEditing(false);
+    };
+    if (!unsaved) {
+      leave();
+      return;
+    }
+    const saving = text;
+    saveThen(() => {
+      saySaved();
+      if (latest.current === saving) leave();
+    });
   }
   // Cmd or Ctrl+S saves the note, where the editor or the viewer is, and
   // never the page itself, which would hold none of the note's bytes.
@@ -641,6 +819,28 @@ function NoteView({
   const rendered =
     !(editing && editable) || layout !== "phone" || pane === "preview";
   const previewed = source ? deferred : text;
+  // A task ticked in the note shown: while viewing, it saves at once, as on
+  // GitHub, so that a note being read holds no unsaved changes, unless other
+  // edits wait to be saved, which it joins rather than saving them unasked;
+  // the tasks wait while it saves, and while a conflict is to settle. While
+  // editing, it is an edit like any other, which the editor takes beside it.
+  const onTask = !editable
+    ? undefined
+    : editing
+      ? source
+        ? (toggled: string) => {
+            if (editor.current) editor.current.offer(previewed, toggled);
+            else onEdit(toggled);
+          }
+        : onEdit
+      : save.isPending || conflict
+        ? undefined
+        : unsaved
+          ? onEdit
+          : (toggled: string) => {
+              onEdit(toggled);
+              write(toggled, saySaved);
+            };
   const shown = rendered && vault.state !== "checking";
   // The part of the note the address leads to shows once the note does,
   // each time the address changes, but not as the note changes.
@@ -654,37 +854,55 @@ function NoteView({
       <div className="note-bar">
         {reason && <p className="badge read-only">{reason}</p>}
         {editable && layout === "phone" && editing && (
-          <button
-            type="button"
-            onClick={() => {
-              onPane(pane === "source" ? "preview" : "source");
-            }}
-          >
-            {pane === "source" ? "Preview" : "Source"}
-          </button>
+          <Panes pane={pane} onPane={onPane} />
         )}
-        {editable && (
-          <button
-            type="button"
-            onClick={() => {
-              onEditing(!editing);
-            }}
-          >
-            {editing ? "Done" : "Edit"}
-          </button>
-        )}
-        {unsaved && !conflict && (
-          <>
-            <span className="hint">Unsaved changes</span>
-            <button
-              type="button"
-              className="primary"
-              disabled={save.isPending}
-              onClick={saveNow}
-            >
-              {save.isPending ? "Saving…" : "Save"}
-            </button>
-          </>
+        {editable &&
+          !floats &&
+          (layout === "phone" ? (
+            // A check at the start of the bar, which saves first, as Viewing
+            // does, then gives way to the floating Edit. It gives way to
+            // Back, which leaves the note, while a save failed or a conflict
+            // is open, as the note can then neither save nor be read alone.
+            !save.error &&
+            !conflict && (
+              <InSlot name="lead">
+                <button
+                  ref={toggling}
+                  type="button"
+                  className="icon-button"
+                  aria-label="Done"
+                  title="Done"
+                  onClick={() => {
+                    view(() => {
+                      toggled.current = true;
+                    });
+                  }}
+                >
+                  <Icon name="check" />
+                </button>
+              </InSlot>
+            )
+          ) : (
+            <InSlot name="mode">
+              <ModeMenu
+                editing={editing}
+                onPick={(edits) => {
+                  if (edits) onEditing(true);
+                  else view();
+                }}
+              />
+            </InSlot>
+          ))}
+        {/* While the page waits for an answer about changes kept on the
+            device, too: nothing is unsaved yet. During a conflict, only while
+            the user's version overwrites Drive's. */}
+        {reason === undefined && (!conflict || save.isPending) && (
+          <InSlot name="save">
+            <Save
+              state={save.isPending ? "saving" : unsaved ? "save" : "saved"}
+              onSave={saveNow}
+            />
+          </InSlot>
         )}
       </div>
       {conflict && (
@@ -692,12 +910,13 @@ function NoteView({
           theirs={conflict}
           mine={text}
           busy={save.isPending || copy.isPending}
-          error={copy.error}
+          error={copy.error ?? save.error}
           onKeep={() => {
             onKeepTheirs(conflict);
           }}
           onOverwrite={() => {
             renew();
+            copy.reset();
             save.mutate({ bytes, text, over: conflict });
           }}
           onCopy={
@@ -705,63 +924,105 @@ function NoteView({
               ? undefined
               : () => {
                   renew();
+                  save.reset();
                   copy.mutate({ bytes, folder });
                 }
           }
         />
       )}
-      {save.error && (
+      {save.error && !conflict && (
         <p role="alert" className="failure">
           {describeError(save.error)}
         </p>
       )}
-      <div className={source && rendered ? "editing" : undefined}>
+      {/* On a sheet, as Docs shows a page on a wide screen, or while
+          editing there, the source and the preview on two, side by side.
+          The note shown keeps its place as editing starts and ends. */}
+      <div className={source && rendered ? "sheets editing" : "sheets"}>
         {source && (
-          <Suspense fallback={<p className="hint">Loading the editor…</p>}>
-            <Editor
-              key={session}
-              ref={editor}
-              initial={text}
-              lineBreak={note.lineBreak}
-              onChange={onEdit}
-              onFollow={follow}
-            />
-          </Suspense>
+          <Sheet label={rendered && "Markdown"} icon="code">
+            <Suspense fallback={<p className="hint">Loading the editor…</p>}>
+              <Editor
+                key={session}
+                ref={editor}
+                initial={text}
+                lineBreak={note.lineBreak}
+                onChange={onEdit}
+                onFollow={follow}
+              />
+            </Suspense>
+          </Sheet>
         )}
-        {rendered && vault.state === "checking" && (
-          // Rendered as Markdown first, a note of a vault would change once
-          // the check answers.
-          <p className="hint">Loading…</p>
-        )}
-        {rendered && vault.state === "unknown" && (
-          <p className="hint">
-            DriveMD could not check whether this note is in an Obsidian vault,
-            so it shows as Markdown, without Obsidian's syntax.
-          </p>
-        )}
-        {shown && (
-          <Rendered
-            text={previewed}
-            folder={folderOf(file)}
-            vault={vault.state === "inside" ? vault.vault : undefined}
-            note={file}
-            onEdit={
-              !editable
-                ? undefined
-                : source
-                  ? // The editor, once it shows, holds the text: the tap goes
-                    // through it.
-                    (toggled) => {
-                      if (editor.current)
-                        editor.current.offer(previewed, toggled);
-                      else onEdit(toggled);
-                    }
-                  : onEdit
-            }
-          />
+        {rendered && (
+          <Sheet label={source && "Preview"} icon="visibility">
+            {vault.state === "checking" && (
+              // Rendered as Markdown first, a note of a vault would change
+              // once the check answers.
+              <p className="hint">Loading…</p>
+            )}
+            {vault.state === "unknown" && (
+              <p className="hint">
+                DriveMD could not check whether this note is in an Obsidian
+                vault, so it shows as Markdown, without Obsidian's syntax.
+              </p>
+            )}
+            {shown && (
+              <Rendered
+                text={previewed}
+                folder={folderOf(file)}
+                vault={vault.state === "inside" ? vault.vault : undefined}
+                note={file}
+                onEdit={onTask}
+              />
+            )}
+          </Sheet>
         )}
       </div>
+      {floats && (
+        // Floating over the note a phone reads, as in Docs's app, and after
+        // it, where it shows.
+        <button
+          ref={toggling}
+          type="button"
+          className="tonal fab"
+          onClick={() => {
+            toggled.current = true;
+            onEditing(true);
+          }}
+        >
+          <Icon name="edit" />
+          Edit
+        </button>
+      )}
+      <Snackbar times={saidSaved} message="Saved to Google Drive" />
     </>
+  );
+}
+
+/**
+ * A sheet of the note, named where another shows beside it: a region of the
+ * page, which leaves the note's own headings as they are.
+ */
+function Sheet({
+  label,
+  icon,
+  children,
+}: {
+  label: string | false;
+  icon: IconName;
+  children: ReactNode;
+}) {
+  const id = useId();
+  return (
+    <section className="sheet" aria-labelledby={label ? id : undefined}>
+      {label && (
+        <p className="label" id={id}>
+          <Icon name={icon} />
+          {label}
+        </p>
+      )}
+      {children}
+    </section>
   );
 }
 

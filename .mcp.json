@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "mobile": {
+      "type": "stdio",
+      "command": "pnpm",
+      "args": [
+        "--config.node-linker=hoisted",
+        "dlx",
+        "@mobilenext/mobile-mcp@1.0.8"
+      ],
+      "env": { "MOBILEMCP_DISABLE_TELEMETRY": "1" }
+    }
+  }
+}

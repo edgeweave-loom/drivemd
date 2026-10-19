@@ -1,9 +1,17 @@
 import { EditorView } from "@codemirror/view";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { onlineManager } from "@tanstack/react-query";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { FileMetadata } from "./drive.ts";
+import { DriveError, type FileMetadata } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
 import { driveItem, metadata } from "./test/drive-items.ts";
+import { pickMode } from "./test/actions.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 import { renderWithDrive } from "./test/render.tsx";
 import { holdScreen } from "./test/screen.ts";
@@ -70,7 +78,7 @@ describe("editing a note's source", () => {
   it("shows the source beside the preview on a wide screen, and saves it", async () => {
     holdScreen("wide");
     const { drive } = open();
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await pickMode("Editing");
 
     const view = await editor();
     expect(view.state.sliceDoc()).toBe("# Tea\r\n\r\n- [ ] Boil\r\n");
@@ -78,7 +86,7 @@ describe("editing a note's source", () => {
     expect(
       screen.getByText("Green.", { selector: ".markdown p" }),
     ).toBeVisible();
-    expect(screen.getByText("Unsaved changes")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
@@ -89,10 +97,27 @@ describe("editing a note's source", () => {
     });
   });
 
+  it("names the source and the preview on a wide screen, keeping the note shown", async () => {
+    holdScreen("wide");
+    open();
+    await screen.findByRole("heading", { name: "Tea" });
+    const shown = document.querySelector(".markdown");
+    await pickMode("Editing");
+    await editor();
+
+    // As regions, which leave the note's own headings as they are.
+    const [source, preview] = screen.getAllByRole("region");
+    expect(source).toHaveAccessibleName("Markdown");
+    expect(preview).toHaveAccessibleName("Preview");
+    expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
+    // As it was, its folded parts too, rather than drawn anew.
+    expect(document.querySelector(".markdown")).toBe(shown);
+  });
+
   it("brings a task tapped in the preview into the source", async () => {
     holdScreen("wide");
     open();
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await pickMode("Editing");
     const view = await editor();
 
     fireEvent.click(screen.getByRole("checkbox"));
@@ -107,17 +132,28 @@ describe("editing a note's source", () => {
     type(await editor(), "\r\nGreen.");
 
     expect(screen.queryByRole("heading", { name: "Tea" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    // The switch names what shows, which needs no label of its own.
+    expect(screen.queryByRole("region", { name: "Markdown" })).toBeNull();
+    const show = screen.getByRole("group", { name: "Show" });
+    const source = within(show).getByRole("button", { name: "Source" });
+    const preview = within(show).getByRole("button", { name: "Preview" });
+    expect(source).toHaveAttribute("aria-pressed", "true");
+    expect(preview).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(preview);
     expect(screen.getByText("Green.")).toBeVisible();
     expect(editorShown()).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "Source" }));
+    expect(preview).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(preview);
+    expect(editorShown()).toBe(false);
+    fireEvent.click(source);
     expect((await editor()).state.sliceDoc()).toContain("Green.");
+    expect(source).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("keeps the revision opened while editing, and shows Drive's newer one after Done", async () => {
+  it("keeps the revision opened while editing, and shows Drive's newer one once viewing", async () => {
     holdScreen("wide");
     const { drive, rerender } = open();
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await pickMode("Editing");
     const view = await editor();
     type(view, "x");
 
@@ -135,10 +171,12 @@ describe("editing a note's source", () => {
     expect(screen.queryByText("Loading…")).toBeNull();
     expect(drive.getContent).toHaveBeenCalledOnce();
 
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    await pickMode("Viewing");
     expect(
       await screen.findByRole("heading", { name: "Coffee" }),
     ).toBeVisible();
+    // The edit was undone: nothing was written.
+    expect(drive.saveContent).not.toHaveBeenCalled();
   });
 
   it("keeps as unsaved an undo made while a save runs", async () => {
@@ -151,7 +189,7 @@ describe("editing a note's source", () => {
           answer = resolve;
         }),
     );
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await pickMode("Editing");
     const view = await editor();
     type(view, "x");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -164,15 +202,14 @@ describe("editing a note's source", () => {
     });
     answer(metadata(PLAN, { headRevisionId: "revision-2" }));
 
-    await screen.findByRole("button", { name: "Save" });
-    expect(screen.getByText("Unsaved changes")).toBeVisible();
+    expect(await screen.findByRole("button", { name: "Save" })).toBeVisible();
     expect(view.state.sliceDoc()).toBe("# Tea\r\n\r\n- [ ] Boil\r\n");
   });
 
   it("keeps the same editor, its cursor and history, after a save", async () => {
     holdScreen("wide");
     const { drive, rerender } = open();
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await pickMode("Editing");
     const view = await editor();
     type(view, "\r\nGreen.");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -180,7 +217,7 @@ describe("editing a note's source", () => {
       expect(drive.saveContent).toHaveBeenCalledOnce();
     });
     await waitFor(() => {
-      expect(screen.queryByText("Unsaved changes")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     });
 
     rerender(
@@ -190,17 +227,62 @@ describe("editing a note's source", () => {
     expect(await editor()).toBe(view);
   });
 
-  it("leaves the editor with Done, keeping the edits to save", async () => {
-    holdScreen("wide");
-    open();
+  it("saves before leaving a phone's editor with Done", async () => {
+    const { drive } = open();
     fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
     type(await editor(), "\r\nGreen.");
 
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
 
+    expect(await screen.findByRole("button", { name: "Edit" })).toBeVisible();
+    expect(drive.saveContent).toHaveBeenCalledExactlyOnceWith(
+      PLAN,
+      utf8("# Tea\r\n\r\n- [ ] Boil\r\n\r\nGreen."),
+    );
     expect(editorShown()).toBe(false);
     expect(screen.getByText("Green.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Saved" })).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Saved to Google Drive",
+    );
+  });
+
+  it("stays in a phone's editor when Done cannot save, saying why", async () => {
+    const { drive } = open();
+    drive.saveContent.mockRejectedValue(
+      new DriveError(403, "The user does not have sufficient permissions."),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    type(await editor(), "\r\nGreen.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The user does not have sufficient permissions.",
+    );
+    expect(editorShown()).toBe(true);
+    // Done gives way to Back meanwhile, which leaves the note.
+    expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
     expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Edit" })).toBeVisible();
+  });
+
+  it("says at once that Done cannot save while the device is offline", async () => {
+    const { drive } = open();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    type(await editor(), "\r\nGreen.");
+    onlineManager.setOnline(false);
+    drive.getMetadata.mockRejectedValue(
+      new DriveError(0, "Google Drive could not be reached"),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Google Drive could not be reached. Check your connection.",
+    );
+    expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
+    expect(drive.keepRevision).not.toHaveBeenCalled();
+    expect(drive.saveContent).not.toHaveBeenCalled();
   });
 });

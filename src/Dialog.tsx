@@ -1,9 +1,12 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { describeError } from "./errors.ts";
+import { keepVisible } from "./visual-viewport.ts";
 
 /**
  * A modal dialog, open while it is shown: the page behind it is out of
- * reach. Escape closes it, unless it has no onClose.
+ * reach. Escape closes it, unless it has no onClose. Once the page drops it,
+ * the focus goes back to what had it, if still there, as when it closes.
+ * It stays above the keyboard, which Safari on an iPhone lays it out under.
  */
 export function Dialog({
   title,
@@ -11,16 +14,29 @@ export function Dialog({
   onClose,
   children,
 }: {
-  title: string;
+  /** What heads it and names it. */
+  title: ReactNode;
   className?: string;
   onClose?: (() => void) | undefined;
   children: ReactNode;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const opener = useRef<Element>(null);
   const titleId = useId();
   useEffect(() => {
     // React may run this twice, and a modal dialog cannot open twice.
-    if (dialog.current?.open === false) dialog.current.showModal();
+    if (dialog.current?.open === false) {
+      opener.current = document.activeElement;
+      dialog.current.showModal();
+    }
+    const stop = dialog.current && keepVisible(dialog.current);
+    return () => {
+      stop?.();
+      const { current } = opener;
+      if (current instanceof HTMLElement && current.isConnected) {
+        current.focus();
+      }
+    };
   }, []);
   return (
     <dialog
@@ -65,6 +81,7 @@ export function Dialog({
 export function ConfirmDialog({
   title,
   action,
+  danger = false,
   pending,
   error,
   onConfirm,
@@ -73,6 +90,8 @@ export function ConfirmDialog({
 }: {
   title: string;
   action: string;
+  /** Whether the action loses something, which then shows as a danger. */
+  danger?: boolean;
   pending: boolean;
   error: Error | null;
   /** Does the action; undefined while it may not go ahead yet. */
@@ -101,7 +120,7 @@ export function ConfirmDialog({
           </button>
           <button
             type="submit"
-            className="primary"
+            className={danger ? "danger" : "filled"}
             disabled={pending || !onConfirm}
           >
             {action}
@@ -172,6 +191,7 @@ export function NameDialog({
           }}
           autoComplete="off"
           autoCapitalize="none"
+          autoCorrect="off"
           spellCheck={false}
         />
       </label>

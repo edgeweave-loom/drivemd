@@ -1,29 +1,117 @@
-import type { EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import {
+  StateEffect,
+  StateField,
+  type EditorState,
+  type Extension,
+} from "@codemirror/state";
+import { EditorView, ViewPlugin } from "@codemirror/view";
+import { TOUCH } from "./layout.ts";
 
-/** The editor in the app's colors, light or dark as the system is. */
-export const THEME = EditorView.theme({
+// The app's theme is dark when the system's is, on a touch screen only: a
+// computer keeps the light theme (src/tokens.css).
+const DARK = `(prefers-color-scheme: dark) and ${TOUCH}`;
+
+const turnDark = StateEffect.define<boolean>();
+
+// Whether the app's theme is dark, which CodeMirror cannot tell from its
+// colors: its packages, such as @codemirror/merge, otherwise style
+// themselves for a light theme.
+const themeDark = StateField.define<boolean>({
+  create: () => window.matchMedia(DARK).matches,
+  update: (dark, transaction) =>
+    transaction.effects.reduce(
+      (value, effect) => (effect.is(turnDark) ? effect.value : value),
+      dark,
+    ),
+  provide: (field) => EditorView.darkTheme.from(field),
+});
+
+const followTheme = ViewPlugin.define((view) => {
+  const query = window.matchMedia(DARK);
+  const follow = () => {
+    view.dispatch({ effects: turnDark.of(query.matches) });
+  };
+  query.addEventListener("change", follow);
+  return {
+    destroy: () => {
+      query.removeEventListener("change", follow);
+    },
+  };
+});
+
+// CodeMirror measures its lines again once the fonts loading as it starts
+// are in, but not for a font that loads later, as one does when the text
+// first shows letters of its script or code: lines may then wrap anew.
+const measureOnFonts = ViewPlugin.define((view) => {
+  const measure = () => {
+    view.requestMeasure();
+  };
+  document.fonts.addEventListener("loadingdone", measure);
+  return {
+    destroy: () => {
+      document.fonts.removeEventListener("loadingdone", measure);
+    },
+  };
+});
+
+const COLORS = EditorView.theme({
   "&": {
-    border: "1px solid var(--border)",
-    borderRadius: "0.5rem",
-    background: "var(--background)",
-    color: "var(--text)",
+    color: "var(--on-surface)",
     // Safari zooms in on a field whose text is smaller.
     fontSize: "max(16px, 1rem)",
   },
-  "&.cm-focused": { outline: "2px solid var(--accent)" },
-  ".cm-scroller": { fontFamily: "inherit", lineHeight: "1.5" },
-  ".cm-content": { caretColor: "var(--text)" },
-  ".cm-cursor": { borderLeftColor: "var(--text)" },
+  ".cm-scroller": { fontFamily: "inherit" },
+  ".cm-content": { caretColor: "var(--on-surface)" },
+  ".cm-cursor": { borderLeftColor: "var(--on-surface)" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground":
-    { background: "color-mix(in srgb, var(--accent) 30%, transparent)" },
-  ".cm-code-line": { fontFamily: "var(--monospace)" },
-  ".cm-panels": {
-    borderColor: "var(--border)",
-    background: "var(--surface)",
-    color: "inherit",
+    { background: "color-mix(in srgb, var(--primary) 30%, transparent)" },
+  ".cm-code-line": { fontFamily: "var(--font-mono)" },
+  // Find in note's matches, the selected one stronger and outlined, and
+  // the selected text's other occurrences, fainter.
+  ".cm-searchMatch": { backgroundColor: "var(--secondary-container)" },
+  ".cm-searchMatch-selected": {
+    backgroundColor: "var(--primary-container)",
+    outline: "1px solid var(--primary)",
+  },
+  ".cm-selectionMatch": {
+    backgroundColor: "color-mix(in srgb, var(--primary) 12%, transparent)",
+  },
+  // The differences: what the user's version adds underlined, and what it
+  // removes struck through, never told by color alone, its lines on colors
+  // of their own. The selectors match @codemirror/merge's own, which they
+  // replace.
+  "&.cm-merge-b .cm-changedLine": {
+    background: "var(--diff-added)",
+    color: "var(--on-tertiary-container)",
+  },
+  "&.cm-merge-b .cm-changedText": {
+    background: "none",
+    textDecoration: "underline",
+  },
+  ".cm-deletedChunk": {
+    background: "var(--diff-removed)",
+    color: "var(--on-error-container)",
+  },
+  "&.cm-merge-b .cm-deletedText, .cm-deletedChunk .cm-deletedText": {
+    background: "none",
+    textDecoration: "line-through",
+  },
+  ".cm-collapsedLines": {
+    background: "var(--surface-container)",
+    color: "var(--on-surface-variant)",
   },
 });
+
+/**
+ * The editor in the app's colors, light or dark as the app's theme is, and
+ * in its fonts.
+ */
+export const THEME: Extension = [
+  COLORS,
+  themeDark,
+  followTheme,
+  measureOnFonts,
+];
 
 /**
  * A CodeMirror view in the element's shadow root. There, CodeMirror styles

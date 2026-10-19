@@ -2,12 +2,32 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="DriveMD" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- The page's background, the surface token of src/tokens.css, for the
+         browser's and the installed app's bars: dark only where the theme
+         is, on a touch screen. A phone's full-screen search gives them its
+         own, surface-container-high (src/theme-color.ts). -->
+    <meta
+      name="theme-color"
+      media="(prefers-color-scheme: light), (not (pointer: coarse))"
+      content="#f7f9fd"
+      data-search="#e6e8eb"
+    />
+    <meta
+      name="theme-color"
+      media="(prefers-color-scheme: dark) and (pointer: coarse)"
+      content="#101416"
+      data-search="#272a2d"
+    />
     <title>DriveMD</title>
   </head>
   <body>

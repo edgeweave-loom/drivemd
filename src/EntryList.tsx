@@ -3,13 +3,19 @@ import {
   type QueryKey,
   type UseQueryOptions,
 } from "@tanstack/react-query";
+import { useId, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useDrive } from "./drive-context.ts";
 import type { DriveItem, ShortcutTarget } from "./drive.ts";
+import { Icon } from "./Icon.tsx";
+import type { IconName } from "./icons.ts";
 import { Link } from "./Link.tsx";
-import { BROKEN, entriesOf, type Entry } from "./listing.ts";
+import { BROKEN, entriesOf, modifiedLine, type Entry } from "./listing.ts";
 import { Loaded } from "./Loaded.tsx";
-import { shortcutQuery } from "./queries.ts";
+import { locationQuery, shortcutQuery } from "./queries.ts";
+import { ROOTS } from "./roots.ts";
 import { hrefOf, type Crumb } from "./router.ts";
+import { useSeen } from "./seen.ts";
 
 /** The entries among the items the query finds, once Drive has answered. */
 export function ItemListing<Answer, Key extends QueryKey>({
@@ -19,6 +25,9 @@ export function ItemListing<Answer, Key extends QueryKey>({
   current,
   missing,
   empty,
+  folders,
+  located = false,
+  limit,
 }: {
   query: UseQueryOptions<Answer, Error, DriveItem[], Key>;
   /** By name, unless Drive's own order says more, as in search results. */
@@ -29,6 +38,12 @@ export function ItemListing<Answer, Key extends QueryKey>({
   /** What to say when Drive answers that the list's source is not there. */
   missing?: string;
   empty: string;
+  /** How the list's folders show, when they are more than folders. */
+  folders?: IconName;
+  /** Whether each row gives the folder its item sits in. */
+  located?: boolean;
+  /** How many entries show until the user asks for all. */
+  limit?: number;
 }) {
   const items = useQuery(query);
   return (
@@ -39,6 +54,9 @@ export function ItemListing<Answer, Key extends QueryKey>({
           trail={trail}
           current={current}
           empty={empty}
+          folders={folders}
+          located={located}
+          limit={limit}
         />
       )}
     </Loaded>
@@ -51,48 +69,96 @@ export function EntryList({
   trail,
   current,
   empty,
+  folders = "folder",
+  located = false,
+  limit,
 }: {
   entries: Entry[];
   trail: Crumb[] | undefined;
   current?: string | undefined;
   /** What to say when there is nothing to show. */
   empty: string;
+  folders?: IconName | undefined;
+  located?: boolean;
+  limit?: number | undefined;
 }) {
+  const list = useRef<HTMLUListElement>(null);
+  // Folded again each time the list shows anew.
+  const [all, setAll] = useState(false);
   if (entries.length === 0) return <p className="hint">{empty}</p>;
+  const shown = all ? entries : entries.slice(0, limit);
+  function showAll() {
+    const revealed = shown.length;
+    flushSync(() => {
+      setAll(true);
+    });
+    // The first entry it revealed takes the focus the button had.
+    const links = list.current?.querySelectorAll<HTMLElement>(
+      ":scope > li:not(.entries-head) > a",
+    );
+    links?.[revealed]?.focus();
+  }
   return (
-    <ul className="entries">
-      {entries.map((entry) => (
-        <li key={entry.id}>
-          {entry.target ? (
-            <ShortcutEntry
-              entry={entry}
-              target={entry.target}
-              trail={trail}
-              current={entry.opens.id === current}
-            />
-          ) : (
-            <EntryLink
-              entry={entry}
-              trail={trail}
-              current={entry.opens.id === current}
-            />
-          )}
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className="entries" ref={list}>
+        {/* The table's head, which each row's name and description say. */}
+        {entries.some((entry) => modifiedLine(entry) !== undefined) && (
+          <li className="entries-head" aria-hidden="true">
+            <span>Name</span>
+            {located && <span>Location</span>}
+            <span>Modified</span>
+          </li>
+        )}
+        {shown.map((entry) => (
+          <li key={entry.id}>
+            {entry.target ? (
+              <ShortcutEntry
+                entry={entry}
+                target={entry.target}
+                trail={trail}
+                current={entry.opens.id === current}
+                located={located}
+              />
+            ) : (
+              <EntryLink
+                entry={entry}
+                trail={trail}
+                current={entry.opens.id === current}
+                folders={folders}
+                located={located}
+              />
+            )}
+          </li>
+        ))}
+      </ul>
+      {limit !== undefined && shown.length < entries.length && (
+        <button type="button" className="text" onClick={showAll}>
+          Show all
+        </button>
+      )}
+    </>
   );
 }
 
 function EntryLink({
-  entry: { kind, name, opens, target },
+  entry,
   trail,
   current = false,
+  folders = "folder",
+  located = false,
 }: {
   entry: Entry;
   trail: Crumb[] | undefined;
   /** Whether the page shows the entry itself. */
   current?: boolean;
+  folders?: IconName;
+  located?: boolean;
 }) {
+  const { kind, name, opens, target } = entry;
+  const ids = useId();
+  const when = modifiedLine(entry);
+  const note = current ? "description_fill" : "description";
+  const icon = target ? "shortcut" : kind === "folder" ? folders : note;
   const href = hrefOf(
     kind === "folder"
       ? { name: "folder", folder: opens }
@@ -104,9 +170,41 @@ function EntryLink({
       trail={trail && [...trail, { name, href }]}
       className={`entry ${kind}`}
       current={current}
+      // Named by its name; when it changed, described.
+      aria-labelledby={`${ids}-title`}
+      aria-describedby={
+        [located && `${ids}-where`, when && `${ids}-when`]
+          .filter(Boolean)
+          .join(" ") || undefined
+      }
     >
-      <span className="name">{name}</span>
-      {target && <span className="badge">Shortcut</span>}
+      <Icon name={icon} />
+      <span id={`${ids}-title`} className="title">
+        <span className="name">{name}</span>
+        {target && (
+          <>
+            {" "}
+            <span className="badge">Shortcut</span>
+          </>
+        )}
+      </span>
+      {(located || when) && (
+        <span className="details">
+          {located && (
+            <Location
+              id={`${ids}-where`}
+              entry={entry}
+              followed={when !== undefined}
+            />
+          )}
+          {when && (
+            <span id={`${ids}-when`} className="modified">
+              {when}
+            </span>
+          )}
+        </span>
+      )}
+      {kind === "folder" && <Icon name="chevron_right" />}
     </Link>
   );
 }
@@ -120,17 +218,27 @@ function ShortcutEntry({
   target,
   trail,
   current,
+  located,
 }: {
   entry: Entry;
   target: ShortcutTarget;
   trail: Crumb[] | undefined;
   current: boolean;
+  located: boolean;
 }) {
   const { drive } = useDrive();
+  const ids = useId();
   const check = useQuery(shortcutQuery(drive, target));
   const broken = check.data;
   if (!broken) {
-    return <EntryLink entry={entry} trail={trail} current={current} />;
+    return (
+      <EntryLink
+        entry={entry}
+        trail={trail}
+        current={current}
+        located={located}
+      />
+    );
   }
   return (
     // A link without an address: it is there, but opens nothing.
@@ -138,10 +246,59 @@ function ShortcutEntry({
       role="link"
       aria-disabled="true"
       className={`entry ${entry.kind} broken`}
+      aria-labelledby={`${ids}-title`}
+      aria-describedby={`${ids}-why`}
     >
-      <span className="name">{entry.name}</span>
-      <span className="badge">Shortcut</span>
-      <span className="reason">{BROKEN[broken]}</span>
+      <Icon name="link_off" />
+      <span id={`${ids}-title`} className="title">
+        <span className="name">{entry.name}</span>{" "}
+        <span className="badge">Shortcut</span>
+      </span>
+      {/* Why it opens nothing, where its time of change would be. */}
+      <span className="details">
+        {/* Where the reason lines up with the times of change. */}
+        {located && <span className="location" />}
+        <span id={`${ids}-why`} className="modified reason">
+          {BROKEN[broken]}
+        </span>
+      </span>
     </a>
+  );
+}
+
+/**
+ * The folder an entry sits in, which Drive names once the row comes near
+ * the screen: a call per note, a few at a time. A note whose folder Drive
+ * does not name was shared with the user on its own.
+ */
+function Location({
+  id,
+  entry,
+  followed,
+}: {
+  id: string;
+  entry: Entry;
+  /** Whether the time of change follows, which a phone joins to it. */
+  followed: boolean;
+}) {
+  const { drive } = useDrive();
+  const [seen, near] = useSeen();
+  const folder = useQuery({
+    ...locationQuery(drive, entry.parent),
+    enabled: seen,
+  });
+  const name =
+    entry.parent === undefined ? ROOTS.sharedWithMe.name : folder.data;
+  return (
+    <>
+      <span id={id} ref={near} className="location">
+        {name}
+      </span>
+      {name && followed && (
+        <span className="separator" aria-hidden="true">
+          {" · "}
+        </span>
+      )}
+    </>
   );
 }

@@ -3,22 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="light dark" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <title>About DriveMD</title>
     <link rel="stylesheet" href="/src/index.css" />
   </head>
   <body>
-    <!-- The Marketplace listing links to each part: needs no sign-in, and no
-         script. -->
+    <!-- The Marketplace listing links to each part: needs no sign-in. The
+         script only brings the Close button, which stays hidden without it. -->
     <main class="page about">
       <h1>About DriveMD</h1>
       <p>
         DriveMD lets people at Edgeweave browse, view and edit the Markdown
         files in their Google Drive, on a computer or a phone. It is an internal
-        tool: only accounts of our Google Workspace organization can sign in.
+        tool: only accounts of our Google Workspace organization can
+        <a href="/">sign in to DriveMD</a>.
       </p>
-      <p><a href="/">Open DriveMD</a></p>
+      <button type="button" class="close tonal" hidden>Close</button>
 
       <section id="privacy">
         <h2>Privacy</h2>
@@ -62,7 +62,8 @@
             own, has no analytics or ads, and shares nothing with anyone.
             Firebase Hosting, Google's web host, serves the app's files: it sees
             the address of each page you load, which can name a Drive file or
-            folder, and your browser's network address, as any web host does,
+            folder, or hold what you share with DriveMD from another app on
+            Android, and your browser's network address, as any web host does,
             but never what your notes hold.
           </li>
         </ul>
@@ -94,10 +95,41 @@
           <a href="https://github.com/edgeweave-loom/drivemd/issues"
             >GitHub issues</a
           >. Say what you did and what you saw, but leave out page addresses,
-          file and folder names and what your notes hold: the project may become
-          public.
+          file and folder names and what your notes hold: anyone can read the
+          issues.
+        </p>
+      </section>
+
+      <section id="source">
+        <h2>Source code</h2>
+        <p>
+          DriveMD is free software. Its
+          <a href="https://github.com/edgeweave-loom/drivemd">source code</a> is
+          public, and you may run it, change it and share it under the terms of
+          its <a href="https://www.gnu.org/licenses/agpl-3.0.html">license</a>,
+          the GNU Affero General Public License, version 3 or later. It comes
+          without any warranty.
+        </p>
+        <p>
+          Its icon draws the Markdown mark by Dustin Curtis, which he dedicated
+          to the public domain. The icons in its pages are Google's
+          <a href="https://github.com/google/material-design-icons"
+            >Material Symbols</a
+          >, under the
+          <a href="https://www.apache.org/licenses/LICENSE-2.0"
+            >Apache License 2.0</a
+          >. Its fonts are Google's
+          <a href="https://fonts.google.com/specimen/Google+Sans+Flex"
+            >Google Sans Flex</a
+          >, copyright 2015 Google LLC, and
+          <a href="https://github.com/googlefonts/googlesans-code"
+            >Google Sans Code</a
+          >, copyright 2025 The Google Sans Code Project Authors, under the
+          <a href="https://openfontlicense.org">SIL Open Font License</a>,
+          version 1.1.
         </p>
       </section>
     </main>
+    <script type="module" src="/src/about.ts"></script>
   </body>
 </html>

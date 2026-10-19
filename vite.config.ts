@@ -1,7 +1,10 @@
 import react from "@vitejs/plugin-react";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { appVersion } from "./build-version.ts";
 import firebase from "./firebase.json" with { type: "json" };
+import pkg from "./package.json" with { type: "json" };
 
 // The OAuth client authorizes http://localhost:5173 and no other local origin.
 const port = 5173;
@@ -25,8 +28,35 @@ const entities = fileURLToPath(
   ),
 );
 
+// CI builds production from main; every other build is a beta.
+const release = appVersion(
+  pkg.version,
+  process.env.GITHUB_REF === "refs/heads/main",
+  (...args) =>
+    execFileSync("git", args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim(),
+);
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      // The version Hosting serves, which an open page compares with its own
+      // to offer a new one (src/new-version.ts). Hosting serves it, as the
+      // app's page, without letting the browser keep it.
+      name: "version-file",
+      generateBundle() {
+        this.emitFile({
+          type: "asset",
+          fileName: "version.json",
+          source: JSON.stringify({ version: release }),
+        });
+      },
+    },
+  ],
+  define: { __APP_VERSION__: JSON.stringify(release) },
   resolve: {
     alias: [
       { find: /^decode-named-character-reference$/, replacement: entities },
@@ -35,9 +65,13 @@ export default defineConfig({
   server: { port, strictPort: true },
   preview: { port, strictPort: true, headers },
   build: {
+    // The security policy loads nothing from a data: address, which Vite
+    // would otherwise make of a file under 4 KB, such as a font's subset.
+    assetsInlineLimit: 0,
     rolldownOptions: {
       // The about page, which the Marketplace listing links to, is a page of
-      // its own, readable without signing in and without script.
+      // its own, readable without signing in; its one script brings the
+      // Close button.
       input: ["index.html", "about.html"].map((page) =>
         fileURLToPath(new URL(page, import.meta.url)),
       ),
@@ -70,7 +104,9 @@ export default defineConfig({
         branches: 90,
         // These modules handle full-Drive tokens, or the bytes written back
         // to Drive: every branch is tested.
-        "{src/{auth,drive,save,session,text},live/grant}.ts": { 100: true },
+        "{src/{auth,drive,save,session,storage,text},live/grant}.ts": {
+          100: true,
+        },
       },
     },
   },

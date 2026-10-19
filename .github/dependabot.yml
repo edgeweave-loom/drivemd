@@ -8,10 +8,17 @@ updates:
     cooldown:
       default-days: 7
     groups:
+      # A Playwright update also needs the e2e job's image updated by hand
+      # (see the README), so it comes on its own rather than holding up others.
+      playwright:
+        patterns: ["@playwright/test"]
       npm-minor-and-patch:
         update-types: [minor, patch]
+        # Listing the playwright group first did not keep it out.
+        exclude-patterns: ["@playwright/test"]
     ignore:
-      # Node.js types follow the Node.js 22 line in .nvmrc.
+      # Node.js types follow the Node.js 24 line that package.json's devEngines
+      # pins.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
     commit-message:
