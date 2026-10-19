@@ -63,14 +63,14 @@ function hidden(view: EditorView): DecorationSet {
       from,
       to,
       enter: (node) => {
-        const stretch = symbol(state, node);
-        if (
-          stretch &&
-          !writing.some(
-            (line) => stretch.from <= line.to && stretch.to >= line.from,
-          )
-        ) {
-          ranges.push(HIDDEN.range(stretch.from, stretch.to));
+        for (const stretch of symbols(state, node)) {
+          if (
+            !writing.some(
+              (line) => stretch.from <= line.to && stretch.to >= line.from,
+            )
+          ) {
+            ranges.push(HIDDEN.range(stretch.from, stretch.to));
+          }
         }
       },
     });
@@ -88,20 +88,23 @@ function linesWritten(state: EditorState): Stretch[] {
 }
 
 /**
- * The stretch a symbol of Visual takes: emphasis' `*` and `_`,
- * strikethrough's `~~`, inline code's backticks and a heading's `#`.
+ * The stretches Visual's symbols take: emphasis' `*` and `_`,
+ * strikethrough's `~~`, inline code's backticks, a heading's `#` and a
+ * link's brackets and address.
  */
-function symbol(state: EditorState, node: SyntaxNodeRef): Stretch | undefined {
+function symbols(state: EditorState, node: SyntaxNodeRef): Stretch[] {
   switch (node.name) {
     case "EmphasisMark":
     case "StrikethroughMark":
-      return node;
+      return [node];
     case "CodeMark":
-      return node.node.parent?.name === "InlineCode" ? node : undefined;
+      return node.node.parent?.name === "InlineCode" ? [node] : [];
     case "HeaderMark":
       return headerMark(state, node);
+    case "Link":
+      return linkSyntax(node);
     default:
-      return undefined;
+      return [];
   }
 }
 
@@ -111,13 +114,10 @@ function symbol(state: EditorState, node: SyntaxNodeRef): Stretch | undefined {
  * `#` of a heading without text, whose line would then show nothing, at
  * the text's height rather than the heading's.
  */
-function headerMark(
-  state: EditorState,
-  node: SyntaxNodeRef,
-): Stretch | undefined {
+function headerMark(state: EditorState, node: SyntaxNodeRef): Stretch[] {
   const heading = node.node.parent;
   const opening = heading?.firstChild;
-  if (!heading?.name.startsWith("ATXHeading") || !opening) return undefined;
+  if (!heading?.name.startsWith("ATXHeading") || !opening) return [];
   const last = heading.lastChild;
   const closing =
     last?.name === "HeaderMark" && last.from !== opening.from
@@ -125,8 +125,22 @@ function headerMark(
       : undefined;
   const text = state.sliceDoc(opening.to, closing?.from ?? heading.to);
   const before = text.length - text.trimStart().length;
-  if (before === text.length) return undefined;
-  return node.from === opening.from
-    ? { from: opening.from, to: opening.to + before }
-    : { from: opening.to + text.trimEnd().length, to: node.to };
+  if (before === text.length) return [];
+  return [
+    node.from === opening.from
+      ? { from: opening.from, to: opening.to + before }
+      : { from: opening.to + text.trimEnd().length, to: node.to },
+  ];
+}
+
+/**
+ * An inline link's `[` and its `](address "title")`, which leave its text:
+ * never those of a link without text, which would show nothing, nor of a
+ * reference link, whose address is written elsewhere.
+ */
+function linkSyntax(node: SyntaxNodeRef): Stretch[] {
+  const [opening, closing] = node.node.getChildren("LinkMark");
+  if (!opening || !closing || closing.from === opening.to) return [];
+  if (!node.node.getChild("URL")) return [];
+  return [opening, { from: closing.from, to: node.to }];
 }

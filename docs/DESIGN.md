@@ -108,6 +108,7 @@ Material Symbols Outlined, at weight 400, grade 0 and optical size 24, filled on
 | `sync_problem`                             | Someone changed the note in Drive                   |
 | `ios_share`                                | How to add DriveMD to the Home Screen               |
 | `undo`, `redo`, `title`, `format_bold`, …  | The keyboard toolbar's keys, as the spec lists them |
+| `open_in_new`                              | Open link, the toolbar's Link key in a link         |
 
 The DriveMD mark, `public/icon.svg`, shows at 40 px in the app bar (32 px on a phone) and is never recolored or redrawn.
 
