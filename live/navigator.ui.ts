@@ -638,7 +638,7 @@ test("renders a note of a vault as Obsidian does, its links and embeds leading t
   const note = page.locator(".markdown").first();
   await expect(note.locator("p br").first()).toBeAttached();
   await expect(note.locator(".callout")).toHaveAttribute("data-callout", "tip");
-  await expect(note.locator(".callout-title > svg")).toHaveAttribute(
+  await expect(note.locator(".callout-title > .callout-icon")).toHaveAttribute(
     "data-icon",
     "lucide-flame",
   );
