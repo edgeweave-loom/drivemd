@@ -21,8 +21,9 @@ const SETTLE_FRAMES = 30;
  * `below` is an element kept on the screen too, such as the app bar, whose
  * bottom the element's top stays under. `onSettle` runs once the element
  * has settled as it shows, then after each change of the viewport's height,
- * as when the keyboard comes or goes, with the height before: iOS may have
- * brought the keyboard up before the element shows.
+ * as when the keyboard comes or goes, with the height before. iOS may have
+ * brought the keyboard up before the element shows: the first time, the
+ * height before is the window's, if taller.
  */
 export function keepVisible(
   element: HTMLElement,
@@ -63,7 +64,7 @@ export function keepVisible(
     frames -= 1;
     frame = frames > 0 ? requestAnimationFrame(settle) : undefined;
     if (frame === undefined && (!settled || viewport.height !== height)) {
-      const before = height;
+      const before = settled ? height : Math.max(height, window.innerHeight);
       height = viewport.height;
       settled = true;
       onSettle?.(before);

@@ -120,7 +120,7 @@ describe("keepVisible", () => {
     keepVisible(bar, { onSettle: settled });
 
     for (let frame = 0; frame < 30; frame += 1) vi.advanceTimersToNextFrame();
-    expect(settled).toHaveBeenCalledExactlyOnceWith(411);
+    expect(settled).toHaveBeenCalledExactlyOnceWith(window.innerHeight);
 
     // A scroll alone, as Safari's bars stay.
     viewport.dispatchEvent(new Event("scroll"));
