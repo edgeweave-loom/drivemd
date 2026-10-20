@@ -77,9 +77,23 @@ const hiding = ViewPlugin.fromClass(
     decorations: DecorationSet;
     writing: Stretch[];
     touching = false;
+    readonly view: EditorView;
+    // On the document, which a touch lifting elsewhere, or from a line drawn
+    // anew meanwhile, still reaches.
+    readonly lift = (event: TouchEvent) => {
+      if (!this.touching || event.touches.length > 0) return;
+      this.touching = false;
+      if (!sameLines(written(this.view), this.writing)) {
+        this.view.dispatch({ effects: lifted.of(null) });
+      }
+    };
     constructor(view: EditorView) {
+      this.view = view;
       this.writing = written(view);
       this.decorations = hidden(view, this.writing);
+      for (const type of ["touchend", "touchcancel"] as const) {
+        document.addEventListener(type, this.lift, true);
+      }
     }
     update(update: ViewUpdate) {
       const lift = update.transactions.some((transaction) =>
@@ -99,37 +113,31 @@ const hiding = ViewPlugin.fromClass(
         this.decorations = hidden(update.view, this.writing);
       }
     }
-    lift(event: TouchEvent, view: EditorView) {
-      if (event.touches.length > 0) return;
-      this.touching = false;
-      const now = written(view);
-      if (
-        now.length !== this.writing.length ||
-        now.some(
-          (line, at) =>
-            line.from !== this.writing[at]?.from ||
-            line.to !== this.writing[at].to,
-        )
-      ) {
-        view.dispatch({ effects: lifted.of(null) });
+    destroy() {
+      for (const type of ["touchend", "touchcancel"] as const) {
+        document.removeEventListener(type, this.lift, true);
       }
     }
   },
   {
     decorations: (plugin) => plugin.decorations,
-    eventHandlers: {
+    // Observed, so that scrolling from the text never waits for the page.
+    eventObservers: {
       touchstart() {
         this.touching = true;
-      },
-      touchend(event, view) {
-        this.lift(event, view);
-      },
-      touchcancel(event, view) {
-        this.lift(event, view);
       },
     },
   },
 );
+
+function sameLines(one: Stretch[], other: Stretch[]): boolean {
+  return (
+    one.length === other.length &&
+    one.every(
+      (line, at) => line.from === other[at]?.from && line.to === other[at].to,
+    )
+  );
+}
 
 /**
  * A tap on a task's box ticks the task, as one edit that undo reverts,

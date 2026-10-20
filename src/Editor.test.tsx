@@ -344,7 +344,8 @@ describe("Visual", () => {
     // A second finger lifting leaves the first one down.
     fireEvent.touchEnd(view.contentDOM, { touches: [{}] });
     expect(looks(view)[0]).toBe("See the docs and a page.");
-    fireEvent.touchEnd(view.contentDOM, { touches: [] });
+    // Lifting where the editor may not see it: from a line drawn anew.
+    fireEvent.touchEnd(document.body, { touches: [] });
     expect(looks(view)[0]).toBe(
       "See ‹[›the docs‹](docs.md)› and ‹[›a page‹](page.md)›.",
     );
