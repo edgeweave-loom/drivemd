@@ -1,8 +1,8 @@
 import { isolateHistory } from "@codemirror/commands";
 import { syntaxTree } from "@codemirror/language";
 import {
+  EditorState,
   StateEffect,
-  type EditorState,
   type Extension,
   type Range,
 } from "@codemirror/state";
@@ -64,27 +64,45 @@ const DONE_TASK = Decoration.replace({ widget: new TaskBox(true) });
 // The last finger has lifted from the text.
 const lifted = StateEffect.define();
 
+// How long the line a finger pressed stays put after it lifts, while the
+// tap moves the cursor there.
+const ANCHORED_MS = 500;
+
+// Until when a finger is down on the text or has just lifted from it, in
+// any editor: a transaction cannot tell which view it is for.
+let touchedUntil = 0;
+
+/** The line a finger pressed, and its top down the page as it pressed. */
+interface Anchor {
+  at: number;
+  top: number;
+}
+
 /**
  * Visual's symbols, hidden where the screen shows them, but on the lines
  * the selection touches while the editor has the focus, where the note is
  * being written. Those lines stay as they are while a finger is down: under
  * a long press, iOS places the cursor, then selects the word under the
  * finger, which the line showing its symbols would have moved away (seen
- * in the iOS 27 simulator, #274).
+ * in the iOS 27 simulator, #274). As other lines show or hide their
+ * symbols, the line pressed stays under the finger, as far as the page
+ * scrolls: the lines above it would otherwise move it (#275).
  */
 const hiding = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
     writing: Stretch[];
     touching = false;
+    anchor: Anchor | null = null;
     readonly view: EditorView;
     // On the document, which a touch lifting elsewhere, or from a line drawn
     // anew meanwhile, still reaches.
     readonly lift = (event: TouchEvent) => {
       if (!this.touching || event.touches.length > 0) return;
       this.touching = false;
+      touchedUntil = Date.now() + ANCHORED_MS;
       if (!sameLines(written(this.view), this.writing)) {
-        this.view.dispatch({ effects: lifted.of(null) });
+        this.view.dispatch({ effects: [lifted.of(null), stayAt(this.view)] });
       }
     };
     constructor(view: EditorView) {
@@ -100,8 +118,11 @@ const hiding = ViewPlugin.fromClass(
         transaction.effects.some((effect) => effect.is(lifted)),
       );
       const moved = update.selectionSet || update.focusChanged;
+      if (update.docChanged) this.anchor = null;
       if (update.docChanged || lift || (moved && !this.touching)) {
-        this.writing = written(update.view);
+        const writing = written(update.view);
+        if (!sameLines(writing, this.writing)) this.keep(update.view);
+        this.writing = writing;
       }
       if (
         update.docChanged ||
@@ -113,6 +134,35 @@ const hiding = ViewPlugin.fromClass(
         this.decorations = hidden(update.view, this.writing);
       }
     }
+    press(event: TouchEvent) {
+      this.touching = true;
+      touchedUntil = Infinity;
+      // A finger that starts a gesture, rather than joins one.
+      if (event.touches.length !== 1) return;
+      const touch = event.changedTouches[0];
+      const at =
+        touch && this.view.posAtCoords({ x: touch.clientX, y: touch.clientY });
+      this.anchor =
+        at === null || at === undefined
+          ? null
+          : { at, top: pageTop(this.view, at) };
+    }
+    /**
+     * Scrolls the page by as much as the line pressed moved down it, once
+     * drawn anew: not by the page's own scrolls meanwhile, such as iOS's to
+     * the cursor.
+     */
+    keep(view: EditorView) {
+      const { anchor } = this;
+      if (!anchor || Date.now() > touchedUntil) return;
+      view.requestMeasure({
+        key: this,
+        read: () => pageTop(view, anchor.at) - anchor.top,
+        write: (shift) => {
+          if (Math.abs(shift) >= 1) window.scrollBy(0, shift);
+        },
+      });
+    }
     destroy() {
       for (const type of ["touchend", "touchcancel"] as const) {
         document.removeEventListener(type, this.lift, true);
@@ -123,12 +173,37 @@ const hiding = ViewPlugin.fromClass(
     decorations: (plugin) => plugin.decorations,
     // Observed, so that scrolling from the text never waits for the page.
     eventObservers: {
-      touchstart() {
-        this.touching = true;
+      touchstart(event) {
+        this.press(event);
       },
     },
   },
 );
+
+/**
+ * CodeMirror otherwise keeps the line at the screen's top where it was as
+ * lines change, the page scrolling for it, as well as for the line pressed:
+ * a scroll to the cursor, which a tap leaves on the screen, comes instead.
+ * A mouse's selections scroll as CodeMirror scrolls them, as while a drag
+ * goes past the window's edge.
+ */
+function stayAt(view: EditorView): StateEffect<unknown> {
+  return EditorView.scrollIntoView(view.state.selection.main);
+}
+
+const scrollingInstead = EditorState.transactionExtender.of((transaction) =>
+  transaction.selection &&
+  transaction.isUserEvent("select") &&
+  !transaction.scrollIntoView &&
+  Date.now() <= touchedUntil
+    ? { effects: EditorView.scrollIntoView(transaction.newSelection.main) }
+    : null,
+);
+
+/** Where the line at `at` starts, down the page. */
+function pageTop(view: EditorView, at: number): number {
+  return view.lineBlockAt(at).top + view.documentTop + window.scrollY;
+}
 
 function sameLines(one: Stretch[], other: Stretch[]): boolean {
   return (
@@ -178,6 +253,7 @@ const LOOK = EditorView.theme({
  */
 export const livePreview: Extension = [
   hiding,
+  scrollingInstead,
   EditorView.atomicRanges.of(
     (view) => view.plugin(hiding)?.decorations ?? Decoration.none,
   ),

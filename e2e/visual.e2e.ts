@@ -112,3 +112,63 @@ test("ticks a task from its box in Visual, as one edit to save", async ({
     "\n- [x] Boil water\n- [x] Find cups\n",
   );
 });
+
+test("keeps a tapped line under the finger as another line hides its symbols", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.name === "desktop-chromium",
+    "A mouse points where it is, and needs no line kept under it",
+  );
+  const notes = drive.files.get("notes");
+  if (notes) {
+    notes.content = [
+      ...Array.from({ length: 30 }, (_, line) => `Line ${String(line + 1)}.`),
+      "",
+      "Some **bold words**, _slanted ones_, ~~struck ones~~, `code` and [a link](https://example.com/a/rather/long/address) to wrap.",
+      "",
+      "## A heading with closing marks ##",
+      "",
+      ...Array.from({ length: 30 }, (_, line) => `Line ${String(line + 31)}.`),
+    ].join("\n");
+  }
+  await signIn(page);
+  await page.goto("/edit?id=notes");
+  if (info.project.metadata.layout === "phone") {
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+  } else {
+    await page
+      .getByRole("banner")
+      .getByRole("button", { name: "Viewing" })
+      .click();
+    await page
+      .getByRole("menu", { name: "Mode" })
+      .getByRole("menuitemradio", { name: "Visual" })
+      .click();
+  }
+  const note = page.getByRole("textbox", { name: "Note" });
+  const paragraph = note.locator(".cm-line").filter({ hasText: "Some" });
+  const heading = note.locator(".cm-line").filter({ hasText: "A heading" });
+  await paragraph.scrollIntoViewIfNeeded();
+
+  // The paragraph shows its symbols, on more lines.
+  await paragraph.getByText("bold words").tap();
+  await expect(paragraph).toContainText("**bold words**");
+  // Once the toolbar has scrolled the cursor clear of it, if it had to,
+  // the heading in the middle of the screen, the page scrolled down still.
+  await page.waitForTimeout(1500);
+  await heading.evaluate((line) => {
+    line.scrollIntoView({ block: "center" });
+  });
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(200);
+  const before = await heading.boundingBox();
+  if (!before) throw new Error("Not shown");
+
+  await page.touchscreen.tap(before.x + 40, before.y + before.height / 2);
+  await expect(heading).toContainText("## A heading with closing marks ##");
+  await expect(paragraph).not.toContainText("**");
+  await expect
+    .poll(async () => (await heading.boundingBox())?.y)
+    .toBeCloseTo(before.y, 0);
+});
