@@ -65,6 +65,7 @@ Before the first check, the agent checks these with `adb version`, `emulator -ve
 - **Swipes.** A swipe down from the page's top sets off Chrome's pull-to-refresh, which reloads the page: start swipes lower.
 - **The clipboard.** The emulator copies the Mac's clipboard into the device (**⋯ ▸ Settings ▸ General ▸ Enable clipboard sharing**): a paste can bring in whatever the Mac holds, such as a sign-in code. Turn that off, or set the device's clipboard with `mobile_clipboard` right before each paste, and check what was pasted before saving.
 - **Typing and the on-screen keyboard.** With `hw.keyboard=yes`, Gboard 18 shows only its floating ≡ button while a field has the focus, whatever `show_ime_with_hard_keyboard` says. **Alt+K** (`adb -s <serial> shell input keycombination KEYCODE_ALT_LEFT KEYCODE_K`), or ≡ ▸ **Show on-screen keyboard**, brings up the full keyboard, which then stays up: neither Alt+K again, `show_ime_with_hard_keyboard` 0 nor Gboard's own setting brought the ≡ back. So D6 runs before the device's first Alt+K (see Order), and the rest with the full keyboard; take a screenshot to see which shows. Gboard's mode for a device with a physical keyboard may insert text differently from a phone without one: say so where a typing check fails. `mobile_type_keys` types through `adb shell input text`, ASCII only, as a hardware keyboard does: Gboard never sees the keys, so neither its autocorrect, capitals and double-space period nor its composition run, and J and K need Gboard's own keys, tapped where a screenshot shows them. `adb shell input text` can also lose a long text's first letters, or let an Enter sent after it overtake its end: check the field before Enter. A long press selects a word, as on a phone.
+- **Ctrl.** `adb shell input keycombination` with Ctrl, such as Ctrl+End, can leave Ctrl latched in Gboard, whose delete key then deletes whole words and whose number hints vanish: send `adb -s <serial> shell input keyevent KEYCODE_CTRL_LEFT` after it.
 - **Measuring.** Screenshots are in pixels: 2.625 per dp on the phone and 2 on the tablet (`adb -s <serial> shell wm density`, divided by 160). Measure gaps and overlaps on them with a short script (`uv run --with pillow python …`).
 
 ### Output and version
@@ -85,7 +86,7 @@ The four `device-check-*` notes of [`apple-device-checks.md`](apple-device-check
 6. Both devices, both themes: F.
 7. I, only if staging deploys a new version during the run.
 
-On each device, D6 comes first in section D, in Chrome, before Gboard's full keyboard has ever come up (see Typing, under Tools). Run every check in the light theme, unless it says otherwise: E3, section F, H2 and K17 also run the dark one, after which the device goes back to light (`adb -s <serial> shell cmd uimode night no`).
+On each device, D6 comes first, in Chrome, before Gboard's full keyboard has ever come up (see Typing, under Tools): on the phone, before C5, whose D1 to D3 bring the full keyboard up. The first time the editor opens on a device, check K1's default, **Edit** opening Visual, before section D picks Source, which the device then remembers. Run every check in the light theme, unless it says otherwise: E3, section F, H2 and K17 also run the dark one, after which the device goes back to light (`adb -s <serial> shell cmd uimode night no`).
 
 ## Checks
 
@@ -107,7 +108,7 @@ On each screen of [section C](apple-device-checks.md#c-safe-areas) of the iOS ch
 - **C2. Sideways, both ways** (`user_rotation` 1, then 3 on the phone; 0, then 2 on the tablet): the same, with content kept clear of the cutout's side, while the bars' backgrounds still run under it. On the phone, the layout stays the phone's.
 - **C3. Scrolled.** On the long note and on a folder with more items than the screen holds, scrolled to the end: the last line and the last item come fully above the gesture bar.
 - **C4. Three buttons.** With the navigation's three buttons instead of the gesture bar, C1 and C3 again: nothing sits under the buttons' bar, and no empty band shows where the gesture bar was. On the tablet, the three buttons come in Android's taskbar, apps first. Switch back to gestures.
-- **C5. Address bar at the bottom** (phone, Chrome): with Chrome's address bar at the screen's bottom (Chrome ▸ Settings ▸ Address bar), C1 and C3 again, and D1 to D3 in section D. Put it back at the top.
+- **C5. Address bar at the bottom** (phone, Chrome): with Chrome's address bar at the screen's bottom (Chrome ▸ Settings ▸ Address bar), C1 and C3 again, and D1 to D3 in section D, after D6 (see Order). Put it back at the top.
 
 ### D. The keyboard toolbar
 
@@ -118,10 +119,10 @@ With Gboard's full keyboard, but for D6. Open `device-check-long.md`, then **Edi
 - **D3.** Delete with Gboard's delete key. Whatever Save shows, record it; issue #202 was seen on iOS alone.
 - **D5.** Select the word with a long press, which the emulator does.
 - **D6. Hardware keyboard.** First, before Gboard's full keyboard has come up on the device: tap the text. Only Gboard's floating ≡ shows, and the toolbar sits at the screen's bottom, over the gesture bar, one row tall. Then Alt+K brings up the full keyboard for the rest. In the installed app, and wherever the full keyboard has come up before, it is BLOCKED.
-- **D8. Back hides the keyboard.** With the keyboard up, press Back once: the keyboard goes, the note stays, and the toolbar moves to the screen's bottom, over the gesture bar, as the spec says. Tap the text: the keyboard and the toolbar come back together.
+- **D8. Back hides the keyboard.** With the keyboard up, press Back once: the keyboard goes, the note stays, and the toolbar moves to the screen's bottom, over the gesture bar, or in Samsung Internet onto its bottom bar, as the spec says. Tap the text: the keyboard and the toolbar come back together.
 - **D9. Samsung keyboard.** BLOCKED: the emulator has no Samsung keyboard, which comes only on Samsung's phones.
 
-Then take back the edits with Undo before leaving the editor.
+Then take back the edits with Undo, and pick Visual again, before leaving the editor.
 
 ### E. The installed app
 
@@ -161,20 +162,23 @@ As [section I](apple-device-checks.md#i-a-new-version-only-if-staging-deploys-du
 
 Run K1 to K18 of [section K](apple-device-checks.md#k-visual-source-and-viewing-v2-stage-1) of the iOS checks on `device-check-visual.md`, with the phone for the iPhone, the tablet for the iPad and Chrome for Safari, typing on Gboard's keys, with the changes and the checks below. Gboard sends what it types through composition: it holds the word being typed as marked text, which it may rewrite as it goes, where iOS does that only for Japanese or Chinese. Visual changes a line's text as the cursor enters it, so these checks watch for letters or symbols lost, doubled or moved. The emulator runs Gboard itself, so it stands for a phone here, as it did for milestone 8: the report says which checks a real phone must repeat, if any, and why.
 
-- **K1.** On the tablet, the mode menu offers **Visual**, **Source** and **Viewing** upright and sideways.
+- **K1.** Section D picks Source, which the device remembers: the default, **Edit** opening Visual, is checked before D (see Order). On the tablet, the mode menu offers **Visual**, **Source** and **Viewing** upright and sideways.
 - **K4, K5.** Tap inside "bold words", record whether Gboard underlines a word, then type `tea` on Gboard's keys: the letters land at the cursor, once each and in order, and the line's `**` stay where they were. Then K5 as written.
 - **K6.** Move the cursor with the handle that Chrome shows under it after a tap, and by sliding on Gboard's space bar, BLOCKED if the emulator's swipe cannot slide there.
 - **K7.** A long press on "italic" selects it, with Chrome's handles and menu.
 - **K8.** With Gboard's delete key.
+- **K9.** "The keyboard down" means the editor without the focus: pick Preview, then Visual (phone), or Viewing, then Visual (tablet), before tapping the box. With Gboard hidden by Back, the editor keeps the focus, which K22 checks.
 - **K10, K11.** In the installed app, the other note opens in the app; record where the web page opens, over the app (a Custom Tab) or in Chrome. A long press on "a web page" selects a word, and Chrome's menu for links (**Open in new tab**, …) does not show.
 - **K12.** J1 and J2 above.
 - **K13.** With Gboard's microphone: BLOCKED unless the developer turns on the emulator's ⋯ ▸ Microphone ▸ **Virtual microphone uses host audio input** and speaks.
-- **K14.** With Gboard's Japanese keyboard, in its QWERTY layout, and its Chinese (Pinyin) one, added from Gboard's settings ▸ Languages.
+- **K14.** With Gboard's Japanese keyboard, in its QWERTY layout, and its Chinese (Pinyin) one, added from Gboard's settings ▸ Languages. Gboard's Pinyin keeps the typed letters in its own bar by default (**Inline composing** off), so the page shows no marked text for it: check that the candidate lands once.
 - **K18.** With arrow keys sent through `adb`: `adb -s <serial> shell input keyevent KEYCODE_DPAD_DOWN`, and `input keycombination KEYCODE_SHIFT_LEFT KEYCODE_DPAD_DOWN` to select.
 - **K19. Gboard's suggestions.** If Gboard shows suggestions over its keys while typing in the paragraph, pick one: it replaces the word being typed, once, and nothing around it. The editor turns spellcheck off, so Gboard may show none: record which.
 - **K20. Return and delete.** At the end of "An open task", tap Gboard's Return: a new line starts with `- [ ] `, as Return does in Source. Tap delete until the cursor is back after "An open task": the markup goes as it does in Source, and the note is as before. Then hold delete over a few words of the paragraph: the letters go one at a time, none twice, and the `**` go only once the cursor reaches them.
-- **K21. A tick while composing.** Type `gre` in the paragraph, without a space, then tap the open task's box: it ticks, and `gre` stays, once. Type `en`: the word reads `green`.
+- **K21. A tick while composing.** Type `gre` in the paragraph, without a space, then tap the open task's box: it ticks, and `gre` stays, once. Type `en`: the word reads `green`. Tap the box again, so that K22 finds it open.
 - **K22. Back.** With Gboard up and the cursor in the paragraph, press Back: Gboard goes, and the editor keeps the focus, as D8 says; record whether the paragraph keeps its symbols shown. Tap the open task's box: it ticks, and Gboard stays down.
+
+Then tap Undo until Save reads **Saved**, so that K19 to K22, which come after K16's save, leave no unsaved changes for the next context.
 
 ### L. The share target (installed app, phone)
 
@@ -183,9 +187,11 @@ Take `device-check-tasks.md`'s ID from the app's `/edit?id=<ID>` address, as `ID
 - **L1. From Chrome.** In a Chrome tab on that note's page, tap ⋮ ▸ **Share**: the share sheet offers DriveMD, with its mark. Pick it: the note opens in the installed app.
 - **L2. A Drive link with words around it.** Share a text holding a Drive link: `adb -s <serial> shell am start -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "'See <https://drive.google.com/file/d/$ID/view>, it is there.'"`, and pick DriveMD in what Android offers. The note opens; Back leaves for the launcher rather than to `/share`, and a reload keeps the note.
 - **L3. No link.** Share a text without a link the same way: the app says that there is nothing to open, and its address is `/share` alone, without the text. Android's share sheet can change its layout from one share to the next: check which app a tap picks before it, since another app may send the text.
-- **L4. The Drive app.** Only if the developer chooses to install Drive from the Play Store, signed in with the test account; otherwise BLOCKED. Its **Send a copy** shares the file, for which Android does not offer DriveMD; its **Copy link** gives an address that opens the note once pasted in the app's search box; and its **Open with** offers DriveMD, which opens production: close that tab untouched. The spec's share target requirement says so of Drive 2.26: record what changed.
+- **L4. The Drive app.** Only if the developer chooses to install Drive from the Play Store, signed in with the test account; otherwise BLOCKED. Drive syncs only once Android clears its "Account access restricted", which a screen-lock PIN does: the developer sets one, and the screen timeout goes up so that the device does not lock mid-check. Its **Send a copy** shares the file, for which Android does not offer DriveMD; its **Copy link** gives an address that opens the note once pasted in the app's search box; and its **Open with** offers DriveMD, which opens production: close that tab untouched. The spec's share target requirement says so of Drive 2.26: record what changed.
 
 ### M. Android's Back
+
+In Samsung Internet, a tab that an intent opened, such as `mobile_open_url`'s, has no page before its first one, so Back from there leaves the browser (M1, M3): count it as Back reaching the page before.
 
 - **M1. Folders.** From Home, open My Drive, then a folder in it, then one in that: Back steps back through each, to Home.
 - **M2. A note.** Open a note from a folder, then Back: the folder shows again, at the item opened.
