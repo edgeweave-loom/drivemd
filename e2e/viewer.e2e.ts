@@ -269,6 +269,48 @@ test("leaves the note's end clear of the keyboard toolbar", async ({
   }
 });
 
+test("scrolls the line a first tap brings the keyboard toolbar over clear of it", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.name === "desktop-chromium",
+    "A mouse has no keyboard toolbar",
+  );
+  const notes = drive.files.get("notes");
+  if (notes) {
+    notes.content = Array.from(
+      { length: 80 },
+      (_, line) => `line ${String(line + 1)}\n`,
+    ).join("");
+  }
+  await signIn(page);
+  await page.goto("/edit?id=notes");
+  await startEditing(page);
+  const source = page.getByRole("textbox", { name: "Markdown source" });
+  await expect(source).toBeVisible();
+  await expect(source).not.toBeFocused();
+
+  // Where the toolbar shows once the editor has the focus.
+  const height = page.viewportSize()?.height ?? 0;
+  await page.touchscreen.tap(100, height - 20);
+  const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+  await expect(toolbar).toBeVisible();
+  const bar = await toolbar.boundingBox();
+  if (!bar) throw new Error("Not shown");
+  // Once the toolbar has settled, over 30 frames, which WebKit draws
+  // slowly on a page at rest.
+  await expect
+    .poll(
+      async () => {
+        const line = await source.locator(".cm-activeLine").boundingBox();
+        return line ? line.y + line.height : Infinity;
+      },
+      { timeout: 10_000 },
+    )
+    .toBeLessThanOrEqual(bar.y);
+});
+
 test("shows Find in note in the app bar on a phone, or under it, mid-note", async ({
   page,
   drive,
