@@ -1,6 +1,11 @@
 import { isolateHistory } from "@codemirror/commands";
 import { syntaxTree } from "@codemirror/language";
-import type { EditorState, Extension, Range } from "@codemirror/state";
+import {
+  StateEffect,
+  type EditorState,
+  type Extension,
+  type Range,
+} from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -56,30 +61,74 @@ class TaskBox extends WidgetType {
 const OPEN_TASK = Decoration.replace({ widget: new TaskBox(false) });
 const DONE_TASK = Decoration.replace({ widget: new TaskBox(true) });
 
+// The last finger has lifted from the text.
+const lifted = StateEffect.define();
+
 /**
  * Visual's symbols, hidden where the screen shows them, but on the lines
  * the selection touches while the editor has the focus, where the note is
- * being written.
+ * being written. Those lines stay as they are while a finger is down: under
+ * a long press, iOS places the cursor, then selects the word under the
+ * finger, which the line showing its symbols would have moved away (seen
+ * in the iOS 27 simulator, #274).
  */
 const hiding = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
+    writing: Stretch[];
+    touching = false;
     constructor(view: EditorView) {
-      this.decorations = hidden(view);
+      this.writing = written(view);
+      this.decorations = hidden(view, this.writing);
     }
     update(update: ViewUpdate) {
+      const lift = update.transactions.some((transaction) =>
+        transaction.effects.some((effect) => effect.is(lifted)),
+      );
+      const moved = update.selectionSet || update.focusChanged;
+      if (update.docChanged || lift || (moved && !this.touching)) {
+        this.writing = written(update.view);
+      }
       if (
         update.docChanged ||
         update.viewportChanged ||
-        update.selectionSet ||
-        update.focusChanged ||
+        moved ||
+        lift ||
         syntaxTree(update.startState) !== syntaxTree(update.state)
       ) {
-        this.decorations = hidden(update.view);
+        this.decorations = hidden(update.view, this.writing);
+      }
+    }
+    lift(event: TouchEvent, view: EditorView) {
+      if (event.touches.length > 0) return;
+      this.touching = false;
+      const now = written(view);
+      if (
+        now.length !== this.writing.length ||
+        now.some(
+          (line, at) =>
+            line.from !== this.writing[at]?.from ||
+            line.to !== this.writing[at].to,
+        )
+      ) {
+        view.dispatch({ effects: lifted.of(null) });
       }
     }
   },
-  { decorations: (plugin) => plugin.decorations },
+  {
+    decorations: (plugin) => plugin.decorations,
+    eventHandlers: {
+      touchstart() {
+        this.touching = true;
+      },
+      touchend(event, view) {
+        this.lift(event, view);
+      },
+      touchcancel(event, view) {
+        this.lift(event, view);
+      },
+    },
+  },
 );
 
 /**
@@ -147,9 +196,13 @@ function tick(view: EditorView, at: number): void {
   });
 }
 
-function hidden(view: EditorView): DecorationSet {
+/** The lines being written, which the selection touches while focused. */
+function written(view: EditorView): Stretch[] {
+  return view.hasFocus ? linesWritten(view.state) : [];
+}
+
+function hidden(view: EditorView, writing: Stretch[]): DecorationSet {
   const { state } = view;
-  const writing = view.hasFocus ? linesWritten(state) : [];
   const ranges: Range<Decoration>[] = [];
   for (const { from, to } of view.visibleRanges) {
     syntaxTree(state).iterate({

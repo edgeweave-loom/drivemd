@@ -323,6 +323,34 @@ describe("Visual", () => {
     });
   });
 
+  it("shows a line's symbols only once the finger that pressed on it lifts", async () => {
+    const { view } = open(
+      "See [the docs](docs.md) and [a page](page.md).\n\nTea",
+      "\n",
+      true,
+    );
+    await parsed(view);
+
+    // As iOS places the cursor, then selects a word, under a long press: the
+    // line staying as it was, the word is the one under the finger.
+    fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 30, head: 31 } });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(looks(view)[0]).toBe("See the docs and a page.");
+
+    // A second finger lifting leaves the first one down.
+    fireEvent.touchEnd(view.contentDOM, { touches: [{}] });
+    expect(looks(view)[0]).toBe("See the docs and a page.");
+    fireEvent.touchEnd(view.contentDOM, { touches: [] });
+    expect(looks(view)[0]).toBe(
+      "See ‹[›the docs‹](docs.md)› and ‹[›a page‹](page.md)›.",
+    );
+    expect(view.state.selection.main).toMatchObject({ anchor: 30, head: 31 });
+  });
+
   it("hides an inline link's brackets and address, leaving its text", async () => {
     const { view } = open(
       [
