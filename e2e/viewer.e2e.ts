@@ -217,6 +217,59 @@ test("formats the source from the keyboard toolbar on touch screens", async ({
   expect(String(drive.files.get("notes")?.content)).toBe("one\n- [ ] two\n");
 });
 
+test("hides the note under the keyboard toolbar, down to the screen's bottom", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.name === "desktop-chromium",
+    "A mouse has no keyboard toolbar",
+  );
+  const notes = drive.files.get("notes");
+  if (notes) {
+    notes.content = Array.from(
+      { length: 80 },
+      (_, line) => `line ${String(line + 1)}\n`,
+    ).join("");
+  }
+  await signIn(page);
+  await page.goto("/edit?id=notes");
+  await startEditing(page);
+  const source = page.getByRole("textbox", { name: "Markdown source" });
+  await source.locator(".cm-line").first().click();
+  const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+  await expect(toolbar).toBeVisible();
+
+  // Its background runs on below it, down past the screen's bottom from
+  // wherever it sits, as on the bars Safari floats over the keyboard, where
+  // the page still shows: drawn as its shadow, which no API hit-tests.
+  const { width = 0, height = 0 } = page.viewportSize() ?? {};
+  const painted = await toolbar.evaluate((bar) => {
+    const style = getComputedStyle(bar);
+    const [x = NaN, y = NaN, blur = NaN, spread = NaN] = [
+      ...style.boxShadow.matchAll(/(-?[\d.]+)px/g),
+    ].map(([, length]) => Number(length));
+    const box = bar.getBoundingClientRect();
+    return {
+      color: /^rgba?\([^)]*\)/.exec(style.boxShadow)?.[0],
+      background: style.backgroundColor,
+      blur,
+      top: box.top + y - spread,
+      below: box.bottom + y + spread - box.bottom,
+      left: box.left + x - spread,
+      right: box.right + x + spread,
+      barTop: box.top,
+    };
+  });
+  expect(painted.color).toBe(painted.background);
+  expect(painted.color).toBe(await token(page, "--surface-container"));
+  expect(painted.blur).toBe(0);
+  expect(painted.top).toBe(painted.barTop);
+  expect(painted.below).toBeGreaterThanOrEqual(height);
+  expect(painted.left).toBeLessThanOrEqual(0);
+  expect(painted.right).toBeGreaterThanOrEqual(width);
+});
+
 test("leaves the note's end clear of the keyboard toolbar", async ({
   page,
   drive,
