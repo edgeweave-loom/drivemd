@@ -21,14 +21,17 @@ const SETTLE_FRAMES = 30;
  * `below` is an element kept on the screen too, such as the app bar, whose
  * bottom the element's top stays under. `onResize` runs once the element
  * has settled after the viewport's height changed, as when the keyboard
- * comes or goes.
+ * comes or goes, with the height before.
  */
 export function keepVisible(
   element: HTMLElement,
   {
     below,
     onResize,
-  }: { below?: HTMLElement | null; onResize?: () => void } = {},
+  }: {
+    below?: HTMLElement | null;
+    onResize?: (before: number) => void;
+  } = {},
 ): () => void {
   const viewport = window.visualViewport;
   if (!viewport) return () => undefined;
@@ -58,8 +61,9 @@ export function keepVisible(
     frames -= 1;
     frame = frames > 0 ? requestAnimationFrame(settle) : undefined;
     if (frame === undefined && viewport.height !== height) {
+      const before = height;
       height = viewport.height;
-      onResize?.();
+      onResize?.(before);
     }
   };
   const follow = () => {

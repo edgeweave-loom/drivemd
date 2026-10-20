@@ -59,7 +59,7 @@ test("names the note in the app bar, with what it lets the user do", async ({
   }
 });
 
-test("switches between Editing and Viewing from the mode menu, saving first", async ({
+test("switches between Visual, Source and Viewing from the mode menu, saving first", async ({
   page,
   drive,
 }, info) => {
@@ -74,7 +74,8 @@ test("switches between Editing and Viewing from the mode menu, saving first", as
   await mode.click();
   const menu = page.getByRole("menu", { name: "Mode" });
   await expect(menu.getByRole("menuitemradio")).toHaveText([
-    /^Editing\s*Edit the Markdown beside its preview$/,
+    /^Visual\s*Edit the note as it reads$/,
+    /^Source\s*Edit the Markdown beside its preview$/,
     /^Viewing\s*Save, then read the note$/,
   ]);
   // It drops from its button.
@@ -89,16 +90,21 @@ test("switches between Editing and Viewing from the mode menu, saving first", as
     page.viewportSize()?.width ?? 0,
   );
 
-  await menu.getByRole("menuitemradio", { name: "Editing" }).click();
+  await menu.getByRole("menuitemradio", { name: "Visual" }).click();
+  await expect(page.getByRole("region", { name: "Preview" })).toHaveCount(0);
+  await bar.getByRole("button", { name: "Visual" }).click();
+  await menu.getByRole("menuitemradio", { name: "Source" }).click();
+  await expect(page.getByRole("region", { name: "Preview" })).toBeVisible();
   const source = page.getByRole("textbox", { name: "Markdown source" });
   await source.click();
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("Tea.");
-  await bar.getByRole("button", { name: "Editing" }).click();
+  await bar.getByRole("button", { name: "Source" }).click();
   await menu.getByRole("menuitemradio", { name: "Viewing" }).click();
   await expect(bar.getByRole("button", { name: "Viewing" })).toBeVisible();
   await expect(source).toHaveCount(0);
   await expect(bar.getByRole("button", { name: "Saved" })).toBeVisible();
+  await expect(page.getByText("Saved to Google Drive")).toBeVisible();
   expect(drive.writes).toEqual(["keep plan revision-1", "save plan"]);
 });
 
@@ -127,11 +133,18 @@ test("ends a phone's editing with a check in place of Back, which saves first", 
   if (!checked || !named) throw new Error("The bar has no place for them");
   expect(checked.x).toBeLessThan(named.x);
 
-  await page.getByRole("textbox", { name: "Markdown source" }).click();
+  await page.getByRole("textbox", { name: "Note" }).click();
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("Tea.");
   await done.click();
   await expect(bar.getByRole("button", { name: "Saved" })).toBeVisible();
+  // Above the floating Edit, which it leaves in reach.
+  const [said, edit] = await Promise.all([
+    page.getByText("Saved to Google Drive").boundingBox(),
+    page.getByRole("button", { name: "Edit", exact: true }).boundingBox(),
+  ]);
+  if (!said || !edit) throw new Error("Neither shows");
+  expect(said.y + said.height).toBeLessThanOrEqual(edit.y);
   await expect(back).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Edit", exact: true }),

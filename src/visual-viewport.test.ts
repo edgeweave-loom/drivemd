@@ -109,7 +109,7 @@ describe("keepVisible", () => {
 
     expect(resized).not.toHaveBeenCalled();
     for (let frame = 0; frame < 30; frame += 1) vi.advanceTimersToNextFrame();
-    expect(resized).toHaveBeenCalledOnce();
+    expect(resized).toHaveBeenCalledExactlyOnceWith(800);
   });
 
   it("puts the element back once it stops", () => {

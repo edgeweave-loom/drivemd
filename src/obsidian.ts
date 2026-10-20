@@ -561,9 +561,11 @@ export function remarkTags() {
           ) {
             return false;
           }
+          // Not a text node, which findAndReplace would join to the texts
+          // around it.
           return {
-            type: "text",
-            value: whole,
+            type: "emphasis",
+            children: [{ type: "text", value: whole }],
             data: { hName: "span", hProperties: { className: ["tag"] } },
           };
         },

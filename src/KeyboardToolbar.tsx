@@ -76,15 +76,24 @@ const KEYS: { name: string; command: Command; icon: IconName }[] = [
 /**
  * The formatting keys pinned above a touch screen's keyboard while the
  * editor has the focus: the iPhone's keyboard has no Tab key, nor any key
- * for Markdown. The keys never take the focus, so the keyboard stays.
+ * for Markdown. The keys never take the focus, so the keyboard stays. In a
+ * link, Link opens it instead, as nothing else does from a touch screen.
  */
 export function KeyboardToolbar({
+  link,
   onCommand,
+  onFollow,
   onResize,
 }: {
+  /** The address of the link the cursor is in. */
+  link: string | undefined;
   onCommand: (command: Command) => void;
-  /** Runs once the keyboard has come or gone. */
-  onResize: () => void;
+  onFollow: (href: string) => void;
+  /**
+   * Runs once the keyboard has come or gone, with the visual viewport's
+   * height before.
+   */
+  onResize: (before: number) => void;
 }) {
   const bar = useRef<HTMLDivElement>(null);
   const resized = useEffectEvent(onResize);
@@ -92,8 +101,8 @@ export function KeyboardToolbar({
     () =>
       bar.current
         ? keepVisible(bar.current, {
-            onResize: () => {
-              resized();
+            onResize: (before) => {
+              resized(before);
             },
           })
         : undefined,
@@ -106,19 +115,23 @@ export function KeyboardToolbar({
       aria-label="Formatting"
       className="keyboard-toolbar"
     >
-      {KEYS.map(({ name, command, icon }) => (
-        <button
-          key={name}
-          type="button"
-          aria-label={name}
-          onMouseDown={keepFocus}
-          onClick={() => {
-            onCommand(command);
-          }}
-        >
-          <Icon name={icon} />
-        </button>
-      ))}
+      {KEYS.map(({ name, command, icon }) => {
+        const follows = command === insertLink ? link : undefined;
+        return (
+          <button
+            key={name}
+            type="button"
+            aria-label={follows === undefined ? name : "Open link"}
+            onMouseDown={keepFocus}
+            onClick={() => {
+              if (follows === undefined) onCommand(command);
+              else onFollow(follows);
+            }}
+          >
+            <Icon name={follows === undefined ? icon : "open_in_new"} />
+          </button>
+        );
+      })}
     </div>,
     document.body,
   );

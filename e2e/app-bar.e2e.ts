@@ -1,4 +1,5 @@
-import { token } from "./color.ts";
+import type { Page } from "@playwright/test";
+import { computed, token } from "./color.ts";
 import {
   draftsKept,
   EMAIL,
@@ -160,6 +161,10 @@ test("searches full screen on a phone, with Back and Clear", async ({
   );
   await expect(bar.getByRole("link", { name: "DriveMD" })).toBeHidden();
   await expect(bar.getByRole("button", { name: /^Account, / })).toBeHidden();
+  // The installed app's status bar, above it, takes its color.
+  await expect
+    .poll(() => barsColor(page))
+    .toBe(await token(page, "--surface-container-high"));
 
   await field.fill("pla");
   await field.press("Enter");
@@ -175,4 +180,19 @@ test("searches full screen on a phone, with Back and Clear", async ({
   await bar.getByRole("button", { name: "Back" }).click();
   await expect(page).toHaveURL(/\/my-drive$/);
   await expect(field).toBeHidden();
+  await expect.poll(() => barsColor(page)).toBe(await token(page, "--surface"));
 });
+
+/** The browser's bars' color, from the theme-color of the page's theme. */
+async function barsColor(page: Page): Promise<string> {
+  const content = await page
+    .locator('meta[name="theme-color"]')
+    .evaluateAll(
+      (metas) =>
+        metas.find(
+          (meta): meta is HTMLMetaElement =>
+            meta instanceof HTMLMetaElement && matchMedia(meta.media).matches,
+        )?.content ?? "",
+    );
+  return computed(page, content);
+}

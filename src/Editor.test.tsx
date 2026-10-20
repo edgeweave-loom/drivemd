@@ -1,3 +1,4 @@
+import { cursorCharRight, undo } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import {
   ensureSyntaxTree,
@@ -21,44 +22,57 @@ import { Editor, type EditorHandle } from "./Editor.tsx";
 import { linkAt } from "./source-links.ts";
 import type { LineBreak } from "./text.ts";
 
-function open(text: string, lineBreak: LineBreak = "\n") {
+function open(text: string, lineBreak: LineBreak = "\n", visual = false) {
   const onChange = vi.fn<(text: string) => void>();
   const handle = createRef<EditorHandle>();
-  const { container } = render(
+  const editor = (inVisual: boolean) => (
     <Editor
       ref={handle}
       initial={text}
       lineBreak={lineBreak}
+      visual={inVisual}
       onChange={onChange}
       onFollow={() => undefined}
-    />,
+    />
   );
+  const { container, rerender } = render(editor(visual));
   const element = container
     .querySelector(".editor")
     ?.shadowRoot?.querySelector<HTMLElement>(".cm-editor");
   const view = element && EditorView.findFromDOM(element);
   if (!view) throw new Error("No editor");
-  return { view, onChange, handle };
+  return {
+    view,
+    onChange,
+    handle,
+    /** Shows the editor in Visual, or in Source. */
+    showIn: (inVisual: boolean) => {
+      rerender(editor(inVisual));
+    },
+  };
 }
 
 /**
- * Each line as the editor shows it: dimmed text in ‹›, and "(larger)" after
- * a line with text larger than the editor's.
+ * Each line as the editor shows it: dimmed text in ‹›, text larger than the
+ * editor's in ⟨⟩, and bold text in **.
  */
 function looks(view: EditorView) {
   const size = getComputedStyle(view.contentDOM).fontSize;
   return [...view.contentDOM.querySelectorAll(".cm-line")].map((line) => {
     let shown = "";
-    let larger = false;
     const texts = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
     for (let text = texts.nextNode(); text; text = texts.nextNode()) {
       const style = getComputedStyle(text.parentElement ?? line);
-      const value = text.textContent ?? "";
-      larger ||= style.fontSize !== size;
-      shown +=
-        style.color === "var(--on-surface-variant)" ? `‹${value}›` : value;
+      let value = text.textContent ?? "";
+      if (style.fontWeight === "700") value = `**${value}**`;
+      if (style.fontSize !== size) value = `⟨${value}⟩`;
+      if (style.color === "var(--on-surface-variant)") value = `‹${value}›`;
+      shown += value;
     }
-    return shown.replaceAll("›‹", "") + (larger ? " (larger)" : "");
+    return shown
+      .replaceAll("›‹", "")
+      .replaceAll("⟩⟨", "")
+      .replaceAll("****", "");
   });
 }
 
@@ -213,7 +227,24 @@ describe("Editor", () => {
       "‹tags:› ‹[›tea‹,› cups‹]›",
       "‹---›",
       "",
-      "‹#› The plan (larger)",
+      "‹#›⟨** The plan**⟩",
+      "",
+    ]);
+  });
+
+  it("dims headings' and bold text's marks at the text's size and weight", async () => {
+    const { view } = open("# Plan\n\n## Tasks\n\nTea\n===\n\nSome __tea__\n");
+    await parsed(view);
+
+    expect(looks(view)).toEqual([
+      "‹#›⟨** Plan**⟩",
+      "",
+      "‹##›⟨** Tasks**⟩",
+      "",
+      "⟨**Tea**⟩",
+      "‹===›",
+      "",
+      "Some ‹__›**tea**‹__›",
       "",
     ]);
   });
@@ -229,6 +260,160 @@ describe("Editor", () => {
       "const cups = { tea: 2 };",
       "‹```›",
     ]);
+  });
+});
+
+describe("Visual", () => {
+  beforeEach(() => {
+    // jsdom names Apple as its vendor, so CodeMirror reads the selection in
+    // a shadow root as Safari needs, through a command jsdom lacks.
+    Object.defineProperty(document, "execCommand", {
+      value: () => false,
+      configurable: true,
+    });
+  });
+
+  const NOTE = [
+    "# The plan ##",
+    "",
+    "Some **tea**, _cups_, ~~coffee~~ and `water`.",
+    "",
+    "Tea",
+    "===",
+    "#",
+  ].join("\n");
+
+  it("hides Markdown's symbols, where no line is being written", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+
+    expect(looks(view)).toEqual([
+      "⟨**The plan**⟩",
+      "",
+      "Some **tea**, cups, coffee and water.",
+      "",
+      "⟨**Tea**⟩",
+      "‹===›",
+      "‹#›",
+    ]);
+    expect(view.contentDOM).toHaveAccessibleName("Note");
+  });
+
+  it("shows the symbols of the lines the selection touches while it has the focus", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 3, head: 20 } });
+    });
+
+    await waitFor(() => {
+      expect(looks(view).slice(0, 3)).toEqual([
+        "‹#›⟨** The plan **⟩‹##›",
+        "",
+        "Some ‹**›**tea**‹**›, ‹_›cups‹_›, ‹~~›coffee‹~~› and ‹`›water‹`›.",
+      ]);
+    });
+    act(() => {
+      view.contentDOM.blur();
+    });
+    await waitFor(() => {
+      expect(looks(view)[0]).toBe("⟨**The plan**⟩");
+    });
+  });
+
+  it("hides an inline link's brackets and address, leaving its text", async () => {
+    const { view } = open(
+      [
+        'See [the *docs*](https://example.com "Docs") and <https://example.com>.',
+        "A [reference][docs], [](empty.md) and [docs].",
+        "",
+        "[docs]: https://example.com",
+      ].join("\n"),
+      "\n",
+      true,
+    );
+    await parsed(view);
+
+    expect(looks(view)).toEqual([
+      "See the docs and ‹<https://example.com>›.",
+      "A ‹[›reference‹]›[docs], ‹[](empty.md)› and ‹[›docs‹]›.",
+      "",
+      "[docs]‹:› ‹https://example.com›",
+    ]);
+  });
+
+  it("draws a bullet list's markers as bullets, and a task's as its box", async () => {
+    const { view } = open(
+      "- Tea\n- [ ] Boil\n* [x] Cups\n1. One\n2. [X] Two",
+      "\n",
+      true,
+    );
+    await parsed(view);
+
+    expect(looks(view)).toEqual([
+      "• Tea",
+      " Boil",
+      " Cups",
+      "‹1.› One",
+      " Two",
+    ]);
+    expect(
+      [...view.contentDOM.querySelectorAll<HTMLInputElement>(".cm-task")].map(
+        (box) => box.checked,
+      ),
+    ).toEqual([false, true, true]);
+    // Drawn as they were, as the text changes around them.
+    const bullet = view.contentDOM.querySelector(".cm-bullet");
+    view.dispatch({ changes: { from: 5, insert: "s" } });
+    expect(view.contentDOM.querySelector(".cm-bullet")).toBe(bullet);
+  });
+
+  it("ticks a task from its box, as one edit that undo reverts, the cursor staying", async () => {
+    const { view, onChange } = open("Tea\n- [ ] Boil", "\n", true);
+    await parsed(view);
+    view.dispatch({ selection: { anchor: 1 } });
+    const box = () =>
+      view.contentDOM.querySelector<HTMLInputElement>(".cm-task");
+
+    fireEvent.mouseDown(box() ?? view.contentDOM);
+    // The box shows what the text says, not what its click would.
+    expect(fireEvent.click(box() ?? view.contentDOM)).toBe(false);
+    expect(onChange).toHaveBeenLastCalledWith("Tea\n- [x] Boil");
+    expect(box()?.checked).toBe(true);
+    expect(view.state.selection.main.head).toBe(1);
+    fireEvent.mouseDown(box() ?? view.contentDOM);
+    expect(view.state.sliceDoc()).toBe("Tea\n- [ ] Boil");
+
+    undo(view);
+    expect(view.state.sliceDoc()).toBe("Tea\n- [x] Boil");
+    undo(view);
+    expect(view.state.sliceDoc()).toBe("Tea\n- [ ] Boil");
+  });
+
+  it("skips a hidden symbol as one unit", async () => {
+    const { view } = open("**Tea**", "\n", true);
+    await parsed(view);
+
+    view.dispatch({ selection: { anchor: 0 } });
+    cursorCharRight(view);
+
+    expect(view.state.selection.main.head).toBe(2);
+  });
+
+  it("switches to Source and back, keeping the text and its history", async () => {
+    const { view, showIn } = open("**Tea**", "\n", true);
+    await parsed(view);
+    view.dispatch({ changes: { from: 7, insert: " cups" } });
+
+    showIn(false);
+    expect(looks(view)).toEqual(["‹**›**Tea**‹**› cups"]);
+    expect(view.contentDOM).toHaveAccessibleName("Markdown source");
+    showIn(true);
+    expect(looks(view)).toEqual(["**Tea** cups"]);
+    undo(view);
+    expect(view.state.sliceDoc()).toBe("**Tea**");
   });
 });
 

@@ -96,7 +96,7 @@ describe("a save that finds someone else's change", () => {
     async () => {
       holdScreen("wide");
       await conflict();
-      await pickMode("Editing");
+      await pickMode("Source");
       const view = await differences();
       const source = await waitFor(() => {
         const content = document
@@ -227,10 +227,23 @@ describe("a save that finds someone else's change", () => {
     expect(banner().querySelector(".differences")).not.toBeNull();
   });
 
-  it("stays in Editing with the choice open when Viewing would save", async () => {
+  it("keeps a phone's switch under the differences, above the note it switches", async () => {
+    holdScreen("phone");
+    await conflict();
+
+    const show = screen.getByRole("group", { name: "Show" });
+    expect(banner().compareDocumentPosition(show)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(
+      within(show).getByRole("button", { name: "Preview" }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("stays in Source with the choice open when Viewing would save", async () => {
     holdScreen("wide");
     const { drive } = await conflict();
-    await pickMode("Editing");
+    await pickMode("Source");
     const asked = drive.getMetadata.mock.calls.length;
 
     await pickMode("Viewing");
@@ -284,7 +297,7 @@ describe("a save that finds someone else's change", () => {
   it("keeps Drive's version after the editor closes, and tells the page of it", async () => {
     holdScreen("wide");
     await conflict();
-    await pickMode("Editing");
+    await pickMode("Source");
 
     keepTheirs();
     await pickMode("Viewing");

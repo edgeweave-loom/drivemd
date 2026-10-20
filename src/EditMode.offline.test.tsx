@@ -25,7 +25,7 @@ describe("editing without the editor's code", () => {
       drive,
     );
 
-    await pickMode("Editing");
+    await pickMode("Source");
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "DriveMD could not load its editor. Check your connection, then reload it.",

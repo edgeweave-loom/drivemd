@@ -14,6 +14,8 @@ updates:
         patterns: ["@playwright/test"]
       npm-minor-and-patch:
         update-types: [minor, patch]
+        # Listing the playwright group first did not keep it out.
+        exclude-patterns: ["@playwright/test"]
     ignore:
       # Node.js types follow the Node.js 24 line that package.json's devEngines
       # pins.

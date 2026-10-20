@@ -924,8 +924,45 @@ button:is(.entry, .link):disabled {
   }
 }
 
+/* A sentence that goes after a few seconds, at the bottom left, or along a
+   phone's bottom, above the home bar and the floating button
+   (docs/DESIGN.md, Snackbar). Its place takes no room from the page. */
+.snackbars {
+  position: fixed;
+  bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+  left: calc(var(--space-4) + env(safe-area-inset-left));
+  z-index: 3;
+  max-width: calc(100% - 2 * var(--space-4));
+}
+
+.snackbar {
+  margin: 0;
+  padding: 14px var(--space-4);
+  border-radius: var(--radius-xs);
+  background: var(--inverse-surface);
+  color: var(--inverse-on-surface);
+  box-shadow: var(--elevation-3);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+@media (width < 768px), (pointer: coarse) and (height < 500px) {
+  .snackbars {
+    right: calc(var(--space-4) + env(safe-area-inset-right));
+  }
+
+  :root:has(.fab) .snackbars {
+    bottom: calc(
+      var(--fab-size) + 2 * var(--space-4) + env(safe-area-inset-bottom)
+    );
+  }
+}
+
+/* A tablet's folder drawer: headed by the folder, which leads back to it,
+   with Close at its top right, and its right corners rounded
+   (docs/DESIGN.md, tablet-note). */
 dialog.drawer {
-  width: min(22rem, 85vw);
+  width: min(20rem, 85vw);
   max-width: none;
   height: 100%;
   max-height: none;
@@ -934,9 +971,27 @@ dialog.drawer {
     calc(1rem + env(safe-area-inset-bottom))
     calc(1rem + env(safe-area-inset-left));
   border: none;
-  border-right: 1px solid var(--outline-variant);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
   background: var(--surface);
   color: inherit;
+}
+
+dialog.drawer > h2 {
+  display: flex;
+  margin: 0 var(--control-height) var(--space-2) 0;
+  font-size: inherit;
+  font-weight: 500;
+}
+
+dialog.drawer > h2 > .entry {
+  flex: 1;
+  min-width: 0;
+}
+
+dialog.drawer > .close {
+  position: absolute;
+  top: calc(1rem + env(safe-area-inset-top));
+  right: var(--space-2);
 }
 
 /* On a wide screen, Home, folders and search sit on a panel beside the
@@ -1160,6 +1215,12 @@ dialog.drawer {
 }
 
 /* The about page, which the Marketplace listing links to. */
+/* How the search's names match, in body-medium. */
+.matched {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
 .about h1,
 .about ul {
   margin: 0;
@@ -1383,7 +1444,7 @@ dialog.drawer {
   min-width: 0;
 }
 
-.entry > .icon:last-child {
+.entry > .icon:last-child:not(:first-child) {
   margin-left: auto;
   color: var(--on-surface-variant);
 }
@@ -1617,11 +1678,50 @@ dialog.drawer {
   font-weight: 600;
 }
 
+/* Obsidian's layout: its type's icon, its text, then a chevron if it folds,
+   each icon at the text's size, centered on the first line. A title without
+   its type, which shows no icon, keeps the flow of its text. */
+.markdown .callout-title:has(> .callout-title-inner) {
+  display: flex;
+  gap: 0.25rem;
+  align-items: flex-start;
+}
+
+.markdown :is(.callout-icon, .callout-fold) {
+  flex: none;
+  width: 1em;
+  height: 1lh;
+}
+
 /* A tap target of 44 px, which takes no more room than the title. */
 .markdown .callout > summary.callout-title {
   margin-block: -0.625rem;
   padding-block: 0.625rem;
   cursor: pointer;
+}
+
+/* Obsidian's chevron stands for the browser's marker. */
+.markdown summary.callout-title {
+  list-style: none;
+}
+
+.markdown summary.callout-title::-webkit-details-marker {
+  display: none;
+}
+
+/* Down while the callout is open, right while it is folded, as in Obsidian. */
+.markdown .callout-fold {
+  transition: transform 100ms ease-in-out;
+}
+
+.markdown details:not([open]) > summary > .callout-fold {
+  transform: rotate(-90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .markdown .callout-fold {
+    transition: none;
+  }
 }
 
 .markdown .callout-content {
@@ -1827,6 +1927,39 @@ dialog.drawer {
   margin-right: auto;
 }
 
+/* A phone's Visual, Source and Preview, over the note: one outlined pill
+   cut in three, the segment shown on secondary-container
+   (docs/DESIGN.md). */
+.segmented {
+  display: flex;
+}
+
+.segmented > button {
+  padding: 0 var(--space-4) 0 var(--space-3);
+  color: var(--on-surface);
+}
+
+.segmented > button > .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.segmented > button:not(:last-child) {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.segmented > button:not(:first-child) {
+  border-inline-start: none;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+
+.segmented > button[aria-pressed="true"] {
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
 .editing {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -1905,6 +2038,12 @@ dialog.drawer {
     border-radius: var(--radius-md) var(--radius-md) 0 0;
     background: var(--sheet);
     box-shadow: var(--elevation-1);
+  }
+
+  /* Alone, Visual's lines run from edge to edge of the sheet, their text
+     where the note's starts in Viewing. */
+  .sheets:not(.editing) > .sheet {
+    --text-inset: 72px;
   }
 
   .editing {
