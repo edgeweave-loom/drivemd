@@ -64,24 +64,36 @@ const DONE_TASK = Decoration.replace({ widget: new TaskBox(true) });
 // The last finger has lifted from the text.
 const lifted = StateEffect.define();
 
+// How long the lines stay as they are once a finger lifts from a word
+// selected, while iOS sets its selection again.
+const SETTLING_MS = 300;
+
 /**
  * Visual's symbols, hidden where the screen shows them, but on the lines
  * the selection touches while the editor has the focus, where the note is
  * being written. Those lines stay as they are while a finger is down: under
  * a long press, iOS places the cursor, then selects the word under the
  * finger, which the line showing its symbols would have moved away (seen
- * in the iOS 27 simulator, #274).
+ * in the iOS 27 simulator, #274). They stay a moment longer once it lifts
+ * from a word selected: iOS then sets the word's selection again, from
+ * where it was on the line, which showing its symbols first moved too.
  */
 const hiding = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
     writing: Stretch[];
     touching = false;
+    settling: number | undefined;
     readonly view: EditorView;
     // On the document, which a touch lifting elsewhere, or from a line drawn
     // anew meanwhile, still reaches.
     readonly lift = (event: TouchEvent) => {
       if (!this.touching || event.touches.length > 0) return;
+      window.clearTimeout(this.settling);
+      if (this.view.state.selection.main.empty) this.release();
+      else this.settling = window.setTimeout(this.release, SETTLING_MS);
+    };
+    readonly release = () => {
       this.touching = false;
       if (!sameLines(written(this.view), this.writing)) {
         this.view.dispatch({ effects: lifted.of(null) });
@@ -114,6 +126,7 @@ const hiding = ViewPlugin.fromClass(
       }
     }
     destroy() {
+      window.clearTimeout(this.settling);
       for (const type of ["touchend", "touchcancel"] as const) {
         document.removeEventListener(type, this.lift, true);
       }
@@ -124,6 +137,7 @@ const hiding = ViewPlugin.fromClass(
     // Observed, so that scrolling from the text never waits for the page.
     eventObservers: {
       touchstart() {
+        window.clearTimeout(this.settling);
         this.touching = true;
       },
     },
