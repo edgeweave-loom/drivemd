@@ -488,7 +488,11 @@ export function Editor({
             if (editor.current) command(editor.current);
           }}
           onFollow={onFollow}
-          onResize={(before) => {
+          // Once the keyboard has come or gone, and as the toolbar first
+          // shows: the tap that gave the editor the focus, or Find in note's
+          // close, placed the cursor before it showed, where iOS scrolls it
+          // above the keyboard only, under the toolbar.
+          onSettle={(before) => {
             const view = editor.current;
             if (view && onScreen(view, before)) {
               view.dispatch({

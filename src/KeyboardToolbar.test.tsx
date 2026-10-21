@@ -345,7 +345,9 @@ describe("the keyboard toolbar", () => {
       effects: StateEffect.appendConfig.of(
         EditorView.updateListener.of((update) => {
           for (const { effects } of update.transactions) {
-            scrolls.push(effects.length);
+            // Not the listener's own.
+            if (!effects.some((effect) => effect.is(StateEffect.appendConfig)))
+              scrolls.push(effects.length);
           }
         }),
       ),
@@ -366,6 +368,49 @@ describe("the keyboard toolbar", () => {
     await new Promise((resolve) => setTimeout(resolve, 1000));
     expect(scrolls).toEqual([1]);
   });
+
+  it.each([
+    { what: "under the toolbar", top: 460 },
+    // As the iPad left the line the tap placed, the keyboard up.
+    { what: "under the keyboard", top: 600 },
+  ])(
+    "scrolls to the cursor that the tap bringing it placed, $what",
+    async ({ top }) => {
+      const viewport = new Viewport();
+      // The keyboard already up, as iOS may bring it before the toolbar shows,
+      // or keep it from Find in note's field.
+      viewport.height = 500;
+      Object.defineProperty(window, "visualViewport", {
+        value: viewport,
+        configurable: true,
+      });
+      const view = await editing("tea");
+      vi.spyOn(view, "coordsAtPos").mockReturnValue({
+        left: 0,
+        right: 0,
+        top,
+        bottom: top + 26,
+      });
+      const scrolls: number[] = [];
+      view.dispatch({
+        effects: StateEffect.appendConfig.of(
+          EditorView.updateListener.of((update) => {
+            for (const { effects } of update.transactions) {
+              // Not the listener's own.
+              if (
+                !effects.some((effect) => effect.is(StateEffect.appendConfig))
+              )
+                scrolls.push(effects.length);
+            }
+          }),
+        ),
+      });
+
+      await waitFor(() => {
+        expect(scrolls).toEqual([1]);
+      });
+    },
+  );
 
   it.each([
     {

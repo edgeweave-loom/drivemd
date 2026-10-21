@@ -83,26 +83,26 @@ export function KeyboardToolbar({
   link,
   onCommand,
   onFollow,
-  onResize,
+  onSettle,
 }: {
   /** The address of the link the cursor is in. */
   link: string | undefined;
   onCommand: (command: Command) => void;
   onFollow: (href: string) => void;
   /**
-   * Runs once the keyboard has come or gone, with the visual viewport's
-   * height before.
+   * Runs once the toolbar has settled as it shows, then once the keyboard
+   * has come or gone, with the visual viewport's height before.
    */
-  onResize: (before: number) => void;
+  onSettle: (before: number) => void;
 }) {
   const bar = useRef<HTMLDivElement>(null);
-  const resized = useEffectEvent(onResize);
+  const settled = useEffectEvent(onSettle);
   useLayoutEffect(
     () =>
       bar.current
         ? keepVisible(bar.current, {
-            onResize: (before) => {
-              resized(before);
+            onSettle: (before) => {
+              settled(before);
             },
           })
         : undefined,
