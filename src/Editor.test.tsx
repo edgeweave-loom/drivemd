@@ -83,6 +83,17 @@ async function parsed(view: EditorView) {
   });
 }
 
+/** Once CodeMirror has measured the view, and scrolled as asked meanwhile. */
+function measured(view: EditorView) {
+  return new Promise<void>((resolve) => {
+    view.requestMeasure({
+      read: () => {
+        resolve();
+      },
+    });
+  });
+}
+
 function press(
   view: EditorView,
   key: string,
@@ -467,6 +478,114 @@ describe("Visual", () => {
       fireEvent.touchStart(view.contentDOM, { touches: [{}] });
       await new Promise((resolve) => setTimeout(resolve, 500));
       expect(looks(view)[0]).toBe("See a page.");
+    } finally {
+      Reflect.deleteProperty(Range.prototype, "getClientRects");
+    }
+  });
+
+  it("puts off scrolling to the cursor while a finger is down, until it lifts", async () => {
+    const { view } = open("Some **tea**.\n\n## Cups ##", "\n", true);
+    await parsed(view);
+    const scrolls: number[] = [];
+    view.dispatch({
+      effects: StateEffect.appendConfig.of(
+        EditorView.scrollHandler.of((_, range) => {
+          scrolls.push(range.head);
+          return true;
+        }),
+      ),
+    });
+    // Which jsdom lacks, and CodeMirror measures text with.
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      value: () => document.createElement("span").getClientRects(),
+      configurable: true,
+    });
+    // CodeMirror scrolls only an editor with a height, which jsdom lays out
+    // none of.
+    Object.defineProperty(view.scrollDOM, "clientHeight", { value: 400 });
+    // Typed in before the press.
+    act(() => {
+      view.focus();
+      view.dispatch({ changes: { from: 13, insert: "!" } });
+    });
+    act(() => {
+      view.dispatch({ selection: { anchor: 6 } });
+    });
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      // As the keyboard comes up under a long press and settles, which would
+      // move the text under the finger, and the selection iOS makes with it.
+      fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+      act(() => {
+        view.dispatch({ effects: EditorView.scrollIntoView(6) });
+      });
+      await measured(view);
+      expect(scrolls).toEqual([]);
+
+      // Nor while iOS sets the selection again, once the finger lifts.
+      vi.setSystemTime(Date.now() + 600);
+      fireEvent.touchEnd(document.body, { touches: [] });
+      await measured(view);
+      expect(scrolls).toEqual([]);
+      await waitFor(() => {
+        expect(scrolls).toEqual([6]);
+      });
+
+      // Once only.
+      fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+      fireEvent.touchEnd(document.body, { touches: [] });
+      await measured(view);
+      expect(scrolls).toEqual([6]);
+    } finally {
+      vi.useRealTimers();
+      Reflect.deleteProperty(Range.prototype, "getClientRects");
+    }
+  });
+
+  it("scrolls into view after a key or an edit while a finger is down", async () => {
+    const { view } = open("Some tea.", "\n", true);
+    await parsed(view);
+    const scrolls: number[] = [];
+    view.dispatch({
+      effects: StateEffect.appendConfig.of(
+        EditorView.scrollHandler.of((_, range) => {
+          scrolls.push(range.head);
+          return true;
+        }),
+      ),
+    });
+    // Which jsdom lacks, and CodeMirror measures text with.
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      value: () => document.createElement("span").getClientRects(),
+      configurable: true,
+    });
+    // CodeMirror scrolls only an editor with a height, which jsdom lays out
+    // none of.
+    Object.defineProperty(view.scrollDOM, "clientHeight", { value: 400 });
+
+    try {
+      // Typing goes on where iOS lost the lift of a finger: on a hardware
+      // keyboard,
+      fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+      act(() => {
+        view.focus();
+      });
+      fireEvent.keyDown(view.contentDOM, { key: "ArrowRight" });
+      await measured(view);
+      expect(scrolls).toEqual([1]);
+
+      // or as dictation does, without a key.
+      fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+      act(() => {
+        view.dispatch({
+          changes: { from: 8, insert: " and cups" },
+          selection: { anchor: 17 },
+          scrollIntoView: true,
+        });
+      });
+      await measured(view);
+      expect(scrolls).toEqual([1, 17]);
     } finally {
       Reflect.deleteProperty(Range.prototype, "getClientRects");
     }
