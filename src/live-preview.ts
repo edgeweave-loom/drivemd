@@ -98,7 +98,9 @@ interface Anchor {
  * moment longer once it lifts from a long press, or from a word selected:
  * iOS then sets the selection again, the word's or the cursor its loupe
  * moved, from where it was on the line, which showing its symbols first
- * moved too.
+ * moved too. Scrolls into view wait as long as the lines, as when a long
+ * press brings the keyboard back up: the text would move under the finger,
+ * and the selection with it (seen on an iPhone, #274).
  */
 const hiding = ViewPlugin.fromClass(
   class {
@@ -108,6 +110,10 @@ const hiding = ViewPlugin.fromClass(
     anchor: Anchor | null = null;
     settling: number | undefined;
     pressed = 0;
+    // A scroll into view put off while a finger is down.
+    owed = false;
+    // A key pressed or an edit made since the finger pressed.
+    typed = false;
     readonly view: EditorView;
     // On the document, which a touch lifting elsewhere, or from a line drawn
     // anew meanwhile, still reaches.
@@ -121,7 +127,9 @@ const hiding = ViewPlugin.fromClass(
     readonly release = () => {
       this.touching = false;
       touchedUntil = Date.now() + ANCHORED_MS;
-      if (!sameLines(written(this.view), this.writing)) {
+      const { owed } = this;
+      this.owed = false;
+      if (owed || !sameLines(written(this.view), this.writing)) {
         this.view.dispatch({ effects: [lifted.of(null), stayAt(this.view)] });
       }
     };
@@ -138,7 +146,10 @@ const hiding = ViewPlugin.fromClass(
         transaction.effects.some((effect) => effect.is(lifted)),
       );
       const moved = update.selectionSet || update.focusChanged;
-      if (update.docChanged) this.anchor = null;
+      if (update.docChanged) {
+        this.anchor = null;
+        this.typed = true;
+      }
       if (update.docChanged || lift || (moved && !this.touching)) {
         const writing = written(update.view);
         if (!sameLines(writing, this.writing)) this.keep(update.view);
@@ -158,6 +169,7 @@ const hiding = ViewPlugin.fromClass(
       window.clearTimeout(this.settling);
       this.touching = true;
       touchedUntil = Infinity;
+      this.typed = false;
       // A finger that starts a gesture, rather than joins one.
       if (event.touches.length !== 1) return;
       this.pressed = Date.now();
@@ -185,6 +197,16 @@ const hiding = ViewPlugin.fromClass(
         },
       });
     }
+    /**
+     * Whether a scroll into view waits while a finger is down. After a key
+     * or an edit, none does until the next press, should iOS have lost the
+     * lift.
+     */
+    putOff(): boolean {
+      if (!this.touching || this.typed) return false;
+      this.owed = true;
+      return true;
+    }
     destroy() {
       window.clearTimeout(this.settling);
       for (const type of ["touchend", "touchcancel"] as const) {
@@ -194,10 +216,17 @@ const hiding = ViewPlugin.fromClass(
   },
   {
     decorations: (plugin) => plugin.decorations,
+    provide: (plugin) =>
+      EditorView.scrollHandler.of(
+        (view) => view.plugin(plugin)?.putOff() ?? false,
+      ),
     // Observed, so that scrolling from the text never waits for the page.
     eventObservers: {
       touchstart(event) {
         this.press(event);
+      },
+      keydown() {
+        this.typed = true;
       },
     },
   },
