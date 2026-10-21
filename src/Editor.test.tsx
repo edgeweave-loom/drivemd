@@ -7,7 +7,7 @@ import {
 } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { searchPanelOpen } from "@codemirror/search";
-import { EditorState } from "@codemirror/state";
+import { EditorState, StateEffect } from "@codemirror/state";
 import { runScopeHandlers, EditorView } from "@codemirror/view";
 import {
   act,
@@ -470,6 +470,85 @@ describe("Visual", () => {
     } finally {
       Reflect.deleteProperty(Range.prototype, "getClientRects");
     }
+  });
+
+  it("keeps the line a finger pressed where it was as the lines above it change", async () => {
+    const { view } = open("Some **tea**.\n\n## Cups ##", "\n", true);
+    await parsed(view);
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 6 } });
+    });
+    // The heading starts 78 px down the page, until the paragraph above it
+    // hides its symbols and takes a line less.
+    let paragraph = 52;
+    vi.spyOn(view, "lineBlockAt").mockImplementation(
+      (at) =>
+        ({ top: at < 14 ? 0 : paragraph + 26 }) as ReturnType<
+          EditorView["lineBlockAt"]
+        >,
+    );
+    vi.spyOn(view, "posAtCoords").mockReturnValue(17);
+    const scrollBy = vi.spyOn(window, "scrollBy").mockReturnValue();
+    let scrolled = 0;
+    vi.spyOn(window, "scrollY", "get").mockImplementation(() => scrolled);
+    vi.spyOn(view, "documentTop", "get").mockImplementation(() => -scrolled);
+    // Which jsdom lacks, and CodeMirror measures text with.
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      value: () => [],
+      configurable: true,
+    });
+
+    try {
+      fireEvent.touchStart(view.contentDOM, {
+        touches: [{ clientX: 40, clientY: 100 }],
+        changedTouches: [{ clientX: 40, clientY: 100 }],
+      });
+      // As iOS scrolls on its own meanwhile, which stays.
+      scrolled = 30;
+      fireEvent.touchEnd(document.body, { touches: [] });
+      paragraph = 26;
+      act(() => {
+        view.dispatch({
+          selection: { anchor: 17 },
+          userEvent: "select.pointer",
+        });
+      });
+
+      await waitFor(() => {
+        expect(scrollBy).toHaveBeenCalledExactlyOnceWith(0, -26);
+      });
+    } finally {
+      vi.restoreAllMocks();
+      Reflect.deleteProperty(Range.prototype, "getClientRects");
+    }
+  });
+
+  it("leaves a mouse's selections to scroll as CodeMirror scrolls them", async () => {
+    const { view } = open("Some **tea**.\n\n## Cups ##", "\n", true);
+    await parsed(view);
+    const scrolls: number[] = [];
+    view.dispatch({
+      effects: StateEffect.appendConfig.of(
+        EditorView.updateListener.of((update) => {
+          for (const { selection, effects } of update.transactions) {
+            if (selection) scrolls.push(effects.length);
+          }
+        }),
+      ),
+    });
+
+    // Long after any finger, as a drag past the window's edge selects
+    // again, every 50 ms.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.now() + 60_000);
+      view.dispatch({ selection: { anchor: 17 }, userEvent: "select.pointer" });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(scrolls).toEqual([0]);
   });
 
   it("hides an inline link's brackets and address, leaving its text", async () => {
