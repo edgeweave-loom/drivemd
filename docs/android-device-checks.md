@@ -135,7 +135,7 @@ Then take back the edits with Undo, and pick Visual again, before leaving the ed
 
 ### F. The mockups
 
-As [section F](apple-device-checks.md#f-the-mockups) of the iOS checks says, with the phone for the iPhone and the tablet for the iPad; for the conflict, open `device-check-other.md` in two Chrome tabs. `drive-tab-sign-in` and `drive-tab-phone-sign-in` show only before sign-in, so in an Incognito tab, which Chrome keeps out of screenshots: compare their text from the page's elements, and mark the rest BLOCKED.
+As [section F](apple-device-checks.md#f-the-mockups) of the iOS checks says, with the phone for the iPhone and the tablet for the iPad; for the conflict, open `device-check-other.md` in two Chrome tabs. `drive-tab-sign-in` and `drive-tab-phone-sign-in` show before sign-in, in a tab that Drive opened with an account: type `/open?state=` in a Chrome tab's address bar, followed by the URL-encoded `{"ids":["<id>"],"action":"open","userId":"<digits>"}`, with a test note's ID and made-up digits, and the tab signs in afresh, with the account the device remembers left alone. An address that an intent or a link opens goes to the installed app instead, even with its links turned off.
 
 ### G. A tab opened from Drive
 
