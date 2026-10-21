@@ -354,50 +354,70 @@ describe("Visual", () => {
 
   it("leaves the word a long press selected to iOS for a moment once the finger lifts", async () => {
     const { view } = open(
-      "See [the docs](docs.md) and [a page](page.md).\n\nTea",
+      "See [the docs](docs.md) and [a page](page.md).",
       "\n",
       true,
     );
     await parsed(view);
-    fireEvent.touchStart(view.contentDOM, { touches: [{}] });
-    act(() => {
-      view.focus();
-      view.dispatch({ selection: { anchor: 31, head: 35 } });
+    // jsdom lays no text out, which CodeMirror measures meanwhile: a
+    // range's boxes are an element's, none.
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      value: () => document.createElement("span").getClientRects(),
+      configurable: true,
     });
-
-    // iOS sets the word's selection again once the finger lifts, from where
-    // it was on the line as drawn.
-    fireEvent.touchEnd(document.body, { touches: [] });
-    act(() => {
-      view.dispatch({
-        selection: { anchor: 31, head: 35 },
-        userEvent: "select",
+    try {
+      fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+      act(() => {
+        view.focus();
+        view.dispatch({ selection: { anchor: 31, head: 35 } });
       });
-    });
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(looks(view)[0]).toBe("See the docs and a page.");
 
-    await waitFor(() => {
-      expect(looks(view)[0]).toBe(
-        "See ‹[›the docs‹](docs.md)› and ‹[›a page‹](page.md)›.",
-      );
-    });
-    expect(view.state.selection.main).toMatchObject({ anchor: 31, head: 35 });
+      // iOS sets the word's selection again once the finger lifts, from where
+      // it was on the line as drawn.
+      fireEvent.touchEnd(document.body, { touches: [] });
+      act(() => {
+        view.dispatch({
+          selection: { anchor: 31, head: 35 },
+          userEvent: "select",
+        });
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(looks(view)[0]).toBe("See the docs and a page.");
+
+      await waitFor(() => {
+        expect(looks(view)[0]).toBe(
+          "See ‹[›the docs‹](docs.md)› and ‹[›a page‹](page.md)›.",
+        );
+      });
+      expect(view.state.selection.main).toMatchObject({ anchor: 31, head: 35 });
+    } finally {
+      Reflect.deleteProperty(Range.prototype, "getClientRects");
+    }
   });
 
   it("keeps the lines as they are for a finger that presses again meanwhile", async () => {
-    const { view } = open("See [a page](page.md).\n\nTea", "\n", true);
+    const { view } = open("See [a page](page.md).", "\n", true);
     await parsed(view);
-    fireEvent.touchStart(view.contentDOM, { touches: [{}] });
-    act(() => {
-      view.focus();
-      view.dispatch({ selection: { anchor: 7, head: 11 } });
+    // jsdom lays no text out, which CodeMirror measures meanwhile: a
+    // range's boxes are an element's, none.
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      value: () => document.createElement("span").getClientRects(),
+      configurable: true,
     });
-    fireEvent.touchEnd(document.body, { touches: [] });
+    try {
+      fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+      act(() => {
+        view.focus();
+        view.dispatch({ selection: { anchor: 7, head: 11 } });
+      });
+      fireEvent.touchEnd(document.body, { touches: [] });
 
-    fireEvent.touchStart(view.contentDOM, { touches: [{}] });
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    expect(looks(view)[0]).toBe("See a page.");
+      fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(looks(view)[0]).toBe("See a page.");
+    } finally {
+      Reflect.deleteProperty(Range.prototype, "getClientRects");
+    }
   });
 
   it("keeps the line a finger pressed where it was as the lines above it change", async () => {
