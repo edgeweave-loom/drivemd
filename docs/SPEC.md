@@ -458,7 +458,7 @@ If a stage proves too costly on phones, that element stays unhidden in Visual, a
 
 **Testing**
 
-Every stage is tested on a real iPhone first, then an Android phone, with our messiest real files. Check selection handles, dictation, autocorrect, and non-Latin keyboards (for example Japanese or Chinese input). Stage 1's checks for the iOS Simulator, which a real iPhone then repeats where the Simulator's text input differs from the device's, are section K of [`docs/apple-device-checks.md`](apple-device-checks.md).
+Every stage is tested on a real iPhone first, then an Android phone, with our messiest real files. Check selection handles, dictation, autocorrect, and non-Latin keyboards (for example Japanese or Chinese input). Stage 1's checks for the iOS Simulator, which a real iPhone then repeats where the Simulator's text input differs from the device's, are section K of [`docs/apple-device-checks.md`](apple-device-checks.md); Android's, in the Android Emulator, which runs Gboard itself, are section K of [`docs/android-device-checks.md`](android-device-checks.md).
 
 **Reference only (not dependencies):** [atomic-editor](https://github.com/kenforthewin/atomic-editor), [codemirror-live-markdown](https://github.com/blueberrycongee/codemirror-live-markdown).
 
