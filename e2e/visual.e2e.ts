@@ -73,9 +73,10 @@ test("opens a link from the keyboard toolbar on a touch screen", async ({
   );
   const note = await editInVisual(page);
 
-  // A tap places the cursor in the link, showing its Markdown.
+  // A tap places the cursor in the link, showing its Markdown once the
+  // finger lifts.
   const link = note.getByText("the notes", { exact: true });
-  await link.click();
+  await link.tap();
   await expect(
     note.locator(".cm-line").filter({ hasText: "Next:" }),
   ).toContainText("[the notes](notes.md#later)");

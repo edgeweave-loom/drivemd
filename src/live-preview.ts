@@ -1,6 +1,11 @@
 import { isolateHistory } from "@codemirror/commands";
 import { syntaxTree } from "@codemirror/language";
-import type { EditorState, Extension, Range } from "@codemirror/state";
+import {
+  StateEffect,
+  type EditorState,
+  type Extension,
+  type Range,
+} from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -56,31 +61,106 @@ class TaskBox extends WidgetType {
 const OPEN_TASK = Decoration.replace({ widget: new TaskBox(false) });
 const DONE_TASK = Decoration.replace({ widget: new TaskBox(true) });
 
+// The last finger has lifted from the text.
+const lifted = StateEffect.define();
+
+// How long the lines stay as they are once a finger lifts from a long
+// press, while iOS sets its selection again.
+const SETTLING_MS = 300;
+
+// How long a finger rests before iOS takes it for a long press, as UIKit
+// does by default.
+const LONG_PRESS_MS = 500;
+
 /**
  * Visual's symbols, hidden where the screen shows them, but on the lines
  * the selection touches while the editor has the focus, where the note is
- * being written.
+ * being written. Those lines stay as they are while a finger is down: under
+ * a long press, iOS places the cursor, then selects the word under the
+ * finger, which the line showing its symbols would have moved away (seen
+ * in the iOS 27 simulator, #274). They stay a moment longer once it lifts
+ * from a long press, or from a word selected: iOS then sets the selection
+ * again, the word's or the cursor its loupe moved, from where it was on
+ * the line, which showing its symbols first moved too.
  */
 const hiding = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
+    writing: Stretch[];
+    touching = false;
+    settling: number | undefined;
+    pressed = 0;
+    readonly view: EditorView;
+    // On the document, which a touch lifting elsewhere, or from a line drawn
+    // anew meanwhile, still reaches.
+    readonly lift = (event: TouchEvent) => {
+      if (!this.touching || event.touches.length > 0) return;
+      window.clearTimeout(this.settling);
+      const tapped = Date.now() - this.pressed < LONG_PRESS_MS;
+      if (tapped && this.view.state.selection.main.empty) this.release();
+      else this.settling = window.setTimeout(this.release, SETTLING_MS);
+    };
+    readonly release = () => {
+      this.touching = false;
+      if (!sameLines(written(this.view), this.writing)) {
+        this.view.dispatch({ effects: lifted.of(null) });
+      }
+    };
     constructor(view: EditorView) {
-      this.decorations = hidden(view);
+      this.view = view;
+      this.writing = written(view);
+      this.decorations = hidden(view, this.writing);
+      for (const type of ["touchend", "touchcancel"] as const) {
+        document.addEventListener(type, this.lift, true);
+      }
     }
     update(update: ViewUpdate) {
+      const lift = update.transactions.some((transaction) =>
+        transaction.effects.some((effect) => effect.is(lifted)),
+      );
+      const moved = update.selectionSet || update.focusChanged;
+      if (update.docChanged || lift || (moved && !this.touching)) {
+        this.writing = written(update.view);
+      }
       if (
         update.docChanged ||
         update.viewportChanged ||
-        update.selectionSet ||
-        update.focusChanged ||
+        moved ||
+        lift ||
         syntaxTree(update.startState) !== syntaxTree(update.state)
       ) {
-        this.decorations = hidden(update.view);
+        this.decorations = hidden(update.view, this.writing);
+      }
+    }
+    destroy() {
+      window.clearTimeout(this.settling);
+      for (const type of ["touchend", "touchcancel"] as const) {
+        document.removeEventListener(type, this.lift, true);
       }
     }
   },
-  { decorations: (plugin) => plugin.decorations },
+  {
+    decorations: (plugin) => plugin.decorations,
+    // Observed, so that scrolling from the text never waits for the page.
+    eventObservers: {
+      touchstart(event) {
+        window.clearTimeout(this.settling);
+        // A finger that starts a gesture, rather than joins one.
+        if (event.touches.length === 1) this.pressed = Date.now();
+        this.touching = true;
+      },
+    },
+  },
 );
+
+function sameLines(one: Stretch[], other: Stretch[]): boolean {
+  return (
+    one.length === other.length &&
+    one.every(
+      (line, at) => line.from === other[at]?.from && line.to === other[at].to,
+    )
+  );
+}
 
 /**
  * A tap on a task's box ticks the task, as one edit that undo reverts,
@@ -147,9 +227,13 @@ function tick(view: EditorView, at: number): void {
   });
 }
 
-function hidden(view: EditorView): DecorationSet {
+/** The lines being written, which the selection touches while focused. */
+function written(view: EditorView): Stretch[] {
+  return view.hasFocus ? linesWritten(view.state) : [];
+}
+
+function hidden(view: EditorView, writing: Stretch[]): DecorationSet {
   const { state } = view;
-  const writing = view.hasFocus ? linesWritten(state) : [];
   const ranges: Range<Decoration>[] = [];
   for (const { from, to } of view.visibleRanges) {
     syntaxTree(state).iterate({
