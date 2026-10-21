@@ -64,9 +64,13 @@ const DONE_TASK = Decoration.replace({ widget: new TaskBox(true) });
 // The last finger has lifted from the text.
 const lifted = StateEffect.define();
 
-// How long the lines stay as they are once a finger lifts from a word
-// selected, while iOS sets its selection again.
+// How long the lines stay as they are once a finger lifts from a long
+// press, while iOS sets its selection again.
 const SETTLING_MS = 300;
+
+// How long a finger rests before iOS takes it for a long press, as UIKit
+// does by default.
+const LONG_PRESS_MS = 500;
 
 /**
  * Visual's symbols, hidden where the screen shows them, but on the lines
@@ -75,8 +79,9 @@ const SETTLING_MS = 300;
  * a long press, iOS places the cursor, then selects the word under the
  * finger, which the line showing its symbols would have moved away (seen
  * in the iOS 27 simulator, #274). They stay a moment longer once it lifts
- * from a word selected: iOS then sets the word's selection again, from
- * where it was on the line, which showing its symbols first moved too.
+ * from a long press, or from a word selected: iOS then sets the selection
+ * again, the word's or the cursor its loupe moved, from where it was on
+ * the line, which showing its symbols first moved too.
  */
 const hiding = ViewPlugin.fromClass(
   class {
@@ -84,13 +89,15 @@ const hiding = ViewPlugin.fromClass(
     writing: Stretch[];
     touching = false;
     settling: number | undefined;
+    pressed = 0;
     readonly view: EditorView;
     // On the document, which a touch lifting elsewhere, or from a line drawn
     // anew meanwhile, still reaches.
     readonly lift = (event: TouchEvent) => {
       if (!this.touching || event.touches.length > 0) return;
       window.clearTimeout(this.settling);
-      if (this.view.state.selection.main.empty) this.release();
+      const tapped = Date.now() - this.pressed < LONG_PRESS_MS;
+      if (tapped && this.view.state.selection.main.empty) this.release();
       else this.settling = window.setTimeout(this.release, SETTLING_MS);
     };
     readonly release = () => {
@@ -136,8 +143,10 @@ const hiding = ViewPlugin.fromClass(
     decorations: (plugin) => plugin.decorations,
     // Observed, so that scrolling from the text never waits for the page.
     eventObservers: {
-      touchstart() {
+      touchstart(event) {
         window.clearTimeout(this.settling);
+        // A finger that starts a gesture, rather than joins one.
+        if (event.touches.length === 1) this.pressed = Date.now();
         this.touching = true;
       },
     },
