@@ -331,25 +331,77 @@ describe("Visual", () => {
     );
     await parsed(view);
 
-    // As iOS places the cursor under a long press: the line staying as it
-    // was, the cursor stays under the finger.
-    fireEvent.touchStart(view.contentDOM, { touches: [{}] });
-    act(() => {
-      view.focus();
-      view.dispatch({ selection: { anchor: 30 } });
-    });
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(looks(view)[0]).toBe("See the docs and a page.");
+    // A finger lifting at once, as from a tap.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      // The cursor moving under a finger, the line stays as it was.
+      fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+      act(() => {
+        view.focus();
+        view.dispatch({ selection: { anchor: 30 } });
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(looks(view)[0]).toBe("See the docs and a page.");
 
-    // A second finger lifting leaves the first one down.
-    fireEvent.touchEnd(view.contentDOM, { touches: [{}] });
-    expect(looks(view)[0]).toBe("See the docs and a page.");
-    // Lifting where the editor may not see it: from a line drawn anew.
-    fireEvent.touchEnd(document.body, { touches: [] });
-    expect(looks(view)[0]).toBe(
-      "See ‹[›the docs‹](docs.md)› and ‹[›a page‹](page.md)›.",
+      // A second finger lifting leaves the first one down.
+      fireEvent.touchEnd(view.contentDOM, { touches: [{}] });
+      expect(looks(view)[0]).toBe("See the docs and a page.");
+      // Lifting where the editor may not see it: from a line drawn anew.
+      fireEvent.touchEnd(document.body, { touches: [] });
+      expect(looks(view)[0]).toBe(
+        "See ‹[›the docs‹](docs.md)› and ‹[›a page‹](page.md)›.",
+      );
+      expect(view.state.selection.main).toMatchObject({ anchor: 30, head: 30 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves the cursor a long press moved to iOS for a moment once the finger lifts", async () => {
+    const { view } = open(
+      "See [the docs](docs.md) and [a page](page.md).\n\nSome tea and cups.",
+      "\n",
+      true,
     );
-    expect(view.state.selection.main).toMatchObject({ anchor: 30, head: 30 });
+    await parsed(view);
+    // jsdom lays no text out, which CodeMirror measures meanwhile: a
+    // range's boxes are an element's, none.
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      value: () => document.createElement("span").getClientRects(),
+      configurable: true,
+    });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      // With the focus, a long press moves the cursor, under iOS's loupe.
+      act(() => {
+        view.dispatch({ selection: { anchor: view.state.doc.length } });
+        view.focus();
+      });
+      fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+      act(() => {
+        view.dispatch({ selection: { anchor: 32 } });
+      });
+      vi.setSystemTime(Date.now() + 600);
+
+      // iOS places the cursor again once the finger lifts, from where it
+      // was on the line as drawn.
+      fireEvent.touchEnd(document.body, { touches: [] });
+      act(() => {
+        view.dispatch({ selection: { anchor: 32 }, userEvent: "select" });
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(looks(view)[0]).toBe("See the docs and a page.");
+
+      await waitFor(() => {
+        expect(looks(view)[0]).toBe(
+          "See ‹[›the docs‹](docs.md)› and ‹[›a page‹](page.md)›.",
+        );
+      });
+      expect(view.state.selection.main).toMatchObject({ anchor: 32, head: 32 });
+    } finally {
+      vi.useRealTimers();
+      Reflect.deleteProperty(Range.prototype, "getClientRects");
+    }
   });
 
   it("leaves the word a long press selected to iOS for a moment once the finger lifts", async () => {
