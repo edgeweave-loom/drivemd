@@ -64,9 +64,13 @@ const DONE_TASK = Decoration.replace({ widget: new TaskBox(true) });
 // The last finger has lifted from the text.
 const lifted = StateEffect.define();
 
-// How long the lines stay as they are once a finger lifts from a word
-// selected, while iOS sets its selection again.
+// How long the lines stay as they are once a finger lifts from a long
+// press, while iOS sets its selection again.
 const SETTLING_MS = 300;
+
+// How long a finger rests before iOS takes it for a long press, as UIKit
+// does by default.
+const LONG_PRESS_MS = 500;
 
 // How long the line a finger pressed stays put after it lifts, while the
 // tap moves the cursor there.
@@ -91,9 +95,10 @@ interface Anchor {
  * in the iOS 27 simulator, #274). As other lines show or hide their
  * symbols, the line pressed stays under the finger, as far as the page
  * scrolls: the lines above it would otherwise move it (#275). They stay a
- * moment longer once it lifts from a word selected: iOS then sets the
- * word's selection again, from where it was on the line, which showing its
- * symbols first moved too.
+ * moment longer once it lifts from a long press, or from a word selected:
+ * iOS then sets the selection again, the word's or the cursor its loupe
+ * moved, from where it was on the line, which showing its symbols first
+ * moved too.
  */
 const hiding = ViewPlugin.fromClass(
   class {
@@ -102,13 +107,15 @@ const hiding = ViewPlugin.fromClass(
     touching = false;
     anchor: Anchor | null = null;
     settling: number | undefined;
+    pressed = 0;
     readonly view: EditorView;
     // On the document, which a touch lifting elsewhere, or from a line drawn
     // anew meanwhile, still reaches.
     readonly lift = (event: TouchEvent) => {
       if (!this.touching || event.touches.length > 0) return;
       window.clearTimeout(this.settling);
-      if (this.view.state.selection.main.empty) this.release();
+      const tapped = Date.now() - this.pressed < LONG_PRESS_MS;
+      if (tapped && this.view.state.selection.main.empty) this.release();
       else this.settling = window.setTimeout(this.release, SETTLING_MS);
     };
     readonly release = () => {
@@ -153,6 +160,7 @@ const hiding = ViewPlugin.fromClass(
       touchedUntil = Infinity;
       // A finger that starts a gesture, rather than joins one.
       if (event.touches.length !== 1) return;
+      this.pressed = Date.now();
       const touch = event.changedTouches[0];
       const at =
         touch && this.view.posAtCoords({ x: touch.clientX, y: touch.clientY });
