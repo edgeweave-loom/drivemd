@@ -2162,6 +2162,11 @@ dialog.drawer > .close {
   overflow-x: auto;
   border-top: 1px solid var(--outline-variant);
   background: var(--surface-container);
+  /* Its background runs on below it, down past the screen's bottom: in
+     Safari on an iPhone, the page shows under and around the bars that
+     float between it and the keyboard, where taps go to Safari. A shadow
+     neither scrolls with the row's keys nor takes taps. */
+  box-shadow: 0 50lvh 0 50lvh var(--surface-container);
   scrollbar-width: none;
 }
 
