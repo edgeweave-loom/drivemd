@@ -331,12 +331,12 @@ describe("Visual", () => {
     );
     await parsed(view);
 
-    // As iOS places the cursor, then selects a word, under a long press: the
-    // line staying as it was, the word is the one under the finger.
+    // As iOS places the cursor under a long press: the line staying as it
+    // was, the cursor stays under the finger.
     fireEvent.touchStart(view.contentDOM, { touches: [{}] });
     act(() => {
       view.focus();
-      view.dispatch({ selection: { anchor: 30, head: 31 } });
+      view.dispatch({ selection: { anchor: 30 } });
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(looks(view)[0]).toBe("See the docs and a page.");
@@ -349,7 +349,55 @@ describe("Visual", () => {
     expect(looks(view)[0]).toBe(
       "See ‹[›the docs‹](docs.md)› and ‹[›a page‹](page.md)›.",
     );
-    expect(view.state.selection.main).toMatchObject({ anchor: 30, head: 31 });
+    expect(view.state.selection.main).toMatchObject({ anchor: 30, head: 30 });
+  });
+
+  it("leaves the word a long press selected to iOS for a moment once the finger lifts", async () => {
+    const { view } = open(
+      "See [the docs](docs.md) and [a page](page.md).\n\nTea",
+      "\n",
+      true,
+    );
+    await parsed(view);
+    fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 31, head: 35 } });
+    });
+
+    // iOS sets the word's selection again once the finger lifts, from where
+    // it was on the line as drawn.
+    fireEvent.touchEnd(document.body, { touches: [] });
+    act(() => {
+      view.dispatch({
+        selection: { anchor: 31, head: 35 },
+        userEvent: "select",
+      });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(looks(view)[0]).toBe("See the docs and a page.");
+
+    await waitFor(() => {
+      expect(looks(view)[0]).toBe(
+        "See ‹[›the docs‹](docs.md)› and ‹[›a page‹](page.md)›.",
+      );
+    });
+    expect(view.state.selection.main).toMatchObject({ anchor: 31, head: 35 });
+  });
+
+  it("keeps the lines as they are for a finger that presses again meanwhile", async () => {
+    const { view } = open("See [a page](page.md).\n\nTea", "\n", true);
+    await parsed(view);
+    fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 7, head: 11 } });
+    });
+    fireEvent.touchEnd(document.body, { touches: [] });
+
+    fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(looks(view)[0]).toBe("See a page.");
   });
 
   it("keeps the line a finger pressed where it was as the lines above it change", async () => {
