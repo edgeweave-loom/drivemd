@@ -42,6 +42,14 @@ adb -s <serial> shell am broadcast -a com.android.systemui.demo -e command batte
 adb -s <serial> shell am broadcast -a com.android.systemui.demo -e command notifications -e visible false
 ```
 
+Keep each device awake from its boot to the end of the run: asleep, it can unload the page or the installed app that a check waits on, such as I1 during a deploy. Android keeps the screen on only while the device thinks it is plugged in, which `dumpsys power` confirms with `mStayOn=true`; the demo mode above still shows the battery unplugged.
+
+```sh
+adb -s <serial> shell settings put system screen_off_timeout 2147483647
+adb -s <serial> shell svc power stayon true
+adb -s <serial> shell dumpsys battery set ac 1
+```
+
 The phone must show its camera's cutout in screenshots: when it shows none, turn on Android's own (`adb -s <serial> shell cmd overlay enable com.android.internal.display.cutout.emulation.hole`).
 
 On a new device, Chrome's first run offers to sign in: tap **Stay signed out**, then **No thanks** to notifications. Then turn off ⋮ ▸ Settings ▸ Google services ▸ **Allow Chrome sign-in**: otherwise Google's sign-in, in the app or on drive.google.com, starts Android's add-account flow instead of staying in the page. A couple of minutes after the first boot, Google Play services updates itself, and its restart closes Chrome and Gboard: open the address again. When the image's Chrome is old, its menu starts with **Update Chrome**, which shifts the items under it and opens the Play Store: leave it.
