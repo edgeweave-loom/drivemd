@@ -64,6 +64,10 @@ const DONE_TASK = Decoration.replace({ widget: new TaskBox(true) });
 // The last finger has lifted from the text.
 const lifted = StateEffect.define();
 
+// How long the lines stay as they are once a finger lifts from a word
+// selected, while iOS sets its selection again.
+const SETTLING_MS = 300;
+
 // How long the line a finger pressed stays put after it lifts, while the
 // tap moves the cursor there.
 const ANCHORED_MS = 500;
@@ -86,7 +90,10 @@ interface Anchor {
  * finger, which the line showing its symbols would have moved away (seen
  * in the iOS 27 simulator, #274). As other lines show or hide their
  * symbols, the line pressed stays under the finger, as far as the page
- * scrolls: the lines above it would otherwise move it (#275).
+ * scrolls: the lines above it would otherwise move it (#275). They stay a
+ * moment longer once it lifts from a word selected: iOS then sets the
+ * word's selection again, from where it was on the line, which showing its
+ * symbols first moved too.
  */
 const hiding = ViewPlugin.fromClass(
   class {
@@ -94,11 +101,17 @@ const hiding = ViewPlugin.fromClass(
     writing: Stretch[];
     touching = false;
     anchor: Anchor | null = null;
+    settling: number | undefined;
     readonly view: EditorView;
     // On the document, which a touch lifting elsewhere, or from a line drawn
     // anew meanwhile, still reaches.
     readonly lift = (event: TouchEvent) => {
       if (!this.touching || event.touches.length > 0) return;
+      window.clearTimeout(this.settling);
+      if (this.view.state.selection.main.empty) this.release();
+      else this.settling = window.setTimeout(this.release, SETTLING_MS);
+    };
+    readonly release = () => {
       this.touching = false;
       touchedUntil = Date.now() + ANCHORED_MS;
       if (!sameLines(written(this.view), this.writing)) {
@@ -135,6 +148,7 @@ const hiding = ViewPlugin.fromClass(
       }
     }
     press(event: TouchEvent) {
+      window.clearTimeout(this.settling);
       this.touching = true;
       touchedUntil = Infinity;
       // A finger that starts a gesture, rather than joins one.
@@ -164,6 +178,7 @@ const hiding = ViewPlugin.fromClass(
       });
     }
     destroy() {
+      window.clearTimeout(this.settling);
       for (const type of ["touchend", "touchcancel"] as const) {
         document.removeEventListener(type, this.lift, true);
       }
