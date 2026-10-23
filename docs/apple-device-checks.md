@@ -210,7 +210,7 @@ To make a conflict, open `device-check-other.md` in two Safari tabs (the second 
 ### J. Typed text, as information
 
 - **J1.** In the editor, tap on the on-screen keyboard: `"quoted" -- it's` and a new line starting with `next`. The text stays as typed: straight quotes, two hyphens, a straight apostrophe, and no capital on `next`.
-- **J2.** Type a word, then two spaces with quick taps on the space bar. iOS turns them into a period and a space (issue #119): record what the source holds, and if the developer has the Web Inspector open, the `beforeinput` events' `inputType` and `data`, which the issue needs.
+- **J2.** Type a word, then two spaces with quick taps on the space bar. iOS turns them into a period and a space, which the editor takes back: the source holds the word and two spaces.
 
 ### K. Visual, Source and Viewing (v2, stage 1)
 
