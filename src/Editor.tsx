@@ -57,6 +57,7 @@ import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
 import { useLayout, useTouch } from "./layout.ts";
 import { livePreview } from "./live-preview.ts";
+import { oneEditPerKey } from "./one-edit-per-key.ts";
 import { linkAt } from "./source-links.ts";
 import type { LineBreak } from "./text.ts";
 import { keepVisible } from "./visual-viewport.ts";
@@ -242,6 +243,7 @@ function extensions(
     writable(lineBreak),
     history(),
     keepDoubleSpace,
+    oneEditPerKey,
     // GitHub's Markdown, its fences highlighted in their language and its
     // front matter in YAML; Enter continues lists and task lists.
     withFrontmatter(
