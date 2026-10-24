@@ -100,11 +100,16 @@ describe("Firebase Hosting", () => {
       expect(csp.get("img-src")).toEqual(["'self'", "blob:"]);
     });
 
-    it("blocks plugins, base URL hijacking, form posts and framing", () => {
+    it("blocks plugins, base URL hijacking and framing", () => {
       expect(csp.get("object-src")).toEqual(["'none'"]);
       expect(csp.get("base-uri")).toEqual(["'none'"]);
-      expect(csp.get("form-action")).toEqual(["'none'"]);
       expect(csp.get("frame-ancestors")).toEqual(["'none'"]);
+    });
+
+    it("sends forms only to the app", () => {
+      // A link to another note loads it in its new tab through a form, which
+      // Chrome on Android keeps out of the installed app.
+      expect(csp.get("form-action")).toEqual(["'self'"]);
     });
 
     it("requires Trusted Types for the DOM sinks that run scripts", () => {
