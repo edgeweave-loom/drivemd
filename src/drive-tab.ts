@@ -45,7 +45,12 @@ export function openNoteTab(href: string): boolean {
   if (shown.name === "file" && shown.file.id === route.file.id) return false;
   // A name of its own, or the browser would open the note in a tab that a
   // link opened before, if it still had the name.
-  return window.open(url, NAME + crypto.randomUUID()) !== null;
+  const tab = window.open("", NAME + crypto.randomUUID());
+  if (tab === null) return false;
+  // Opening the tab used up the click, so Chrome on Android loads the note
+  // there rather than handing it to the installed app.
+  tab.location.replace(url);
+  return true;
 }
 
 /**

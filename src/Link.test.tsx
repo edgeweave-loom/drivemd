@@ -4,6 +4,7 @@ import { DriveContext } from "./drive-context.ts";
 import { markTab } from "./drive-tab.ts";
 import { Link } from "./Link.tsx";
 import { getPlace, hrefOf } from "./router.ts";
+import { blankTab } from "./test/blank-tab.ts";
 import { fakeDrive } from "./test/fake-drive.ts";
 
 const TRAIL = [{ name: "My Drive", href: "/my-drive" }];
@@ -90,7 +91,7 @@ describe("A link to another note, in a tab opened from Drive", () => {
 
   it("opens it in a new tab, before anything else can spend the tap", () => {
     fromDrive();
-    const open = vi.spyOn(window, "open").mockReturnValue(window);
+    const open = vi.spyOn(window, "open").mockReturnValue(blankTab().tab);
     const renew = vi.fn();
     const link = renderLink(renew, OTHER);
 

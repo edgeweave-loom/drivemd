@@ -151,7 +151,7 @@ As [section G](apple-device-checks.md#g-a-tab-opened-from-drive) of the iOS chec
 
 - **G1.** Drive's mobile site has no **Open with**: switch Chrome to ⋮ ▸ **Desktop site**, where a long press on the file offers it. Drive's **Open with ▸ DriveMD** opens production, the only DriveMD that Drive knows: close that tab untouched, and open the address that G1 builds when Drive does not offer DriveMD, on staging.
 - **G2.** Run it in an Incognito tab, from ⋮ ▸ **New Incognito tab**; on the tablet, Ctrl+Shift+N opens a second window instead, side by side, which ⋮ ▸ **Manage windows** closes. Chrome keeps Incognito out of screenshots: read the page from its elements.
-- **G4.** The new tab is one of Chrome's.
+- **G4.** The new tab is one of Chrome's, with the app installed from E1: not the installed app, which would ask **Continue** (see Handing the token to a new tab in the spec).
 
 ### H. Home and themes
 
