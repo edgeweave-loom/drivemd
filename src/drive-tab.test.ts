@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { markTab, openedFromDrive, openNoteTab } from "./drive-tab.ts";
 import { hrefOf } from "./router.ts";
+import { blankTab } from "./test/blank-tab.ts";
 
 /** Loads the page as the browser says it did. */
 function loaded(type: NavigationTimingType) {
@@ -101,18 +102,21 @@ describe("A tab opened from Drive", () => {
 describe("A link to another note, in a tab opened from Drive", () => {
   it("opens it in a new tab that keeps this one as its opener", () => {
     fromDrive();
-    const open = vi.spyOn(window, "open").mockReturnValue(window);
+    const { tab, replace } = blankTab();
+    const open = vi.spyOn(window, "open").mockReturnValue(tab);
 
     expect(openNoteTab(NOTE)).toBe(true);
+    // Empty at first, so that the click is used up before the note loads.
     expect(open).toHaveBeenCalledWith(
-      new URL(NOTE, window.location.origin),
+      "",
       expect.stringMatching(/^drivemd\.note\./),
     );
+    expect(replace).toHaveBeenCalledWith(new URL(NOTE, window.location.origin));
   });
 
   it("opens a new tab for each, rather than one a link opened before", () => {
     fromDrive();
-    const open = vi.spyOn(window, "open").mockReturnValue(window);
+    const open = vi.spyOn(window, "open").mockReturnValue(blankTab().tab);
     openNoteTab(NOTE);
     openNoteTab(NOTE);
 
@@ -168,7 +172,7 @@ describe("The tab a link opens from a tab opened from Drive", () => {
     let name = "";
     vi.spyOn(window, "open").mockImplementation((_, target) => {
       name = target ?? "";
-      return window;
+      return blankTab().tab;
     });
     openNoteTab(NOTE);
     // The browser copied nothing of the tab's storage into the new one.
