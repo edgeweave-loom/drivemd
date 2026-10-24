@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { keepVisible } from "./visual-viewport.ts";
+import { keepRoom, keepVisible } from "./visual-viewport.ts";
 
 /** A visual viewport of `height`, `pageTop` down a page scrolled to 0. */
 class Viewport extends EventTarget {
   height = 800;
   pageTop = 0;
+  scale = 1;
   show(height: number, pageTop = 0) {
     this.height = height;
     this.pageTop = pageTop;
@@ -143,5 +144,69 @@ describe("keepVisible", () => {
     expect(bar.style.transform).toBe("");
     viewport.show(300);
     expect(bar.style.transform).toBe("");
+  });
+});
+
+describe("keepRoom", () => {
+  let viewport: Viewport;
+
+  beforeEach(() => {
+    viewport = new Viewport();
+    Object.defineProperty(window, "visualViewport", {
+      value: viewport,
+      configurable: true,
+    });
+    // As Samsung Internet lays out the page with its top bar shown.
+    Object.defineProperty(window, "innerHeight", {
+      value: 797,
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(window, "visualViewport");
+    Reflect.deleteProperty(window, "innerHeight");
+  });
+
+  function cover() {
+    return document.documentElement.style.getPropertyValue("--keyboard-cover");
+  }
+
+  it("makes room for the part of the page the keyboard covers", () => {
+    viewport.height = 797;
+    keepRoom();
+    expect(cover()).toBe("0px");
+
+    // Measured in the Android Emulator: Samsung Internet's first Gboard,
+    // which leaves the page its height.
+    viewport.show(485, 244);
+    expect(cover()).toBe("312px");
+
+    // As it then shrinks the page with the keyboard.
+    Object.defineProperty(window, "innerHeight", {
+      value: 485,
+      configurable: true,
+    });
+    window.dispatchEvent(new Event("resize"));
+    expect(cover()).toBe("0px");
+  });
+
+  it("makes none for a pinch's zoom", () => {
+    viewport.height = 398.5;
+    viewport.scale = 2;
+    keepRoom();
+
+    expect(cover()).toBe("0px");
+  });
+
+  it("takes the room back once it stops", () => {
+    const stop = keepRoom();
+    viewport.show(485);
+
+    stop();
+
+    expect(cover()).toBe("");
+    viewport.show(300);
+    expect(cover()).toBe("");
   });
 });

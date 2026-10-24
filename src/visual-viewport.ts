@@ -89,3 +89,34 @@ export function keepVisible(
     element.style.transform = "";
   };
 }
+
+/**
+ * Sets `--keyboard-cover` on the page's root to the height of the page that
+ * the keyboard covers rather than shrinks, which the page's end needs as
+ * room to scroll clear of it: a script scrolls the layout viewport alone,
+ * not the visual viewport within it. The first time Gboard comes up after
+ * Samsung Internet starts, it can leave the layout viewport its height
+ * despite `interactive-widget=resizes-content`, the page already scrolled
+ * to its end (checked in the Android Emulator). A pinch's zoom shrinks the
+ * visual viewport too, which covers nothing.
+ */
+export function keepRoom(): () => void {
+  const viewport = window.visualViewport;
+  if (!viewport) return () => undefined;
+  const root = document.documentElement;
+  const measure = () => {
+    const cover = window.innerHeight - viewport.height * viewport.scale;
+    root.style.setProperty(
+      "--keyboard-cover",
+      `${String(Math.max(0, Math.round(cover)))}px`,
+    );
+  };
+  measure();
+  viewport.addEventListener("resize", measure);
+  window.addEventListener("resize", measure);
+  return () => {
+    viewport.removeEventListener("resize", measure);
+    window.removeEventListener("resize", measure);
+    root.style.removeProperty("--keyboard-cover");
+  };
+}

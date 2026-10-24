@@ -2173,9 +2173,13 @@ dialog.drawer > .close {
 /* The note's end scrolls clear of it; the page already keeps clear of the
    home bar. The room is the editor's own: on a phone, the source runs past
    the sides of what holds it, which CodeMirror then takes for scrollers,
-   keeping the cursor clear of the toolbar only within their bottom edge. */
+   keeping the cursor clear of the toolbar only within their bottom edge.
+   It also holds the part of the page a keyboard covers without shrinking
+   it (src/visual-viewport.ts). */
 body:has(> .keyboard-toolbar) .editor {
-  padding-bottom: var(--keyboard-toolbar-height);
+  padding-bottom: calc(
+    var(--keyboard-toolbar-height) + var(--keyboard-cover, 0px)
+  );
 }
 
 .keyboard-toolbar button {
