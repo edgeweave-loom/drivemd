@@ -739,6 +739,60 @@ describe("Visual", () => {
     expect(view.state.sliceDoc()).toBe("Tea\n- [ ] Boil");
   });
 
+  it("ticks a task from a finger's tap on its box, its start kept from the browser", async () => {
+    const { view } = open("Tea\n- [ ] Boil", "\n", true);
+    await parsed(view);
+    vi.spyOn(view, "posAtCoords").mockReturnValue(null);
+    const box = () =>
+      view.contentDOM.querySelector<HTMLInputElement>(".cm-task") ??
+      view.contentDOM;
+    const touch = (clientY: number) => [{ clientX: 10, clientY }];
+
+    // Its start kept from the browser, but not its end, or Chrome on Android
+    // brings up the keyboard that Back hid (#281).
+    expect(
+      fireEvent.touchStart(box(), {
+        touches: touch(20),
+        changedTouches: touch(20),
+      }),
+    ).toBe(false);
+    expect(
+      fireEvent.touchEnd(box(), { touches: [], changedTouches: touch(22) }),
+    ).toBe(true);
+    expect(view.state.sliceDoc()).toBe("Tea\n- [x] Boil");
+
+    // A finger moving from the box leaves the task as it is.
+    fireEvent.touchStart(box(), {
+      touches: touch(20),
+      changedTouches: touch(20),
+    });
+    fireEvent.touchEnd(box(), { touches: [], changedTouches: touch(80) });
+    expect(view.state.sliceDoc()).toBe("Tea\n- [x] Boil");
+
+    undo(view);
+    expect(view.state.sliceDoc()).toBe("Tea\n- [ ] Boil");
+  });
+
+  it("leaves a task as it is under a long press on its box", async () => {
+    const { view } = open("Tea\n- [ ] Boil", "\n", true);
+    await parsed(view);
+    vi.spyOn(view, "posAtCoords").mockReturnValue(null);
+    const box =
+      view.contentDOM.querySelector<HTMLInputElement>(".cm-task") ??
+      view.contentDOM;
+    const touch = [{ clientX: 10, clientY: 20 }];
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      fireEvent.touchStart(box, { touches: touch, changedTouches: touch });
+      vi.advanceTimersByTime(600);
+      fireEvent.touchEnd(box, { touches: [], changedTouches: touch });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(view.state.sliceDoc()).toBe("Tea\n- [ ] Boil");
+  });
+
   it("skips a hidden symbol as one unit", async () => {
     const { view } = open("**Tea**", "\n", true);
     await parsed(view);

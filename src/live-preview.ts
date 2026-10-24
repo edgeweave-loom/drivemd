@@ -266,22 +266,68 @@ function sameLines(one: Stretch[], other: Stretch[]): boolean {
   );
 }
 
+// How far a finger may move on a task's box and still tap it, as Android's
+// touch slop.
+const TAP_SLOP_PX = 8;
+
+/** Where and when a finger pressed a task's box. */
+interface BoxPress {
+  x: number;
+  y: number;
+  at: number;
+}
+
+// Until the finger lifts: one box at a time, in any editor.
+let boxPressed: BoxPress | null = null;
+
+function isTaskBox(target: EventTarget | null): target is HTMLInputElement {
+  return (
+    target instanceof HTMLInputElement && target.classList.contains("cm-task")
+  );
+}
+
 /**
  * A tap on a task's box ticks the task, as one edit that undo reverts,
  * where the cursor stays: neither the focus nor the selection moves, nor
- * does the box but with the text.
+ * does the box but with the text. A finger's tap ticks it as it lifts,
+ * the touch's start kept from the browser, which then neither focuses,
+ * scrolls nor sends mouse events: Chrome on Android otherwise brings up the
+ * keyboard that Back hid, and does so too if the touch's end is kept from
+ * it (seen in the Android emulator, #281). A finger that moves, or stays
+ * down as long as a long press, leaves the task as it is.
  */
 const ticking = EditorView.domEventHandlers({
+  touchstart(event) {
+    const touch = event.changedTouches[0];
+    boxPressed = null;
+    if (!isTaskBox(event.target) || event.touches.length !== 1 || !touch) {
+      return false;
+    }
+    event.preventDefault();
+    boxPressed = { x: touch.clientX, y: touch.clientY, at: Date.now() };
+    return true;
+  },
+  touchend(event, view) {
+    const press = boxPressed;
+    boxPressed = null;
+    const touch = event.changedTouches[0];
+    if (!press || !touch || event.touches.length > 0) return false;
+    if (!isTaskBox(event.target)) return false;
+    if (Date.now() - press.at >= LONG_PRESS_MS) return false;
+    const moved = Math.hypot(touch.clientX - press.x, touch.clientY - press.y);
+    if (moved > TAP_SLOP_PX) return false;
+    tick(view, view.posAtDOM(event.target));
+    // Handled, which CodeMirror would keep from the browser.
+    return false;
+  },
   mousedown(event, view) {
-    if (!(event.target instanceof HTMLInputElement)) return false;
-    if (!event.target.classList.contains("cm-task")) return false;
+    if (!isTaskBox(event.target)) return false;
     event.preventDefault();
     tick(view, view.posAtDOM(event.target));
     return true;
   },
   click(event) {
-    if (!(event.target instanceof HTMLInputElement)) return false;
-    if (!event.target.classList.contains("cm-task")) return false;
+    if (!isTaskBox(event.target)) return false;
     event.preventDefault();
     return true;
   },
