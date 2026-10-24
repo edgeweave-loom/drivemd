@@ -151,7 +151,7 @@ As [section G](apple-device-checks.md#g-a-tab-opened-from-drive) of the iOS chec
 
 - **G1.** Drive's mobile site has no **Open with**: switch Chrome to ⋮ ▸ **Desktop site**, where a long press on the file offers it. Drive's **Open with ▸ DriveMD** opens production, the only DriveMD that Drive knows: close that tab untouched, and open the address that G1 builds when Drive does not offer DriveMD, on staging.
 - **G2.** Run it in an Incognito tab, from ⋮ ▸ **New Incognito tab**; on the tablet, Ctrl+Shift+N opens a second window instead, side by side, which ⋮ ▸ **Manage windows** closes. Chrome keeps Incognito out of screenshots: read the page from its elements.
-- **G4.** The new tab is one of Chrome's, with the app installed from E1: not the installed app, which would ask **Continue** (see Handing the token to a new tab in the spec).
+- **G4.** The new tab is one of Chrome's, with the app installed from E1: not the installed app, which would ask **Continue** (see Handing the token to a new tab in the spec). Check first that Android lets the app take staging's links, or the note stays in Chrome whatever the app does: `adb -s <serial> shell pm get-app-links <package>` must say `verified` for staging's domain. After a boot it said `1024`, a failed check, until `adb -s <serial> shell pm verify-app-links --re-verify <package>` (seen on 2026-10-24).
 
 ### H. Home and themes
 

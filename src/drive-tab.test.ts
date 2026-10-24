@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { markTab, openedFromDrive, openNoteTab } from "./drive-tab.ts";
 import { hrefOf } from "./router.ts";
-import { blankTab } from "./test/blank-tab.ts";
+import { openNoteTabs } from "./test/note-tab.ts";
 
 /** Loads the page as the browser says it did. */
 function loaded(type: NavigationTimingType) {
@@ -102,21 +102,26 @@ describe("A tab opened from Drive", () => {
 describe("A link to another note, in a tab opened from Drive", () => {
   it("opens it in a new tab that keeps this one as its opener", () => {
     fromDrive();
-    const { tab, replace } = blankTab();
-    const open = vi.spyOn(window, "open").mockReturnValue(tab);
+    const { open, loaded } = openNoteTabs();
 
-    expect(openNoteTab(NOTE)).toBe(true);
-    // Empty at first, so that the click is used up before the note loads.
+    expect(openNoteTab(`${NOTE}#plan`)).toBe(true);
+    // Empty at first, then loaded through a form that names it.
     expect(open).toHaveBeenCalledWith(
       "",
       expect.stringMatching(/^drivemd\.note\./),
     );
-    expect(replace).toHaveBeenCalledWith(new URL(NOTE, window.location.origin));
+    expect(loaded).toEqual([
+      {
+        target: open.mock.lastCall?.[1],
+        url: new URL(`${NOTE}#plan`, window.location.origin),
+      },
+    ]);
+    expect(document.querySelector("form")).toBeNull();
   });
 
   it("opens a new tab for each, rather than one a link opened before", () => {
     fromDrive();
-    const open = vi.spyOn(window, "open").mockReturnValue(blankTab().tab);
+    const { open } = openNoteTabs();
     openNoteTab(NOTE);
     openNoteTab(NOTE);
 
@@ -169,15 +174,11 @@ describe("The tab a link opens from a tab opened from Drive", () => {
   /** Starts the page in the tab that openNoteTab opens, as the browser does. */
   function openedByLink() {
     fromDrive();
-    let name = "";
-    vi.spyOn(window, "open").mockImplementation((_, target) => {
-      name = target ?? "";
-      return blankTab().tab;
-    });
+    const { open } = openNoteTabs();
     openNoteTab(NOTE);
     // The browser copied nothing of the tab's storage into the new one.
     sessionStorage.clear();
-    window.name = name;
+    window.name = open.mock.lastCall?.[1] ?? "";
   }
 
   it("keeps the mode, though the browser copied nothing for it", () => {

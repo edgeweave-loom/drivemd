@@ -4,7 +4,7 @@ import type { DriveItem } from "./drive.ts";
 import { markTab } from "./drive-tab.ts";
 import { useFollow } from "./follow.ts";
 import { getPlace, hrefOf } from "./router.ts";
-import { blankTab } from "./test/blank-tab.ts";
+import { openNoteTabs } from "./test/note-tab.ts";
 import {
   driveItem,
   folderItem,
@@ -80,17 +80,16 @@ describe("useFollow", () => {
       { type: "navigate" } as PerformanceNavigationTiming,
     ]);
     markTab(true);
-    const { tab, replace } = blankTab();
-    vi.spyOn(window, "open").mockReturnValue(tab);
+    const { loaded } = openNoteTabs();
     follow("plan.md#next");
 
     await waitFor(() => {
-      expect(replace).toHaveBeenCalledWith(
+      expect(loaded.map(({ url }) => url)).toEqual([
         new URL(
           `${hrefOf({ name: "file", file: { id: "plan" } })}#next`,
           window.location.origin,
         ),
-      );
+      ]);
     });
     expect(getPlace().route).toEqual({ name: "home" });
   });
