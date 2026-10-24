@@ -15,7 +15,7 @@ import {
   toggleBold,
   toggleList,
 } from "./formatting.ts";
-import { keepVisible } from "./visual-viewport.ts";
+import { keepRoom, keepVisible } from "./visual-viewport.ts";
 
 /** The toolbar's height, which the editor keeps clear of the cursor. */
 export const TOOLBAR_HEIGHT = 48;
@@ -97,17 +97,20 @@ export function KeyboardToolbar({
 }) {
   const bar = useRef<HTMLDivElement>(null);
   const settled = useEffectEvent(onSettle);
-  useLayoutEffect(
-    () =>
-      bar.current
-        ? keepVisible(bar.current, {
-            onSettle: (before) => {
-              settled(before);
-            },
-          })
-        : undefined,
-    [],
-  );
+  useLayoutEffect(() => {
+    if (!bar.current) return;
+    const stops = [
+      keepVisible(bar.current, {
+        onSettle: (before) => {
+          settled(before);
+        },
+      }),
+      keepRoom(),
+    ];
+    return () => {
+      for (const stop of stops) stop();
+    };
+  }, []);
   return createPortal(
     <div
       ref={bar}

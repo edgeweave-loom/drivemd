@@ -401,7 +401,7 @@ export function Editor({
                 0,
             ),
           ),
-          bottom: toolbar ? TOOLBAR_HEIGHT : 0,
+          bottom: toolbar ? belowToolbar() : 0,
         }
       : null,
   );
@@ -534,6 +534,19 @@ function onScreen(view: EditorView, before: number): boolean {
   return (
     cursor.bottom > top && cursor.top < top + Math.max(before, viewport.height)
   );
+}
+
+/**
+ * How far the keyboard toolbar's top sits above the visual viewport's
+ * height, which CodeMirror takes for the window's bottom, measuring from the
+ * page's top: the visual viewport may sit lower, where a keyboard covers the
+ * page without shrinking it. Before the toolbar shows, its height.
+ */
+function belowToolbar(): number {
+  const viewport = window.visualViewport;
+  const bar = document.querySelector(".keyboard-toolbar");
+  if (!viewport || !bar) return TOOLBAR_HEIGHT;
+  return Math.round(viewport.height - bar.getBoundingClientRect().top);
 }
 
 /**

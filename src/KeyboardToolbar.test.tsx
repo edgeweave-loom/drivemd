@@ -68,6 +68,7 @@ class Viewport extends EventTarget {
   height = 800;
   pageTop = 0;
   offsetTop = 0;
+  scale = 1;
   show(height: number, pageTop = 0, offsetTop = pageTop) {
     this.height = height;
     this.pageTop = pageTop;
@@ -322,6 +323,25 @@ describe("the keyboard toolbar", () => {
 
     expect(margins(view)).toContainEqual({ top: 56, bottom: 48 });
     appBar.remove();
+  });
+
+  it("keeps the cursor clear of it where a keyboard pans the page rather than shrinking it", async () => {
+    const viewport = new Viewport();
+    Object.defineProperty(window, "visualViewport", {
+      value: viewport,
+      configurable: true,
+    });
+    const view = await editing("tea");
+    layOut(screen.getByRole("toolbar", { name: "Formatting" }), () => 797);
+
+    // Measured in the Android Emulator: Samsung Internet's first Gboard
+    // leaves the page 797 pixels tall, and shows 485 of them from 244 down,
+    // where CodeMirror takes the window for the page's first 485.
+    act(() => {
+      viewport.show(485, 244);
+    });
+
+    expect(margins(view)).toContainEqual({ top: 0, bottom: -196 });
   });
 
   it("scrolls to the cursor once the keyboard has come over it, unless scrolled away", async () => {
