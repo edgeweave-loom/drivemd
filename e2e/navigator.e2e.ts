@@ -11,8 +11,18 @@ import {
   vault,
 } from "./fake-google.ts";
 
+/** The breadcrumbs' steps, which end at the page itself. */
 function crumbs(page: Page) {
-  return page.getByRole("navigation", { name: "Breadcrumbs" });
+  return page
+    .getByRole("navigation", { name: "Breadcrumbs" })
+    .getByRole("listitem");
+}
+
+/** A path as the breadcrumbs show it: after Home on a phone alone. */
+function steps(...path: string[]) {
+  return test.info().project.metadata.layout === "phone"
+    ? ["Home", ...path]
+    : path;
 }
 
 /** The page's own list, apart from the breadcrumbs and the folder pane. */
@@ -69,7 +79,7 @@ test("signs in, browses to a file and back, and keeps the path on reload", async
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Archive" })).toBeVisible();
   await page.reload();
-  await expect(crumbs(page).getByRole("link")).toHaveText(["Home", "My Drive"]);
+  await expect(crumbs(page)).toHaveText(steps("My Drive", "Work"));
 });
 
 test("rebuilds the path to a note opened by its address", async ({ page }) => {
@@ -82,7 +92,7 @@ test("rebuilds the path to a note opened by its address", async ({ page }) => {
   await expect(
     page.getByRole("heading", { level: 2, name: "Work" }),
   ).toBeVisible();
-  await expect(crumbs(page).getByRole("link")).toHaveText(["Home", "My Drive"]);
+  await expect(crumbs(page)).toHaveText(steps("My Drive", "Work"));
 });
 
 test("opens the file that Drive's Open with names, the user picking the account", async ({
@@ -244,10 +254,7 @@ test("names a shared drive reached without a path after the drive", async ({
   await expect(
     page.getByRole("heading", { level: 2, name: "Team" }),
   ).toBeVisible();
-  await expect(crumbs(page).getByRole("link")).toHaveText([
-    "Home",
-    "Shared drives",
-  ]);
+  await expect(crumbs(page)).toHaveText(steps("Shared drives", "Team"));
 });
 
 test("searches Markdown files by name", async ({ page }) => {
@@ -274,7 +281,7 @@ test("opens a Drive link pasted in the search box", async ({ page }) => {
   await search.press("Enter");
   await expect(page).toHaveURL(/\/folder\/work$/);
   await expect(page.getByRole("link", { name: "Archive" })).toBeVisible();
-  await expect(crumbs(page).getByRole("link")).toHaveText(["Home", "My Drive"]);
+  await expect(crumbs(page)).toHaveText(steps("My Drive", "Work"));
   // The link leaves no words behind for the next search.
   search = await searchBox(page);
   await expect(search).toHaveValue("");

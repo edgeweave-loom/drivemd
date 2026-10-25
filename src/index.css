@@ -1202,11 +1202,19 @@ dialog.drawer > .close {
   margin: 0;
 }
 
+/* A page's heading, in headline-small. */
+.page > h2,
+.page > .heading > h2 {
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 32px;
+}
+
 .page h3 {
   color: var(--on-surface-variant);
   font-size: 0.875rem;
-  font-weight: 600;
-  text-transform: uppercase;
+  font-weight: 500;
+  line-height: 1.25rem;
 }
 
 /* The about page, which the Marketplace listing links to. */
@@ -1234,11 +1242,15 @@ dialog.drawer > .close {
   gap: 0.75rem;
 }
 
+/* Steps in on-surface-variant, the page itself in on-surface at 500
+   (docs/DESIGN.md, Breadcrumbs). A step's pill reaches past its text, which
+   stays in line with the heading. */
 .crumbs ol {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 0.5rem;
-  margin: 0;
+  gap: 0 var(--space-1);
+  min-height: 44px;
+  margin: 0 calc(-1 * var(--space-2));
   padding: 0;
   color: var(--on-surface-variant);
   font-size: 0.875rem;
@@ -1247,7 +1259,7 @@ dialog.drawer > .close {
 
 .crumbs li {
   display: inline-flex;
-  gap: 0.5rem;
+  gap: var(--space-1);
   align-items: center;
 }
 
@@ -1256,10 +1268,40 @@ dialog.drawer > .close {
   height: 18px;
 }
 
-.crumbs a {
+.crumbs a,
+.crumbs [aria-current] {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
+  padding: 0 var(--space-2);
+}
+
+/* The pill is 32 px tall within the link's 44. */
+.crumbs a {
+  border-block: 6px solid transparent;
+  border-radius: var(--radius-full);
+  background-clip: padding-box;
+  color: inherit;
+  text-decoration: none;
+}
+
+@media (hover: hover) {
+  .crumbs a:hover {
+    background-image: linear-gradient(
+      color-mix(in srgb, currentColor 8%, transparent) 0 0
+    );
+  }
+}
+
+.crumbs a:is(:focus-visible, :active) {
+  background-image: linear-gradient(
+    color-mix(in srgb, currentColor 10%, transparent) 0 0
+  );
+}
+
+.crumbs [aria-current] {
+  color: var(--on-surface);
+  font-weight: 500;
 }
 
 .entries {
@@ -2084,7 +2126,6 @@ dialog.drawer > .close {
   font-size: 16px;
   font-weight: 500;
   line-height: 24px;
-  text-transform: none;
 }
 
 .banner > .actions {

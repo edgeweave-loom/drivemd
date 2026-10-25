@@ -126,3 +126,33 @@ test("sets a note in the design's type", async ({ page, drive }, info) => {
   await expect(line).toHaveCSS("font-size", "16px");
   await expect(line).toHaveCSS("line-height", "26px");
 });
+
+test("sets a page's heading in headline-small", async ({ page }) => {
+  await signIn(page);
+  for (const [path, name] of [
+    ["/", "Home"],
+    ["/folder/work", "Work"],
+  ] as const) {
+    await page.goto(path);
+    const heading = page.getByRole("heading", { level: 2, name, exact: true });
+    await expect(heading).toHaveCSS("font-size", "24px");
+    await expect(heading).toHaveCSS("line-height", "32px");
+    await expect(heading).toHaveCSS("font-weight", "400");
+  }
+});
+
+test("labels Home's sections in title-small", async ({ page }) => {
+  await signIn(page);
+  const label = page
+    .getByRole("region", { name: "Recent" })
+    .getByRole("heading", { name: "Recent" });
+  await expect(label).toHaveCSS("font-size", "14px");
+  await expect(label).toHaveCSS("line-height", "20px");
+  await expect(label).toHaveCSS("font-weight", "500");
+  // In sentence case, as written.
+  await expect(label).toHaveCSS("text-transform", "none");
+  await expect(label).toHaveCSS(
+    "color",
+    await token(page, "--on-surface-variant"),
+  );
+});
