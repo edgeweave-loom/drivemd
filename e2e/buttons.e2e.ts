@@ -100,13 +100,22 @@ test("keeps a touch target of 48 px around a 40 px button on a touch screen", as
   expect(hit === "Cancel").toBe(touch);
 });
 
-test("rings the control the keyboard reaches", async ({ page }) => {
+test("rings the control the keyboard reaches", async ({
+  page,
+  browserName,
+}) => {
   await signIn(page);
   await page.getByRole("link", { name: "My Drive" }).click();
   const create = page.getByRole("button", { name: "New note" });
+  // WebKit on macOS tabs to fields alone, as Safari does by default, and to
+  // every control with Option.
+  const tab =
+    browserName === "webkit" && process.platform === "darwin"
+      ? "Alt+Tab"
+      : "Tab";
   await create.focus();
-  await page.keyboard.press("Shift+Tab");
-  await page.keyboard.press("Tab");
+  await page.keyboard.press(`Shift+${tab}`);
+  await page.keyboard.press(tab);
   await expect(create).toBeFocused();
   await expect(create).toHaveCSS("outline-style", "solid");
   await expect(create).toHaveCSS("outline-width", "2px");

@@ -554,6 +554,12 @@ export const test = base.extend<{ drive: FakeDrive }>({
           );
         });
       });
+      // WebKit on macOS says it is outside the Home Screen, as Safari on an
+      // iPhone does, where Linux's says nothing: Home shows the install hint
+      // on either only for a test that says so.
+      await context.addInitScript(() => {
+        Reflect.deleteProperty(Navigator.prototype, "standalone");
+      });
       await use(drive);
       expect(problems).toEqual([]);
       expect(drive.unanswered).toEqual([]);
