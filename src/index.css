@@ -1207,6 +1207,14 @@ dialog.drawer > .close {
   margin: 0;
 }
 
+/* A page's heading, in headline-small. */
+.page > h2,
+.page > .heading > h2 {
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 32px;
+}
+
 .page h3 {
   color: var(--on-surface-variant);
   font-size: 0.875rem;
