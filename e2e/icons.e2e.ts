@@ -24,10 +24,11 @@ test("marks what opens a list with an icon, the same everywhere", async ({
     chevron(main.getByRole("link", { name: "plan.md" })),
   ).toHaveCount(0);
   const crumbs = page.getByRole("navigation", { name: "Breadcrumbs" });
-  await expect(crumbs.locator("svg")).toHaveCount(1);
+  // Home › My Drive › Work on a phone, My Drive › Work beside the drawer.
+  const phone = info.project.metadata.layout === "phone";
+  await expect(crumbs.locator("svg")).toHaveCount(phone ? 2 : 1);
   await expect(crumbs).not.toContainText("›");
   // A table's rows, on a wider screen, need none.
-  const phone = info.project.metadata.layout === "phone";
   await expect(archive).toBeVisible({ visible: phone });
   const size = 24;
   if (phone) expect((await archive.boundingBox())?.width).toBe(size);
