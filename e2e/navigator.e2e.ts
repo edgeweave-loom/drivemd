@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { token } from "./color.ts";
 import {
   EMAIL,
   expect,
@@ -417,6 +418,24 @@ test("lists a file's folder as the screen allows", async ({ page }, info) => {
       await expect(pane).toHaveCount(0);
       await expect(folder).toHaveCount(0);
   }
+});
+
+test("rules a wide screen's file table, and sets a phone's list and bar apart by nothing", async ({
+  page,
+}, info) => {
+  await openWork(page);
+  const row = entries(page).getByRole("link", { name: "plan.md" });
+  const bar = page.getByRole("banner");
+  await expect(bar).toHaveCSS("border-bottom-width", "0px");
+  if (info.project.metadata.layout === "phone") {
+    await expect(row).toHaveCSS("border-bottom-width", "0px");
+    return;
+  }
+  await expect(row).toHaveCSS("border-bottom-width", "1px");
+  await expect(row).toHaveCSS(
+    "border-bottom-color",
+    await token(page, "--outline-variant"),
+  );
 });
 
 test("keeps the page within the screen, with taps of 44 px at least", async ({

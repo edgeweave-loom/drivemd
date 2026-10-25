@@ -279,7 +279,6 @@ button.new-note > .icon {
   padding: env(safe-area-inset-top)
     calc(var(--space-4) + env(safe-area-inset-right)) 0
     calc(var(--space-4) + env(safe-area-inset-left));
-  border-bottom: 1px solid var(--outline-variant);
   background: var(--surface);
 }
 
@@ -1001,10 +1000,6 @@ dialog.drawer > .close {
   background: var(--app-background);
 }
 
-:root:has(.shell) .bar {
-  border-bottom: none;
-}
-
 /* The bar keeps one row, which the drawer stays clear of. */
 :root:has(.shell) .bar {
   flex-wrap: nowrap;
@@ -1279,7 +1274,6 @@ dialog.drawer > .close {
   align-items: center;
   min-height: 48px;
   padding: var(--space-1);
-  border-bottom: 1px solid var(--outline-variant);
   color: inherit;
   text-decoration: none;
   overflow-wrap: anywhere;
@@ -1374,10 +1368,15 @@ dialog.drawer > .close {
 }
 
 /* Rows on a wider screen, in a table or the folder pane, open their folders
-   without a chevron, as the mockups show them. */
+   without a chevron, as the mockups show them. A table's rows, unlike a
+   phone's list, take a rule under each (docs/DESIGN.md, File table). */
 @media (width >= 768px) and (not ((pointer: coarse) and (height < 500px))) {
   a.entry > .icon:last-child:not(:first-child) {
     display: none;
+  }
+
+  .entry {
+    border-bottom: 1px solid var(--outline-variant);
   }
 }
 
@@ -1995,10 +1994,6 @@ dialog.drawer > .close {
   :root:has(.bar.note),
   .bar.note {
     background: var(--app-background);
-  }
-
-  .bar.note {
-    border-bottom: none;
   }
 
   /* The page fills the window, down to its bottom, which the sheet reaches
