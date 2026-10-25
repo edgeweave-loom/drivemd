@@ -1210,8 +1210,8 @@ dialog.drawer > .close {
 .page h3 {
   color: var(--on-surface-variant);
   font-size: 0.875rem;
-  font-weight: 600;
-  text-transform: uppercase;
+  font-weight: 500;
+  line-height: 1.25rem;
 }
 
 /* The about page, which the Marketplace listing links to. */
@@ -2089,7 +2089,6 @@ dialog.drawer > .close {
   font-size: 16px;
   font-weight: 500;
   line-height: 24px;
-  text-transform: none;
 }
 
 .banner > .actions {
