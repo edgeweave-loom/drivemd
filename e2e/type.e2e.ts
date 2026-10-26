@@ -139,6 +139,16 @@ test("sets a page's heading in headline-small", async ({ page }) => {
     await expect(heading).toHaveCSS("line-height", "32px");
     await expect(heading).toHaveCSS("font-weight", "400");
   }
+  // Ends once Drive has answered the folder's path and list: WebKit on Linux
+  // reports a request the closing page cuts short as an error.
+  await expect(
+    page.getByRole("navigation", { name: "Breadcrumbs" }).getByRole("listitem"),
+  ).toHaveText(
+    test.info().project.metadata.layout === "phone"
+      ? ["Home", "My Drive", "Work"]
+      : ["My Drive", "Work"],
+  );
+  await expect(page.getByRole("link", { name: "Archive" })).toBeVisible();
 });
 
 test("labels Home's sections in title-small", async ({ page }) => {
