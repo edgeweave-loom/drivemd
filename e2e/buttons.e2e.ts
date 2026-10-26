@@ -146,3 +146,24 @@ test("dims a row or a link while it cannot be used", async ({ page }) => {
   );
   expect(looks).toEqual([dimmed, dimmed]);
 });
+
+test("keeps a button's label on one line beside a heading that wraps", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.metadata.layout === "phone",
+    "A phone's New note floats, out of the heading's row.",
+  );
+  const work = drive.files.get("work");
+  if (!work) throw new Error("No work");
+  work.name =
+    "Quarterly planning notes for the whole team, kept since 2019 and shared with every office";
+  await signIn(page);
+  await page.goto("/folder/work");
+  const heading = page.getByRole("heading", { level: 2, name: work.name });
+  const create = page.getByRole("button", { name: "New note" });
+  await expect(create).toBeVisible();
+  expect((await heading.boundingBox())?.height).toBeGreaterThan(32);
+  expect((await create.boundingBox())?.height).toBe(40);
+});
