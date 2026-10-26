@@ -236,8 +236,10 @@ button:is(.filled, .tonal, .danger):not(.text):disabled {
   }
 }
 
-/* New note: tonal beside the folder's name, floating on a phone. */
+/* New note: tonal beside the folder's name, floating on a phone. The name
+   wraps before its label does. */
 button.new-note {
+  flex: none;
   padding-left: var(--space-4);
 }
 
@@ -1205,6 +1207,7 @@ dialog.drawer > .close {
 /* A page's heading, in headline-small. */
 .page > h2,
 .page > .heading > h2 {
+  overflow-wrap: anywhere;
   font-size: 24px;
   font-weight: 400;
   line-height: 32px;
