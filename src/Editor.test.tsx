@@ -15,6 +15,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { createRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -715,6 +716,48 @@ describe("Visual", () => {
     const bullet = view.contentDOM.querySelector(".cm-bullet");
     view.dispatch({ changes: { from: 5, insert: "s" } });
     expect(view.contentDOM.querySelector(".cm-bullet")).toBe(bullet);
+  });
+
+  it("draws a thematic break as a rule, but not a setext heading's underline nor the front matter's fences", async () => {
+    const { view } = open(
+      "---\nowner: Ada\n---\nTea\n---\n\n***\n\n- - -\n\n___",
+      "\n",
+      true,
+    );
+    await parsed(view);
+    const rules = () =>
+      [...view.contentDOM.querySelectorAll(".cm-line")].map(
+        (line) => line.querySelector(".cm-rule") !== null,
+      );
+
+    expect(rules()).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      true,
+    ]);
+    expect(
+      within(view.contentDOM)
+        .getAllByRole("separator")
+        .map((rule) => rule.textContent),
+    ).toEqual(["***", "- - -", "___"]);
+
+    // Written as it is while the cursor is on it.
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 34 } });
+    });
+    await waitFor(() => {
+      expect(rules()[8]).toBe(false);
+    });
+    expect(rules()[6]).toBe(true);
   });
 
   it("ticks a task from its box, as one edit that undo reverts, the cursor staying", async () => {

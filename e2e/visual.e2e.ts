@@ -172,3 +172,54 @@ test("keeps a tapped line under the finger as another line hides its symbols", a
     .poll(async () => (await heading.boundingBox())?.y)
     .toBeCloseTo(before.y, 0);
 });
+
+test("draws a thematic break as a rule in Visual, on its line's height", async ({
+  page,
+  drive,
+}, info) => {
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content = "# The plan\n\nTea.\n\n- - -\n\n> ***\n\nCups.\n";
+  const lines = (await editInVisual(page)).locator(".cm-line");
+  const text = lines.filter({ hasText: "Tea." });
+  const rule = lines.nth(4);
+  const quoted = lines.nth(6);
+  await expect(rule.getByRole("separator")).toBeVisible();
+  await expect(quoted.getByRole("separator")).toBeVisible();
+  // Its marks unseen, under the rule drawn through them.
+  await expect(rule.getByRole("separator")).toHaveCSS(
+    "color",
+    "rgba(0, 0, 0, 0)",
+  );
+  await expect(rule.getByRole("separator")).toHaveCSS(
+    "background-image",
+    /linear-gradient/,
+  );
+
+  const height = async (line: typeof rule) =>
+    (await line.boundingBox())?.height;
+  const lineHeight = await height(text);
+  expect(await height(rule)).toBeCloseTo(lineHeight ?? 0, 0);
+  expect(await height(quoted)).toBeCloseTo(lineHeight ?? 0, 0);
+  // Across the line, from its text's start, or from the quote's `>`.
+  const [ruleBox, textBox, quotedBox] = await Promise.all([
+    rule.getByRole("separator").boundingBox(),
+    text.boundingBox(),
+    quoted.getByRole("separator").boundingBox(),
+  ]);
+  if (!ruleBox || !textBox || !quotedBox) throw new Error("Not shown");
+  expect(ruleBox.width).toBeGreaterThan(textBox.width / 2);
+  expect(quotedBox.x).toBeGreaterThan(ruleBox.x);
+
+  // Written as it is where the cursor is, on the same height.
+  if (info.project.name === "desktop-chromium") await rule.click();
+  else await rule.tap();
+  await expect(rule.getByRole("separator")).toHaveCount(0);
+  await expect(rule).toHaveText("- - -");
+  expect(await height(rule)).toBeCloseTo(lineHeight ?? 0, 0);
+  await expect(quoted.getByRole("separator")).toBeVisible();
+
+  // Looked at, and written over nowhere: nothing to save.
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(drive.writes).toEqual([]);
+});
