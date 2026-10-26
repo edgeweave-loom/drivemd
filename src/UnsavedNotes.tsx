@@ -6,14 +6,9 @@ import { useDrive } from "./drive-context.ts";
 import { notFound, type FileMetadata } from "./drive.ts";
 import { Icon } from "./Icon.tsx";
 import { Link } from "./Link.tsx";
-import { BROKEN, kindOf } from "./listing.ts";
+import { BROKEN, kindOf, WHEN } from "./listing.ts";
 import { draftsQuery, MAX_CONTENT, metadataQuery } from "./queries.ts";
 import { hrefOf } from "./router.ts";
-
-const KEPT = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
 
 const MEGABYTES = new Intl.NumberFormat("en", {
   style: "unit",
@@ -61,7 +56,7 @@ function UnsavedNote({ draft }: { draft: DraftEntry }) {
         <Icon name="description" />
         <span className="name">{name}</span>
         <time dateTime={draft.keptAt} className="when">
-          {KEPT.format(new Date(draft.keptAt))}
+          {WHEN.format(new Date(draft.keptAt))}
         </time>
       </Link>
     );
@@ -147,7 +142,7 @@ function ClosedNote({
           }}
         >
           <p>
-            Your changes to {name} from {KEPT.format(new Date(draft.keptAt))},
+            Your changes to {name} from {WHEN.format(new Date(draft.keptAt))},
             kept on this device, go for good. This cannot be undone.
           </p>
         </ConfirmDialog>

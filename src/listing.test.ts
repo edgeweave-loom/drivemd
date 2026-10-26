@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DriveItem } from "./drive.ts";
-import { entriesOf, modifiedLine } from "./listing.ts";
+import { entriesOf, modifiedLine, WHEN } from "./listing.ts";
 import {
   driveItem as item,
   FOLDER,
@@ -139,5 +139,14 @@ describe("modifiedLine", () => {
       item("garbled.md", { modifiedTime: "yesterday" }),
     ]);
     expect(entries.map(modifiedLine)).toEqual([undefined, undefined]);
+  });
+});
+
+describe("WHEN", () => {
+  it("gives a day and its time in English", () => {
+    // A space before AM, plain or narrow as the ICU version has it.
+    expect(WHEN.format(new Date(2026, 9, 26, 10, 58))).toMatch(
+      /^Oct 26, 2026, 10:58\sAM$/,
+    );
   });
 });
