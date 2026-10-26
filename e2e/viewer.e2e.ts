@@ -442,12 +442,15 @@ test("saves with Ctrl+S, and follows a link with Ctrl+click in the source", asyn
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("Tea.");
 
-  await page.keyboard.press("ControlOrMeta+s");
+  // The device's user agent is Windows', whose command key is Ctrl, which
+  // ControlOrMeta makes Cmd on a Mac. CodeMirror goes by the host's
+  // navigator.platform instead, hence ControlOrMeta+End above.
+  await page.keyboard.press("Control+s");
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("plan")?.content)).toBe(`${before}Tea.`);
 
   await source.getByText("the notes", { exact: true }).click({
-    modifiers: ["ControlOrMeta"],
+    modifiers: ["Control"],
   });
   await expect(
     page.getByRole("heading", { level: 1, name: "notes.md" }),
