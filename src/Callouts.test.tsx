@@ -24,6 +24,16 @@ function callouts(page: HTMLElement) {
   }));
 }
 
+/** The icon a callout's title starts with, by its name in Lucide. */
+function icon(callout: Element | null | undefined) {
+  const first = callout?.querySelector(
+    ":scope > .callout-title",
+  )?.firstElementChild;
+  return first?.tagName.toLowerCase() === "svg"
+    ? first.getAttribute("data-icon")?.replace(/^lucide-/, "")
+    : null;
+}
+
 describe("callouts in a note of a vault", () => {
   it("show their type, title and content", () => {
     const page = show(
@@ -86,6 +96,89 @@ describe("callouts in a note of a vault", () => {
     const page = show(`> [!${name}] Title`);
 
     expect(callouts(page)[0]?.type).toBe(type);
+  });
+
+  // The icons of Obsidian 1.14's stylesheet, by their names in Lucide.
+  it.each([
+    ["note", "pencil"],
+    ["abstract", "clipboard-list"],
+    ["tldr", "clipboard-list"],
+    ["info", "info"],
+    ["todo", "circle-check"],
+    ["tip", "flame"],
+    ["important", "flame"],
+    ["success", "check"],
+    ["done", "check"],
+    ["question", "circle-question-mark"],
+    ["faq", "circle-question-mark"],
+    ["warning", "triangle-alert"],
+    ["attention", "triangle-alert"],
+    ["failure", "x"],
+    ["missing", "x"],
+    ["danger", "zap"],
+    ["error", "zap"],
+    ["bug", "bug"],
+    ["example", "list"],
+    ["quote", "quote"],
+    ["cite", "quote"],
+    ["recipe", "pencil"],
+  ])("start their title with their type's icon: %s", (name, drawn) => {
+    const page = show(`> [!${name}] Title\n> Body.`);
+
+    expect(icon(page.querySelector(".callout"))).toBe(drawn);
+    expect(callouts(page)[0]?.title).toBe("Title");
+  });
+
+  it("show their icon to the eye only, titled or not, folded or not", () => {
+    const page = show("> [!tldr]\n> Short.\n\n> [!faq]- Why?\n> Because.");
+
+    const [untitled, folded] = page.querySelectorAll(".callout");
+    expect(icon(untitled)).toBe("clipboard-list");
+    expect(icon(folded)).toBe("circle-question-mark");
+    expect(folded?.querySelector("summary > .callout-icon")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(callouts(page).map(({ title }) => title)).toEqual(["Tldr", "Why?"]);
+  });
+
+  it("lay their title out as Obsidian's, with a chevron when they fold, to the eye only", () => {
+    const page = show(
+      "> [!faq]- Closed\n> Hidden.\n\n> [!faq]+ Open\n> Shown.\n\n> [!note] Still\n> Body.\n\n<details><summary>Plain</summary>Text</details>",
+    );
+
+    const parts = (title: Element | undefined) =>
+      [...(title?.children ?? [])].map((part) => part.getAttribute("class"));
+    const [closed, open, still] = page.querySelectorAll(".callout-title");
+    for (const title of [closed, open]) {
+      expect(parts(title)).toEqual([
+        "callout-icon",
+        "callout-title-inner",
+        "callout-fold",
+      ]);
+      const end = title?.lastElementChild;
+      expect(end?.tagName.toLowerCase()).toBe("svg");
+      expect(end).toHaveAttribute("data-icon", "lucide-chevron-down");
+      expect(end).toHaveAttribute("aria-hidden", "true");
+    }
+    expect(parts(still)).toEqual(["callout-icon", "callout-title-inner"]);
+    expect(callouts(page).map(({ title }) => title)).toEqual([
+      "Closed",
+      "Open",
+      "Still",
+    ]);
+    expect(screen.getByText("Plain").querySelector("svg")).toBeNull();
+  });
+
+  it("show an icon in HTML on a title with its type only, as raw HTML may use their classes", () => {
+    const page = show(
+      '<div class="callout-title">Untyped</div><div class="callout" data-callout="tip">Callout</div><div class="callout-title" data-callout="bug">Title</div>',
+    );
+
+    const icons = page.querySelectorAll("svg");
+    expect(icons).toHaveLength(1);
+    expect(icons[0]?.parentElement).toHaveTextContent("Title");
+    expect(icons[0]).toHaveAttribute("data-icon", "lucide-bug");
   });
 
   it("fold when their type ends with - or +, folded or not", () => {

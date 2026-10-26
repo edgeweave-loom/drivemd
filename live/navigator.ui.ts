@@ -493,11 +493,11 @@ test("opens what Drive's Open with, New and pasted links name", async ({
   await expect(bar.getByRole("img", { name: "DriveMD" })).toBeVisible();
   await expect(bar.getByRole("link")).toHaveCount(0);
   await expect(page.getByRole("complementary")).toHaveCount(0);
-  // Editing on a computer, reading on a phone.
+  // In the editor on a computer, in Visual at first, reading on a phone.
   await expect(
     phone()
       ? page.getByRole("button", { name: "Edit", exact: true })
-      : bar.getByRole("button", { name: "Editing" }),
+      : bar.getByRole("button", { name: "Visual" }),
   ).toBeVisible();
   await loaded(page);
 
@@ -510,7 +510,12 @@ test("opens what Drive's Open with, New and pasted links name", async ({
   );
   await search.press("Enter");
   await expect(heading(page, `${RUN} Notes`)).toBeVisible();
-  await expect(crumbs(page)).toHaveText(["Home", "My Drive", run.name]);
+  // Home leads them on a phone only; the folder itself is no link.
+  await expect(crumbs(page)).toHaveText([
+    ...(phone() ? ["Home"] : []),
+    "My Drive",
+    run.name,
+  ]);
   await loaded(page);
 
   await page.goto(
@@ -584,11 +589,12 @@ test("edits a note's source and saves it, keeping its line breaks", async ({
 
   if (phone()) {
     await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await page.getByRole("button", { name: "Source", exact: true }).click();
   } else {
     await page.getByRole("button", { name: "Viewing" }).click();
     await page
       .getByRole("menu", { name: "Mode" })
-      .getByRole("menuitemradio", { name: "Editing" })
+      .getByRole("menuitemradio", { name: "Source" })
       .click();
   }
   const source = page.getByRole("textbox", { name: "Markdown source" });
@@ -638,6 +644,10 @@ test("renders a note of a vault as Obsidian does, its links and embeds leading t
   const note = page.locator(".markdown").first();
   await expect(note.locator("p br").first()).toBeAttached();
   await expect(note.locator(".callout")).toHaveAttribute("data-callout", "tip");
+  await expect(note.locator(".callout-title > .callout-icon")).toHaveAttribute(
+    "data-icon",
+    "lucide-flame",
+  );
   await expect(note.locator("mark")).toHaveText("Lit");
   await expect(note.locator(".tag")).toHaveText("#live-tag");
   await expect(note).not.toContainText("secret");

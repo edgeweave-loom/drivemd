@@ -1,3 +1,4 @@
+import { cursorCharRight, undo } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import {
   ensureSyntaxTree,
@@ -6,7 +7,7 @@ import {
 } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { searchPanelOpen } from "@codemirror/search";
-import { EditorState } from "@codemirror/state";
+import { EditorState, StateEffect } from "@codemirror/state";
 import { runScopeHandlers, EditorView } from "@codemirror/view";
 import {
   act,
@@ -21,44 +22,57 @@ import { Editor, type EditorHandle } from "./Editor.tsx";
 import { linkAt } from "./source-links.ts";
 import type { LineBreak } from "./text.ts";
 
-function open(text: string, lineBreak: LineBreak = "\n") {
+function open(text: string, lineBreak: LineBreak = "\n", visual = false) {
   const onChange = vi.fn<(text: string) => void>();
   const handle = createRef<EditorHandle>();
-  const { container } = render(
+  const editor = (inVisual: boolean) => (
     <Editor
       ref={handle}
       initial={text}
       lineBreak={lineBreak}
+      visual={inVisual}
       onChange={onChange}
       onFollow={() => undefined}
-    />,
+    />
   );
+  const { container, rerender } = render(editor(visual));
   const element = container
     .querySelector(".editor")
     ?.shadowRoot?.querySelector<HTMLElement>(".cm-editor");
   const view = element && EditorView.findFromDOM(element);
   if (!view) throw new Error("No editor");
-  return { view, onChange, handle };
+  return {
+    view,
+    onChange,
+    handle,
+    /** Shows the editor in Visual, or in Source. */
+    showIn: (inVisual: boolean) => {
+      rerender(editor(inVisual));
+    },
+  };
 }
 
 /**
- * Each line as the editor shows it: dimmed text in ‹›, and "(larger)" after
- * a line with text larger than the editor's.
+ * Each line as the editor shows it: dimmed text in ‹›, text larger than the
+ * editor's in ⟨⟩, and bold text in **.
  */
 function looks(view: EditorView) {
   const size = getComputedStyle(view.contentDOM).fontSize;
   return [...view.contentDOM.querySelectorAll(".cm-line")].map((line) => {
     let shown = "";
-    let larger = false;
     const texts = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
     for (let text = texts.nextNode(); text; text = texts.nextNode()) {
       const style = getComputedStyle(text.parentElement ?? line);
-      const value = text.textContent ?? "";
-      larger ||= style.fontSize !== size;
-      shown +=
-        style.color === "var(--on-surface-variant)" ? `‹${value}›` : value;
+      let value = text.textContent ?? "";
+      if (style.fontWeight === "700") value = `**${value}**`;
+      if (style.fontSize !== size) value = `⟨${value}⟩`;
+      if (style.color === "var(--on-surface-variant)") value = `‹${value}›`;
+      shown += value;
     }
-    return shown.replaceAll("›‹", "") + (larger ? " (larger)" : "");
+    return shown
+      .replaceAll("›‹", "")
+      .replaceAll("⟩⟨", "")
+      .replaceAll("****", "");
   });
 }
 
@@ -66,6 +80,17 @@ function looks(view: EditorView) {
 async function parsed(view: EditorView) {
   await waitFor(() => {
     expect(syntaxTreeAvailable(view.state)).toBe(true);
+  });
+}
+
+/** Once CodeMirror has measured the view, and scrolled as asked meanwhile. */
+function measured(view: EditorView) {
+  return new Promise<void>((resolve) => {
+    view.requestMeasure({
+      read: () => {
+        resolve();
+      },
+    });
   });
 }
 
@@ -213,7 +238,24 @@ describe("Editor", () => {
       "‹tags:› ‹[›tea‹,› cups‹]›",
       "‹---›",
       "",
-      "‹#› The plan (larger)",
+      "‹#›⟨** The plan**⟩",
+      "",
+    ]);
+  });
+
+  it("dims headings' and bold text's marks at the text's size and weight", async () => {
+    const { view } = open("# Plan\n\n## Tasks\n\nTea\n===\n\nSome __tea__\n");
+    await parsed(view);
+
+    expect(looks(view)).toEqual([
+      "‹#›⟨** Plan**⟩",
+      "",
+      "‹##›⟨** Tasks**⟩",
+      "",
+      "⟨**Tea**⟩",
+      "‹===›",
+      "",
+      "Some ‹__›**tea**‹__›",
       "",
     ]);
   });
@@ -229,6 +271,550 @@ describe("Editor", () => {
       "const cups = { tea: 2 };",
       "‹```›",
     ]);
+  });
+});
+
+describe("Visual", () => {
+  beforeEach(() => {
+    // jsdom names Apple as its vendor, so CodeMirror reads the selection in
+    // a shadow root as Safari needs, through a command jsdom lacks.
+    Object.defineProperty(document, "execCommand", {
+      value: () => false,
+      configurable: true,
+    });
+  });
+
+  const NOTE = [
+    "# The plan ##",
+    "",
+    "Some **tea**, _cups_, ~~coffee~~ and `water`.",
+    "",
+    "Tea",
+    "===",
+    "#",
+  ].join("\n");
+
+  it("hides Markdown's symbols, where no line is being written", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+
+    expect(looks(view)).toEqual([
+      "⟨**The plan**⟩",
+      "",
+      "Some **tea**, cups, coffee and water.",
+      "",
+      "⟨**Tea**⟩",
+      "‹===›",
+      "‹#›",
+    ]);
+    expect(view.contentDOM).toHaveAccessibleName("Note");
+  });
+
+  it("shows the symbols of the lines the selection touches while it has the focus", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 3, head: 20 } });
+    });
+
+    await waitFor(() => {
+      expect(looks(view).slice(0, 3)).toEqual([
+        "‹#›⟨** The plan **⟩‹##›",
+        "",
+        "Some ‹**›**tea**‹**›, ‹_›cups‹_›, ‹~~›coffee‹~~› and ‹`›water‹`›.",
+      ]);
+    });
+    act(() => {
+      view.contentDOM.blur();
+    });
+    await waitFor(() => {
+      expect(looks(view)[0]).toBe("⟨**The plan**⟩");
+    });
+  });
+
+  it("shows a line's symbols only once the finger that pressed on it lifts", async () => {
+    const { view } = open(
+      "See [the docs](docs.md) and [a page](page.md).\n\nTea",
+      "\n",
+      true,
+    );
+    await parsed(view);
+
+    // A finger lifting at once, as from a tap.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      // The cursor moving under a finger, the line stays as it was.
+      fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+      act(() => {
+        view.focus();
+        view.dispatch({ selection: { anchor: 30 } });
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(looks(view)[0]).toBe("See the docs and a page.");
+
+      // A second finger lifting leaves the first one down.
+      fireEvent.touchEnd(view.contentDOM, { touches: [{}] });
+      expect(looks(view)[0]).toBe("See the docs and a page.");
+      // Lifting where the editor may not see it: from a line drawn anew.
+      fireEvent.touchEnd(document.body, { touches: [] });
+      expect(looks(view)[0]).toBe(
+        "See ‹[›the docs‹](docs.md)› and ‹[›a page‹](page.md)›.",
+      );
+      expect(view.state.selection.main).toMatchObject({ anchor: 30, head: 30 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves the cursor a long press moved to iOS for a moment once the finger lifts", async () => {
+    const { view } = open(
+      "See [the docs](docs.md) and [a page](page.md).\n\nSome tea and cups.",
+      "\n",
+      true,
+    );
+    await parsed(view);
+    // jsdom lays no text out, which CodeMirror measures meanwhile: a
+    // range's boxes are an element's, none.
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      value: () => document.createElement("span").getClientRects(),
+      configurable: true,
+    });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      // With the focus, a long press moves the cursor, under iOS's loupe.
+      act(() => {
+        view.dispatch({ selection: { anchor: view.state.doc.length } });
+        view.focus();
+      });
+      fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+      act(() => {
+        view.dispatch({ selection: { anchor: 32 } });
+      });
+      vi.setSystemTime(Date.now() + 600);
+
+      // iOS places the cursor again once the finger lifts, from where it
+      // was on the line as drawn.
+      fireEvent.touchEnd(document.body, { touches: [] });
+      act(() => {
+        view.dispatch({ selection: { anchor: 32 }, userEvent: "select" });
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(looks(view)[0]).toBe("See the docs and a page.");
+
+      await waitFor(() => {
+        expect(looks(view)[0]).toBe(
+          "See ‹[›the docs‹](docs.md)› and ‹[›a page‹](page.md)›.",
+        );
+      });
+      expect(view.state.selection.main).toMatchObject({ anchor: 32, head: 32 });
+    } finally {
+      vi.useRealTimers();
+      Reflect.deleteProperty(Range.prototype, "getClientRects");
+    }
+  });
+
+  it("leaves the word a long press selected to iOS for a moment once the finger lifts", async () => {
+    const { view } = open(
+      "See [the docs](docs.md) and [a page](page.md).",
+      "\n",
+      true,
+    );
+    await parsed(view);
+    // jsdom lays no text out, which CodeMirror measures meanwhile: a
+    // range's boxes are an element's, none.
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      value: () => document.createElement("span").getClientRects(),
+      configurable: true,
+    });
+    try {
+      fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+      act(() => {
+        view.focus();
+        view.dispatch({ selection: { anchor: 31, head: 35 } });
+      });
+
+      // iOS sets the word's selection again once the finger lifts, from where
+      // it was on the line as drawn.
+      fireEvent.touchEnd(document.body, { touches: [] });
+      act(() => {
+        view.dispatch({
+          selection: { anchor: 31, head: 35 },
+          userEvent: "select",
+        });
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(looks(view)[0]).toBe("See the docs and a page.");
+
+      await waitFor(() => {
+        expect(looks(view)[0]).toBe(
+          "See ‹[›the docs‹](docs.md)› and ‹[›a page‹](page.md)›.",
+        );
+      });
+      expect(view.state.selection.main).toMatchObject({ anchor: 31, head: 35 });
+    } finally {
+      Reflect.deleteProperty(Range.prototype, "getClientRects");
+    }
+  });
+
+  it("keeps the lines as they are for a finger that presses again meanwhile", async () => {
+    const { view } = open("See [a page](page.md).", "\n", true);
+    await parsed(view);
+    // jsdom lays no text out, which CodeMirror measures meanwhile: a
+    // range's boxes are an element's, none.
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      value: () => document.createElement("span").getClientRects(),
+      configurable: true,
+    });
+    try {
+      fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+      act(() => {
+        view.focus();
+        view.dispatch({ selection: { anchor: 7, head: 11 } });
+      });
+      fireEvent.touchEnd(document.body, { touches: [] });
+
+      fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(looks(view)[0]).toBe("See a page.");
+    } finally {
+      Reflect.deleteProperty(Range.prototype, "getClientRects");
+    }
+  });
+
+  it("puts off scrolling to the cursor while a finger is down, until it lifts", async () => {
+    const { view } = open("Some **tea**.\n\n## Cups ##", "\n", true);
+    await parsed(view);
+    const scrolls: number[] = [];
+    view.dispatch({
+      effects: StateEffect.appendConfig.of(
+        EditorView.scrollHandler.of((_, range) => {
+          scrolls.push(range.head);
+          return true;
+        }),
+      ),
+    });
+    // Which jsdom lacks, and CodeMirror measures text with.
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      value: () => document.createElement("span").getClientRects(),
+      configurable: true,
+    });
+    // CodeMirror scrolls only an editor with a height, which jsdom lays out
+    // none of.
+    Object.defineProperty(view.scrollDOM, "clientHeight", { value: 400 });
+    // Typed in before the press.
+    act(() => {
+      view.focus();
+      view.dispatch({ changes: { from: 13, insert: "!" } });
+    });
+    act(() => {
+      view.dispatch({ selection: { anchor: 6 } });
+    });
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      // As the keyboard comes up under a long press and settles, which would
+      // move the text under the finger, and the selection iOS makes with it.
+      fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+      act(() => {
+        view.dispatch({ effects: EditorView.scrollIntoView(6) });
+      });
+      await measured(view);
+      expect(scrolls).toEqual([]);
+
+      // Nor while iOS sets the selection again, once the finger lifts.
+      vi.setSystemTime(Date.now() + 600);
+      fireEvent.touchEnd(document.body, { touches: [] });
+      await measured(view);
+      expect(scrolls).toEqual([]);
+      await waitFor(() => {
+        expect(scrolls).toEqual([6]);
+      });
+
+      // Once only.
+      fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+      fireEvent.touchEnd(document.body, { touches: [] });
+      await measured(view);
+      expect(scrolls).toEqual([6]);
+    } finally {
+      vi.useRealTimers();
+      Reflect.deleteProperty(Range.prototype, "getClientRects");
+    }
+  });
+
+  it("scrolls into view after a key or an edit while a finger is down", async () => {
+    const { view } = open("Some tea.", "\n", true);
+    await parsed(view);
+    const scrolls: number[] = [];
+    view.dispatch({
+      effects: StateEffect.appendConfig.of(
+        EditorView.scrollHandler.of((_, range) => {
+          scrolls.push(range.head);
+          return true;
+        }),
+      ),
+    });
+    // Which jsdom lacks, and CodeMirror measures text with.
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      value: () => document.createElement("span").getClientRects(),
+      configurable: true,
+    });
+    // CodeMirror scrolls only an editor with a height, which jsdom lays out
+    // none of.
+    Object.defineProperty(view.scrollDOM, "clientHeight", { value: 400 });
+
+    try {
+      // Typing goes on where iOS lost the lift of a finger: on a hardware
+      // keyboard,
+      fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+      act(() => {
+        view.focus();
+      });
+      fireEvent.keyDown(view.contentDOM, { key: "ArrowRight" });
+      await measured(view);
+      expect(scrolls).toEqual([1]);
+
+      // or as dictation does, without a key.
+      fireEvent.touchStart(view.contentDOM, { touches: [{}] });
+      act(() => {
+        view.dispatch({
+          changes: { from: 8, insert: " and cups" },
+          selection: { anchor: 17 },
+          scrollIntoView: true,
+        });
+      });
+      await measured(view);
+      expect(scrolls).toEqual([1, 17]);
+    } finally {
+      Reflect.deleteProperty(Range.prototype, "getClientRects");
+    }
+  });
+
+  it("keeps the line a finger pressed where it was as the lines above it change", async () => {
+    const { view } = open("Some **tea**.\n\n## Cups ##", "\n", true);
+    await parsed(view);
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 6 } });
+    });
+    // The heading starts 78 px down the page, until the paragraph above it
+    // hides its symbols and takes a line less.
+    let paragraph = 52;
+    vi.spyOn(view, "lineBlockAt").mockImplementation(
+      (at) =>
+        ({ top: at < 14 ? 0 : paragraph + 26 }) as ReturnType<
+          EditorView["lineBlockAt"]
+        >,
+    );
+    vi.spyOn(view, "posAtCoords").mockReturnValue(17);
+    const scrollBy = vi.spyOn(window, "scrollBy").mockReturnValue();
+    let scrolled = 0;
+    vi.spyOn(window, "scrollY", "get").mockImplementation(() => scrolled);
+    vi.spyOn(view, "documentTop", "get").mockImplementation(() => -scrolled);
+    // Which jsdom lacks, and CodeMirror measures text with.
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      value: () => [],
+      configurable: true,
+    });
+
+    try {
+      fireEvent.touchStart(view.contentDOM, {
+        touches: [{ clientX: 40, clientY: 100 }],
+        changedTouches: [{ clientX: 40, clientY: 100 }],
+      });
+      // As iOS scrolls on its own meanwhile, which stays.
+      scrolled = 30;
+      fireEvent.touchEnd(document.body, { touches: [] });
+      paragraph = 26;
+      act(() => {
+        view.dispatch({
+          selection: { anchor: 17 },
+          userEvent: "select.pointer",
+        });
+      });
+
+      await waitFor(() => {
+        expect(scrollBy).toHaveBeenCalledExactlyOnceWith(0, -26);
+      });
+    } finally {
+      vi.restoreAllMocks();
+      Reflect.deleteProperty(Range.prototype, "getClientRects");
+    }
+  });
+
+  it("leaves a mouse's selections to scroll as CodeMirror scrolls them", async () => {
+    const { view } = open("Some **tea**.\n\n## Cups ##", "\n", true);
+    await parsed(view);
+    const scrolls: number[] = [];
+    view.dispatch({
+      effects: StateEffect.appendConfig.of(
+        EditorView.updateListener.of((update) => {
+          for (const { selection, effects } of update.transactions) {
+            if (selection) scrolls.push(effects.length);
+          }
+        }),
+      ),
+    });
+
+    // Long after any finger, as a drag past the window's edge selects
+    // again, every 50 ms.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.now() + 60_000);
+      view.dispatch({ selection: { anchor: 17 }, userEvent: "select.pointer" });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(scrolls).toEqual([0]);
+  });
+
+  it("hides an inline link's brackets and address, leaving its text", async () => {
+    const { view } = open(
+      [
+        'See [the *docs*](https://example.com "Docs") and <https://example.com>.',
+        "A [reference][docs], [](empty.md) and [docs].",
+        "",
+        "[docs]: https://example.com",
+      ].join("\n"),
+      "\n",
+      true,
+    );
+    await parsed(view);
+
+    expect(looks(view)).toEqual([
+      "See the docs and ‹<https://example.com>›.",
+      "A ‹[›reference‹]›[docs], ‹[](empty.md)› and ‹[›docs‹]›.",
+      "",
+      "[docs]‹:› ‹https://example.com›",
+    ]);
+  });
+
+  it("draws a bullet list's markers as bullets, and a task's as its box", async () => {
+    const { view } = open(
+      "- Tea\n- [ ] Boil\n* [x] Cups\n1. One\n2. [X] Two",
+      "\n",
+      true,
+    );
+    await parsed(view);
+
+    expect(looks(view)).toEqual([
+      "• Tea",
+      " Boil",
+      " Cups",
+      "‹1.› One",
+      " Two",
+    ]);
+    expect(
+      [...view.contentDOM.querySelectorAll<HTMLInputElement>(".cm-task")].map(
+        (box) => box.checked,
+      ),
+    ).toEqual([false, true, true]);
+    // Drawn as they were, as the text changes around them.
+    const bullet = view.contentDOM.querySelector(".cm-bullet");
+    view.dispatch({ changes: { from: 5, insert: "s" } });
+    expect(view.contentDOM.querySelector(".cm-bullet")).toBe(bullet);
+  });
+
+  it("ticks a task from its box, as one edit that undo reverts, the cursor staying", async () => {
+    const { view, onChange } = open("Tea\n- [ ] Boil", "\n", true);
+    await parsed(view);
+    view.dispatch({ selection: { anchor: 1 } });
+    const box = () =>
+      view.contentDOM.querySelector<HTMLInputElement>(".cm-task");
+
+    fireEvent.mouseDown(box() ?? view.contentDOM);
+    // The box shows what the text says, not what its click would.
+    expect(fireEvent.click(box() ?? view.contentDOM)).toBe(false);
+    expect(onChange).toHaveBeenLastCalledWith("Tea\n- [x] Boil");
+    expect(box()?.checked).toBe(true);
+    expect(view.state.selection.main.head).toBe(1);
+    fireEvent.mouseDown(box() ?? view.contentDOM);
+    expect(view.state.sliceDoc()).toBe("Tea\n- [ ] Boil");
+
+    undo(view);
+    expect(view.state.sliceDoc()).toBe("Tea\n- [x] Boil");
+    undo(view);
+    expect(view.state.sliceDoc()).toBe("Tea\n- [ ] Boil");
+  });
+
+  it("ticks a task from a finger's tap on its box, its start kept from the browser", async () => {
+    const { view } = open("Tea\n- [ ] Boil", "\n", true);
+    await parsed(view);
+    vi.spyOn(view, "posAtCoords").mockReturnValue(null);
+    const box = () =>
+      view.contentDOM.querySelector<HTMLInputElement>(".cm-task") ??
+      view.contentDOM;
+    const touch = (clientY: number) => [{ clientX: 10, clientY }];
+
+    // Its start kept from the browser, but not its end, or Chrome on Android
+    // brings up the keyboard that Back hid (#281).
+    expect(
+      fireEvent.touchStart(box(), {
+        touches: touch(20),
+        changedTouches: touch(20),
+      }),
+    ).toBe(false);
+    expect(
+      fireEvent.touchEnd(box(), { touches: [], changedTouches: touch(22) }),
+    ).toBe(true);
+    expect(view.state.sliceDoc()).toBe("Tea\n- [x] Boil");
+
+    // A finger moving from the box leaves the task as it is.
+    fireEvent.touchStart(box(), {
+      touches: touch(20),
+      changedTouches: touch(20),
+    });
+    fireEvent.touchEnd(box(), { touches: [], changedTouches: touch(80) });
+    expect(view.state.sliceDoc()).toBe("Tea\n- [x] Boil");
+
+    undo(view);
+    expect(view.state.sliceDoc()).toBe("Tea\n- [ ] Boil");
+  });
+
+  it("leaves a task as it is under a long press on its box", async () => {
+    const { view } = open("Tea\n- [ ] Boil", "\n", true);
+    await parsed(view);
+    vi.spyOn(view, "posAtCoords").mockReturnValue(null);
+    const box =
+      view.contentDOM.querySelector<HTMLInputElement>(".cm-task") ??
+      view.contentDOM;
+    const touch = [{ clientX: 10, clientY: 20 }];
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      fireEvent.touchStart(box, { touches: touch, changedTouches: touch });
+      vi.advanceTimersByTime(600);
+      fireEvent.touchEnd(box, { touches: [], changedTouches: touch });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(view.state.sliceDoc()).toBe("Tea\n- [ ] Boil");
+  });
+
+  it("skips a hidden symbol as one unit", async () => {
+    const { view } = open("**Tea**", "\n", true);
+    await parsed(view);
+
+    view.dispatch({ selection: { anchor: 0 } });
+    cursorCharRight(view);
+
+    expect(view.state.selection.main.head).toBe(2);
+  });
+
+  it("switches to Source and back, keeping the text and its history", async () => {
+    const { view, showIn } = open("**Tea**", "\n", true);
+    await parsed(view);
+    view.dispatch({ changes: { from: 7, insert: " cups" } });
+
+    showIn(false);
+    expect(looks(view)).toEqual(["‹**›**Tea**‹**› cups"]);
+    expect(view.contentDOM).toHaveAccessibleName("Markdown source");
+    showIn(true);
+    expect(looks(view)).toEqual(["**Tea** cups"]);
+    undo(view);
+    expect(view.state.sliceDoc()).toBe("**Tea**");
   });
 });
 

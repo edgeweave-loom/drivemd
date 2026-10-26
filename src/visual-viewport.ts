@@ -19,24 +19,27 @@ const SETTLE_FRAMES = 30;
  * Screen app).
  *
  * `below` is an element kept on the screen too, such as the app bar, whose
- * bottom the element's top stays under. `onResize` runs once the element
- * has settled after the viewport's height changed, as when the keyboard
- * comes or goes, with the height before.
+ * bottom the element's top stays under. `onSettle` runs once the element
+ * has settled as it shows, then after each change of the viewport's height,
+ * as when the keyboard comes or goes, with the height before. iOS may have
+ * brought the keyboard up before the element shows: the first time, the
+ * height before is the window's, if taller.
  */
 export function keepVisible(
   element: HTMLElement,
   {
     below,
-    onResize,
+    onSettle,
   }: {
     below?: HTMLElement | null;
-    onResize?: (before: number) => void;
+    onSettle?: (before: number) => void;
   } = {},
 ): () => void {
   const viewport = window.visualViewport;
   if (!viewport) return () => undefined;
   let shift = 0;
   let height = viewport.height;
+  let settled = false;
   let frames = 0;
   let frame: number | undefined;
   const place = () => {
@@ -60,10 +63,11 @@ export function keepVisible(
     place();
     frames -= 1;
     frame = frames > 0 ? requestAnimationFrame(settle) : undefined;
-    if (frame === undefined && viewport.height !== height) {
-      const before = height;
+    if (frame === undefined && (!settled || viewport.height !== height)) {
+      const before = settled ? height : Math.max(height, window.innerHeight);
       height = viewport.height;
-      onResize?.(before);
+      settled = true;
+      onSettle?.(before);
     }
   };
   const follow = () => {
@@ -83,5 +87,36 @@ export function keepVisible(
     window.removeEventListener("resize", follow);
     window.removeEventListener("scroll", follow);
     element.style.transform = "";
+  };
+}
+
+/**
+ * Sets `--keyboard-cover` on the page's root to the height of the page that
+ * the keyboard covers rather than shrinks, which the page's end needs as
+ * room to scroll clear of it: a script scrolls the layout viewport alone,
+ * not the visual viewport within it. The first time Gboard comes up after
+ * Samsung Internet starts, it can leave the layout viewport its height
+ * despite `interactive-widget=resizes-content`, the page already scrolled
+ * to its end (checked in the Android Emulator). A pinch's zoom shrinks the
+ * visual viewport too, which covers nothing.
+ */
+export function keepRoom(): () => void {
+  const viewport = window.visualViewport;
+  if (!viewport) return () => undefined;
+  const root = document.documentElement;
+  const measure = () => {
+    const cover = window.innerHeight - viewport.height * viewport.scale;
+    root.style.setProperty(
+      "--keyboard-cover",
+      `${String(Math.max(0, Math.round(cover)))}px`,
+    );
+  };
+  measure();
+  viewport.addEventListener("resize", measure);
+  window.addEventListener("resize", measure);
+  return () => {
+    viewport.removeEventListener("resize", measure);
+    window.removeEventListener("resize", measure);
+    root.style.removeProperty("--keyboard-cover");
   };
 }

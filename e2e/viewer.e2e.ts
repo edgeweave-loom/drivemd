@@ -217,6 +217,59 @@ test("formats the source from the keyboard toolbar on touch screens", async ({
   expect(String(drive.files.get("notes")?.content)).toBe("one\n- [ ] two\n");
 });
 
+test("hides the note under the keyboard toolbar, down to the screen's bottom", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.name === "desktop-chromium",
+    "A mouse has no keyboard toolbar",
+  );
+  const notes = drive.files.get("notes");
+  if (notes) {
+    notes.content = Array.from(
+      { length: 80 },
+      (_, line) => `line ${String(line + 1)}\n`,
+    ).join("");
+  }
+  await signIn(page);
+  await page.goto("/edit?id=notes");
+  await startEditing(page);
+  const source = page.getByRole("textbox", { name: "Markdown source" });
+  await source.locator(".cm-line").first().click();
+  const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+  await expect(toolbar).toBeVisible();
+
+  // Its background runs on below it, down past the screen's bottom from
+  // wherever it sits, as on the bars Safari floats over the keyboard, where
+  // the page still shows: drawn as its shadow, which no API hit-tests.
+  const { width = 0, height = 0 } = page.viewportSize() ?? {};
+  const painted = await toolbar.evaluate((bar) => {
+    const style = getComputedStyle(bar);
+    const [x = NaN, y = NaN, blur = NaN, spread = NaN] = [
+      ...style.boxShadow.matchAll(/(-?[\d.]+)px/g),
+    ].map(([, length]) => Number(length));
+    const box = bar.getBoundingClientRect();
+    return {
+      color: /^rgba?\([^)]*\)/.exec(style.boxShadow)?.[0],
+      background: style.backgroundColor,
+      blur,
+      top: box.top + y - spread,
+      below: box.bottom + y + spread - box.bottom,
+      left: box.left + x - spread,
+      right: box.right + x + spread,
+      barTop: box.top,
+    };
+  });
+  expect(painted.color).toBe(painted.background);
+  expect(painted.color).toBe(await token(page, "--surface-container"));
+  expect(painted.blur).toBe(0);
+  expect(painted.top).toBe(painted.barTop);
+  expect(painted.below).toBeGreaterThanOrEqual(height);
+  expect(painted.left).toBeLessThanOrEqual(0);
+  expect(painted.right).toBeGreaterThanOrEqual(width);
+});
+
 test("leaves the note's end clear of the keyboard toolbar", async ({
   page,
   drive,
@@ -267,6 +320,48 @@ test("leaves the note's end clear of the keyboard toolbar", async ({
       })
       .toBeLessThanOrEqual(bar.y);
   }
+});
+
+test("scrolls the line a first tap brings the keyboard toolbar over clear of it", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.name === "desktop-chromium",
+    "A mouse has no keyboard toolbar",
+  );
+  const notes = drive.files.get("notes");
+  if (notes) {
+    notes.content = Array.from(
+      { length: 80 },
+      (_, line) => `line ${String(line + 1)}\n`,
+    ).join("");
+  }
+  await signIn(page);
+  await page.goto("/edit?id=notes");
+  await startEditing(page);
+  const source = page.getByRole("textbox", { name: "Markdown source" });
+  await expect(source).toBeVisible();
+  await expect(source).not.toBeFocused();
+
+  // Where the toolbar shows once the editor has the focus.
+  const height = page.viewportSize()?.height ?? 0;
+  await page.touchscreen.tap(100, height - 20);
+  const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+  await expect(toolbar).toBeVisible();
+  const bar = await toolbar.boundingBox();
+  if (!bar) throw new Error("Not shown");
+  // Once the toolbar has settled, over 30 frames, which WebKit draws
+  // slowly on a page at rest.
+  await expect
+    .poll(
+      async () => {
+        const line = await source.locator(".cm-activeLine").boundingBox();
+        return line ? line.y + line.height : Infinity;
+      },
+      { timeout: 10_000 },
+    )
+    .toBeLessThanOrEqual(bar.y);
 });
 
 test("shows Find in note in the app bar on a phone, or under it, mid-note", async ({
@@ -347,12 +442,15 @@ test("saves with Ctrl+S, and follows a link with Ctrl+click in the source", asyn
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("Tea.");
 
-  await page.keyboard.press("ControlOrMeta+s");
+  // The device's user agent is Windows', whose command key is Ctrl, which
+  // ControlOrMeta makes Cmd on a Mac. CodeMirror goes by the host's
+  // navigator.platform instead, hence ControlOrMeta+End above.
+  await page.keyboard.press("Control+s");
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("plan")?.content)).toBe(`${before}Tea.`);
 
   await source.getByText("the notes", { exact: true }).click({
-    modifiers: ["ControlOrMeta"],
+    modifiers: ["Control"],
   });
   await expect(
     page.getByRole("heading", { level: 1, name: "notes.md" }),

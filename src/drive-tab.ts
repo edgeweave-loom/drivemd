@@ -45,7 +45,33 @@ export function openNoteTab(href: string): boolean {
   if (shown.name === "file" && shown.file.id === route.file.id) return false;
   // A name of its own, or the browser would open the note in a tab that a
   // link opened before, if it still had the name.
-  return window.open(url, NAME + crypto.randomUUID()) !== null;
+  const name = NAME + crypto.randomUUID();
+  if (window.open("", name) === null) return false;
+  load(url, name);
+  return true;
+}
+
+/**
+ * Loads the note in the tab through a form, which Chrome on Android keeps
+ * in the tab, where it would hand any other navigation of a new tab to the
+ * installed app. A GET form sends the address's query as its fields, and
+ * keeps its fragment.
+ */
+function load(url: URL, target: string): void {
+  const form = document.createElement("form");
+  form.method = "get";
+  form.action = url.href;
+  form.target = target;
+  for (const [key, value] of url.searchParams) {
+    const field = document.createElement("input");
+    field.type = "hidden";
+    field.name = key;
+    field.value = value;
+    form.append(field);
+  }
+  document.body.append(form);
+  form.submit();
+  form.remove();
 }
 
 /**

@@ -24,7 +24,14 @@ export interface Entry {
   modifiedBy: string | undefined;
 }
 
+// In the interface's English, whatever the device's language.
 const DAY = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
+
+/** A day and its time, as "Oct 26, 2026, 10:58 AM". */
+export const WHEN = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
 
 /** When and by whom an entry last changed, as its row says it. */
 export function modifiedLine({

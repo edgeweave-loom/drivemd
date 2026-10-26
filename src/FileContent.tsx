@@ -20,6 +20,7 @@ import {
 import { useDrive } from "./drive-context.ts";
 import { inDrive } from "./drive-web.ts";
 import { ConfirmDialog } from "./Dialog.tsx";
+import { lastEditMode, rememberEditMode, type EditMode } from "./edit-mode.ts";
 import { describeError } from "./errors.ts";
 import type { EditorHandle } from "./Editor.tsx";
 import {
@@ -34,6 +35,7 @@ import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
 import { openedFromDrive } from "./drive-tab.ts";
 import { PHONE, useLayout } from "./layout.ts";
+import { WHEN } from "./listing.ts";
 import { Loaded } from "./Loaded.tsx";
 import { Missing } from "./Missing.tsx";
 import { ModeMenu } from "./ModeMenu.tsx";
@@ -86,11 +88,6 @@ function DifferencesMissing() {
 function EditorMissing() {
   return <Missing part="editor" />;
 }
-
-const WHEN = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
 
 const MEGABYTES = new Intl.NumberFormat("en", {
   style: "unit",
@@ -278,8 +275,8 @@ function Conflict({
   );
 }
 
-/** What a phone shows while editing: the source, or the preview. */
-type Pane = "source" | "preview";
+/** What a phone shows while editing: the editor in its mode, or the preview. */
+type Pane = EditMode | "preview";
 
 /** The note as Drive holds it: its bytes, and their text. */
 type Note = FileText & { bytes: Uint8Array<ArrayBuffer> };
@@ -300,21 +297,30 @@ function Content({ file }: { file: FileMetadata }) {
   // Drive's latest: one the user edited, one open in the editor, or one just
   // saved, until the page hears of it.
   const [held, setHeld] = useState<Held>();
-  // Whether the editor shows, and on a phone, the source or the preview:
-  // kept while another revision loads.
+  // Whether the editor shows, in which mode, and on a phone, whether the
+  // preview shows in its place: kept while another revision loads.
   const [editing, setEditing] = useState(false);
+  const [mode, setMode] = useState(lastEditMode);
+  const [previewing, setPreviewing] = useState(false);
   function edit(open: boolean) {
-    // The editor holds to the revision it opens with.
-    if (open) setHeld((now) => now ?? { opened: file });
+    // The editor holds to the revision it opens with, and opens in its mode
+    // rather than in the preview, which is only a look.
+    if (open) {
+      setHeld((now) => now ?? { opened: file });
+      setPreviewing(false);
+    }
     setEditing(open);
   }
-  // A tab opened from Drive opens the note in Editing on a wide screen, as
+  function choose(next: EditMode) {
+    rememberEditMode(next);
+    setMode(next);
+  }
+  // A tab opened from Drive opens the note in the editor on a wide screen, as
   // Docs opens a document on a computer, and in reading on a phone: once,
   // as the note first shows, if the user may edit it.
   const [opening, setOpening] = useState(
     () => openedFromDrive() && !window.matchMedia(PHONE).matches,
   );
-  const [pane, setPane] = useState<Pane>("source");
   // The revisions saved from this page, which the next save need not keep:
   // the one from before the first edit is kept, as is one someone else made.
   const [written, setWritten] = useState<ReadonlySet<string>>(new Set());
@@ -512,8 +518,10 @@ function Content({ file }: { file: FileMetadata }) {
             session={shown.session}
             editing={editing}
             onEditing={edit}
-            pane={pane}
-            onPane={setPane}
+            mode={mode}
+            onMode={choose}
+            previewing={previewing}
+            onPreviewing={setPreviewing}
             text={held?.text ?? note.text}
             onEdit={(edited) => {
               setHeld({ opened, text: edited });
@@ -585,17 +593,19 @@ function Restore({
 }
 
 /**
- * A phone's choice of the source or the preview while editing: a segmented
- * button, the half shown checked (docs/DESIGN.md, Source and Preview).
+ * A phone's choice of Visual, Source or the preview while editing: a
+ * segmented button, the segment shown checked (docs/DESIGN.md, Visual, Source
+ * and Preview).
  */
 function Panes({ pane, onPane }: { pane: Pane; onPane: (pane: Pane) => void }) {
-  const halves = [
+  const segments = [
+    { shows: "visual", name: "Visual", icon: "edit" },
     { shows: "source", name: "Source", icon: "code" },
     { shows: "preview", name: "Preview", icon: "visibility" },
   ] as const;
   return (
     <div className="segmented" role="group" aria-label="Show">
-      {halves.map(({ shows, name, icon }) => (
+      {segments.map(({ shows, name, icon }) => (
         <button
           key={shows}
           type="button"
@@ -641,8 +651,9 @@ function Save({
 }
 
 /**
- * The note, as rendered, and its source in the editor once the user taps
- * Edit: beside the preview on a wide screen, or in its place on a phone.
+ * The note, as rendered, and the editor once the user taps Edit: in Visual,
+ * alone, and in Source, beside the preview on a wide screen; on a phone, the
+ * preview shows in the editor's place.
  */
 function NoteView({
   file,
@@ -653,8 +664,10 @@ function NoteView({
   session,
   editing,
   onEditing,
-  pane,
-  onPane,
+  mode,
+  onMode,
+  previewing,
+  onPreviewing,
   text,
   onEdit,
   save,
@@ -673,8 +686,11 @@ function NoteView({
   session: number;
   editing: boolean;
   onEditing: (editing: boolean) => void;
-  pane: Pane;
-  onPane: (pane: Pane) => void;
+  mode: EditMode;
+  onMode: (mode: EditMode) => void;
+  /** On a phone, whether the preview shows in the editor's place. */
+  previewing: boolean;
+  onPreviewing: (previewing: boolean) => void;
   /** The text with the user's edits. */
   text: string;
   onEdit: (text: string) => void;
@@ -690,7 +706,7 @@ function NoteView({
   onKeepTheirs: (theirs: FileMetadata) => void;
 }) {
   const { renew } = useDrive();
-  const layout = useLayout();
+  const phone = useLayout() === "phone";
   const editor = useRef<EditorHandle>(null);
   const follow = useFollow(
     folderOf(file),
@@ -736,7 +752,7 @@ function NoteView({
   }, [unsaved]);
   const [folder] = file.parents;
   // A phone reading the note floats Edit over it; Done is in the bar.
-  const floats = editable && layout === "phone" && !editing;
+  const floats = editable && phone && !editing;
   // Edit and Done are then two buttons: the focus goes from the one pressed
   // to the one that takes its place.
   const toggled = useRef(false);
@@ -814,10 +830,9 @@ function NoteView({
       window.removeEventListener("keydown", shortcut);
     };
   }, []);
-  const source =
-    editing && editable && (layout !== "phone" || pane === "source");
+  const source = editing && editable && !(phone && previewing);
   const rendered =
-    !(editing && editable) || layout !== "phone" || pane === "preview";
+    !(editing && editable) || (phone ? previewing : mode === "source");
   const previewed = source ? deferred : text;
   // A task ticked in the note shown: while viewing, it saves at once, as on
   // GitHub, so that a note being read holds no unsaved changes, unless other
@@ -853,12 +868,9 @@ function NoteView({
     <>
       <div className="note-bar">
         {reason && <p className="badge read-only">{reason}</p>}
-        {editable && layout === "phone" && editing && (
-          <Panes pane={pane} onPane={onPane} />
-        )}
         {editable &&
           !floats &&
-          (layout === "phone" ? (
+          (phone ? (
             // A check at the start of the bar, which saves first, as Viewing
             // does, then gives way to the floating Edit. It gives way to
             // Back, which leaves the note, while a save failed or a conflict
@@ -885,10 +897,14 @@ function NoteView({
           ) : (
             <InSlot name="mode">
               <ModeMenu
-                editing={editing}
-                onPick={(edits) => {
-                  if (edits) onEditing(true);
-                  else view();
+                mode={editing ? mode : "viewing"}
+                onPick={(picked) => {
+                  if (picked === "viewing") {
+                    view();
+                    return;
+                  }
+                  onMode(picked);
+                  onEditing(true);
                 }}
               />
             </InSlot>
@@ -935,9 +951,20 @@ function NoteView({
           {describeError(save.error)}
         </p>
       )}
-      {/* On a sheet, as Docs shows a page on a wide screen, or while
-          editing there, the source and the preview on two, side by side.
-          The note shown keeps its place as editing starts and ends. */}
+      {/* Under the banners, which are about the whole note, right above
+          what it switches. */}
+      {editable && phone && editing && (
+        <Panes
+          pane={previewing ? "preview" : mode}
+          onPane={(pane) => {
+            onPreviewing(pane === "preview");
+            if (pane !== "preview") onMode(pane);
+          }}
+        />
+      )}
+      {/* On a sheet, as Docs shows a page on a wide screen, and in Source
+          there, the source and the preview on two, side by side. The note
+          shown keeps its place as Source starts and ends. */}
       <div className={source && rendered ? "sheets editing" : "sheets"}>
         {source && (
           <Sheet label={rendered && "Markdown"} icon="code">
@@ -947,6 +974,7 @@ function NoteView({
                 ref={editor}
                 initial={text}
                 lineBreak={note.lineBreak}
+                visual={mode === "visual"}
                 onChange={onEdit}
                 onFollow={follow}
               />

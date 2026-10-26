@@ -12,13 +12,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Editor } from "./Editor.tsx";
 import { holdScreen, holdTouch } from "./test/screen.ts";
 
-function open(text: string) {
+function open(
+  text: string,
+  onFollow: (href: string) => void = () => undefined,
+) {
   const { container } = render(
     <Editor
       initial={text}
       lineBreak={"\n"}
       onChange={() => undefined}
-      onFollow={() => undefined}
+      onFollow={onFollow}
     />,
   );
   const element = container
@@ -30,9 +33,12 @@ function open(text: string) {
 }
 
 /** Opens the editor on a touch screen and gives it the focus. */
-async function editing(text: string) {
+async function editing(
+  text: string,
+  onFollow: (href: string) => void = () => undefined,
+) {
   holdTouch(true);
-  const view = open(text);
+  const view = open(text, onFollow);
   act(() => {
     view.focus();
   });
@@ -62,6 +68,7 @@ class Viewport extends EventTarget {
   height = 800;
   pageTop = 0;
   offsetTop = 0;
+  scale = 1;
   show(height: number, pageTop = 0, offsetTop = pageTop) {
     this.height = height;
     this.pageTop = pageTop;
@@ -163,6 +170,26 @@ describe("the keyboard toolbar", () => {
     expect(view.state.sliceDoc()).toBe("tea");
     tap("Redo");
     expect(view.state.sliceDoc()).toBe("teas");
+  });
+
+  it("turns Link to Open link in a link, which it follows", async () => {
+    const onFollow = vi.fn<(href: string) => void>();
+    const view = await editing("Tea at [noon](plan.md#noon).", onFollow);
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 9 } });
+    });
+    expect(screen.queryByRole("button", { name: "Link" })).toBeNull();
+    tap("Open link");
+    expect(onFollow).toHaveBeenCalledExactlyOnceWith("plan.md#noon");
+    expect(view.state.sliceDoc()).toBe("Tea at [noon](plan.md#noon).");
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 2 } });
+    });
+    expect(screen.queryByRole("button", { name: "Open link" })).toBeNull();
+    tap("Link");
+    expect(view.state.sliceDoc()).toBe("Te[]()a at [noon](plan.md#noon).");
   });
 
   it("finds text in the note, its field taking the focus within the tap", async () => {
@@ -298,6 +325,25 @@ describe("the keyboard toolbar", () => {
     appBar.remove();
   });
 
+  it("keeps the cursor clear of it where a keyboard pans the page rather than shrinking it", async () => {
+    const viewport = new Viewport();
+    Object.defineProperty(window, "visualViewport", {
+      value: viewport,
+      configurable: true,
+    });
+    const view = await editing("tea");
+    layOut(screen.getByRole("toolbar", { name: "Formatting" }), () => 797);
+
+    // Measured in the Android Emulator: Samsung Internet's first Gboard
+    // leaves the page 797 pixels tall, and shows 485 of them from 244 down,
+    // where CodeMirror takes the window for the page's first 485.
+    act(() => {
+      viewport.show(485, 244);
+    });
+
+    expect(margins(view)).toContainEqual({ top: 0, bottom: -196 });
+  });
+
   it("scrolls to the cursor once the keyboard has come over it, unless scrolled away", async () => {
     const viewport = new Viewport();
     Object.defineProperty(window, "visualViewport", {
@@ -319,7 +365,9 @@ describe("the keyboard toolbar", () => {
       effects: StateEffect.appendConfig.of(
         EditorView.updateListener.of((update) => {
           for (const { effects } of update.transactions) {
-            scrolls.push(effects.length);
+            // Not the listener's own.
+            if (!effects.some((effect) => effect.is(StateEffect.appendConfig)))
+              scrolls.push(effects.length);
           }
         }),
       ),
@@ -340,6 +388,49 @@ describe("the keyboard toolbar", () => {
     await new Promise((resolve) => setTimeout(resolve, 1000));
     expect(scrolls).toEqual([1]);
   });
+
+  it.each([
+    { what: "under the toolbar", top: 460 },
+    // As the iPad left the line the tap placed, the keyboard up.
+    { what: "under the keyboard", top: 600 },
+  ])(
+    "scrolls to the cursor that the tap bringing it placed, $what",
+    async ({ top }) => {
+      const viewport = new Viewport();
+      // The keyboard already up, as iOS may bring it before the toolbar shows,
+      // or keep it from Find in note's field.
+      viewport.height = 500;
+      Object.defineProperty(window, "visualViewport", {
+        value: viewport,
+        configurable: true,
+      });
+      const view = await editing("tea");
+      vi.spyOn(view, "coordsAtPos").mockReturnValue({
+        left: 0,
+        right: 0,
+        top,
+        bottom: top + 26,
+      });
+      const scrolls: number[] = [];
+      view.dispatch({
+        effects: StateEffect.appendConfig.of(
+          EditorView.updateListener.of((update) => {
+            for (const { effects } of update.transactions) {
+              // Not the listener's own.
+              if (
+                !effects.some((effect) => effect.is(StateEffect.appendConfig))
+              )
+                scrolls.push(effects.length);
+            }
+          }),
+        ),
+      });
+
+      await waitFor(() => {
+        expect(scrolls).toEqual([1]);
+      });
+    },
+  );
 
   it.each([
     {

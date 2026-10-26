@@ -158,7 +158,7 @@ test("keeps a note's lines and the keyboard's keys clear of the notch", async ({
   await signIn(page);
   await page.goto("/edit?id=notes");
   await page.getByRole("button", { name: "Edit", exact: true }).click();
-  const source = page.getByRole("textbox", { name: "Markdown source" });
+  const source = page.getByRole("textbox", { name: "Note" });
   const line = source.locator(".cm-line").first();
   await line.click();
   await clear(page, line, SIDEWAYS, PADDING);

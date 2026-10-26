@@ -18,6 +18,7 @@ import {
   type SearchQuery,
 } from "@codemirror/search";
 import {
+  Compartment,
   EditorState,
   RangeSetBuilder,
   type ChangeSpec,
@@ -55,6 +56,8 @@ import { KeyboardToolbar, TOOLBAR_HEIGHT } from "./KeyboardToolbar.tsx";
 import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
 import { useLayout, useTouch } from "./layout.ts";
+import { livePreview } from "./live-preview.ts";
+import { oneEditPerKey } from "./one-edit-per-key.ts";
 import { linkAt } from "./source-links.ts";
 import type { LineBreak } from "./text.ts";
 import { keepVisible } from "./visual-viewport.ts";
@@ -77,9 +80,14 @@ const LIGHT = HighlightStyle.define([
   { tag: tags.strikethrough, textDecoration: "line-through" },
   { tag: tags.monospace, fontFamily: "var(--font-mono)" },
   { tag: tags.link, color: "var(--primary)" },
+  { tag: tags.url, color: "var(--on-surface-variant)" },
+  // A heading's or bold text's marks take its tag too: they stay at the
+  // text's size and weight.
   {
-    tag: [tags.processingInstruction, tags.url],
+    tag: tags.processingInstruction,
     color: "var(--on-surface-variant)",
+    fontSize: "1em",
+    fontWeight: "normal",
   },
 ]);
 
@@ -213,8 +221,18 @@ function followLinks(follow: (href: string) => void): Extension {
   });
 }
 
+// Visual or Source, which the editor switches between as it stays.
+const MODE = new Compartment();
+
+function inMode(visual: boolean): Extension {
+  return visual
+    ? [livePreview, EditorView.contentAttributes.of({ "aria-label": "Note" })]
+    : EditorView.contentAttributes.of({ "aria-label": "Markdown source" });
+}
+
 function extensions(
   lineBreak: LineBreak,
+  visual: boolean,
   changed: (update: ViewUpdate) => void,
   follow: (href: string) => void,
   clearance: () => { top: number; bottom: number } | null,
@@ -225,6 +243,7 @@ function extensions(
     writable(lineBreak),
     history(),
     keepDoubleSpace,
+    oneEditPerKey,
     // GitHub's Markdown, its fences highlighted in their language and its
     // front matter in YAML; Enter continues lists and task lists.
     withFrontmatter(
@@ -254,7 +273,7 @@ function extensions(
       ...searchKeymap,
     ]),
     EditorView.lineWrapping,
-    EditorView.contentAttributes.of({ "aria-label": "Markdown source" }),
+    MODE.of(inMode(visual)),
     EditorView.updateListener.of(changed),
     followLinks(follow),
     // The cursor stays clear of the keyboard toolbar and the app bar when
@@ -286,19 +305,22 @@ export interface EditorHandle {
 /**
  * The note's Markdown source, in CodeMirror, which holds the text while it
  * shows: it starts from `initial` and reports every edit, keeping the file's
- * line breaks.
+ * line breaks. In Visual, the note reads as it renders, its Markdown shown
+ * only where it is being written.
  */
 export function Editor({
   initial,
   lineBreak,
+  visual = false,
   onChange,
   onFollow,
   ref,
 }: {
   initial: string;
   lineBreak: LineBreak;
+  visual?: boolean;
   onChange: (text: string) => void;
-  /** Follows a link the user Cmd or Ctrl+clicks. */
+  /** Follows a link the user Cmd or Ctrl+clicks, or opens from the toolbar. */
   onFollow: (href: string) => void;
   ref?: Ref<EditorHandle>;
 }) {
@@ -306,16 +328,21 @@ export function Editor({
   const editor = useRef<EditorView | null>(null);
   const field = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
+  // The address of the link the cursor is in, which the toolbar follows.
+  const [link, setLink] = useState<string>();
   // Find in note's query and matches, while it is open.
   const [found, setFound] = useState<Found | null>(null);
   const searching = found !== null;
   const touch = useTouch();
   const phone = useLayout() === "phone";
   const toolbar = touch && focused;
-  const opening = useEffectEvent(() => initial);
+  const opening = useEffectEvent(() => ({ initial, visual }));
   const edited = useEffectEvent((update: ViewUpdate) => {
     if (update.docChanged) onChange(update.state.sliceDoc());
     if (update.focusChanged) setFocused(update.view.hasFocus);
+    if (update.docChanged || update.selectionSet) {
+      setLink(linkAt(update.state, update.state.selection.main.head));
+    }
     if (!searchPanelOpen(update.state)) {
       if (searchPanelOpen(update.startState)) setFound(null);
       return;
@@ -374,7 +401,7 @@ export function Editor({
                 0,
             ),
           ),
-          bottom: toolbar ? TOOLBAR_HEIGHT : 0,
+          bottom: toolbar ? belowToolbar() : 0,
         }
       : null,
   );
@@ -385,11 +412,12 @@ export function Editor({
   useEffect(() => {
     const element = host.current;
     if (!element) return;
+    const { initial, visual } = opening();
     const view = mountIn(
       element,
       EditorState.create({
-        doc: opening(),
-        extensions: extensions(lineBreak, edited, followed, clearance),
+        doc: initial,
+        extensions: extensions(lineBreak, visual, edited, followed, clearance),
       }),
     );
     editor.current = view;
@@ -398,6 +426,10 @@ export function Editor({
       editor.current = null;
     };
   }, [lineBreak]);
+
+  useEffect(() => {
+    editor.current?.dispatch({ effects: MODE.reconfigure(inMode(visual)) });
+  }, [visual]);
 
   useImperativeHandle(
     ref,
@@ -453,10 +485,16 @@ export function Editor({
       <div className="editor" ref={host} />
       {toolbar && (
         <KeyboardToolbar
+          link={link}
           onCommand={(command) => {
             if (editor.current) command(editor.current);
           }}
-          onResize={(before) => {
+          onFollow={onFollow}
+          // Once the keyboard has come or gone, and as the toolbar first
+          // shows: the tap that gave the editor the focus, or Find in note's
+          // close, placed the cursor before it showed, where iOS scrolls it
+          // above the keyboard only, under the toolbar.
+          onSettle={(before) => {
             const view = editor.current;
             if (view && onScreen(view, before)) {
               view.dispatch({
@@ -496,6 +534,19 @@ function onScreen(view: EditorView, before: number): boolean {
   return (
     cursor.bottom > top && cursor.top < top + Math.max(before, viewport.height)
   );
+}
+
+/**
+ * How far the keyboard toolbar's top sits above the visual viewport's
+ * height, which CodeMirror takes for the window's bottom, measuring from the
+ * page's top: the visual viewport may sit lower, where a keyboard covers the
+ * page without shrinking it. Before the toolbar shows, its height.
+ */
+function belowToolbar(): number {
+  const viewport = window.visualViewport;
+  const bar = document.querySelector(".keyboard-toolbar");
+  if (!viewport || !bar) return TOOLBAR_HEIGHT;
+  return Math.round(viewport.height - bar.getBoundingClientRect().top);
 }
 
 /**

@@ -30,11 +30,17 @@ const spaceTaken = StateField.define<number | null>({
 
 /**
  * Keeps the two spaces typed after a word, which end a line with Markdown's
- * line break, where Gboard turns them into a period and a space: it takes
- * the first space back, then inserts ". " in one edit, which CodeMirror's
- * own check, made for a period inserted before the space, misses (checked
- * in the Android Emulator, with Gboard 18). A period typed after a backspace
- * comes alone, without the space.
+ * line break, where a phone's keyboard turns them into a period and a
+ * space, in forms that CodeMirror's own check, made for a period inserted
+ * before the space, misses:
+ *
+ * - Gboard takes the first space back, then inserts ". " in one edit
+ *   (checked in the Android Emulator, with Gboard 18). A period typed after
+ *   a backspace comes alone, without the space.
+ * - iOS replaces the space before the cursor with a period
+ *   (`insertReplacementText`), then inserts the second space as typed
+ *   (checked in the iOS 27 Simulator). Turning the replacement down keeps
+ *   the space, and CodeMirror draws it back.
  */
 export const keepDoubleSpace: Extension = [
   spaceTaken,
@@ -48,5 +54,15 @@ export const keepDoubleSpace: Extension = [
       userEvent: "input.type",
     });
     return true;
+  }),
+  EditorView.inputHandler.of((view, from, to, text) => {
+    const { main } = view.state.selection;
+    return (
+      text === "." &&
+      to === from + 1 &&
+      main.empty &&
+      main.head === to &&
+      view.state.sliceDoc(from, to) === " "
+    );
   }),
 ];

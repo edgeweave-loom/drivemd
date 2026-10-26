@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { keepVisible } from "./visual-viewport.ts";
+import { keepRoom, keepVisible } from "./visual-viewport.ts";
 
 /** A visual viewport of `height`, `pageTop` down a page scrolled to 0. */
 class Viewport extends EventTarget {
   height = 800;
   pageTop = 0;
+  scale = 1;
   show(height: number, pageTop = 0) {
     this.height = height;
     this.pageTop = pageTop;
@@ -96,8 +97,8 @@ describe("keepVisible", () => {
   it("measures again over the next frames, until iOS settles", () => {
     let bottom = 800;
     const bar = element(() => bottom - 48, 48);
-    const resized = vi.fn();
-    keepVisible(bar, { onResize: resized });
+    const settled = vi.fn();
+    keepVisible(bar, { onSettle: settled });
 
     // A passing place, then the right one, without an event between.
     bottom = 1206;
@@ -107,9 +108,30 @@ describe("keepVisible", () => {
     vi.advanceTimersToNextFrame();
     expect(bar.style.transform).toBe("translateY(-389px)");
 
-    expect(resized).not.toHaveBeenCalled();
+    expect(settled).not.toHaveBeenCalled();
     for (let frame = 0; frame < 30; frame += 1) vi.advanceTimersToNextFrame();
-    expect(resized).toHaveBeenCalledExactlyOnceWith(800);
+    expect(settled).toHaveBeenCalledExactlyOnceWith(800);
+  });
+
+  it("tells once it has settled as it shows, then as the height changes", () => {
+    const bar = element(() => 752, 48);
+    const settled = vi.fn();
+    // The keyboard already up, as iOS may bring it before the toolbar shows.
+    viewport.height = 411;
+    keepVisible(bar, { onSettle: settled });
+
+    for (let frame = 0; frame < 30; frame += 1) vi.advanceTimersToNextFrame();
+    expect(settled).toHaveBeenCalledExactlyOnceWith(window.innerHeight);
+
+    // A scroll alone, as Safari's bars stay.
+    viewport.dispatchEvent(new Event("scroll"));
+    for (let frame = 0; frame < 30; frame += 1) vi.advanceTimersToNextFrame();
+    expect(settled).toHaveBeenCalledOnce();
+
+    viewport.show(800);
+    for (let frame = 0; frame < 30; frame += 1) vi.advanceTimersToNextFrame();
+    expect(settled).toHaveBeenLastCalledWith(411);
+    expect(settled).toHaveBeenCalledTimes(2);
   });
 
   it("puts the element back once it stops", () => {
@@ -122,5 +144,69 @@ describe("keepVisible", () => {
     expect(bar.style.transform).toBe("");
     viewport.show(300);
     expect(bar.style.transform).toBe("");
+  });
+});
+
+describe("keepRoom", () => {
+  let viewport: Viewport;
+
+  beforeEach(() => {
+    viewport = new Viewport();
+    Object.defineProperty(window, "visualViewport", {
+      value: viewport,
+      configurable: true,
+    });
+    // As Samsung Internet lays out the page with its top bar shown.
+    Object.defineProperty(window, "innerHeight", {
+      value: 797,
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(window, "visualViewport");
+    Reflect.deleteProperty(window, "innerHeight");
+  });
+
+  function cover() {
+    return document.documentElement.style.getPropertyValue("--keyboard-cover");
+  }
+
+  it("makes room for the part of the page the keyboard covers", () => {
+    viewport.height = 797;
+    keepRoom();
+    expect(cover()).toBe("0px");
+
+    // Measured in the Android Emulator: Samsung Internet's first Gboard,
+    // which leaves the page its height.
+    viewport.show(485, 244);
+    expect(cover()).toBe("312px");
+
+    // As it then shrinks the page with the keyboard.
+    Object.defineProperty(window, "innerHeight", {
+      value: 485,
+      configurable: true,
+    });
+    window.dispatchEvent(new Event("resize"));
+    expect(cover()).toBe("0px");
+  });
+
+  it("makes none for a pinch's zoom", () => {
+    viewport.height = 398.5;
+    viewport.scale = 2;
+    keepRoom();
+
+    expect(cover()).toBe("0px");
+  });
+
+  it("takes the room back once it stops", () => {
+    const stop = keepRoom();
+    viewport.show(485);
+
+    stop();
+
+    expect(cover()).toBe("");
+    viewport.show(300);
+    expect(cover()).toBe("");
   });
 });

@@ -236,8 +236,10 @@ button:is(.filled, .tonal, .danger):not(.text):disabled {
   }
 }
 
-/* New note: tonal beside the folder's name, floating on a phone. */
+/* New note: tonal beside the folder's name, floating on a phone. The name
+   wraps before its label does. */
 button.new-note {
+  flex: none;
   padding-left: var(--space-4);
 }
 
@@ -279,7 +281,6 @@ button.new-note > .icon {
   padding: env(safe-area-inset-top)
     calc(var(--space-4) + env(safe-area-inset-right)) 0
     calc(var(--space-4) + env(safe-area-inset-left));
-  border-bottom: 1px solid var(--outline-variant);
   background: var(--surface);
 }
 
@@ -1001,10 +1002,6 @@ dialog.drawer > .close {
   background: var(--app-background);
 }
 
-:root:has(.shell) .bar {
-  border-bottom: none;
-}
-
 /* The bar keeps one row, which the drawer stays clear of. */
 :root:has(.shell) .bar {
   flex-wrap: nowrap;
@@ -1207,11 +1204,20 @@ dialog.drawer > .close {
   margin: 0;
 }
 
+/* A page's heading, in headline-small. */
+.page > h2,
+.page > .heading > h2 {
+  overflow-wrap: anywhere;
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 32px;
+}
+
 .page h3 {
   color: var(--on-surface-variant);
   font-size: 0.875rem;
-  font-weight: 600;
-  text-transform: uppercase;
+  font-weight: 500;
+  line-height: 1.25rem;
 }
 
 /* The about page, which the Marketplace listing links to. */
@@ -1239,11 +1245,15 @@ dialog.drawer > .close {
   gap: 0.75rem;
 }
 
+/* Steps in on-surface-variant, the page itself in on-surface at 500
+   (docs/DESIGN.md, Breadcrumbs). A step's pill reaches past its text, which
+   stays in line with the heading. */
 .crumbs ol {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 0.5rem;
-  margin: 0;
+  gap: 0 var(--space-1);
+  min-height: 44px;
+  margin: 0 calc(-1 * var(--space-2));
   padding: 0;
   color: var(--on-surface-variant);
   font-size: 0.875rem;
@@ -1252,8 +1262,9 @@ dialog.drawer > .close {
 
 .crumbs li {
   display: inline-flex;
-  gap: 0.5rem;
+  gap: var(--space-1);
   align-items: center;
+  min-height: 44px;
 }
 
 .crumbs .icon {
@@ -1261,10 +1272,46 @@ dialog.drawer > .close {
   height: 18px;
 }
 
-.crumbs a {
+.crumbs a,
+.crumbs [aria-current] {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
+  min-height: 32px;
+  padding: 0 var(--space-2);
+}
+
+/* The link is the 32 px pill, which the focus ring rings, and reaches 44 px
+   above and below it. */
+.crumbs a {
+  position: relative;
+  border-radius: var(--radius-full);
+  color: inherit;
+  text-decoration: none;
+}
+
+.crumbs a::after {
+  position: absolute;
+  inset: -6px 0;
+  content: "";
+}
+
+@media (hover: hover) {
+  .crumbs a:hover {
+    background-image: linear-gradient(
+      color-mix(in srgb, currentColor 8%, transparent) 0 0
+    );
+  }
+}
+
+.crumbs a:is(:focus-visible, :active) {
+  background-image: linear-gradient(
+    color-mix(in srgb, currentColor 10%, transparent) 0 0
+  );
+}
+
+.crumbs [aria-current] {
+  color: var(--on-surface);
+  font-weight: 500;
 }
 
 .entries {
@@ -1279,7 +1326,6 @@ dialog.drawer > .close {
   align-items: center;
   min-height: 48px;
   padding: var(--space-1);
-  border-bottom: 1px solid var(--outline-variant);
   color: inherit;
   text-decoration: none;
   overflow-wrap: anywhere;
@@ -1374,10 +1420,15 @@ dialog.drawer > .close {
 }
 
 /* Rows on a wider screen, in a table or the folder pane, open their folders
-   without a chevron, as the mockups show them. */
+   without a chevron, as the mockups show them. A table's rows, unlike a
+   phone's list, take a rule under each (docs/DESIGN.md, File table). */
 @media (width >= 768px) and (not ((pointer: coarse) and (height < 500px))) {
   a.entry > .icon:last-child:not(:first-child) {
     display: none;
+  }
+
+  .entry {
+    border-bottom: 1px solid var(--outline-variant);
   }
 }
 
@@ -1678,11 +1729,50 @@ dialog.drawer > .close {
   font-weight: 600;
 }
 
+/* Obsidian's layout: its type's icon, its text, then a chevron if it folds,
+   each icon at the text's size, centered on the first line. A title without
+   its type, which shows no icon, keeps the flow of its text. */
+.markdown .callout-title:has(> .callout-title-inner) {
+  display: flex;
+  gap: 0.25rem;
+  align-items: flex-start;
+}
+
+.markdown :is(.callout-icon, .callout-fold) {
+  flex: none;
+  width: 1em;
+  height: 1lh;
+}
+
 /* A tap target of 44 px, which takes no more room than the title. */
 .markdown .callout > summary.callout-title {
   margin-block: -0.625rem;
   padding-block: 0.625rem;
   cursor: pointer;
+}
+
+/* Obsidian's chevron stands for the browser's marker. */
+.markdown summary.callout-title {
+  list-style: none;
+}
+
+.markdown summary.callout-title::-webkit-details-marker {
+  display: none;
+}
+
+/* Down while the callout is open, right while it is folded, as in Obsidian. */
+.markdown .callout-fold {
+  transition: transform 100ms ease-in-out;
+}
+
+.markdown details:not([open]) > summary > .callout-fold {
+  transform: rotate(-90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .markdown .callout-fold {
+    transition: none;
+  }
 }
 
 .markdown .callout-content {
@@ -1888,11 +1978,11 @@ dialog.drawer > .close {
   margin-right: auto;
 }
 
-/* A phone's Source and Preview, at the bar's start: one outlined pill cut
-   in two, the half shown on secondary-container (docs/DESIGN.md). */
+/* A phone's Visual, Source and Preview, over the note: one outlined pill
+   cut in three, the segment shown on secondary-container
+   (docs/DESIGN.md). */
 .segmented {
   display: flex;
-  margin-right: auto;
 }
 
 .segmented > button {
@@ -1905,12 +1995,12 @@ dialog.drawer > .close {
   height: 18px;
 }
 
-.segmented > button:first-child {
+.segmented > button:not(:last-child) {
   border-start-end-radius: 0;
   border-end-end-radius: 0;
 }
 
-.segmented > button:last-child {
+.segmented > button:not(:first-child) {
   border-inline-start: none;
   border-start-start-radius: 0;
   border-end-start-radius: 0;
@@ -1958,10 +2048,6 @@ dialog.drawer > .close {
     background: var(--app-background);
   }
 
-  .bar.note {
-    border-bottom: none;
-  }
-
   /* The page fills the window, down to its bottom, which the sheet reaches
      whatever sits above it. */
   .page:has(> .split) {
@@ -1999,6 +2085,12 @@ dialog.drawer > .close {
     border-radius: var(--radius-md) var(--radius-md) 0 0;
     background: var(--sheet);
     box-shadow: var(--elevation-1);
+  }
+
+  /* Alone, Visual's lines run from edge to edge of the sheet, their text
+     where the note's starts in Viewing. */
+  .sheets:not(.editing) > .sheet {
+    --text-inset: 72px;
   }
 
   .editing {
@@ -2044,7 +2136,6 @@ dialog.drawer > .close {
   font-size: 16px;
   font-weight: 500;
   line-height: 24px;
-  text-transform: none;
 }
 
 .banner > .actions {
@@ -2117,15 +2208,24 @@ dialog.drawer > .close {
   overflow-x: auto;
   border-top: 1px solid var(--outline-variant);
   background: var(--surface-container);
+  /* Its background runs on below it, down past the screen's bottom: in
+     Safari on an iPhone, the page shows under and around the bars that
+     float between it and the keyboard, where taps go to Safari. A shadow
+     neither scrolls with the row's keys nor takes taps. */
+  box-shadow: 0 50lvh 0 50lvh var(--surface-container);
   scrollbar-width: none;
 }
 
 /* The note's end scrolls clear of it; the page already keeps clear of the
    home bar. The room is the editor's own: on a phone, the source runs past
    the sides of what holds it, which CodeMirror then takes for scrollers,
-   keeping the cursor clear of the toolbar only within their bottom edge. */
+   keeping the cursor clear of the toolbar only within their bottom edge.
+   It also holds the part of the page a keyboard covers without shrinking
+   it (src/visual-viewport.ts). */
 body:has(> .keyboard-toolbar) .editor {
-  padding-bottom: var(--keyboard-toolbar-height);
+  padding-bottom: calc(
+    var(--keyboard-toolbar-height) + var(--keyboard-cover, 0px)
+  );
 }
 
 .keyboard-toolbar button {
