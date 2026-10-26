@@ -510,7 +510,12 @@ test("opens what Drive's Open with, New and pasted links name", async ({
   );
   await search.press("Enter");
   await expect(heading(page, `${RUN} Notes`)).toBeVisible();
-  await expect(crumbs(page)).toHaveText(["Home", "My Drive", run.name]);
+  // Home leads them on a phone only; the folder itself is no link.
+  await expect(crumbs(page)).toHaveText([
+    ...(phone() ? ["Home"] : []),
+    "My Drive",
+    run.name,
+  ]);
   await loaded(page);
 
   await page.goto(
