@@ -99,6 +99,31 @@ test("ends the breadcrumbs at the folder, its steps in grey", async ({
   expect(first?.x).toBe((heading?.x ?? 0) - 8);
 });
 
+test("rings a breadcrumb step's 32 px pill, within its 44 px target", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.getByRole("link", { name: "My Drive" }).first().click();
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: "Work", exact: true })
+    .click();
+  const step = page
+    .getByRole("navigation", { name: "Breadcrumbs" })
+    .getByRole("link", { name: "My Drive" });
+  // The focus ring follows the link's box, which is the pill.
+  const pill = await step.boundingBox();
+  expect(pill?.height).toBe(32);
+  const reached = await step.evaluate((link) => {
+    const box = link.getBoundingClientRect();
+    const x = box.left + box.width / 2;
+    return [box.top - 5, box.bottom + 5].map(
+      (y) => document.elementFromPoint(x, y) === link,
+    );
+  });
+  expect(reached).toEqual([true, true]);
+});
+
 test("shows breadcrumbs on folder pages only", async ({ page }) => {
   await signIn(page);
   await page.goto("/shortcuts");
