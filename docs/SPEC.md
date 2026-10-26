@@ -16,7 +16,7 @@ DriveMD is open source, under the GNU Affero General Public License, version 3 o
 
 Users are employees signed in with an account in our Workspace organization. Accounts outside the organization cannot sign in. Most users are technical and comfortable with Markdown syntax.
 
-The interface is in English. On a phone or a tablet, it follows the system's light or dark theme; on a computer, it keeps the light theme, as Google Docs does on the web, so that a note looks like the Drive and Docs tabs beside it. A computer is a screen whose primary pointer is not coarse (see Interface redesign): an iPad with a trackpad, whose primary pointer stays coarse, follows the system's theme, as Google's iPad apps do.
+The interface is in English, and so are its dates, whatever the device's language: "Sep 1, 2026" in the lists, and "Sep 1, 2026, 10:00 AM" where the time shows too, as for a note's last change and unsaved changes ([#328](https://github.com/edgeweave-loom/drivemd/issues/328)). On a phone or a tablet, it follows the system's light or dark theme; on a computer, it keeps the light theme, as Google Docs does on the web, so that a note looks like the Drive and Docs tabs beside it. A computer is a screen whose primary pointer is not coarse (see Interface redesign): an iPad with a trackpad, whose primary pointer stays coarse, follows the system's theme, as Google's iPad apps do.
 
 **Platforms**
 
