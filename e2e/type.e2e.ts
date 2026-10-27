@@ -126,3 +126,46 @@ test("sets a note in the design's type", async ({ page, drive }, info) => {
   await expect(line).toHaveCSS("font-size", "16px");
   await expect(line).toHaveCSS("line-height", "26px");
 });
+
+test("sets a page's heading in headline-small", async ({ page }) => {
+  // Home, where signing in lands once Drive has answered it: Home opened
+  // again would ask Drive for its notes' folders again, which the folder's
+  // page could cut short.
+  await signIn(page);
+  for (const [path, name] of [
+    [null, "Home"],
+    ["/folder/work", "Work"],
+  ] as const) {
+    if (path) await page.goto(path);
+    const heading = page.getByRole("heading", { level: 2, name, exact: true });
+    await expect(heading).toHaveCSS("font-size", "24px");
+    await expect(heading).toHaveCSS("line-height", "32px");
+    await expect(heading).toHaveCSS("font-weight", "400");
+  }
+  // Ends once Drive has answered the folder's path and list: WebKit on Linux
+  // reports a request the closing page cuts short as an error.
+  await expect(
+    page.getByRole("navigation", { name: "Breadcrumbs" }).getByRole("listitem"),
+  ).toHaveText(
+    test.info().project.metadata.layout === "phone"
+      ? ["Home", "My Drive", "Work"]
+      : ["My Drive", "Work"],
+  );
+  await expect(page.getByRole("link", { name: "Archive" })).toBeVisible();
+});
+
+test("labels Home's sections in title-small", async ({ page }) => {
+  await signIn(page);
+  const label = page
+    .getByRole("region", { name: "Recent" })
+    .getByRole("heading", { name: "Recent" });
+  await expect(label).toHaveCSS("font-size", "14px");
+  await expect(label).toHaveCSS("line-height", "20px");
+  await expect(label).toHaveCSS("font-weight", "500");
+  // In sentence case, as written.
+  await expect(label).toHaveCSS("text-transform", "none");
+  await expect(label).toHaveCSS(
+    "color",
+    await token(page, "--on-surface-variant"),
+  );
+});

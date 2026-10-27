@@ -9,6 +9,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { DriveError } from "./drive.ts";
 import { FileContent } from "./FileContent.tsx";
+import { WHEN } from "./listing.ts";
 import { getPlace } from "./router.ts";
 import { driveItem, metadata } from "./test/drive-items.ts";
 import { editInPreview, pickMode } from "./test/actions.ts";
@@ -25,10 +26,6 @@ const THEIRS = metadata(PLAN, {
   headRevisionId: "revision-3",
 });
 const utf8 = (text: string) => new TextEncoder().encode(text);
-const WHEN = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
 
 /** A note whose save finds that someone else changed it in Drive. */
 async function conflict(theirs = THEIRS) {

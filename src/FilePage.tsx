@@ -18,7 +18,7 @@ import { FolderLink, FolderPane } from "./FolderPane.tsx";
 import { Icon } from "./Icon.tsx";
 import { InSlot } from "./InSlot.tsx";
 import { Link } from "./Link.tsx";
-import { kindOf } from "./listing.ts";
+import { kindOf, WHEN } from "./listing.ts";
 import { useLayout } from "./layout.ts";
 import { Loaded } from "./Loaded.tsx";
 import { Missing } from "./Missing.tsx";
@@ -41,11 +41,6 @@ const FileContent = lazy(() =>
 function ViewerMissing() {
   return <Missing part="viewer" />;
 }
-
-const WHEN = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
 
 /**
  * A file's page, with the folder it sits in beside it on a wide screen or in

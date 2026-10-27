@@ -236,8 +236,10 @@ button:is(.filled, .tonal, .danger):not(.text):disabled {
   }
 }
 
-/* New note: tonal beside the folder's name, floating on a phone. */
+/* New note: tonal beside the folder's name, floating on a phone. The name
+   wraps before its label does. */
 button.new-note {
+  flex: none;
   padding-left: var(--space-4);
 }
 
@@ -279,7 +281,6 @@ button.new-note > .icon {
   padding: env(safe-area-inset-top)
     calc(var(--space-4) + env(safe-area-inset-right)) 0
     calc(var(--space-4) + env(safe-area-inset-left));
-  border-bottom: 1px solid var(--outline-variant);
   background: var(--surface);
 }
 
@@ -1001,10 +1002,6 @@ dialog.drawer > .close {
   background: var(--app-background);
 }
 
-:root:has(.shell) .bar {
-  border-bottom: none;
-}
-
 /* The bar keeps one row, which the drawer stays clear of. */
 :root:has(.shell) .bar {
   flex-wrap: nowrap;
@@ -1207,11 +1204,20 @@ dialog.drawer > .close {
   margin: 0;
 }
 
+/* A page's heading, in headline-small. */
+.page > h2,
+.page > .heading > h2 {
+  overflow-wrap: anywhere;
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 32px;
+}
+
 .page h3 {
   color: var(--on-surface-variant);
   font-size: 0.875rem;
-  font-weight: 600;
-  text-transform: uppercase;
+  font-weight: 500;
+  line-height: 1.25rem;
 }
 
 /* The about page, which the Marketplace listing links to. */
@@ -1239,11 +1245,15 @@ dialog.drawer > .close {
   gap: 0.75rem;
 }
 
+/* Steps in on-surface-variant, the page itself in on-surface at 500
+   (docs/DESIGN.md, Breadcrumbs). A step's pill reaches past its text, which
+   stays in line with the heading. */
 .crumbs ol {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 0.5rem;
-  margin: 0;
+  gap: 0 var(--space-1);
+  min-height: 44px;
+  margin: 0 calc(-1 * var(--space-2));
   padding: 0;
   color: var(--on-surface-variant);
   font-size: 0.875rem;
@@ -1252,8 +1262,9 @@ dialog.drawer > .close {
 
 .crumbs li {
   display: inline-flex;
-  gap: 0.5rem;
+  gap: var(--space-1);
   align-items: center;
+  min-height: 44px;
 }
 
 .crumbs .icon {
@@ -1261,10 +1272,46 @@ dialog.drawer > .close {
   height: 18px;
 }
 
-.crumbs a {
+.crumbs a,
+.crumbs [aria-current] {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
+  min-height: 32px;
+  padding: 0 var(--space-2);
+}
+
+/* The link is the 32 px pill, which the focus ring rings, and reaches 44 px
+   above and below it. */
+.crumbs a {
+  position: relative;
+  border-radius: var(--radius-full);
+  color: inherit;
+  text-decoration: none;
+}
+
+.crumbs a::after {
+  position: absolute;
+  inset: -6px 0;
+  content: "";
+}
+
+@media (hover: hover) {
+  .crumbs a:hover {
+    background-image: linear-gradient(
+      color-mix(in srgb, currentColor 8%, transparent) 0 0
+    );
+  }
+}
+
+.crumbs a:is(:focus-visible, :active) {
+  background-image: linear-gradient(
+    color-mix(in srgb, currentColor 10%, transparent) 0 0
+  );
+}
+
+.crumbs [aria-current] {
+  color: var(--on-surface);
+  font-weight: 500;
 }
 
 .entries {
@@ -1279,7 +1326,6 @@ dialog.drawer > .close {
   align-items: center;
   min-height: 48px;
   padding: var(--space-1);
-  border-bottom: 1px solid var(--outline-variant);
   color: inherit;
   text-decoration: none;
   overflow-wrap: anywhere;
@@ -1374,10 +1420,15 @@ dialog.drawer > .close {
 }
 
 /* Rows on a wider screen, in a table or the folder pane, open their folders
-   without a chevron, as the mockups show them. */
+   without a chevron, as the mockups show them. A table's rows, unlike a
+   phone's list, take a rule under each (docs/DESIGN.md, File table). */
 @media (width >= 768px) and (not ((pointer: coarse) and (height < 500px))) {
   a.entry > .icon:last-child:not(:first-child) {
     display: none;
+  }
+
+  .entry {
+    border-bottom: 1px solid var(--outline-variant);
   }
 }
 
@@ -1997,10 +2048,6 @@ dialog.drawer > .close {
     background: var(--app-background);
   }
 
-  .bar.note {
-    border-bottom: none;
-  }
-
   /* The page fills the window, down to its bottom, which the sheet reaches
      whatever sits above it. */
   .page:has(> .split) {
@@ -2089,7 +2136,6 @@ dialog.drawer > .close {
   font-size: 16px;
   font-weight: 500;
   line-height: 24px;
-  text-transform: none;
 }
 
 .banner > .actions {

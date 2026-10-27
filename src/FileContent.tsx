@@ -35,6 +35,7 @@ import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
 import { openedFromDrive } from "./drive-tab.ts";
 import { PHONE, useLayout } from "./layout.ts";
+import { WHEN } from "./listing.ts";
 import { Loaded } from "./Loaded.tsx";
 import { Missing } from "./Missing.tsx";
 import { ModeMenu } from "./ModeMenu.tsx";
@@ -87,11 +88,6 @@ function DifferencesMissing() {
 function EditorMissing() {
   return <Missing part="editor" />;
 }
-
-const WHEN = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
 
 const MEGABYTES = new Intl.NumberFormat("en", {
   style: "unit",
