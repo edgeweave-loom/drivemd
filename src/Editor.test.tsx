@@ -7,7 +7,7 @@ import {
 } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { searchPanelOpen } from "@codemirror/search";
-import { EditorState, StateEffect } from "@codemirror/state";
+import { EditorSelection, EditorState, StateEffect } from "@codemirror/state";
 import { runScopeHandlers, EditorView } from "@codemirror/view";
 import {
   act,
@@ -1255,9 +1255,308 @@ describe("Visual's tables", () => {
     expect(moved("Enter")).toEqual(["3", true]);
     // Past a cell its row lacks.
     expect(moved("Tab")).toEqual(["5", true]);
-    // The table's last row stays the last.
-    expect(moved("Enter")).toEqual(["5", true]);
+    expect(moved("Tab", { shiftKey: true })).toEqual(["3", true]);
+    // The table's first cell stays the first.
+    editCell(view, "A");
+    expect(moved("Tab", { shiftKey: true })).toEqual(["A", true]);
     expect(view.state.sliceDoc()).toBe(text);
+  });
+
+  /** Presses `key` in the cell edited, then tells of the one edited after. */
+  function pressed(
+    view: EditorView,
+    key: string,
+    modifiers: KeyboardEventInit = {},
+  ) {
+    const cell = cellEditor(view);
+    if (!cell) throw new Error("No cell's editor");
+    act(() => {
+      press(cell, key, modifiers);
+    });
+    const next = cellEditor(view);
+    return next && [next.state.sliceDoc(), next.state.selection.main.head];
+  }
+
+  it("adds a row from Tab past the last cell, or from Enter on the last row, a pipe at each edge", async () => {
+    const written = (rows: string) =>
+      `Tea\r\n\r\n  | A | B |\r\n  | :- | -: |\r\n${rows}\r\n\r\nAfter`;
+    const { view } = open(written("  | 1 | 2 |"), "\r\n", true);
+    await parsed(view);
+
+    // Its indent the delimiter row's, its empty cells a space on each side.
+    editCell(view, "2");
+    expect(pressed(view, "Tab")).toEqual(["", 0]);
+    expect(cellEditor(view)?.hasFocus).toBe(true);
+    expect(view.state.sliceDoc()).toBe(written("  | 1 | 2 |\r\n  |  |  |"));
+    const edited = () => {
+      const cell = cellEditor(view);
+      if (!cell) throw new Error("No cell's editor");
+      return cell;
+    };
+    type(edited(), "3");
+    expect(pressed(view, "Tab")).toEqual(["", 0]);
+
+    // In the column of the cell Enter leaves.
+    expect(pressed(view, "Enter")).toEqual(["", 0]);
+    expect(view.state.sliceDoc()).toBe(
+      written("  | 1 | 2 |\r\n  | 3 |  |\r\n  |  |  |"),
+    );
+    type(edited(), "4");
+    expect(view.state.sliceDoc()).toBe(
+      written("  | 1 | 2 |\r\n  | 3 |  |\r\n  |  | 4 |"),
+    );
+    expect(cells(view).at(-1)).toEqual(["", "4"]);
+  });
+
+  it.each([
+    ["without edge pipes", "A | B\n--|--\n1 | 2", "|  |  |"],
+    ["of a single column", "| A |\n| - |\n| 2 |", "|  |"],
+  ])(
+    "adds a row to a table %s with a pipe at each edge, as only those hold empty cells",
+    async (_, text, row) => {
+      const { view } = open(text, "\n", true);
+      await parsed(view);
+
+      editCell(view, "2");
+      expect(pressed(view, "Enter")).toEqual(["", 0]);
+
+      expect(view.state.sliceDoc()).toBe(`${text}\n${row}`);
+    },
+  );
+
+  it("adds a row from Enter past the last row that holds its column", async () => {
+    const text = "| A | B |\n| - | - |\n| 1 |\n| 3 |";
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+
+    editCell(view, "B");
+    expect(pressed(view, "Enter")).toEqual(["", 0]);
+
+    expect(view.state.sliceDoc()).toBe(`${text}\n|  |  |`);
+    expect(cells(view).at(-1)).toEqual(["", ""]);
+  });
+
+  it("undoes a row added on its own, apart from the typing before and after it", async () => {
+    // Typed at the line's end, where the row comes.
+    const text = "A | B\n--|--\n1 | 2";
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+    type(editCell(view, "2"), "!");
+    pressed(view, "Tab");
+    const cell = cellEditor(view);
+    if (!cell) throw new Error("No cell's editor");
+    type(cell, "3");
+    const undo = () => {
+      act(() => {
+        press(cellEditor(view) ?? view, "z", { ctrlKey: true });
+      });
+      return view.state.sliceDoc();
+    };
+
+    expect(undo()).toBe(`${text}!\n|  |  |`);
+    expect(undo()).toBe(`${text}!`);
+    expect(undo()).toBe(text);
+  });
+
+  it("writes Shift+Enter in a cell as <br>, staying in it", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "Ada");
+
+    expect(pressed(view, "Enter", { shiftKey: true })).toEqual([
+      "_Ada_<br>",
+      9,
+    ]);
+    expect(cellEditor(view)).toBe(cell);
+    expect(view.state.sliceDoc()).toBe(NOTE.replace("_Ada_", "_Ada_<br>"));
+  });
+
+  it("moves from cell to cell with the arrows: Up and Down in the column, Left and Right from the text's edge", async () => {
+    const text = "| A | B |\n| - | - |\n| 1 | 2 |\n| 3 |\n| 5 | 6 |";
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+
+    editCell(view, "B");
+    expect(pressed(view, "ArrowDown")).toEqual(["2", 1]);
+    // Past a cell its row lacks.
+    expect(pressed(view, "ArrowDown")).toEqual(["6", 1]);
+    expect(pressed(view, "ArrowUp")).toEqual(["2", 1]);
+    // Within the text, then from its edge, to the end of the cell before.
+    expect(pressed(view, "ArrowLeft")).toEqual(["2", 0]);
+    expect(pressed(view, "ArrowLeft")).toEqual(["1", 1]);
+    // And from the row's first to the last of the row before.
+    act(() => {
+      cellEditor(view)?.dispatch({ selection: { anchor: 0 } });
+    });
+    expect(pressed(view, "ArrowLeft")).toEqual(["B", 1]);
+    // To the start of the cell after, past a cell its row lacks.
+    editCell(view, "3");
+    expect(pressed(view, "ArrowRight")).toEqual(["5", 0]);
+    // A selection, which an arrow ends, as anywhere.
+    act(() => {
+      cellEditor(view)?.dispatch({ selection: { anchor: 0, head: 1 } });
+    });
+    expect(pressed(view, "ArrowRight")).toEqual(["5", 1]);
+    expect(view.state.sliceDoc()).toBe(text);
+  });
+
+  it("leaves the table from its edges for the line before or after it", async () => {
+    const text = "Tea\n| A | B |\n| - | - |\n| 1 | 2 |\n\nAfter";
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+    const after = text.indexOf("\n\nAfter") + 1;
+    const left = (key: string) => {
+      expect(pressed(view, key)).toBeNull();
+      expect(view.hasFocus).toBe(true);
+      expect(view.contentDOM.querySelector("table")).not.toBeNull();
+      return view.state.selection.main.head;
+    };
+
+    editCell(view, "B");
+    expect(left("ArrowUp")).toBeLessThanOrEqual(3);
+    editCell(view, "2");
+    expect(left("ArrowDown")).toBe(after);
+    editCell(view, "A");
+    act(() => {
+      cellEditor(view)?.dispatch({ selection: { anchor: 0 } });
+    });
+    expect(left("ArrowLeft")).toBe(3);
+    editCell(view, "2");
+    expect(left("ArrowRight")).toBe(after);
+  });
+
+  it("keeps the arrows in the cell at the note's start and end", async () => {
+    const { view } = open("| A | B |\n| - | - |\n| 1 | 2 |", "\n", true);
+    await parsed(view);
+
+    const first = editCell(view, "A");
+    act(() => {
+      first.dispatch({ selection: { anchor: 0 } });
+    });
+    pressed(view, "ArrowUp");
+    pressed(view, "ArrowLeft");
+    expect(cellEditor(view)).toBe(first);
+    const last = editCell(view, "2");
+    pressed(view, "ArrowDown");
+    pressed(view, "ArrowRight");
+    expect(cellEditor(view)).toBe(last);
+  });
+
+  it("edits a cell from an arrow that takes the note's cursor into a table drawn", async () => {
+    const text = "Tea\n| A | B |\n| - | - |\n| 1 | 2 |\n| 3 |\n\nAfter";
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+    const after = text.indexOf("\n\nAfter") + 1;
+    const from = (at: number, key: string, modifiers?: KeyboardEventInit) => {
+      act(() => {
+        cellEditor(view)?.destroy();
+        view.focus();
+        view.dispatch({ selection: { anchor: at } });
+      });
+      act(() => {
+        press(view, key, modifiers);
+      });
+      const cell = cellEditor(view);
+      return cell && [cell.state.sliceDoc(), cell.state.selection.main.head];
+    };
+
+    // To the first cell's start, and the last's end.
+    expect(from(3, "ArrowRight")).toEqual(["A", 0]);
+    expect(cellEditor(view)?.hasFocus).toBe(true);
+    expect(view.state.selection.main.head).toBe(text.indexOf("A"));
+    expect(from(after, "ArrowLeft")).toEqual(["3", 1]);
+    // But from within the line.
+    expect(from(1, "ArrowRight")).toBeNull();
+    expect(view.state.selection.main.head).toBe(2);
+    // The head's cell, or the last row's, under the cursor, which jsdom
+    // puts at 0 px across: each column 100 px wide, the first from `left`.
+    let left = -50;
+    const laidOut = vi
+      .spyOn(HTMLTableCellElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLTableCellElement) {
+        return new DOMRect(left + this.cellIndex * 100, 0, 100, 20);
+      });
+    try {
+      expect(from(0, "ArrowDown")).toEqual(["A", 1]);
+      expect(from(after, "ArrowUp")).toEqual(["3", 1]);
+      left = -150;
+      expect(from(0, "ArrowDown")).toEqual(["B", 1]);
+      // Past a cell the last row lacks.
+      expect(from(after, "ArrowUp")).toEqual(["2", 1]);
+      // Before the first column, its cell.
+      left = 50;
+      expect(from(0, "ArrowDown")).toEqual(["A", 1]);
+      // Where the cursor's motion was going across, which CodeMirror keeps
+      // past a short line, and an arrow out of a cell leaves over its
+      // middle, so that the other arrow comes back to it.
+      left = -50;
+      act(() => {
+        cellEditor(view)?.destroy();
+        view.dispatch({
+          selection: EditorSelection.create([
+            EditorSelection.cursor(0, 0, undefined, 100),
+          ]),
+        });
+      });
+      act(() => {
+        press(view, "ArrowDown");
+      });
+      expect(pressed(view, "ArrowUp")).toBeNull();
+      expect(view.state.selection.main.goalColumn).toBe(100);
+      act(() => {
+        press(view, "ArrowDown");
+      });
+      expect(cellEditor(view)?.state.sliceDoc()).toBe("B");
+    } finally {
+      laidOut.mockRestore();
+    }
+    // A selection taken into a table takes its Markdown.
+    expect(from(3, "ArrowDown", { shiftKey: true })).toBeNull();
+    expect(from(3, "ArrowRight", { shiftKey: true })).toBeNull();
+    // An arrow from a selection ends it, as anywhere.
+    act(() => {
+      view.dispatch({ selection: { anchor: 0, head: 3 } });
+    });
+    act(() => {
+      press(view, "ArrowRight");
+    });
+    expect(cellEditor(view)).toBeNull();
+    expect(view.state.selection.main.head).toBe(3);
+  });
+
+  it("keeps an arrow in the Markdown of a table shown as written", async () => {
+    const { view } = open("> | A | B |\n> | - | - |\n\nTea", "\n", true);
+    await parsed(view);
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 24 } });
+    });
+
+    act(() => {
+      press(view, "ArrowUp");
+    });
+
+    expect(cellEditor(view)).toBeNull();
+    expect(view.state.selection.main.head).toBeLessThan(24);
+  });
+
+  it("keeps an arrow off a table a line away", async () => {
+    const { view } = open("Milk\n\n| A |\n| - |\n| 1 |", "\n", true);
+    await parsed(view);
+
+    for (const key of ["ArrowDown", "ArrowRight"]) {
+      act(() => {
+        view.focus();
+        view.dispatch({ selection: { anchor: 4 } });
+      });
+      act(() => {
+        press(view, key);
+      });
+      expect(cellEditor(view)).toBeNull();
+    }
+    // Right to the blank line, as Down would be but in jsdom, which lays
+    // nothing out.
+    expect(view.state.selection.main.head).toBe(5);
   });
 
   it("gives the note back the focus once its cursor or a pipe leaves the cell", async () => {
@@ -1412,8 +1711,10 @@ describe("Visual's tables", () => {
     );
     await parsed(view);
 
-    // An indented table, at the note's top level, is drawn.
+    // An indented table, at the note's top level, is drawn, and its cells
+    // edited.
     expect(cells(view)).toEqual([["C", "D"]]);
+    expect(editCell(view, "D").state.sliceDoc()).toBe("D");
     showIn(false);
     expect(view.contentDOM.querySelector("table")).toBeNull();
   });

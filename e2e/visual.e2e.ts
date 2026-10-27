@@ -381,6 +381,131 @@ test("draws a table in Visual, whose cell a tap edits in place, the table stayin
   );
 });
 
+test("moves through a table's cells with the arrows, and adds rows past its end", async ({
+  page,
+  drive,
+}, info) => {
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content =
+    "# The plan\n\nA line wider than the table.\n| Step | **Owner** | Left |\n| :--- | ---: | :-: |\n| Tea | _Ada_ | 2 |\n| Cups | Grace | 1 |\n\nNotes.\n";
+  const note = await editInVisual(page);
+  const table = note.getByRole("table");
+  const owner = await table
+    .getByRole("columnheader", { name: "Owner" })
+    .boundingBox();
+  const line = await note
+    .locator(".cm-line")
+    .filter({ hasText: "A line wider" })
+    .boundingBox();
+  if (!owner || !line) throw new Error("Not laid out");
+  expect(line.width).toBeGreaterThan(
+    (await table.boundingBox())?.width ?? Infinity,
+  );
+
+  // Down from the line before edits the head's cell under the cursor.
+  const x = owner.x + owner.width / 2;
+  const y = line.y + line.height / 2;
+  if (info.project.name === "desktop-chromium") await page.mouse.click(x, y);
+  else await page.touchscreen.tap(x, y);
+  await page.keyboard.press("ArrowDown");
+  const editing = note.getByRole("textbox", { name: "Cell" });
+  await expect(editing).toBeFocused();
+  await expect(editing).toHaveText("**Owner**");
+  // Up leaves for the line before, above the cell's middle, from which Down
+  // comes back.
+  await page.keyboard.press("ArrowUp");
+  await expect(editing).toHaveCount(0);
+  await expect(note).toBeFocused();
+  await expect(table.getByRole("columnheader")).toHaveText([
+    "Step",
+    "Owner",
+    "Left",
+  ]);
+  await page.keyboard.press("ArrowDown");
+  await expect(editing).toHaveText("**Owner**");
+
+  // Down the column, then Right from the text's end to the next cell's
+  // start, and past the last out of the table.
+  await page.keyboard.press("ArrowDown");
+  await expect(editing).toHaveText("_Ada_");
+  await page.keyboard.press("ArrowDown");
+  await expect(editing).toHaveText("Grace");
+  // To the blank line after the table and back, to the same column.
+  await page.keyboard.press("ArrowDown");
+  await expect(editing).toHaveCount(0);
+  await page.keyboard.press("ArrowUp");
+  await expect(editing).toHaveText("Grace");
+  await page.keyboard.press("ArrowRight");
+  await expect(editing).toHaveText("1");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await expect(editing).toHaveCount(0);
+  await expect(note).toBeFocused();
+  // Left comes back to the last cell's end.
+  await page.keyboard.press("ArrowLeft");
+  await expect(editing).toHaveText("1");
+  await page.keyboard.type("0");
+
+  // Tab past the last cell adds a row; Shift+Enter writes <br>; Enter on
+  // the last row adds another, in the same column.
+  await page.keyboard.press("Tab");
+  await expect(editing).toBeFocused();
+  await expect(editing).toHaveText("");
+  await page.keyboard.type("Milk");
+  await page.keyboard.press("Shift+Enter");
+  await page.keyboard.type("oat");
+  await expect(editing).toHaveText("Milk<br>oat");
+  await page.keyboard.press("Enter");
+  await expect(editing).toHaveText("");
+  await page.keyboard.type("Sugar");
+  await expect(table.getByRole("row")).toHaveCount(5);
+
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("plan")?.content)).toBe(
+    "# The plan\n\nA line wider than the table.\n| Step | **Owner** | Left |\n| :--- | ---: | :-: |\n| Tea | _Ada_ | 2 |\n| Cups | Grace | 10 |\n| Milk<br>oat |  |  |\n| Sugar |  |  |\n\nNotes.\n",
+  );
+});
+
+test("scrolls the cell a key moves to into view, sideways too", async ({
+  page,
+  drive,
+}, info) => {
+  // Thirty cells edited one after the other, slow in WebKit.
+  test.slow();
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  const wide = "A rather long cell that takes most of a phone's width";
+  const rows = Array.from(
+    { length: 30 },
+    (_, row) => `| ${String(row + 1)} | ${wide} | Last ${String(row + 1)} |\n`,
+  );
+  plan.content = `# The plan\n\n| One | Two | Three |\n| --- | --- | --- |\n${rows.join("")}\nNotes.\n`;
+  const note = await editInVisual(page);
+  const first = note.getByRole("cell", { name: "1", exact: true });
+  if (info.project.name === "desktop-chromium") await first.click();
+  else await first.tap();
+  const editing = note.getByRole("textbox", { name: "Cell" });
+  const edited = note.locator(".cm-cell-edited");
+  await expect(editing).toHaveText("1");
+  await expect(
+    note.getByRole("cell", { name: "30", exact: true }),
+  ).not.toBeInViewport();
+
+  for (let row = 1; row < 30; row++) await page.keyboard.press("ArrowDown");
+  await expect(editing).toHaveText("30");
+  await expect(edited).toBeInViewport();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await expect(editing).toHaveText("Last 30");
+  await expect(edited).toBeInViewport();
+  // A row added, its first cell back at the table's start.
+  await page.keyboard.press("Tab");
+  await expect(editing).toHaveText("");
+  await expect(edited).toBeInViewport();
+});
+
 test("scrolls a table wider than a phone within itself", async ({
   page,
   drive,

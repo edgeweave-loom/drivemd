@@ -7,8 +7,10 @@ import { highlightingFor, syntaxTree } from "@codemirror/language";
 import { searchPanelOpen } from "@codemirror/search";
 import {
   Annotation,
+  EditorSelection,
   EditorState,
   Facet,
+  Prec,
   StateEffect,
   StateField,
   Transaction,
@@ -23,6 +25,7 @@ import {
   keymap,
   ViewPlugin,
   WidgetType,
+  type Command,
   type DecorationSet,
   type Rect,
   type ViewUpdate,
@@ -790,14 +793,25 @@ function placeOf(cell: HTMLTableCellElement): Place | null {
     : null;
 }
 
-/** The table drawn in `frame`, in the note's syntax tree. */
+/**
+ * The table drawn in `frame`, in the note's syntax tree: from its first
+ * line, past its indent, which the frame draws but the table lacks.
+ */
 function tableIn(view: EditorView, frame: Element): SyntaxNode | null {
+  const { from, text } = view.state.doc.lineAt(view.posAtDOM(frame));
   let node: SyntaxNode | null = syntaxTree(view.state).resolveInner(
-    view.posAtDOM(frame),
+    from + text.length - text.trimStart().length,
     1,
   );
   while (node && node.name !== "Table") node = node.parent;
   return node;
+}
+
+/** The frame of the table drawn from `from` on, if in view. */
+function frameAt(view: EditorView, from: number): Element | undefined {
+  return [...view.contentDOM.querySelectorAll(".cm-table")].find(
+    (frame) => view.posAtDOM(frame) === from,
+  );
 }
 
 /** A row's line in its table: the head's, or a body's after the delimiter row. */
@@ -871,6 +885,31 @@ interface Editing extends Stretch {
   host: HTMLTableCellElement;
 }
 
+/** Where a cell's editor opens with its cursor: its text's start or end. */
+type Side = "start" | "end";
+
+/** Takes a cell's place to the next one's, in a table of `columns`. */
+type Next = (place: Place, columns: number) => Place;
+
+/** From cell to cell, row after row, onward or back. */
+function stepping(by: 1 | -1): Next {
+  return (place, columns) => {
+    const at = place.row * columns + place.column + by;
+    return { row: Math.floor(at / columns), column: at % columns };
+  };
+}
+
+/** From a cell to the one below, or above. */
+function rowing(by: 1 | -1): Next {
+  return (place) => ({ ...place, row: place.row + by });
+}
+
+/** Whether a cell's cursor is at its text's start, or its end. */
+function atEdge(cell: EditorView, by: 1 | -1): boolean {
+  const { main } = cell.state.selection;
+  return main.empty && main.head === (by === 1 ? cell.state.doc.length : 0);
+}
+
 /**
  * Edits a table's cells in place, as Obsidian does: a cell tapped or
  * clicked takes an editor of its own, which shows its Markdown, the table
@@ -878,7 +917,10 @@ interface Editing extends Stretch {
  * history, so that undo takes them back as any other: a cell's editor
  * holds its cell's text alone, which can thus never take or break a row.
  * Tab moves to the next cell, Shift+Tab to the one before, Enter to the
- * one below, and Escape shows the table as written.
+ * one below, and the arrows to the cell they point to, Left and Right from
+ * the text's edge, or out of the table, past cells rows lack. Tab past the
+ * last cell, or Enter past the last row, adds a row. Escape shows the
+ * table as written.
  */
 const editingCells = ViewPlugin.fromClass(
   class {
@@ -888,12 +930,13 @@ const editingCells = ViewPlugin.fromClass(
       this.view = view;
     }
     /**
-     * Edits a cell drawn, the cursor at its text's end, or the one edited
-     * where its cursor is. While Find in note is open, as for a cell its
-     * row lacks, shows its table as written, the cursor at the cell's end,
-     * or at the row's: a table shows so where Find in note's selection is.
+     * Edits a cell drawn, the cursor at its text's `side`, or the one
+     * edited where its cursor is. While Find in note is open, as for a cell
+     * its row lacks, shows its table as written, the cursor at the cell's
+     * end, or at the row's: a table shows so where Find in note's selection
+     * is.
      */
-    open(host: HTMLTableCellElement): void {
+    open(host: HTMLTableCellElement, side: Side = "end"): void {
       const { editing, view } = this;
       if (editing?.host === host) {
         editing.cell.focus();
@@ -915,6 +958,7 @@ const editingCells = ViewPlugin.fromClass(
         return;
       }
       const doc = view.state.sliceDoc(text.from, text.to);
+      const at = side === "start" ? 0 : doc.length;
       host.replaceChildren();
       host.classList.add("cm-cell-edited");
       const cell: EditorView = new EditorView({
@@ -922,7 +966,7 @@ const editingCells = ViewPlugin.fromClass(
         root: view.root instanceof ShadowRoot ? view.root : document,
         state: EditorState.create({
           doc,
-          selection: { anchor: doc.length },
+          selection: { anchor: at },
           extensions: this.setup(),
         }),
         dispatchTransactions: (transactions) => {
@@ -932,9 +976,41 @@ const editingCells = ViewPlugin.fromClass(
       this.editing = { cell, host, ...text };
       cell.focus();
       view.dispatch({
-        selection: { anchor: text.to },
+        selection: { anchor: text.from + at },
         effects: [focused.of(false), cellFocused.of(true)],
       });
+    }
+    /**
+     * Edits the cell of the table drawn from `from` on that an arrow takes
+     * the note's cursor to, as Obsidian does: Down the head's under the
+     * cursor, Up the last row's, Right the first cell, from its start, and
+     * Left the last: whether there is one.
+     */
+    arrive(from: number, by: 1 | -1, vertical: boolean): boolean {
+      const { view } = this;
+      const frame = frameAt(view, from);
+      const rows = frame?.querySelector("table")?.rows;
+      if (!frame || !rows) return false;
+      if (!vertical) {
+        return by === 1
+          ? this.go(frame, { row: 0, column: -1 }, stepping(1), "start")
+          : this.go(frame, { row: rows.length, column: 0 }, stepping(-1));
+      }
+      // Where the cursor's motion goes across, which CodeMirror keeps from
+      // line to line, as an arrow out of a cell sets it.
+      const { main } = view.state.selection;
+      const x =
+        main.goalColumn === undefined
+          ? (view.coordsAtPos(main.head)?.left ?? 0)
+          : view.contentDOM.getBoundingClientRect().left + main.goalColumn;
+      const column = [...(rows[0]?.cells ?? [])].findLastIndex(
+        (cell) => cell.getBoundingClientRect().left <= x,
+      );
+      return this.go(
+        frame,
+        { row: by === 1 ? -1 : rows.length, column: Math.max(0, column) },
+        rowing(by),
+      );
     }
     setup(): Extension {
       const { view } = this;
@@ -958,8 +1034,28 @@ const editingCells = ViewPlugin.fromClass(
             : [transaction, { changes: fixes, sequential: true }];
         }),
         keymap.of([
-          { key: "Tab", run: () => this.step(1), shift: () => this.step(-1) },
-          { key: "Enter", run: () => this.down() },
+          { key: "Tab", run: () => this.tab(1), shift: () => this.tab(-1) },
+          { key: "Enter", run: () => this.enter() },
+          {
+            key: "ArrowUp",
+            run: () => this.move(rowing(-1)) || this.out(-1, true),
+          },
+          {
+            key: "ArrowDown",
+            run: () => this.move(rowing(1)) || this.out(1, true),
+          },
+          {
+            key: "ArrowLeft",
+            run: (cell) =>
+              atEdge(cell, -1) &&
+              (this.move(stepping(-1)) || this.out(-1, false)),
+          },
+          {
+            key: "ArrowRight",
+            run: (cell) =>
+              atEdge(cell, 1) &&
+              (this.move(stepping(1), "start") || this.out(1, false)),
+          },
           { key: "Escape", run: () => this.leave() },
           // The note's history and Find in note.
           ...historyKeymap.flatMap(({ run, ...binding }) =>
@@ -1078,38 +1174,141 @@ const editingCells = ViewPlugin.fromClass(
         }
       });
     }
-    /** Edits the next cell of the table, or the one before, if any. */
-    step(by: 1 | -1): boolean {
-      return this.go((place, columns) => {
-        const at = place.row * columns + place.column + by;
-        return { row: Math.floor(at / columns), column: at % columns };
-      });
+    /**
+     * Tab: edits the next cell, or past the last a new row's first;
+     * Shift+Tab the one before. The key is taken either way.
+     */
+    tab(by: 1 | -1): boolean {
+      if (!this.move(stepping(by)) && by === 1) this.addRow(0);
+      return true;
     }
-    /** Edits the cell below, if any. */
-    down(): boolean {
-      return this.go((place) => ({ ...place, row: place.row + 1 }));
+    /** Enter: edits the cell below, or past the last row a new row's. */
+    enter(): boolean {
+      const place = this.editing && placeOf(this.editing.host);
+      if (place && !this.move(rowing(1))) this.addRow(place.column);
+      return true;
     }
     /**
-     * Edits the first cell the table's rows hold that `next` takes the
-     * cell edited to, from cell to cell; the key is taken either way.
+     * Edits the cell that `next` takes the one edited to, past cells rows
+     * lack, its cursor at its text's `side`: whether there is one.
      */
-    go(next: (place: Place, columns: number) => Place): boolean {
-      const { editing, view } = this;
+    move(next: Next, side?: Side): boolean {
+      const { editing } = this;
       const frame = editing?.host.closest(".cm-table");
-      const table = frame?.querySelector("table");
-      let place = editing && placeOf(editing.host);
-      const node = frame && tableIn(view, frame);
-      if (!table || !place || !node) return true;
+      const place = editing && placeOf(editing.host);
+      return !!frame && !!place && this.go(frame, place, next, side);
+    }
+    /**
+     * Edits the first cell the table drawn in `frame` holds past `place`,
+     * as `next` takes it from cell to cell, scrolled into view, as a key
+     * moved to it: whether there is one.
+     */
+    go(frame: Element, place: Place, next: Next, side?: Side): boolean {
+      const { view } = this;
+      const table = frame.querySelector("table");
+      const node = tableIn(view, frame);
+      if (!table || !node) return false;
       const columns = table.rows[0]?.cells.length ?? 1;
       for (;;) {
         place = next(place, columns);
         const host = table.rows[place.row]?.cells[place.column];
-        if (!host || place.row < 0 || place.column < 0) return true;
+        if (!host) return false;
         if (cellText(view.state, node, place)) {
-          this.open(host);
+          this.open(host, side);
+          this.reveal();
           return true;
         }
       }
+    }
+    /**
+     * Scrolls the cell edited into view, sideways in its table too, clear
+     * of the keyboard toolbar. A tap leaves a cell where it was.
+     */
+    reveal(): void {
+      const cell = this.editing?.cell;
+      cell?.dispatch({
+        effects: EditorView.scrollIntoView(cell.state.selection.main),
+      });
+    }
+    /**
+     * Leaves the table for the line before it, or after it, if any: Up and
+     * Down above or below the cell's middle, which a right-aligned cell's
+     * cursor is not, at the next column's edge; Left at the line's end and
+     * Right at its start.
+     */
+    out(by: 1 | -1, vertical: boolean): boolean {
+      const { editing, view } = this;
+      const frame = editing?.host.closest(".cm-table");
+      const node = frame && tableIn(view, frame);
+      if (!editing || !node) return false;
+      const { doc } = view.state;
+      const number = doc.lineAt(by === 1 ? node.to : node.from).number + by;
+      if (number < 1 || number > doc.lines) return false;
+      const line = doc.line(number);
+      let at = by === 1 ? line.from : line.to;
+      let goal: number | undefined;
+      if (vertical) {
+        const { left, right } = editing.host.getBoundingClientRect();
+        const x = (left + right) / 2;
+        const block = view.lineBlockAt(line.from);
+        const half = view.defaultLineHeight / 2;
+        const across = view.posAtCoords(
+          {
+            x,
+            y:
+              view.documentTop +
+              (by === 1 ? block.top + half : block.bottom - half),
+          },
+          false,
+        );
+        at = Math.min(line.to, Math.max(line.from, across));
+        // Kept on, as CodeMirror's own Up and Down keep it, should the line
+        // be short or blank.
+        goal = x - view.contentDOM.getBoundingClientRect().left;
+      }
+      this.close();
+      view.focus();
+      view.dispatch({
+        selection: EditorSelection.create([
+          EditorSelection.cursor(at, 0, undefined, goal),
+        ]),
+        scrollIntoView: true,
+      });
+      return true;
+    }
+    /**
+     * Adds an empty row after the table's last, then edits its cell in
+     * `column`. Its indent is the delimiter row's, and it takes a pipe at
+     * each edge, whatever the table's: GFM holds an empty cell between
+     * pipes only.
+     */
+    addRow(column: number): void {
+      const { editing, view } = this;
+      const frame = editing?.host.closest(".cm-table");
+      const node = frame && tableIn(view, frame);
+      const [head, delimiter] = node ? tableRows(node) : [];
+      if (!node || !head || !delimiter) return;
+      const { doc } = view.state;
+      const from = doc.lineAt(node.from).from;
+      const indent = view.state.sliceDoc(
+        doc.lineAt(delimiter.from).from,
+        delimiter.from,
+      );
+      const columns = cellsOf(view.state, head).length;
+      this.close();
+      view.dispatch({
+        changes: {
+          from: doc.lineAt(node.to).to,
+          insert: `${view.state.lineBreak}${indent}|${"  |".repeat(columns)}`,
+        },
+        // Undone on its own, not with the edits next to it.
+        annotations: isolateHistory.of("full"),
+      });
+      const rows = frameAt(view, from)?.querySelector("table")?.rows;
+      const host = rows?.[rows.length - 1]?.cells[column];
+      if (!host) return;
+      this.open(host);
+      this.reveal();
     }
     /** Shows the table as written, the cursor where it was in the cell. */
     leave(): boolean {
@@ -1183,6 +1382,47 @@ const editingTables = EditorView.domEventHandlers({
     return true;
   },
 });
+
+/**
+ * An arrow that would take the note's cursor from the line before or after
+ * a table drawn into it, or across it, as CodeMirror's step over a widget,
+ * edits a cell of it instead, as Obsidian does. A selection taken into a
+ * table, as with Shift, takes its Markdown.
+ */
+function intoTable(by: 1 | -1, vertical: boolean): Command {
+  return (view) => {
+    const { main } = view.state.selection;
+    const line = view.state.doc.lineAt(main.head);
+    // Where a table drawn on the next line starts, or on the one before ends.
+    const edge = by === 1 ? line.to + 1 : line.from - 1;
+    const drawn = view.state.field(tables).iter(edge);
+    if (
+      !main.empty ||
+      !drawn.value ||
+      (by === 1 ? drawn.from : drawn.to) !== edge
+    ) {
+      return false;
+    }
+    // Up and Down from the row on screen next to the table, a wrapped line
+    // having others; Left and Right from the line's edge.
+    const to = vertical
+      ? view.moveVertically(main, by === 1).head
+      : main.head + by;
+    return (
+      (by === 1 ? to >= edge : to <= edge) &&
+      (view.plugin(editingCells)?.arrive(drawn.from, by, vertical) ?? false)
+    );
+  };
+}
+
+const enteringTables = Prec.high(
+  keymap.of([
+    { key: "ArrowUp", run: intoTable(-1, true) },
+    { key: "ArrowDown", run: intoTable(1, true) },
+    { key: "ArrowLeft", run: intoTable(-1, false) },
+    { key: "ArrowRight", run: intoTable(1, false) },
+  ]),
+);
 
 const LOOK = EditorView.theme({
   // As the preview's.
@@ -1280,6 +1520,7 @@ export const livePreview: Extension = [
   editingTables,
   inCellField,
   editingCells,
+  enteringTables,
   LOOK,
 ];
 
