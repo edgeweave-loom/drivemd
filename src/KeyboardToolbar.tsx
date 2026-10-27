@@ -20,7 +20,13 @@ import { keepRoom, keepVisible } from "./visual-viewport.ts";
 /** The toolbar's height, which the editor keeps clear of the cursor. */
 export const TOOLBAR_HEIGHT = 48;
 
-const KEYS: { name: string; command: Command; icon: IconName }[] = [
+const KEYS: {
+  name: string;
+  command: Command;
+  icon: IconName;
+  /** Whether it changes the lines the cursor is on, which a cell lacks. */
+  lines?: true;
+}[] = [
   {
     name: "Undo",
     command: undo,
@@ -35,6 +41,7 @@ const KEYS: { name: string; command: Command; icon: IconName }[] = [
     name: "Heading",
     command: cycleHeading,
     icon: "title",
+    lines: true,
   },
   {
     name: "Bold",
@@ -45,11 +52,13 @@ const KEYS: { name: string; command: Command; icon: IconName }[] = [
     name: "List",
     command: toggleList,
     icon: "format_list_bulleted",
+    lines: true,
   },
   {
     name: "Checkbox",
     command: cycleTask,
     icon: "check_box",
+    lines: true,
   },
   {
     name: "Link",
@@ -60,11 +69,13 @@ const KEYS: { name: string; command: Command; icon: IconName }[] = [
     name: "Indent",
     command: indentLines,
     icon: "format_indent_increase",
+    lines: true,
   },
   {
     name: "Outdent",
     command: outdentLines,
     icon: "format_indent_decrease",
+    lines: true,
   },
   {
     name: "Find in note",
@@ -78,15 +89,20 @@ const KEYS: { name: string; command: Command; icon: IconName }[] = [
  * editor has the focus: the iPhone's keyboard has no Tab key, nor any key
  * for Markdown. The keys never take the focus, so the keyboard stays. In a
  * link, Link opens it instead, as nothing else does from a touch screen.
+ * In a table's cell edited in place, the keys of lines are off: their marks
+ * would break its row.
  */
 export function KeyboardToolbar({
   link,
+  inCell = false,
   onCommand,
   onFollow,
   onSettle,
 }: {
   /** The address of the link the cursor is in. */
   link: string | undefined;
+  /** Whether the cursor is in a table's cell edited in place. */
+  inCell?: boolean;
   onCommand: (command: Command) => void;
   onFollow: (href: string) => void;
   /**
@@ -118,13 +134,14 @@ export function KeyboardToolbar({
       aria-label="Formatting"
       className="keyboard-toolbar"
     >
-      {KEYS.map(({ name, command, icon }) => {
+      {KEYS.map(({ name, command, icon, lines }) => {
         const follows = command === insertLink ? link : undefined;
         return (
           <button
             key={name}
             type="button"
             aria-label={follows === undefined ? name : "Open link"}
+            disabled={inCell && lines}
             onMouseDown={keepFocus}
             onClick={() => {
               if (follows === undefined) onCommand(command);

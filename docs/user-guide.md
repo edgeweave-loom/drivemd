@@ -97,17 +97,18 @@ A note may open **read-only**, with a badge that says why: you may only view or 
 
 On a computer or a tablet, pick a mode from the mode menu in the app bar. On a phone, tap **Edit**, then pick a mode from the segmented button over the note.
 
-| Mode                                                | What it shows                                                                                                                                                                                                                                                                                           |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Visual**                                          | The note as it reads, on one sheet, and editable. Headings, emphasis, strikethrough, inline code and links hide their Markdown symbols except on the line you are writing; bullets, task boxes, rules, tables and quotes are drawn. Tap a task's box to tick it, and tap a table to edit it as written. |
-| **Source**                                          | The Markdown as written, lightly styled, beside its preview on a computer or a tablet.                                                                                                                                                                                                                  |
-| **Viewing** (computer, tablet), **Preview** (phone) | The rendered note alone. Viewing saves the note first.                                                                                                                                                                                                                                                  |
+| Mode                                                | What it shows                                                                                                                                                                                                                                                                                            |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Visual**                                          | The note as it reads, on one sheet, and editable. Headings, emphasis, strikethrough, inline code and links hide their Markdown symbols except on the line you are writing; bullets, task boxes, rules, tables and quotes are drawn. Tap a task's box to tick it, and a table's cell to edit it in place. |
+| **Source**                                          | The Markdown as written, lightly styled, beside its preview on a computer or a tablet.                                                                                                                                                                                                                   |
+| **Viewing** (computer, tablet), **Preview** (phone) | The rendered note alone. Viewing saves the note first.                                                                                                                                                                                                                                                   |
 
 The device remembers whether you last chose Visual or Source, and opens the editor in it next time. Switching between them keeps your cursor and your undo history. Images, and Obsidian's own syntax, show in Visual as they do in Source for now.
 
 While editing:
 
 - **Enter** continues a list or a task list.
+- In a table's cell, in Visual, **Tab** moves to the next cell, **Shift+Tab** to the one before, **Enter** to the one below, and **Escape** shows the table's Markdown. A `|` you type is written `\|`, so that it stays in its cell.
 - **Find in note**, from Cmd/Ctrl+F or the keyboard toolbar, counts the matches, steps through them, matches case, whole words or a regular expression, and replaces one match or all of them.
 - **Cmd/Ctrl+click** on a link opens it.
 - To finish, pick **Viewing** on a computer or a tablet, or tap the check in Back's place on a phone: both save first.
@@ -176,7 +177,7 @@ DriveMD then opens on Home, in a window of its own, clear of the notch, the came
 
 ### The keyboard toolbar
 
-While you edit on a touch screen, a row of keys sits above the keyboard. It scrolls sideways when it does not fit, and its keys keep the keyboard up.
+While you edit on a touch screen, a row of keys sits above the keyboard. It scrolls sideways when it does not fit, and its keys keep the keyboard up. In a table's cell, the keys that change lines (Heading, List, Checkbox, Indent and Outdent) are off.
 
 | Key                     | What it does                                                                                            |
 | ----------------------- | ------------------------------------------------------------------------------------------------------- |

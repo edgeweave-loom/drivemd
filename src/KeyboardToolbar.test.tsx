@@ -15,11 +15,13 @@ import { holdScreen, holdTouch } from "./test/screen.ts";
 function open(
   text: string,
   onFollow: (href: string) => void = () => undefined,
+  visual = false,
 ) {
   const { container } = render(
     <Editor
       initial={text}
       lineBreak={"\n"}
+      visual={visual}
       onChange={() => undefined}
       onFollow={onFollow}
     />,
@@ -190,6 +192,66 @@ describe("the keyboard toolbar", () => {
     expect(screen.queryByRole("button", { name: "Open link" })).toBeNull();
     tap("Link");
     expect(view.state.sliceDoc()).toBe("Te[]()a at [noon](plan.md#noon).");
+  });
+
+  it("acts on a table's cell edited in place, but for the keys of lines", async () => {
+    holdTouch(true);
+    const onFollow = vi.fn<(href: string) => void>();
+    const text = "| Tea | [noon](plan.md) |\n| - | - |";
+    const view = open(text, onFollow, true);
+    const edit = (column: number) => {
+      const heads = view.contentDOM.querySelectorAll("th");
+      fireEvent.mouseDown(heads[column] ?? document.body);
+      const element = view.contentDOM.querySelector<HTMLElement>(
+        ".cm-table .cm-editor",
+      );
+      const cell = element && EditorView.findFromDOM(element);
+      if (!cell) throw new Error("No cell's editor");
+      return cell;
+    };
+
+    const cell = edit(0);
+    expect(
+      await screen.findByRole("toolbar", { name: "Formatting" }),
+    ).toBeVisible();
+    // Its cursor kept clear of the toolbar too.
+    const [kept] = margins(cell);
+    expect(kept?.bottom).toBe(
+      Math.max(...margins(view).map((margin) => margin?.bottom ?? 0)),
+    );
+    expect(kept?.bottom).toBeGreaterThan(0);
+    act(() => {
+      cell.dispatch({ selection: { anchor: 0, head: 3 } });
+    });
+    tap("Bold");
+    expect(view.state.sliceDoc()).toBe(
+      "| **Tea** | [noon](plan.md) |\n| - | - |",
+    );
+    // The cell follows, its text still selected.
+    expect(
+      cell.state.sliceDoc(
+        cell.state.selection.main.from,
+        cell.state.selection.main.to,
+      ),
+    ).toBe("Tea");
+    tap("Undo");
+    expect(view.state.sliceDoc()).toBe(text);
+    for (const name of ["Heading", "List", "Checkbox", "Indent", "Outdent"]) {
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    }
+
+    // From cell to cell, the toolbar stays, its keys of lines still off.
+    const link = edit(1);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(toolbar()).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Heading" })).toBeDisabled();
+    act(() => {
+      link.dispatch({ selection: { anchor: 2 } });
+    });
+    tap("Open link");
+    expect(onFollow).toHaveBeenCalledExactlyOnceWith("plan.md");
   });
 
   it("finds text in the note, its field taking the focus within the tap", async () => {
