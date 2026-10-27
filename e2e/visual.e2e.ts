@@ -253,11 +253,19 @@ test("draws a table in Visual, which a tap shows as written, the row staying und
   );
 
   const cell = table.getByRole("cell", { name: "Ada" });
-  await cell.evaluate((element) => {
+  // Where the cell stays once the editor has measured the lines that came
+  // into view, which may move it.
+  const before = await cell.evaluate(async (element) => {
     element.scrollIntoView({ block: "center" });
+    let top = Number.NaN;
+    for (let still = 0; still < 3;) {
+      await new Promise(requestAnimationFrame);
+      const now = element.getBoundingClientRect().top;
+      still = now === top ? still + 1 : 0;
+      top = now;
+    }
+    return top;
   });
-  const before = await cell.boundingBox();
-  if (!before) throw new Error("Not shown");
   if (info.project.name === "desktop-chromium") await cell.click();
   else await cell.tap();
 
@@ -267,7 +275,7 @@ test("draws a table in Visual, which a tap shows as written, the row staying und
   // The row's top where the cell's was, as far as a pixel.
   await expect
     .poll(async () => (await row.boundingBox())?.y)
-    .toBeCloseTo(before.y, -0.5);
+    .toBeCloseTo(before, -0.5);
 
   // Looked at, and written over nowhere: nothing to save.
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
