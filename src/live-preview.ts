@@ -61,6 +61,18 @@ class TaskBox extends WidgetType {
 const OPEN_TASK = Decoration.replace({ widget: new TaskBox(false) });
 const DONE_TASK = Decoration.replace({ widget: new TaskBox(true) });
 
+/**
+ * A thematic break, drawn as the viewer's rule: its marks stay as text,
+ * unseen, one unit that a finger's tap places the cursor at, on its line:
+ * Playwright's WebKit took a tap on a widget filling the line to the note's
+ * start. A screen reader reads it as a separator.
+ */
+const RULE = Decoration.mark({
+  class: "cm-rule",
+  attributes: { role: "separator" },
+});
+const RULE_LINE = Decoration.line({ class: "cm-rule-line" });
+
 // The last finger has lifted from the text.
 const lifted = StateEffect.define();
 
@@ -342,6 +354,15 @@ const LOOK = EditorView.theme({
     verticalAlign: "-3px",
     accentColor: "var(--primary)",
   },
+  // The viewer's rule, across the line from what comes before it, such as
+  // a quote's `>`, through the middle of its marks' line.
+  ".cm-rule-line": { display: "flex" },
+  ".cm-rule": {
+    flex: "1",
+    color: "transparent",
+    background:
+      "linear-gradient(var(--outline-variant), var(--outline-variant)) center / 100% 1px no-repeat",
+  },
 });
 
 /**
@@ -418,7 +439,7 @@ function linesWritten(state: EditorState): Stretch[] {
 /**
  * Visual's symbols, hidden or drawn: emphasis' `*` and `_`,
  * strikethrough's `~~`, inline code's backticks, a heading's `#`, a link's
- * brackets and address, and a list item's marker.
+ * brackets and address, a list item's marker, and a thematic break.
  */
 function symbols(state: EditorState, node: SyntaxNodeRef): Range<Decoration>[] {
   switch (node.name) {
@@ -433,6 +454,11 @@ function symbols(state: EditorState, node: SyntaxNodeRef): Range<Decoration>[] {
       return linkSyntax(node).map(hide);
     case "ListMark":
       return listMark(state, node);
+    case "HorizontalRule":
+      return [
+        RULE_LINE.range(state.doc.lineAt(node.from).from),
+        RULE.range(node.from, node.to),
+      ];
     default:
       return [];
   }
