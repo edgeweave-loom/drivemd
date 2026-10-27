@@ -223,3 +223,94 @@ test("draws a thematic break as a rule in Visual, on its line's height", async (
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(drive.writes).toEqual([]);
 });
+
+test("draws a table in Visual, which a tap shows as written, the row staying under the finger", async ({
+  page,
+  drive,
+}, info) => {
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  const lines = (from: number) =>
+    Array.from({ length: 30 }, (_, line) => `Line ${String(from + line)}.\n`);
+  plan.content = [
+    "# The plan\n\n",
+    ...lines(1),
+    "\n| Step | **Owner** |\n| :--- | ---: |\n| Tea | Ada |\n| Cups | Grace |\n\n",
+    ...lines(31),
+  ].join("");
+  const note = await editInVisual(page);
+  const table = note.getByRole("table");
+  await expect(table.getByRole("columnheader")).toHaveText(["Step", "Owner"]);
+  await expect(table.getByRole("cell")).toHaveText([
+    "Tea",
+    "Ada",
+    "Cups",
+    "Grace",
+  ]);
+  await expect(table.getByRole("cell", { name: "Ada" })).toHaveCSS(
+    "text-align",
+    "right",
+  );
+
+  const cell = table.getByRole("cell", { name: "Ada" });
+  // Where the cell stays once the editor has measured the lines that came
+  // into view, which may move it.
+  const before = await cell.evaluate(async (element) => {
+    element.scrollIntoView({ block: "center" });
+    let top = Number.NaN;
+    for (let still = 0; still < 3;) {
+      await new Promise(requestAnimationFrame);
+      const now = element.getBoundingClientRect().top;
+      still = now === top ? still + 1 : 0;
+      top = now;
+    }
+    return top;
+  });
+  if (info.project.name === "desktop-chromium") await cell.click();
+  else await cell.tap();
+
+  const row = note.locator(".cm-line").filter({ hasText: "| Tea |" });
+  await expect(table).toHaveCount(0);
+  await expect(row).toBeVisible();
+  // The row's top where the cell's was, as far as a pixel.
+  await expect
+    .poll(async () => (await row.boundingBox())?.y)
+    .toBeCloseTo(before, -0.5);
+
+  // Looked at, and written over nowhere: nothing to save.
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(drive.writes).toEqual([]);
+
+  // The cursor at the cell's end, where typing edits it alone.
+  await page.keyboard.type("!");
+  await expect(row).toHaveText("| Tea | Ada! |");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("plan")?.content)).toContain(
+    "\n| Step | **Owner** |\n| :--- | ---: |\n| Tea | Ada! |\n| Cups | Grace |\n\n",
+  );
+});
+
+test("scrolls a table wider than a phone within itself", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(info.project.metadata.layout !== "phone", "For a phone");
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  const long = "A rather long cell that takes most of a phone's width";
+  plan.content = `# The plan\n\n| One | Two |\n| --- | --- |\n| ${long} | ${long} |\n`;
+  const frame = (await editInVisual(page)).locator(".cm-table");
+  await expect(frame.getByRole("table")).toBeVisible();
+
+  expect(
+    await frame.evaluate(
+      (element) => element.scrollWidth > element.clientWidth,
+    ),
+  ).toBe(true);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});

@@ -1,8 +1,10 @@
 import { isolateHistory } from "@codemirror/commands";
-import { syntaxTree } from "@codemirror/language";
+import { highlightingFor, syntaxTree } from "@codemirror/language";
+import { searchPanelOpen } from "@codemirror/search";
 import {
   EditorState,
   StateEffect,
+  StateField,
   type Extension,
   type Range,
 } from "@codemirror/state";
@@ -14,7 +16,8 @@ import {
   type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view";
-import type { SyntaxNodeRef } from "@lezer/common";
+import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
+import { highlightTree } from "@lezer/highlight";
 
 interface Stretch {
   from: number;
@@ -188,8 +191,9 @@ const hiding = ViewPlugin.fromClass(
       const touch = event.changedTouches[0];
       const at =
         touch && this.view.posAtCoords({ x: touch.clientX, y: touch.clientY });
+      // A table keeps the row tapped under the finger itself.
       this.anchor =
-        at === null || at === undefined
+        at === null || at === undefined || tableCell(event.target)
           ? null
           : { at, top: pageTop(this.view, at) };
     }
@@ -282,15 +286,28 @@ function sameLines(one: Stretch[], other: Stretch[]): boolean {
 // touch slop.
 const TAP_SLOP_PX = 8;
 
-/** Where and when a finger pressed a task's box. */
-interface BoxPress {
+/** Where and when a finger pressed. */
+interface Press {
   x: number;
   y: number;
   at: number;
 }
 
+/**
+ * Whether the last finger lifting ends a tap, from where and when it
+ * pressed: not after moving, nor after staying down as long as a long press.
+ */
+function tapped(event: TouchEvent, press: Press | null): boolean {
+  const touch = event.changedTouches[0];
+  if (!press || !touch || event.touches.length > 0) return false;
+  if (Date.now() - press.at >= LONG_PRESS_MS) return false;
+  return (
+    Math.hypot(touch.clientX - press.x, touch.clientY - press.y) <= TAP_SLOP_PX
+  );
+}
+
 // Until the finger lifts: one box at a time, in any editor.
-let boxPressed: BoxPress | null = null;
+let boxPressed: Press | null = null;
 
 function isTaskBox(target: EventTarget | null): target is HTMLInputElement {
   return (
@@ -322,12 +339,7 @@ const ticking = EditorView.domEventHandlers({
   touchend(event, view) {
     const press = boxPressed;
     boxPressed = null;
-    const touch = event.changedTouches[0];
-    if (!press || !touch || event.touches.length > 0) return false;
-    if (!isTaskBox(event.target)) return false;
-    if (Date.now() - press.at >= LONG_PRESS_MS) return false;
-    const moved = Math.hypot(touch.clientX - press.x, touch.clientY - press.y);
-    if (moved > TAP_SLOP_PX) return false;
+    if (!isTaskBox(event.target) || !tapped(event, press)) return false;
     tick(view, view.posAtDOM(event.target));
     // Handled, which CodeMirror would keep from the browser.
     return false;
@@ -341,6 +353,365 @@ const ticking = EditorView.domEventHandlers({
   click(event) {
     if (!isTaskBox(event.target)) return false;
     event.preventDefault();
+    return true;
+  },
+});
+
+/** A part of a cell's text, drawn in the editor's highlighting. */
+interface Part {
+  text: string;
+  style: string | null;
+}
+
+type Alignment = "left" | "right" | "center" | null;
+
+/**
+ * A table, drawn as the viewer draws it, which a tap or a click on a cell
+ * shows as written, the cursor in that cell's Markdown.
+ */
+class Table extends WidgetType {
+  readonly source: string;
+  readonly alignments: Alignment[];
+  // The head's row, then the body's, each cell's text in parts.
+  readonly rows: Part[][][];
+  constructor(source: string, alignments: Alignment[], rows: Part[][][]) {
+    super();
+    this.source = source;
+    this.alignments = alignments;
+    this.rows = rows;
+  }
+  override eq(other: Table): boolean {
+    return other.source === this.source;
+  }
+  toDOM(): HTMLElement {
+    // A table wider than the note scrolls sideways within this frame.
+    const frame = document.createElement("div");
+    frame.className = "cm-table";
+    const table = document.createElement("table");
+    const head = table.createTHead();
+    const body = table.createTBody();
+    const columns = this.rows[0]?.length ?? 0;
+    this.rows.forEach((cells, at) => {
+      const row = (at === 0 ? head : body).insertRow();
+      for (let column = 0; column < columns; column++) {
+        const cell = document.createElement(at === 0 ? "th" : "td");
+        const alignment = this.alignments[column];
+        if (alignment) cell.style.textAlign = alignment;
+        for (const { text, style } of cells[column] ?? []) {
+          if (style === null) {
+            cell.append(text);
+          } else {
+            const span = document.createElement("span");
+            span.className = style;
+            span.textContent = text;
+            cell.append(span);
+          }
+        }
+        row.append(cell);
+      }
+    });
+    frame.append(table);
+    return frame;
+  }
+  override get estimatedHeight(): number {
+    return this.rows.length * 42;
+  }
+  // The editor takes its cells' taps and clicks, which show the table as
+  // written, and leaves the browser the rest, such as its scroll bar's.
+  override ignoreEvent(event: Event): boolean {
+    return tableCell(event.target) === null;
+  }
+}
+
+const focused = StateEffect.define<boolean>();
+
+// Whether the editor has the focus, which a state field cannot ask the view.
+const hasFocus = StateField.define<boolean>({
+  create: () => false,
+  update: (value, transaction) =>
+    transaction.effects.reduce(
+      (has, effect) => (effect.is(focused) ? effect.value : has),
+      value,
+    ),
+});
+
+/**
+ * Tells `hasFocus` of the view's focus once it changes. CodeMirror's own
+ * focus transaction is dropped when another comes first, as when the
+ * cursor moves right as the editor takes the focus.
+ */
+const followingFocus = ViewPlugin.define((view) => {
+  const follow = () => {
+    queueMicrotask(() => {
+      const has = view.state.field(hasFocus, false);
+      if (has !== undefined && has !== view.hasFocus) {
+        view.dispatch({ effects: focused.of(view.hasFocus) });
+      }
+    });
+  };
+  follow();
+  return {
+    update: (update) => {
+      const has = update.state.field(hasFocus, false);
+      if (has !== undefined && has !== update.view.hasFocus) follow();
+    },
+  };
+});
+
+/**
+ * Visual's tables, drawn but where the selection is while the editor has
+ * the focus, or while Find in note is open, so that its match shows. A
+ * table replaces lines, which only a state field may. A table in a quote
+ * or a list, whose lines start with their marks, stays as written. A
+ * table is no unit: an edit beside it never takes it whole.
+ */
+const tables = StateField.define<DecorationSet>({
+  create: (state) => drawnTables(state),
+  update: (drawn, transaction) => {
+    const { state, startState } = transaction;
+    return transaction.docChanged ||
+      transaction.selection ||
+      state.field(hasFocus) !== startState.field(hasFocus, false) ||
+      searchPanelOpen(state) !== searchPanelOpen(startState) ||
+      syntaxTree(state) !== syntaxTree(startState)
+      ? drawnTables(state, drawn)
+      : drawn;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
+/**
+ * Each table outside the lines being written, drawn, with the widget drawn
+ * before for the same Markdown, which is kept rather than built anew.
+ */
+function drawnTables(
+  state: EditorState,
+  before: DecorationSet = Decoration.none,
+): DecorationSet {
+  const kept = new Map<string, WidgetType>();
+  const drawn = before.iter();
+  while (drawn.value) {
+    const { widget } = drawn.value.spec as { widget?: unknown };
+    if (widget instanceof Table) kept.set(widget.source, widget);
+    drawn.next();
+  }
+  const writing =
+    state.field(hasFocus) || searchPanelOpen(state) ? linesWritten(state) : [];
+  const ranges: Range<Decoration>[] = [];
+  syntaxTree(state).iterate({
+    enter: (node) => {
+      if (node.name !== "Table") {
+        // The note, its front matter's or its Markdown's, but no block in it.
+        return node.name === "Document" || node.name === "Body";
+      }
+      // An indented table's lines whole.
+      const from = state.doc.lineAt(node.from).from;
+      const { to } = node;
+      if (writing.some((line) => from <= line.to && to >= line.from)) {
+        return false;
+      }
+      const widget =
+        kept.get(state.sliceDoc(node.from, to)) ?? table(state, node.node);
+      ranges.push(Decoration.replace({ widget, block: true }).range(from, to));
+      return false;
+    },
+  });
+  return Decoration.set(ranges);
+}
+
+function table(state: EditorState, node: SyntaxNode): Table {
+  const [header, delimiter, ...body] = tableRows(node);
+  const columns = header ? cellsOf(state, header).length : 0;
+  return new Table(
+    state.sliceDoc(node.from, node.to),
+    delimiter ? alignments(state.sliceDoc(delimiter.from, delimiter.to)) : [],
+    [header, ...body].flatMap((row) =>
+      row
+        ? [
+            cellsOf(state, row)
+              .slice(0, columns)
+              .map((cell) => parts(state, trimmed(state, cell))),
+          ]
+        : [],
+    ),
+  );
+}
+
+/** A table's lines' nodes: its head, its delimiter row, then its rows. */
+function tableRows(node: SyntaxNode): SyntaxNode[] {
+  const rows: SyntaxNode[] = [];
+  for (let row = node.firstChild; row; row = row.nextSibling) rows.push(row);
+  return rows;
+}
+
+/** Each cell of a row, between its pipes, with the spaces around its text. */
+function cellsOf(state: EditorState, row: SyntaxNode): Stretch[] {
+  const pipes = row.getChildren("TableDelimiter");
+  const cells: Stretch[] = [];
+  let from = row.from;
+  for (const pipe of pipes) {
+    cells.push({ from, to: pipe.from });
+    from = pipe.to;
+  }
+  cells.push({ from, to: row.to });
+  const blank = (cell: Stretch | undefined) =>
+    cell !== undefined && !state.sliceDoc(cell.from, cell.to).trim();
+  // Neither before a leading pipe nor after a closing one is a cell.
+  if (pipes.length > 0 && blank(cells[0])) cells.shift();
+  if (pipes.length > 0 && blank(cells.at(-1))) cells.pop();
+  return cells;
+}
+
+function trimmed(state: EditorState, { from, to }: Stretch): Stretch {
+  const text = state.sliceDoc(from, to);
+  const start = from + text.length - text.trimStart().length;
+  return { from: start, to: Math.max(start, from + text.trimEnd().length) };
+}
+
+/** Each column's alignment, from the delimiter row's colons. */
+function alignments(delimiter: string): Alignment[] {
+  return delimiter
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((column) => {
+      const marks = column.trim();
+      const left = marks.startsWith(":");
+      const right = marks.endsWith(":");
+      if (left && right) return "center";
+      if (right) return "right";
+      return left ? "left" : null;
+    });
+}
+
+/**
+ * A cell's text in the editor's highlighting, its symbols hidden as Visual
+ * hides them, and an escape's backslash too, as the viewer does, so that
+ * an escaped pipe shows in its cell.
+ */
+function parts(state: EditorState, { from, to }: Stretch): Part[] {
+  const hidden: Stretch[] = [];
+  syntaxTree(state).iterate({
+    from,
+    to,
+    enter: (node) => {
+      if (node.name === "Escape") {
+        hidden.push({ from: node.from, to: node.from + 1 });
+      }
+      for (const symbol of symbols(state, node)) {
+        if (symbol.value === HIDDEN) hidden.push(symbol);
+      }
+    },
+  });
+  const styled: (Stretch & { style: string })[] = [];
+  highlightTree(
+    syntaxTree(state),
+    { style: (tags) => highlightingFor(state, tags) },
+    (start, end, style) => {
+      styled.push({ from: start, to: end, style });
+    },
+    from,
+    to,
+  );
+  const edges = new Set([from, to]);
+  for (const stretch of [...hidden, ...styled]) {
+    edges.add(Math.min(to, Math.max(from, stretch.from)));
+    edges.add(Math.min(to, Math.max(from, stretch.to)));
+  }
+  const sorted = [...edges].sort((one, other) => one - other);
+  const result: Part[] = [];
+  sorted.slice(1).forEach((end, at) => {
+    const start = sorted[at] ?? from;
+    if (hidden.some((range) => range.from <= start && range.to >= end)) return;
+    const style =
+      styled.find((range) => range.from <= start && range.to >= end)?.style ??
+      null;
+    const text = state.sliceDoc(start, end);
+    const previous = result.at(-1);
+    if (previous?.style === style) previous.text += text;
+    else result.push({ text, style });
+  });
+  return result;
+}
+
+/** The cell of a table drawn that an event's target is in, if any. */
+function tableCell(target: EventTarget | null): HTMLTableCellElement | null {
+  return target instanceof Element
+    ? target.closest<HTMLTableCellElement>(".cm-table :is(td, th)")
+    : null;
+}
+
+/**
+ * Shows the cell's table as written, the cursor at the end of the cell's
+ * text and the focus in the editor, the cell's row staying where it was
+ * on the screen, as far as the page scrolls.
+ */
+function editCell(view: EditorView, cell: HTMLTableCellElement): void {
+  const frame = cell.closest(".cm-table");
+  const row = cell.parentElement;
+  if (!frame || !(row instanceof HTMLTableRowElement)) return;
+  let node: SyntaxNode | null = syntaxTree(view.state).resolveInner(
+    view.posAtDOM(frame),
+    1,
+  );
+  while (node && node.name !== "Table") node = node.parent;
+  if (!node) return;
+  // The head's row is the table's first line, and the body's follow the
+  // delimiter row.
+  const line = tableRows(node)[row.rowIndex === 0 ? 0 : row.rowIndex + 1];
+  if (!line) return;
+  const stretch = cellsOf(view.state, line)[cell.cellIndex];
+  const head = stretch ? trimmed(view.state, stretch).to : line.to;
+  const top = row.getBoundingClientRect().top + window.scrollY;
+  // Focused at once, so that the table shows as written as the cursor
+  // moves, and the row is measured as it is then.
+  view.focus();
+  view.dispatch({ selection: { anchor: head }, effects: focused.of(true) });
+  view.requestMeasure({
+    read: () => pageTop(view, head) - top,
+    write: (shift) => {
+      if (Math.abs(shift) >= 1) window.scrollBy(0, shift);
+    },
+  });
+}
+
+// Where and when a finger pressed a table's cell, until it lifts.
+let cellPressed: Press | null = null;
+
+/**
+ * A click on a table's cell, or a finger's tap, shows the table as
+ * written, the cursor in that cell. A finger's tap does so as it lifts,
+ * its end kept from the browser, which would place the cursor itself: in
+ * WebKit, at the note's start. A finger that moves scrolls the table or
+ * the page, and one that stays down as long as a long press is left to
+ * the system.
+ */
+const editingTables = EditorView.domEventHandlers({
+  mousedown(event, view) {
+    const cell = tableCell(event.target);
+    const modified =
+      event.shiftKey || event.metaKey || event.ctrlKey || event.altKey;
+    if (!cell || event.button !== 0 || modified) return false;
+    event.preventDefault();
+    editCell(view, cell);
+    return true;
+  },
+  touchstart(event) {
+    const touch = event.changedTouches[0];
+    cellPressed =
+      tableCell(event.target) && event.touches.length === 1 && touch
+        ? { x: touch.clientX, y: touch.clientY, at: Date.now() }
+        : null;
+    return false;
+  },
+  touchend(event, view) {
+    const press = cellPressed;
+    cellPressed = null;
+    const cell = tableCell(event.target);
+    if (!cell || !tapped(event, press)) return false;
+    event.preventDefault();
+    editCell(view, cell);
     return true;
   },
 });
@@ -363,6 +734,26 @@ const LOOK = EditorView.theme({
     background:
       "linear-gradient(var(--outline-variant), var(--outline-variant)) center / 100% 1px no-repeat",
   },
+  // The viewer's table, as Drive lists files: a rule under each row, the
+  // head quieter, as far in as the lines' text.
+  ".cm-table": {
+    overflowX: "auto",
+    padding: "0 var(--text-inset)",
+    // Its width the note's, however wide its table.
+    contain: "inline-size",
+  },
+  ".cm-table table": { borderCollapse: "collapse", width: "max-content" },
+  ".cm-table :is(th, td)": {
+    padding: "var(--space-2) var(--space-5) var(--space-2) 0",
+    borderBottom: "1px solid var(--outline-variant)",
+    textAlign: "start",
+  },
+  ".cm-table th": {
+    color: "var(--on-surface-variant)",
+    fontSize: "0.875rem",
+    fontWeight: "500",
+    lineHeight: "1.25rem",
+  },
 });
 
 /**
@@ -377,6 +768,10 @@ export const livePreview: Extension = [
     (view) => view.plugin(hiding)?.decorations ?? Decoration.none,
   ),
   ticking,
+  hasFocus,
+  followingFocus,
+  tables,
+  editingTables,
   LOOK,
 ];
 
@@ -428,12 +823,32 @@ function hidden(view: EditorView, writing: Stretch[]): DecorationSet {
   return Decoration.set(ranges, true);
 }
 
-/** The lines the selection touches, each stretch of them from start to end. */
+/**
+ * The lines the selection touches, each stretch of them from start to end,
+ * with the whole of a table it touches, which shows as written.
+ */
 function linesWritten(state: EditorState): Stretch[] {
   return state.selection.ranges.map((range) => ({
-    from: state.doc.lineAt(range.from).from,
-    to: state.doc.lineAt(range.to).to,
+    from: state.doc.lineAt(tableAround(state, range.from)?.from ?? range.from)
+      .from,
+    to: state.doc.lineAt(tableAround(state, range.to)?.to ?? range.to).to,
   }));
+}
+
+/** The table drawn in Visual that `at` is in, if any. */
+function tableAround(state: EditorState, at: number): SyntaxNode | null {
+  let node: SyntaxNode | null = syntaxTree(state).resolveInner(at, 0);
+  while (node && node.name !== "Table") node = node.parent;
+  return node && drawable(node) ? node : null;
+}
+
+/**
+ * Whether Visual draws a table: at the note's top, not in a quote or a
+ * list, whose lines start with their marks.
+ */
+function drawable(table: SyntaxNode): boolean {
+  const parent = table.parent;
+  return parent?.name === "Document";
 }
 
 /**
