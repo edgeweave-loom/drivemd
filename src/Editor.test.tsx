@@ -861,6 +861,204 @@ describe("Visual", () => {
   });
 });
 
+describe("Visual's tables", () => {
+  beforeEach(() => {
+    // jsdom names Apple as its vendor, so CodeMirror reads the selection in
+    // a shadow root as Safari needs, through a command jsdom lacks.
+    Object.defineProperty(document, "execCommand", {
+      value: () => false,
+      configurable: true,
+    });
+    // Nor does it lay text out, which CodeMirror measures as it scrolls: a
+    // range's boxes are an element's, none.
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      value: () => document.createElement("span").getClientRects(),
+      configurable: true,
+    });
+  });
+
+  const NOTE = [
+    "Tea",
+    "",
+    "| Step | **Owner** | Left |",
+    "| :--- | ---: | :-: |",
+    "| Boil \\| pour | _Ada_ |",
+    "| Cups || More | Dropped |",
+    "",
+    "After",
+  ].join("\n");
+
+  /** Each row of the table drawn, its cells' text, bold text in **. */
+  function cells(view: EditorView) {
+    return [...view.contentDOM.querySelectorAll("tr")].map((row) =>
+      [...row.cells].map((cell) =>
+        [...cell.childNodes]
+          .map((node) => {
+            const text = node.textContent ?? "";
+            return node instanceof HTMLElement &&
+              getComputedStyle(node).fontWeight === "700"
+              ? `**${text}**`
+              : text;
+          })
+          .join(""),
+      ),
+    );
+  }
+
+  it("draws a table as the viewer does, its cells formatted and aligned", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+
+    expect(cells(view)).toEqual([
+      ["Step", "**Owner**", "Left"],
+      ["Boil | pour", "Ada", ""],
+      ["Cups", "", "More"],
+    ]);
+    const table = within(view.contentDOM).getByRole("table");
+    expect(within(table).getAllByRole("columnheader")).toHaveLength(3);
+    expect(
+      [...view.contentDOM.querySelectorAll("tr")][1]?.cells[1]?.style.textAlign,
+    ).toBe("right");
+    expect(
+      [...view.contentDOM.querySelectorAll("th")].map(
+        (cell) => cell.style.textAlign,
+      ),
+    ).toEqual(["left", "right", "center"]);
+    expect(looks(view)).toEqual(["Tea", "", "", "After"]);
+  });
+
+  it("shows a table's Markdown while the selection is in it with the focus", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 4 } });
+    });
+    expect(view.contentDOM.querySelector("table")).not.toBeNull();
+    act(() => {
+      view.dispatch({ selection: { anchor: 30 } });
+    });
+    // CodeMirror tells of the focus a moment after it comes.
+    await waitFor(() => {
+      expect(view.contentDOM.querySelector("table")).toBeNull();
+    });
+    expect(looks(view)[2]).toBe("‹|› Step ‹|› ‹**›**Owner**‹**› ‹|› Left ‹|›");
+    // All its lines as written, not only the cursor's.
+    expect(looks(view)[4]).toBe("‹|› Boil \\| pour ‹|› ‹_›Ada‹_› ‹|›");
+
+    act(() => {
+      view.contentDOM.blur();
+    });
+    await waitFor(() => {
+      expect(view.contentDOM.querySelector("table")).not.toBeNull();
+    });
+  });
+
+  it("shows a table's Markdown where Find in note selects a match in it", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+
+    act(() => {
+      press(view, "f", { ctrlKey: true });
+    });
+    const field = screen.getByRole("textbox", { name: "Find" });
+    fireEvent.change(field, { target: { value: "pour" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    expect(field).toHaveFocus();
+    expect(view.contentDOM.querySelector("table")).toBeNull();
+  });
+
+  it("places the cursor in the cell clicked, in its Markdown", async () => {
+    const { view, onChange } = open(NOTE, "\n", true);
+    await parsed(view);
+    const cell = within(view.contentDOM).getByRole("cell", { name: "Ada" });
+
+    fireEvent.mouseDown(cell);
+
+    expect(view.hasFocus).toBe(true);
+    expect(view.state.selection.main.head).toBe(NOTE.indexOf("_Ada_") + 5);
+    await waitFor(() => {
+      expect(view.contentDOM.querySelector("table")).toBeNull();
+    });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("leaves a click with Shift, or with Cmd or Ctrl, to the editor", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    act(() => {
+      view.dispatch({ selection: { anchor: 1 } });
+    });
+
+    for (const modifier of ["shiftKey", "metaKey", "ctrlKey"]) {
+      const cell = within(view.contentDOM).getByRole("cell", { name: "Ada" });
+      fireEvent.mouseDown(cell, { [modifier]: true });
+      expect(view.state.selection.main.head).not.toBe(
+        NOTE.indexOf("_Ada_") + 5,
+      );
+    }
+  });
+
+  it("places the cursor in the cell a finger taps, but not where it scrolls", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    vi.spyOn(view, "posAtCoords").mockReturnValue(null);
+    const cell = () =>
+      within(view.contentDOM).getByRole("cell", { name: "More" });
+    const touch = (clientX: number) => [{ clientX, clientY: 20 }];
+
+    // A finger moving along the table scrolls it.
+    fireEvent.touchStart(cell(), {
+      touches: touch(10),
+      changedTouches: touch(10),
+    });
+    fireEvent.touchEnd(cell(), { touches: [], changedTouches: touch(90) });
+    expect(view.contentDOM.querySelector("table")).not.toBeNull();
+
+    fireEvent.touchStart(cell(), {
+      touches: touch(10),
+      changedTouches: touch(10),
+    });
+    // Its end kept from the browser, which would place the cursor itself.
+    expect(
+      fireEvent.touchEnd(cell(), { touches: [], changedTouches: touch(12) }),
+    ).toBe(false);
+    expect(view.state.selection.main.head).toBe(NOTE.indexOf("More") + 4);
+    await waitFor(() => {
+      expect(view.contentDOM.querySelector("table")).toBeNull();
+    });
+  });
+
+  it("leaves a table in a quote or a list as written, and Source's", async () => {
+    const { view, showIn } = open(
+      "> | A | B |\n> | - | - |\n\n- | E |\n  | - |\n\nTea\n\n  | C | D |\n  | - | - |",
+      "\n",
+      true,
+    );
+    await parsed(view);
+
+    // An indented table, at the note's top level, is drawn.
+    expect(cells(view)).toEqual([["C", "D"]]);
+    showIn(false);
+    expect(view.contentDOM.querySelector("table")).toBeNull();
+  });
+
+  it("deletes the line break after a table, not the table", async () => {
+    const { view } = open("| A |\n| - |\n\nTea", "\n", true);
+    await parsed(view);
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 12 } });
+    });
+
+    press(view, "Backspace");
+
+    expect(view.state.sliceDoc()).toBe("| A |\n| - |\nTea");
+  });
+});
+
 describe("linkAt", () => {
   function state(text: string) {
     const made = EditorState.create({

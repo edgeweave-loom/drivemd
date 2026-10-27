@@ -406,22 +406,23 @@ Build in nine milestones, each ending with something that runs; give Claude Code
 
 ## v2: Obsidian-style live preview
 
-We will build our own live preview as a CodeMirror 6 extension, the editor's **Visual** mode, delivered in three stages: symbol hiding, then images, then tables.
+We will build our own live preview as a CodeMirror 6 extension, the editor's **Visual** mode, delivered in three stages: symbol hiding, then tables, then images. Tables came before images ([#334](https://github.com/edgeweave-loom/drivemd/issues/334)).
 
 **Decisions**
 
-| Decision                                              | Choice                                                                     | Why                                                                                                     |
-| ----------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Editor base                                           | CodeMirror 6, same as v1                                                   | The source text stays the single truth, so files are never reformatted; Obsidian uses the same approach |
-| Rich-text editors (Tiptap, Milkdown, Lexical)         | Rejected                                                                   | They rebuild markdown on save and reformat files made by other tools                                    |
-| Typora-style editors (Vditor instant rendering, Muya) | Rejected                                                                   | Same re-generation risk; weaker mobile support                                                          |
-| Existing live-preview packages                        | Not used as dependencies, not copied                                       | We own the core of the editing experience; packages are read as a reference only                        |
-| Implementation                                        | Our own extension on `@codemirror/lang-markdown` syntax tree + decorations | Builds directly on the v1 light styling                                                                 |
-| Modes                                                 | Visual, Source and Viewing                                                 | Visual cannot match the rendered note everywhere, so Viewing keeps it; Source is v1's editor            |
-| Plain source, without styling                         | Rejected                                                                   | Source already hides nothing, so it is the fallback; a third editing mode would only add checks         |
-| Visual on a wide screen                               | One sheet, without the preview beside it                                   | The text already reads formatted, so a preview beside it would repeat it                                |
-| Taps in Visual                                        | A task's box ticks; a link places the cursor                               | A drawn box invites the tap; a link's text stays one tap away from editing, as any other text is        |
-| Following a link from a touch screen                  | **Open link** in the keyboard toolbar, in place of **Link**                | A long press is the system's own gesture, which places the cursor or selects a word                     |
+| Decision                                              | Choice                                                                     | Why                                                                                                       |
+| ----------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Editor base                                           | CodeMirror 6, same as v1                                                   | The source text stays the single truth, so files are never reformatted; Obsidian uses the same approach   |
+| Rich-text editors (Tiptap, Milkdown, Lexical)         | Rejected                                                                   | They rebuild markdown on save and reformat files made by other tools                                      |
+| Typora-style editors (Vditor instant rendering, Muya) | Rejected                                                                   | Same re-generation risk; weaker mobile support                                                            |
+| Existing live-preview packages                        | Not used as dependencies, not copied                                       | We own the core of the editing experience; packages are read as a reference only                          |
+| Implementation                                        | Our own extension on `@codemirror/lang-markdown` syntax tree + decorations | Builds directly on the v1 light styling                                                                   |
+| Modes                                                 | Visual, Source and Viewing                                                 | Visual cannot match the rendered note everywhere, so Viewing keeps it; Source is v1's editor              |
+| Plain source, without styling                         | Rejected                                                                   | Source already hides nothing, so it is the fallback; a third editing mode would only add checks           |
+| Visual on a wide screen                               | One sheet, without the preview beside it                                   | The text already reads formatted, so a preview beside it would repeat it                                  |
+| Taps in Visual                                        | A task's box ticks; a link places the cursor                               | A drawn box invites the tap; a link's text stays one tap away from editing, as any other text is          |
+| Following a link from a touch screen                  | **Open link** in the keyboard toolbar, in place of **Link**                | A long press is the system's own gesture, which places the cursor or selects a word                       |
+| Editing a table                                       | A tap shows its Markdown, first; cell by cell in place, as Obsidian, next  | Its Markdown is the text itself, so that an edit cannot break its rows; editing cells comes in its own PR |
 
 **Modes**
 
@@ -446,10 +447,11 @@ We will build our own live preview as a CodeMirror 6 extension, the editor's **V
    - Then links: an inline link's `[` and `](address "title")` hide, leaving its text, which a tap edits and Cmd/Ctrl+click or **Open link** follows. A reference link, whose address is written elsewhere, an autolink and a link without text stay as written.
    - Then lists: a bullet list's `-`, `*` or `+` shows as a bullet, and a task's marker, its list's included, as its box, the preview's, which a tap ticks, as one edit that undo reverts, the focus and the cursor staying where they were. A numbered list's number stays as written.
    - Then thematic breaks ([#334](https://github.com/edgeweave-loom/drivemd/issues/334)): a `---`, `***` or `___` line, with or without spaces between its marks, shows as the viewer's rule, across the line from what comes before it, such as a quote's `>`. Its marks stay as text, unseen under the rule, so that the line keeps its height and a tap places the cursor on it, as on any other text: Playwright's WebKit took a tap on a widget filling the line to the note's start. A screen reader reads it as a separator. A setext heading's underline and the front matter's fences stay as written. Stage 1 then waits for its check on a real iPhone.
-2. **Images.** Show the image below its markdown line, loaded from Drive when the link points to a Drive file.
+2. **Tables.** Show a formatted table; tapping it reveals its raw markdown for editing.
+   - Done when: editing a table on a phone never corrupts its rows, and saving a note whose tables were only looked at writes nothing.
+   - Landed first: a GFM table shows as the viewer's, its head, each column aligned as its delimiter row says, its cells' inline formatting as Visual draws it, and an escaped pipe `\|` in its cell; a row with fewer cells than the head gets empty ones, and one with more loses the rest, as GitHub does. It shows as written while the selection touches one of its lines and the editor has the focus, or while Find in note is open, so that a match in it shows. Shown so, all its lines show their symbols, so that its columns line up. A tap or a click on a cell shows it so, the cursor at the end of that cell's text, the row tapped staying under the finger as far as the page scrolls; a finger that moves scrolls the table or the page, and one that stays down as long as a long press is left to the system. WebKit took a tap on the table to the note's start, so the app places the cursor itself, the tap's end kept from the browser. A table wider than the note scrolls sideways within itself. A screen reader reads it as a table. The table is no unit: Backspace after it, or Delete before it, joins lines as anywhere, never taking the whole table. A click with Shift, Cmd or Ctrl is the editor's, as on any text, and a press on a table's own scroll bar the browser's. A table in a quote or a list, whose lines start with their marks, stays as written; an indented one is drawn. Next: editing its cells in place, as Obsidian does.
+3. **Images.** Show the image below its markdown line, loaded from Drive when the link points to a Drive file.
    - Done when: images show on iPhone and Android without shifting the text while scrolling.
-3. **Tables.** Show a formatted table; tapping it reveals its raw markdown for editing.
-   - Done when: editing a table on a phone never corrupts its rows.
 
 If a stage proves too costly on phones, that element stays unhidden in Visual, as in Source, and Preview covers it.
 
