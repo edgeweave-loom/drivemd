@@ -114,6 +114,9 @@ Make four made-up notes in the test account's My Drive, from the app on the iPho
   | :-- | ---: | ----------------------------------------- |
   | Green \| hot | **2** | Some words to make it wider than the screen |
 
+  > A quote with **bold** words, long enough to wrap onto a second line on a phone held upright.
+  > > A nested quote
+
   Setext heading
   ==============
 
@@ -220,11 +223,11 @@ To make a conflict, open `device-check-other.md` in two Safari tabs (the second 
 
 ### K. Visual, Source and Viewing (v2, stage 1)
 
-On `device-check-visual.md`, which **Edit** opens in Visual, the editor's default mode, on a device that never chose another. The spec's v2 section says what Visual hides and draws. Stage 1 is done once typing, selecting and deleting across formatted text work on a real iPhone: the report says which of these checks a real iPhone must repeat, K4 to K10 and K14 at least, since the Simulator's text input is not the device's.
+On `device-check-visual.md`, which **Edit** opens in Visual, the editor's default mode, on a device that never chose another. The spec's v2 section says what Visual hides and draws. Stage 1 is done once typing, selecting and deleting across formatted text work on a real iPhone: the report says which of these checks a real iPhone must repeat, K4 to K10, K14 and K19 at least, since the Simulator's text input is not the device's.
 
 - **K1. Modes.** On the iPhone, **Edit** shows **Visual**, **Source** and **Preview** over the note, Visual chosen, the three within the screen's width upright and sideways. Source shows the Markdown in light styling, Preview the rendered note, and Visual the editor again. On the iPad sideways, the mode menu offers **Visual**, **Source** and **Viewing**, each with its line ("Edit the note as it reads", "Edit the Markdown beside its preview", "Save, then read the note"): Visual shows the note on one sheet, Source the Markdown beside the preview, and Viewing the note alone.
 - **K2. Remembered.** On the iPhone, pick Source, tap the check, reload, and tap **Edit**: the editor opens in Source. Pick Visual before going on.
-- **K3. Reading.** In Visual, the keyboard down and no line tapped: no `#`, `**`, `_`, `~~`, backtick, or inline link's `[` or `](…)` shows; the bullet shows as •, the tasks as boxes, the done one ticked, the links as their text in the accent, the `- - -` line as a thin rule across the line, and the table as Preview shows it, "Cups" aligned right, "Green | hot" in one cell and the 2 in bold; a finger sliding on the table along it scrolls the table, not the page. The numbered list, the code block's fences, the reference link, the setext heading's underline and the line that defines `[ref]` show as written. Take a screenshot beside one of Preview.
+- **K3. Reading.** In Visual, the keyboard down and no line tapped: no `#`, `**`, `_`, `~~`, backtick, or inline link's `[` or `](…)` shows; the bullet shows as •, the tasks as boxes, the done one ticked, the links as their text in the accent, the `- - -` line as a thin rule across the line, and the table as Preview shows it, "Cups" aligned right, "Green | hot" in one cell and the 2 in bold; the quote shows without its `>`, a bar on its left, both its lines, and two bars beside "A nested quote"; a finger sliding on the table along it scrolls the table, not the page. The numbered list, the code block's fences, the reference link, the setext heading's underline and the line that defines `[ref]` show as written. Take a screenshot beside one of Preview.
 - **K4. A tap shows a line's Markdown.** Tap inside "bold words": the keyboard comes up with the toolbar, the paragraph shows its symbols, dimmed, and no other line does; the cursor sits in the word tapped, or the report says where it landed. Tap the heading with closing marks: it shows `## … ##`, and the paragraph hides its symbols again. Tap the rule: it shows `- - -`, the cursor on that line, at the line's height. Tap "2" in the table: it shows as written, the cursor after the `**2**`, its row where the finger was, unless the page was at its top. A line wraps anew as its symbols show or hide, which moves the lines below it, but the heading stays under the finger that tapped it, the cursor where the finger is, unless the page was scrolled to its top: the report says how far it moved. No line but the one tapped shows or hides a symbol.
 - **K5. Typing.** After "upright.", at the paragraph's end, type ` and **more**`, then tap another line: the paragraph shows "and more" with "more" in bold, without its `**`.
 - **K6. Moving the cursor.** Touch and hold the space bar, then slide, to move the cursor up into the heading and down into the list: each line shows its Markdown as the cursor enters it, and the cursor follows the finger without jumping back or skipping a line.
@@ -240,6 +243,7 @@ On `device-check-visual.md`, which **Edit** opens in Visual, the editor's defaul
 - **K16. Saved as typed.** After K5 to K15, tap the check (iPhone) or pick Viewing (iPad): the note saves, and Source shows the edits only, with no symbol lost or added elsewhere, and the code block, the numbered list and the reference link as written.
 - **K17. Dark theme.** K3's screen and a tapped line in the dark appearance: the boxes, the bullets, the links and the dimmed symbols stay legible.
 - **K18. iPad, hardware keyboard.** With Simulate Hardware Keyboard on, the arrow keys move through the note: from the line above the heading, the down arrow takes the cursor into the heading, which then shows its `## `, at its start or in its text, never between two of its `#`. Shift and the arrows select across formatted lines, which show their Markdown. Turn it off again.
+- **K19. Quotes.** Tap the end of "A nested quote": the line shows `> > ` after its two bars, at the line's height, and the quote's first line shows no `>`. Tap Return and type `milk`: the new line starts with `> > `, and "A nested quote" hides its marks. Select from "bold" to "nested" and tap delete: the quote loses what was selected and nothing else, the `>` of its first line where it was, as Source then shows; **Undo** brings the text back whole. Touch and hold the space bar, then slide the cursor through the quote's lines: each shows its `>` as the cursor enters it, and the cursor never lands between a `>` and the space after it. A real iPhone must repeat this one.
 
 ## Report
 
@@ -248,6 +252,6 @@ On `device-check-visual.md`, which **Edit** opens in Visual, the editor's defaul
 1. The run: date, staging's version, Xcode, the iOS runtime, the devices, and what could not be set up.
 2. A table of every check, by device and context: the check, its verdict, and the screenshots.
 3. For each FAIL: the steps, what was expected, what showed, and the screenshots; for each BLOCKED, why, and what a real device should check.
-4. The checks a real iPhone or iPad must repeat, and why: section K's, K4 to K10 and K14 at least, and any other whose result rests on the Simulator's text input.
+4. The checks a real iPhone or iPad must repeat, and why: section K's, K4 to K10, K14 and K19 at least, and any other whose result rests on the Simulator's text input.
 5. The mockups: a verdict for each, and its differences.
 6. Draft issues for the FAILs, one per defect, each with a title in the repository's style (a sentence saying what the app should do), the steps and the device, and no screenshot that shows the account's email.

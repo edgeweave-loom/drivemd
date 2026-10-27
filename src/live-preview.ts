@@ -76,6 +76,72 @@ const RULE = Decoration.mark({
 });
 const RULE_LINE = Decoration.line({ class: "cm-rule-line" });
 
+// A quote's lines, by how many quotes drawn they are in: deeper ones draw
+// as many bars as the last.
+const QUOTE_LINES = [1, 2, 3, 4, 5, 6].map((depth) =>
+  Decoration.line({ class: `cm-quote cm-quote-${String(depth)}` }),
+);
+
+/**
+ * Visual's quotes, their lines barred as the viewer's, a bar per level,
+ * whether or not their marks show: a lazy line, which continues a quote
+ * without its `>`, is in it.
+ */
+const quoting = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = quoteLines(view);
+    }
+    update(update: ViewUpdate) {
+      if (
+        update.docChanged ||
+        update.viewportChanged ||
+        syntaxTree(update.startState) !== syntaxTree(update.state)
+      ) {
+        this.decorations = quoteLines(update.view);
+      }
+    }
+  },
+  { decorations: (plugin) => plugin.decorations },
+);
+
+function quoteLines(view: EditorView): DecorationSet {
+  const { state } = view;
+  const { from, to } = view.viewport;
+  // Each line's start, with how many quotes drawn it is in.
+  const depths = new Map<number, number>();
+  syntaxTree(state).iterate({
+    from,
+    to,
+    enter: (node) => {
+      if (node.name !== "Blockquote" || !drawnQuote(node.node)) return;
+      const last = Math.min(to, node.to);
+      for (let at = Math.max(from, node.from); at <= last;) {
+        const line = state.doc.lineAt(at);
+        depths.set(line.from, (depths.get(line.from) ?? 0) + 1);
+        at = line.to + 1;
+      }
+    },
+  });
+  const ranges: Range<Decoration>[] = [];
+  for (const [at, depth] of depths) {
+    const line = QUOTE_LINES[Math.min(depth, QUOTE_LINES.length) - 1];
+    if (line) ranges.push(line.range(at));
+  }
+  return Decoration.set(ranges, true);
+}
+
+/**
+ * Whether Visual draws a quote: at the note's top, or in quotes drawn, but
+ * not in a list, whose lines start with its marks.
+ */
+function drawnQuote(quote: SyntaxNode): boolean {
+  let around: SyntaxNode | null = quote;
+  while (around?.name === "Blockquote") around = around.parent;
+  return around?.name === "Document";
+}
+
 // The last finger has lifted from the text.
 const lifted = StateEffect.define();
 
@@ -734,6 +800,24 @@ const LOOK = EditorView.theme({
     background:
       "linear-gradient(var(--outline-variant), var(--outline-variant)) center / 100% 1px no-repeat",
   },
+  // The viewer's quote, quieter: a 0.25em bar per level, then 1em before
+  // its text, and 1em after it per level.
+  ".cm-line.cm-quote": {
+    paddingLeft: "calc(var(--text-inset) + var(--quote-depth) * 1.25em)",
+    paddingRight: "calc(var(--text-inset) + var(--quote-depth) * 1em)",
+    color: "var(--on-surface-variant)",
+    backgroundImage:
+      "repeating-linear-gradient(to right, var(--outline-variant) 0 0.25em, transparent 0.25em 1.25em)",
+    backgroundPosition: "var(--text-inset) 0",
+    backgroundSize: "calc(var(--quote-depth) * 1.25em) 100%",
+    backgroundRepeat: "no-repeat",
+  },
+  ...Object.fromEntries(
+    QUOTE_LINES.map((_, at) => [
+      `.cm-quote-${String(at + 1)}`,
+      { "--quote-depth": String(at + 1) },
+    ]),
+  ),
   // The viewer's table, as Drive lists files: a rule under each row, the
   // head quieter, as far in as the lines' text.
   ".cm-table": {
@@ -768,6 +852,7 @@ export const livePreview: Extension = [
     (view) => view.plugin(hiding)?.decorations ?? Decoration.none,
   ),
   ticking,
+  quoting,
   hasFocus,
   followingFocus,
   tables,
@@ -835,26 +920,21 @@ function linesWritten(state: EditorState): Stretch[] {
   }));
 }
 
-/** The table drawn in Visual that `at` is in, if any. */
+/**
+ * The table that `at` is in, if any: one left as written, in a quote, shows
+ * all its marks too, so that its columns line up.
+ */
 function tableAround(state: EditorState, at: number): SyntaxNode | null {
   let node: SyntaxNode | null = syntaxTree(state).resolveInner(at, 0);
   while (node && node.name !== "Table") node = node.parent;
-  return node && drawable(node) ? node : null;
-}
-
-/**
- * Whether Visual draws a table: at the note's top, not in a quote or a
- * list, whose lines start with their marks.
- */
-function drawable(table: SyntaxNode): boolean {
-  const parent = table.parent;
-  return parent?.name === "Document";
+  return node;
 }
 
 /**
  * Visual's symbols, hidden or drawn: emphasis' `*` and `_`,
  * strikethrough's `~~`, inline code's backticks, a heading's `#`, a link's
- * brackets and address, a list item's marker, and a thematic break.
+ * brackets and address, a list item's marker, a thematic break, and a
+ * quote's `>`.
  */
 function symbols(state: EditorState, node: SyntaxNodeRef): Range<Decoration>[] {
   switch (node.name) {
@@ -869,6 +949,8 @@ function symbols(state: EditorState, node: SyntaxNodeRef): Range<Decoration>[] {
       return linkSyntax(node).map(hide);
     case "ListMark":
       return listMark(state, node);
+    case "QuoteMark":
+      return quoteMark(state, node).map(hide);
     case "HorizontalRule":
       return [
         RULE_LINE.range(state.doc.lineAt(node.from).from),
@@ -877,6 +959,32 @@ function symbols(state: EditorState, node: SyntaxNodeRef): Range<Decoration>[] {
     default:
       return [];
   }
+}
+
+/**
+ * A quote's `>`, with the space or tab after it, which belongs to it, and
+ * the indent before it, if it starts its line, when it is one of the first
+ * marks on its line, as many as the quotes drawn around it, and the bars:
+ * a mark is filed under the line's innermost block, maybe a quote in a
+ * list, whatever quote it marks.
+ */
+function quoteMark(state: EditorState, node: SyntaxNodeRef): Stretch[] {
+  let drawn = 0;
+  for (let around = node.node.parent; around; around = around.parent) {
+    if (around.name === "Blockquote" && drawnQuote(around)) drawn++;
+  }
+  const line = state.doc.lineAt(node.from);
+  const before = state.sliceDoc(line.from, node.from);
+  // Only container marks come before it on its line, the quotes' among them.
+  const marks = before.split(">").length - 1;
+  if (marks >= Math.min(drawn, QUOTE_LINES.length)) return [];
+  const space = /[ \t]/.test(state.sliceDoc(node.to, node.to + 1));
+  return [
+    {
+      from: before.trim() ? node.from : line.from,
+      to: space ? node.to + 1 : node.to,
+    },
+  ];
 }
 
 function hide({ from, to }: Stretch): Range<Decoration> {

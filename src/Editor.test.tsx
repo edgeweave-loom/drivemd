@@ -760,6 +760,88 @@ describe("Visual", () => {
     expect(rules()[6]).toBe(true);
   });
 
+  it("draws a quote as the viewer does, a bar per level, its marks hidden but on the lines being written", async () => {
+    const { view, showIn } = open(
+      "> Some **tea**\nand cups\n>\n> > Nested\n>>Tight\n\n- > Listed\n\n> [!note] Title\n> Body",
+      "\n",
+      true,
+    );
+    await parsed(view);
+    const depths = () =>
+      [...view.contentDOM.querySelectorAll(".cm-line")].map((line) =>
+        Number(/\bcm-quote-(\d)\b/.exec(line.className)?.[1] ?? 0),
+      );
+
+    // A lazy line in its quote, and a quote in a list as written.
+    expect(depths()).toEqual([1, 1, 1, 2, 2, 0, 0, 0, 1, 1]);
+    expect(looks(view)).toEqual([
+      "‹Some **tea**›",
+      "‹and cups›",
+      "",
+      "‹Nested›",
+      "‹Tight›",
+      "",
+      "• ‹>› Listed",
+      "",
+      // A callout as a quote, its type as written.
+      "‹[›!note‹] Title›",
+      "‹Body›",
+    ]);
+    view.dispatch({ selection: { anchor: 0 } });
+    cursorCharRight(view);
+    expect(view.state.selection.main.head).toBe(2);
+
+    // jsdom lays no text out, which CodeMirror measures meanwhile: a
+    // range's boxes are an element's, none.
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      value: () => document.createElement("span").getClientRects(),
+      configurable: true,
+    });
+    try {
+      act(() => {
+        view.focus();
+        view.dispatch({ selection: { anchor: 36 } });
+      });
+      await waitFor(() => {
+        expect(looks(view).slice(3, 5)).toEqual(["‹> > Nested›", "‹Tight›"]);
+      });
+      expect(depths()[3]).toBe(2);
+    } finally {
+      Reflect.deleteProperty(Range.prototype, "getClientRects");
+    }
+
+    showIn(false);
+    expect(looks(view)[0]).toBe("‹>› Some ‹**›**tea**‹**›");
+    expect(depths().every((depth) => depth === 0)).toBe(true);
+  });
+
+  it("hides the marks of the quotes drawn alone, with the space or tab after them and the indent before them", async () => {
+    const { view } = open(
+      "> - > x\n>   > z\n\n>\tTabbed\n\n   > Indented\n\n> > > > > > > deep",
+      "\n",
+      true,
+    );
+    await parsed(view);
+    const depths = () =>
+      [...view.contentDOM.querySelectorAll(".cm-line")].map((line) =>
+        Number(/\bcm-quote-(\d)\b/.exec(line.className)?.[1] ?? 0),
+      );
+
+    // A quote in a list in a quote keeps its marks, on each of its lines,
+    // and one deeper than six bars shows the marks past the sixth.
+    expect(depths()).toEqual([1, 1, 0, 1, 0, 1, 0, 6]);
+    expect(looks(view)).toEqual([
+      "‹• > x›",
+      "‹  > z›",
+      "",
+      "‹Tabbed›",
+      "",
+      "‹Indented›",
+      "",
+      "‹> deep›",
+    ]);
+  });
+
   it("ticks a task from its box, as one edit that undo reverts, the cursor staying", async () => {
     const { view, onChange } = open("Tea\n- [ ] Boil", "\n", true);
     await parsed(view);
@@ -1043,6 +1125,33 @@ describe("Visual's tables", () => {
     expect(cells(view)).toEqual([["C", "D"]]);
     showIn(false);
     expect(view.contentDOM.querySelector("table")).toBeNull();
+  });
+
+  it("shows all the marks of a table in a quote while one of its lines is written", async () => {
+    const { view } = open("> | A | B |\n> | - | - |\n> | 1 | 2 |", "\n", true);
+    await parsed(view);
+    expect(looks(view)).toEqual(["‹| A | B |›", "‹| - | - |›", "‹| 1 | 2 |›"]);
+
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      value: () => document.createElement("span").getClientRects(),
+      configurable: true,
+    });
+    try {
+      act(() => {
+        view.focus();
+        view.dispatch({ selection: { anchor: 30 } });
+      });
+      // So that its columns line up.
+      await waitFor(() => {
+        expect(looks(view)).toEqual([
+          "‹> | A | B |›",
+          "‹> | - | - |›",
+          "‹> | 1 | 2 |›",
+        ]);
+      });
+    } finally {
+      Reflect.deleteProperty(Range.prototype, "getClientRects");
+    }
   });
 
   it("deletes the line break after a table, not the table", async () => {

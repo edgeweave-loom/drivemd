@@ -30,7 +30,7 @@ DriveMD is a static web app for a Google Workspace organization. It signs in wit
 
 ## Status
 
-DriveMD's first version, the nine milestones of the spec's [build plan](docs/SPEC.md#build-plan-for-claude-code), is built and runs in production at Edgeweave, and checks on real iPhones and Android phones go on as changes land. The second version, an Obsidian-style live preview, comes in stages: **Visual** already hides Markdown's symbols and draws lists, tasks, rules and tables, and images come next. [Releases](https://github.com/edgeweave-loom/drivemd/releases) list what each version brought.
+DriveMD's first version, the nine milestones of the spec's [build plan](docs/SPEC.md#build-plan-for-claude-code), is built and runs in production at Edgeweave, and checks on real iPhones and Android phones go on as changes land. The second version, an Obsidian-style live preview, comes in stages: **Visual** already hides Markdown's symbols and draws lists, tasks, rules, tables and quotes, and images come next. [Releases](https://github.com/edgeweave-loom/drivemd/releases) list what each version brought.
 
 DriveMD does not search inside notes, render math or Mermaid diagrams, run Obsidian plugins, nor save offline: the spec's [scope](docs/SPEC.md#users-platforms-and-scope) lists what is left out.
 
