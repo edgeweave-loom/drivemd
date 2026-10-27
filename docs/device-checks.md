@@ -137,23 +137,23 @@ Make four made-up notes in the test account's My Drive, from the app on the iPho
 
 Run the sections in this order, so that each context is set up once:
 
-1. iPhone, Safari: A, B, C, D, G, H, J, K.
+1. iPhone, Safari: A, B, C, D, G, H1, J, K.
 2. iPhone, Home Screen app: E, then C and D again in it.
 3. iPad, Safari: A, B, C, D, G, K.
 4. iPad, Home Screen app: E, then C and D again in it.
-5. Both devices, both themes: F.
+5. Both devices, both themes: F and H2.
 6. I, only if staging deploys a new version during the run.
 
 Run every check in the light theme unless it says otherwise: E3, section F, H2 and K17 also run the dark one. Once such a check ends, set the device back to light (`xcrun simctl ui <device> appearance light`) before the next one.
 
 ### Android
 
-1. Phone, Chrome: A, B, C, D, G, H, J, K, M.
+1. Phone, Chrome: A, B, C, D, G, H1, J, K, M.
 2. Phone, installed app: E, then C, D and M again in it, with K3, K5, K9 and K10, and L.
 3. Tablet, Chrome: A, C, D, G, K.
 4. Tablet, installed app: E, then C and D again in it.
 5. Phone, Samsung Internet, installed from the Play Store, which the developer signed in to for E1: A, D and M, with K3, K5, K9 and K10.
-6. Both devices, both themes: F.
+6. Both devices, both themes: F and H2.
 7. I, only if staging deploys a new version during the run.
 
 On each device, D6 comes first, in Chrome, before Gboard's full keyboard has ever come up (see Typing, under [Tools](device-setup-android.md#tools)): on the phone, before C6, whose D1 to D3 bring the full keyboard up. The first time the editor opens on a device, check K1's default, **Edit** opening Visual, before section D picks Source, which the device then remembers. Run every check in the light theme, unless it says otherwise: E3, section F, H2 and K17 also run the dark one, after which the device goes back to light (`adb -s <serial> shell cmd uimode night no`).
