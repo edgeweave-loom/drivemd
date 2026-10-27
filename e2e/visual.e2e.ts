@@ -224,6 +224,75 @@ test("draws a thematic break as a rule in Visual, on its line's height", async (
   expect(drive.writes).toEqual([]);
 });
 
+test("draws a quote in Visual, a bar per level, its marks shown where the cursor is", async ({
+  page,
+  drive,
+}, info) => {
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content = "# The plan\n\nTea.\n\n> Some tea\n> > and cups\n\nCups.\n";
+  const lines = (await editInVisual(page)).locator(".cm-line");
+  const text = lines.filter({ hasText: "Tea." });
+  const quote = lines.nth(4);
+  const nested = lines.nth(5);
+  await expect(quote).toHaveText("Some tea");
+  await expect(nested).toHaveText("and cups");
+
+  // A 0.25em bar per level, then 1em before the text, quieter.
+  const em = Number.parseFloat(
+    await quote.evaluate((element) => getComputedStyle(element).fontSize),
+  );
+  const level = 1.25 * em;
+  await expect(quote).toHaveCSS("background-image", /linear-gradient/);
+  await expect(quote).toHaveCSS("background-size", `${String(level)}px 100%`);
+  await expect(nested).toHaveCSS(
+    "background-size",
+    `${String(2 * level)}px 100%`,
+  );
+  const inset = async (line: typeof quote) =>
+    Number.parseFloat(
+      await line.evaluate((element) => getComputedStyle(element).paddingLeft),
+    );
+  const textInset = await inset(text);
+  expect(await inset(quote)).toBeCloseTo(textInset + level, 0);
+  expect(await inset(nested)).toBeCloseTo(textInset + 2 * level, 0);
+  const color = (line: typeof quote) =>
+    line.evaluate((element) => getComputedStyle(element).color);
+  expect(await color(quote)).not.toBe(await color(text));
+
+  const height = async (line: typeof quote) =>
+    (await line.boundingBox())?.height;
+  const lineHeight = await height(text);
+  expect(await height(quote)).toBeCloseTo(lineHeight ?? 0, 0);
+
+  // Its marks where the cursor is, after the bars, on the same height.
+  if (info.project.name === "desktop-chromium") await nested.click();
+  else await nested.tap();
+  await expect(nested).toHaveText("> > and cups");
+  await expect(nested).toHaveCSS(
+    "background-size",
+    `${String(2 * level)}px 100%`,
+  );
+  expect(await height(nested)).toBeCloseTo(lineHeight ?? 0, 0);
+  await expect(quote).toHaveText("Some tea");
+
+  // Looked at, and written over nowhere: nothing to save.
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(drive.writes).toEqual([]);
+
+  // Return continues the quote, its marks with it.
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("milk");
+  await expect(lines.nth(6)).toHaveText("> > milk");
+  await expect(nested).toHaveText("and cups");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("plan")?.content)).toBe(
+    "# The plan\n\nTea.\n\n> Some tea\n> > and cups\n> > milk\n\nCups.\n",
+  );
+});
+
 test("draws a table in Visual, which a tap shows as written, the row staying under the finger", async ({
   page,
   drive,
