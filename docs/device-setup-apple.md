@@ -1,6 +1,6 @@
 # Setting up the iOS Simulator for the device checks
 
-How to prepare a Mac for [`apple-device-checks.md`](apple-device-checks.md): the Simulator's devices, what to install, the tools the agent drives them with, and what to do when one fails. [`device-setup-android.md`](device-setup-android.md) does the same for the Android Emulator.
+How to prepare a Mac for the iOS part of [`device-checks.md`](device-checks.md): the Simulator's devices, what to install, the tools the agent drives them with, and what to do when one fails. [`device-setup-android.md`](device-setup-android.md) does the same for the Android Emulator.
 
 ## Devices
 
