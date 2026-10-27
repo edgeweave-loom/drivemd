@@ -136,14 +136,17 @@ export function KeyboardToolbar({
     >
       {KEYS.map(({ name, command, icon, lines }) => {
         const follows = command === insertLink ? link : undefined;
+        // Off, but still kept from taking the focus, and the keyboard down.
+        const off = inCell && lines;
         return (
           <button
             key={name}
             type="button"
             aria-label={follows === undefined ? name : "Open link"}
-            disabled={inCell && lines}
+            aria-disabled={off ? true : undefined}
             onMouseDown={keepFocus}
             onClick={() => {
+              if (off) return;
               if (follows === undefined) onCommand(command);
               else onFollow(follows);
             }}

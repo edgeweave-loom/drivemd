@@ -13,6 +13,7 @@ import {
   StateField,
   Transaction,
   type ChangeSpec,
+  type StateEffectType,
   type Extension,
   type Range,
 } from "@codemirror/state";
@@ -513,10 +514,18 @@ class Table extends WidgetType {
     ) {
       return false;
     }
+    // As typed in a cell, the other cells but rarely change.
+    const before = drawing.get(dom);
+    const same = (row: number, column: number) =>
+      before !== undefined &&
+      before.alignments[column] === this.alignments[column] &&
+      JSON.stringify(before.rows[row]?.[column]) ===
+        JSON.stringify(this.rows[row]?.[column]);
     rows.forEach((row, at) => {
       for (const cell of row.cells) {
-        if (!cell.querySelector(".cm-editor")) {
-          this.fill(cell, at, cell.cellIndex);
+        const column = cell.cellIndex;
+        if (!cell.querySelector(".cm-editor") && !same(at, column)) {
+          this.fill(cell, at, column);
         }
       }
     });
@@ -544,17 +553,22 @@ class Table extends WidgetType {
   }
 }
 
+/** A field that `effect` sets, false at first. */
+function flag(effect: StateEffectType<boolean>): StateField<boolean> {
+  return StateField.define<boolean>({
+    create: () => false,
+    update: (value, transaction) =>
+      transaction.effects.reduce(
+        (set, one) => (one.is(effect) ? one.value : set),
+        value,
+      ),
+  });
+}
+
 const focused = StateEffect.define<boolean>();
 
 // Whether the editor has the focus, which a state field cannot ask the view.
-const hasFocus = StateField.define<boolean>({
-  create: () => false,
-  update: (value, transaction) =>
-    transaction.effects.reduce(
-      (has, effect) => (effect.is(focused) ? effect.value : has),
-      value,
-    ),
-});
+const hasFocus = flag(focused);
 
 /**
  * Tells `hasFocus` of the view's focus once it changes. CodeMirror's own
@@ -819,45 +833,37 @@ const fromNote = Annotation.define<boolean>();
 const cellFocused = StateEffect.define<boolean>();
 
 // Whether a cell edited in place has the focus, rather than the note.
-const inCellField = StateField.define<boolean>({
-  create: () => false,
-  update: (value, transaction) =>
-    transaction.effects.reduce(
-      (has, effect) => (effect.is(cellFocused) ? effect.value : has),
-      value,
-    ),
-});
+const inCellField = flag(cellFocused);
 
 /** Whether a table's cell edited in place has the focus. */
 export function inCell(state: EditorState): boolean {
   return state.field(inCellField, false) ?? false;
 }
 
-// A cell's text cannot hold a line break, which would end its row, nor a
-// pipe, which would end it, but escaped.
-const LINE_BREAK = /\r\n|\r|\n/g;
-const PIPE = /(?<!\\)\|/;
+/** The editor of the table's cell edited in place, if any. */
+export function cellEditor(view: EditorView): EditorView | null {
+  return view.plugin(editingCells)?.editing?.cell ?? null;
+}
 
 /**
- * Keeps a cell's text in its cell: a pipe typed or pasted is escaped, but
- * one escaped already, and a line break becomes the viewer's `<br>`.
+ * The changes that keep a cell's text in its cell, as GFM and Lezer read a
+ * row, counting backslashes: a line break, which would end the row, turns
+ * into the viewer's `<br>`; a pipe after an even run of backslashes, which
+ * would end the cell, is escaped; and an odd run at the text's end, which
+ * would escape the pipe `after` it, takes a space.
  */
-const inItsCell = EditorState.transactionFilter.of((transaction) => {
+function keptInCell(text: string, after: string): ChangeSpec[] {
   const fixes: ChangeSpec[] = [];
-  transaction.changes.iterChanges((_fromA, _toA, from, to) => {
-    const before = transaction.newDoc.sliceString(Math.max(0, from - 1), from);
-    const written = transaction.newDoc.sliceString(from, to);
-    const fixed = written
-      .replace(LINE_BREAK, "<br>")
-      .replace(/\|/g, (pipe, at: number, text: string) =>
-        (at > 0 ? text[at - 1] : before) === "\\" ? pipe : "\\|",
-      );
-    if (fixed !== written) fixes.push({ from, to, insert: fixed });
-  }, true);
-  return fixes.length === 0
-    ? transaction
-    : [transaction, { changes: fixes, sequential: true }];
-});
+  let escaped = false;
+  for (let at = 0; at < text.length; at++) {
+    const char = text[at];
+    if (char === "\n") fixes.push({ from: at, to: at + 1, insert: "<br>" });
+    else if (char === "|" && !escaped) fixes.push({ from: at, insert: "\\" });
+    escaped = !escaped && char === "\\";
+  }
+  if (escaped && after === "|") fixes.push({ from: text.length, insert: " " });
+  return fixes;
+}
 
 /** A cell edited in place, its editor, and its text's stretch in the note. */
 interface Editing extends Stretch {
@@ -882,21 +888,29 @@ const editingCells = ViewPlugin.fromClass(
       this.view = view;
     }
     /**
-     * Edits a cell drawn, the cursor at its text's end; one its row lacks
-     * shows its table as written, the cursor at the row's end.
+     * Edits a cell drawn, the cursor at its text's end, or the one edited
+     * where its cursor is. While Find in note is open, as for a cell its
+     * row lacks, shows its table as written, the cursor at the cell's end,
+     * or at the row's: a table shows so where Find in note's selection is.
      */
     open(host: HTMLTableCellElement): void {
-      const { view } = this;
+      const { editing, view } = this;
+      if (editing?.host === host) {
+        editing.cell.focus();
+        return;
+      }
       const frame = host.closest(".cm-table");
       const place = placeOf(host);
       const table = frame && tableIn(view, frame);
       if (!place || !table) return;
       const text = cellText(view.state, table, place);
       this.close();
-      if (!text) {
+      if (!text || searchPanelOpen(view.state)) {
         view.focus();
         view.dispatch({
-          selection: { anchor: rowOf(table, place.row)?.to ?? table.to },
+          selection: {
+            anchor: text?.to ?? rowOf(table, place.row)?.to ?? table.to,
+          },
         });
         return;
       }
@@ -926,7 +940,23 @@ const editingCells = ViewPlugin.fromClass(
       const { view } = this;
       return [
         view.state.facet(cellSetup),
-        inItsCell,
+        EditorState.transactionFilter.of((transaction) => {
+          const { editing } = this;
+          if (
+            !editing ||
+            !transaction.docChanged ||
+            transaction.annotation(fromNote)
+          ) {
+            return transaction;
+          }
+          const fixes = keptInCell(
+            transaction.newDoc.toString(),
+            view.state.sliceDoc(editing.to, editing.to + 1),
+          );
+          return fixes.length === 0
+            ? transaction
+            : [transaction, { changes: fixes, sequential: true }];
+        }),
         keymap.of([
           { key: "Tab", run: () => this.step(1), shift: () => this.step(-1) },
           { key: "Enter", run: () => this.down() },
@@ -959,28 +989,33 @@ const editingCells = ViewPlugin.fromClass(
     /** Makes a cell's edits, and its cursor, the note's. */
     pass(cell: EditorView, transactions: readonly Transaction[]): void {
       for (const transaction of transactions) {
-        const { editing } = this;
-        if (editing?.cell === cell && !transaction.annotation(fromNote)) {
-          const { from } = editing;
-          const changes: ChangeSpec[] = [];
-          transaction.changes.iterChanges((fromA, toA, _from, _to, text) => {
-            changes.push({
-              from: from + fromA,
-              to: from + toA,
-              insert: text.toString(),
-            });
-          });
-          const { anchor, head } = transaction.newSelection.main;
-          const userEvent = transaction.annotation(Transaction.userEvent);
-          this.view.dispatch({
-            changes,
-            selection: { anchor: from + anchor, head: from + head },
-            annotations: fromCell.of(true),
-            // A cursor moved in a cell scrolls the cell, not the note.
-            ...(transaction.docChanged && userEvent ? { userEvent } : {}),
-          });
-        }
         cell.update([transaction]);
+        const { editing } = this;
+        if (
+          editing?.cell !== cell ||
+          transaction.annotation(fromNote) ||
+          (!transaction.docChanged && !transaction.selection)
+        ) {
+          continue;
+        }
+        const { from } = editing;
+        const changes: ChangeSpec[] = [];
+        transaction.changes.iterChanges((fromA, toA, _from, _to, text) => {
+          changes.push({
+            from: from + fromA,
+            to: from + toA,
+            insert: text.toString(),
+          });
+        });
+        const { anchor, head } = transaction.newSelection.main;
+        const userEvent = transaction.annotation(Transaction.userEvent);
+        this.view.dispatch({
+          changes,
+          selection: { anchor: from + anchor, head: from + head },
+          annotations: fromCell.of(true),
+          // A cursor moved in a cell scrolls the cell, not the note.
+          ...(transaction.docChanged && userEvent ? { userEvent } : {}),
+        });
       }
     }
     update(update: ViewUpdate) {
@@ -988,15 +1023,25 @@ const editingCells = ViewPlugin.fromClass(
       if (!editing || !update.docChanged) return;
       editing.from = update.changes.mapPos(editing.from, -1);
       editing.to = update.changes.mapPos(editing.to, 1);
-      if (update.transactions.every((one) => one.annotation(fromCell))) return;
-      // Undone, redone or formatted in the note, as from the keyboard
-      // toolbar: the cell shows its text and selection as they are now,
-      // unless the note's selection left it, or its text its cell, which a
-      // pipe ends; a line break ends its row, which draws the table anew.
+      const { cell } = editing;
       const text = update.state.sliceDoc(editing.from, editing.to);
+      const passed = update.transactions.every((one) =>
+        one.annotation(fromCell),
+      );
+      if (passed && text === cell.state.sliceDoc()) return;
+      // Undone, redone or formatted in the note, as from the keyboard
+      // toolbar, or changed by the note's own filters: the cell shows its
+      // text and selection as they are now, unless the note's selection
+      // left it, or its text its cell. A line break ends its row, which
+      // draws the table anew.
       const { anchor, head } = update.state.selection.main;
       const within = (at: number) => at >= editing.from && at <= editing.to;
-      if (!within(anchor) || !within(head) || text.search(PIPE) >= 0) {
+      const after = update.state.sliceDoc(editing.to, editing.to + 1);
+      if (
+        !within(anchor) ||
+        !within(head) ||
+        keptInCell(text, after).length > 0
+      ) {
         queueMicrotask(() => {
           if (this.editing !== editing) return;
           this.close();
@@ -1004,7 +1049,6 @@ const editingCells = ViewPlugin.fromClass(
         });
         return;
       }
-      const { cell } = editing;
       cell.dispatch({
         changes: { from: 0, to: cell.state.doc.length, insert: text },
         selection: { anchor: anchor - editing.from, head: head - editing.from },

@@ -1083,6 +1083,7 @@ describe("Visual's tables", () => {
     const { view, onChange } = open(NOTE, "\n", true);
     await parsed(view);
 
+    const stepped = within(view.contentDOM).getByText("Step").firstChild;
     const cell = editCell(view, "Ada");
 
     expect(cell.hasFocus).toBe(true);
@@ -1099,6 +1100,8 @@ describe("Visual's tables", () => {
     const edited = NOTE.replace("_Ada_", "_Ada_!");
     expect(view.state.sliceDoc()).toBe(edited);
     expect(onChange).toHaveBeenLastCalledWith(edited);
+    // The other cells keep their drawing.
+    expect(stepped?.isConnected).toBe(true);
     // A click in it is its own, not the note's.
     fireEvent.mouseDown(cell.scrollDOM);
     expect(cellEditor(view)).toBe(cell);
@@ -1122,6 +1125,93 @@ describe("Visual's tables", () => {
     expect(view.state.sliceDoc()).toBe(
       NOTE.replace("_Ada_", "_Ada_ \\| or<br>Grace \\|\\|!"),
     );
+  });
+
+  it("never lets a backslash take a pipe out of its place, as GFM counts them", async () => {
+    const { view } = open("|a|b|\n|-|-|\n| Boil \\| pour | 1 |", "\n", true);
+    await parsed(view);
+
+    // A backslash before the pipe that ends the cell would escape it.
+    const cell = editCell(view, "a");
+    type(cell, "\\");
+    expect(view.state.sliceDoc()).toBe(
+      "|a\\ |b|\n|-|-|\n| Boil \\| pour | 1 |",
+    );
+    expect(cell.state.selection.main.head).toBe(2);
+    type(cell, "*");
+    expect(cell.state.sliceDoc()).toBe("a\\* ");
+
+    // Nor does a backslash taken from an escaped pipe, or one that an
+    // escaped backslash ends.
+    const pipe = editCell(view, "Boil | pour");
+    act(() => {
+      pipe.dispatch({ changes: { from: 5, to: 6 }, userEvent: "delete" });
+    });
+    expect(pipe.state.sliceDoc()).toBe("Boil \\| pour");
+    act(() => {
+      pipe.dispatch({ selection: { anchor: 5 } });
+    });
+    type(pipe, "\\");
+    expect(pipe.state.sliceDoc()).toBe("Boil \\\\\\| pour");
+    expect(view.state.sliceDoc()).toContain("| Boil \\\\\\| pour | 1 |");
+  });
+
+  it("follows what the note's own filters make of a cell's edit", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "Ada");
+
+    // UTF-8 could not write a NUL back, which the note keeps out.
+    type(cell, "a\0b");
+    type(cell, "!");
+
+    expect(cell.state.sliceDoc()).toBe("_Ada_ab!");
+    expect(view.state.sliceDoc()).toBe(NOTE.replace("_Ada_", "_Ada_ab!"));
+  });
+
+  it("shows a table as written for a cell clicked while Find in note is open", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    act(() => {
+      press(view, "f", { ctrlKey: true });
+    });
+
+    fireEvent.mouseDown(
+      within(view.contentDOM).getByRole("cell", { name: "Ada" }),
+    );
+
+    expect(cellEditor(view)).toBeNull();
+    expect(view.hasFocus).toBe(true);
+    expect(view.state.selection.main.head).toBe(NOTE.indexOf("_Ada_") + 5);
+    expect(view.contentDOM.querySelector("table")).toBeNull();
+  });
+
+  it("keeps the cell's editor, and its cursor, for a click beside its text", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "Ada");
+    act(() => {
+      cell.dispatch({ selection: { anchor: 1 } });
+    });
+
+    const host = cell.dom.parentElement;
+    if (!host) throw new Error("No cell");
+    fireEvent.mouseDown(host);
+
+    expect(cellEditor(view)).toBe(cell);
+    expect(cell.state.selection.main.head).toBe(1);
+    expect(cell.hasFocus).toBe(true);
+  });
+
+  it("styles a cell's Markdown as inline text, which a cell holds", async () => {
+    const { view } = open("| # Total |\n| - |\n| > - one |", "\n", true);
+    await parsed(view);
+
+    // At the head's size, in its quieter color.
+    const head = editCell(view, "# Total");
+    expect(looks(head)).toEqual(["‹# Total›"]);
+    const body = editCell(view, "> - one");
+    expect(looks(body)).toEqual(["> - one"]);
   });
 
   it("undoes and redoes a cell's edits from the note's history", async () => {

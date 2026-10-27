@@ -236,9 +236,14 @@ describe("the keyboard toolbar", () => {
     ).toBe("Tea");
     tap("Undo");
     expect(view.state.sliceDoc()).toBe(text);
+    // Off, but still keeping the focus where it is, and the keyboard up.
     for (const name of ["Heading", "List", "Checkbox", "Indent", "Outdent"]) {
-      expect(screen.getByRole("button", { name })).toBeDisabled();
+      const key = screen.getByRole("button", { name });
+      expect(key).toHaveAttribute("aria-disabled", "true");
+      expect(fireEvent.mouseDown(key)).toBe(false);
+      tap(name);
     }
+    expect(view.state.sliceDoc()).toBe(text);
 
     // From cell to cell, the toolbar stays, its keys of lines still off.
     const link = edit(1);
@@ -246,7 +251,10 @@ describe("the keyboard toolbar", () => {
       await Promise.resolve();
     });
     expect(toolbar()).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Heading" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Heading" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
     act(() => {
       link.dispatch({ selection: { anchor: 2 } });
     });
@@ -449,6 +457,49 @@ describe("the keyboard toolbar", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 1000));
     expect(scrolls).toEqual([1]);
+  });
+
+  it("scrolls to a table's cell edited in place once the keyboard has come over it", async () => {
+    const viewport = new Viewport();
+    Object.defineProperty(window, "visualViewport", {
+      value: viewport,
+      configurable: true,
+    });
+    holdTouch(true);
+    const view = open("| Tea |\n| - |", undefined, true);
+    fireEvent.mouseDown(view.contentDOM.querySelector("th") ?? document.body);
+    const element = view.contentDOM.querySelector<HTMLElement>(
+      ".cm-table .cm-editor",
+    );
+    const cell = element && EditorView.findFromDOM(element);
+    if (!cell) throw new Error("No cell's editor");
+    await screen.findByRole("toolbar", { name: "Formatting" });
+    // The cell's cursor under the keyboard, wherever the note's would be.
+    vi.spyOn(cell, "coordsAtPos").mockReturnValue({
+      left: 0,
+      right: 0,
+      top: 600,
+      bottom: 626,
+    });
+    vi.spyOn(view, "coordsAtPos").mockReturnValue(null);
+    const scrolls: number[] = [];
+    cell.dispatch({
+      effects: StateEffect.appendConfig.of(
+        EditorView.updateListener.of((update) => {
+          for (const { effects } of update.transactions) {
+            if (!effects.some((effect) => effect.is(StateEffect.appendConfig)))
+              scrolls.push(effects.length);
+          }
+        }),
+      ),
+    });
+
+    act(() => {
+      viewport.show(500);
+    });
+    await waitFor(() => {
+      expect(scrolls).toEqual([1]);
+    });
   });
 
   it.each([
