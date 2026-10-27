@@ -21,4 +21,4 @@ The repository is public: anyone can read its whole history, pull request branch
 - Branches: `main` < `dev` < `feat/*`. Branch from `dev` and open the PR against `dev`; `dev` reaches `main` through release PRs.
 - Commit messages and PR titles follow Conventional Commits (`type(scope): subject`), in English. Write the PR title and body as the squash commit they will become.
 - Keep PRs under about 400 changed lines; split larger work into PRs that can be merged independently.
-- `README.md` is the user and developer guide: update it whenever commands, environment variables or behavior change.
+- `README.md` presents the project; `docs/development.md` and `docs/self-hosting.md` are the developer and operator guides. Update them whenever commands, environment variables or behavior change.

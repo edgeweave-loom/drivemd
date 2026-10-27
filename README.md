@@ -42,152 +42,24 @@ Vite, React and TypeScript; Google Identity Services and the Drive REST API v3, 
 
 ## Running your own
 
-DriveMD serves one Google Workspace organization. It asks for Google's `drive` scope, to edit files that other tools made: an app whose audience is **Internal**, the organization's own accounts, may use that restricted scope without Google's verification, while one open to other accounts must pass it, a security assessment included. Each organization therefore runs its own copy, from a Google Cloud project of its own.
-
-1. In a Google Cloud project of your organization, enable the Google Drive API, set the audience to **Internal** in Google Auth Platform, and create an OAuth client of type **Web application** whose authorized JavaScript origins are your app's addresses, and `http://localhost:5173` for development. The spec's [Google Cloud setup](docs/SPEC.md#google-auth-scopes-and-workspace-setup) gives each step, with Edgeweave's addresses.
-2. Rewrite `about.html`, which speaks for Edgeweave, with your own description, privacy policy, terms and support, and point its source code link at your copy's source: the AGPL asks whoever serves a modified version to its users to offer them its source. `e2e/about.e2e.ts` checks the page's links.
-3. Build with your client's ID, `VITE_GOOGLE_CLIENT_ID=<client-id> pnpm run build`, and serve `dist/` over HTTPS. Firebase Hosting serves it as `firebase.json` says, and [Deployment](#deployment) has CI deploy it. Another host must send the same headers, the Content Security Policy above all, which keeps script in a note from reaching the user's token, and serve the files of `dist/` as they are and `index.html` for any other path.
-4. To open .md files from Drive's **Open with**, list the app as the spec's [Drive integration](docs/SPEC.md#drive-open-with-integration-via-private-marketplace) section does, with your own addresses.
+DriveMD serves one Google Workspace organization, so each organization runs its own copy, from a Google Cloud project of its own. [`docs/self-hosting.md`](docs/self-hosting.md) explains why, and how to configure, build, deploy and list it in Drive's **Open with**.
 
 ## Development
-
-You need [pnpm](https://pnpm.io/installation). It switches to the version that `packageManager` names in `package.json`, and installs the Node.js that `devEngines` pins there to run the scripts.
 
 ```sh
 pnpm install
 pnpm run dev
 ```
 
-Open http://localhost:5173, not `127.0.0.1`: it is the only local origin the OAuth client authorizes, so the dev server refuses to start on another port. Signing in needs an OAuth client's ID (see Configuration), but the tests do not: they replace Google with made-up answers.
-
-| Command                     | What it does                                                     |
-| --------------------------- | ---------------------------------------------------------------- |
-| `pnpm run dev`              | Serve the app with hot reload                                    |
-| `pnpm run build`            | Type-check, then build the static site into `dist/`              |
-| `pnpm run preview`          | Serve the `dist/` build on the same port                         |
-| `pnpm test`                 | Run the tests in watch mode                                      |
-| `pnpm run coverage`         | Run the tests once; fails under the coverage thresholds          |
-| `pnpm run e2e`              | Run the end-to-end tests in real browsers                        |
-| `pnpm run lint`             | Lint with type-aware and security rules; any warning fails       |
-| `pnpm run format`           | Format every file with Prettier (`pnpm run format:check` checks) |
-| `pnpm run check`            | Lint, check the format, run `coverage`, then `build`, as CI does |
-| `pnpm run deploy`           | Deploy `dist/` to the site mapped to the `app` target            |
-| `pnpm run live-check:login` | Sign the test account in for the live Drive checks               |
-| `pnpm run live-check`       | Check the Drive client against the real Drive                    |
-| `pnpm run live-check:ui`    | Check the deployed app on the real Drive, in real browsers       |
-
-Write the failing test first, then the code that makes it pass. CI runs the checks above on every pull request and on every push to `dev` and `main`.
-
-Once per clone, `git config core.hooksPath .githooks` turns on the repository's Git hooks: before each commit, Prettier and ESLint check the files being committed; before each push, `pnpm run check` runs.
-
-## End-to-end tests
-
-`pnpm run e2e` builds the app and serves it with the headers Firebase Hosting sends, its security policy included. It then drives the app with Playwright in Chromium, as a desktop, and in WebKit, as an iPad and an iPhone held upright and sideways. Google's sign-in script and the Drive API are replaced by made-up ones (`e2e/fake-google.ts`), so the tests need no account and never reach Google. A test fails on any page error and on anything the security policy blocks.
-
-Before the first run, download the browsers once with `pnpm exec playwright install chromium webkit`: they go to `~/.cache/ms-playwright`, shared by every project on the machine. WebKit also needs system libraries, which `pnpm exec playwright install-deps webkit` installs, asking for `sudo`. CI runs the tests in Microsoft's Playwright image, which holds both, and deploys only once they pass. The image's version must be the locked `@playwright/test`'s, as CI checks, and Dependabot does not update it: its Playwright pull request fails until you set, on the same branch, the image's tag in `.github/workflows/ci.yml` with the digest that `docker buildx imagetools inspect mcr.microsoft.com/playwright:v<version>-noble` prints. The tests record no traces, screenshots or videos, which would keep the requests the app makes.
-
-## Device checks
-
-Neither the end-to-end tests nor the live checks run iOS or Android themselves: the browser's bars, the on-screen keyboard, the notch and the home bar, the Home Screen app or the installed one, Android's Back and share sheet, and Google's sign-in window. [`docs/apple-device-checks.md`](docs/apple-device-checks.md) lists the checks for those, on staging, written for Claude Code driving the iOS Simulator on a Mac, and readable by a person with a real iPhone or iPad; [`docs/android-device-checks.md`](docs/android-device-checks.md) does the same with the Android Emulator, which needs Android Studio or its command-line tools. The MCP server that drives the Simulator and the emulator is declared in `.mcp.json`: Claude Code offers it to whoever opens the repository, and only those who run these checks need accept it. Run them before a milestone that changes the interface closes, and before a release.
-
-## Configuration
-
-The app reads its settings from `VITE_*` environment variables when it is built. For development, copy `.env.example` to `.env.local` and fill it in; git ignores `.env` and `.env.local`.
-
-| Variable                | Value                                                                                                                                |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `VITE_GOOGLE_CLIENT_ID` | ID of the OAuth client of type Web application, from [Running your own](#running-your-own); sign-in stays disabled while it is empty |
-
-## Live Drive checks
-
-The unit tests replace Google Drive with mocked answers, so a few behaviors can only be checked against the real Drive. The live checks do it as a test account of your organization, never with a person's account: its Drive holds nothing but what the checks create, a made-up file `drivemd-live-view-only.md` that another account shares with it as a viewer, and a shared drive named `DriveMD live check` where it is a content manager, holding a made-up file `drivemd-live-from-another.md` that another member added. Nothing about the account enters the repository. Its credentials stay in `~/.config/drivemd-live/`, or in the absolute path set in `DRIVEMD_LIVE_DIR`: the desktop OAuth client as `client.json` and the account's grant as `grant.json`. The scripts read them only when they are yours and nobody else can read them, and check with Drive that the grant belongs to the account it names before they act.
-
-To set up, once:
-
-1. Create an OAuth client of type **Desktop app** in the Google Cloud project, download its JSON, and save it as `client.json` in that folder, then `chmod 700` the folder and `chmod 600` the file.
-2. In your own terminal, since it asks you to paste an address, run `DRIVEMD_LIVE_ACCOUNT=<test account> pnpm run live-check:login`. Open the address it prints, sign in as the test account and allow access; the browser then fails to load `127.0.0.1`, and you paste its address back. The script keeps the grant only if the test account signed in, and revokes any grant it cannot keep or that it replaces; it saves the grant as `grant.json`, readable only by you.
-
-Then `pnpm run live-check` runs the checks, which CI never does. Among them, notes written as another tool would, with CRLF and a byte order mark, LF or CR line breaks, are opened, decoded and saved with one task checked, and Drive must then hold the same bytes but that one; a note that is not UTF-8 must open read-only, and a save over someone else's change must write nothing. A file must also be found by its exact name, whatever its case, as Obsidian's links find notes, accented names included; and Drive must name no folder of a file shared alone that the account cannot reach. The shared drive's top folder, which Drive names "Drive", must come under the drive's own name, and so must a vault there, for which one check puts an `.obsidian` folder at the top of the shared drive, unless one is there, and trashes it after. The others make what they need in a folder of their own in the test account's Drive and trash it at the end, and they compare IDs rather than listings, so that no failure prints the names of other files. A check that needs one of the made-up files or the shared drive is skipped until it exists.
-
-`pnpm run live-check:ui` checks the deployed app the same way, in Chromium as a desktop and WebKit as an iPhone: staging by default, or the address in `DRIVEMD_LIVE_URL`. It hands the page the test account's session as a sign-in would leave it, so Google's window never opens; it then reaches notes in My Drive, a shared drive, a vault and behind a shortcut, finds one on Home and by search, and creates, renames, moves and trashes one, in a folder of its own that it trashes at the end. It also checks a task and edits a note's source in the deployed app, and finds Drive holding the bytes it should. It opens a note from Drive's **Open with** address, which the tab then holds alone, and a folder from a Drive link pasted in the search box, and creates a note from Drive's **New** address in the folder it names. Last, it opens a note of a vault written as Obsidian would, with a callout, a highlight, a tag, a comment, a link and embeds of a note's section and a picture, which must show and lead to the files they name. It fails on any page error and on anything the security policy blocks that the app depends on. It records no traces, screenshots or videos, which would keep the token.
+[`docs/development.md`](docs/development.md) gives the commands, the end-to-end tests, the live Drive checks, the device checks and how releases are made.
 
 ## Security
 
-The app's access token can read and write the user's whole Drive, so the repository guards against injected code and a compromised supply chain:
-
-- Strict TypeScript and type-aware ESLint, whose rules reject `eval` and unsanitized DOM sinks such as `innerHTML` and `dangerouslySetInnerHTML`.
-- The Drive client sends the token only in the `Authorization` header, refuses an ID that is not shaped like a Drive ID before it reaches a URL or a query, escapes search text, and keeps Drive's answers out of the browser's HTTP cache.
-- `firebase.json` serves a strict Content Security Policy that enforces Trusted Types and allows no images but the app's own and the object URLs it makes for images read from Drive, nor any inline style: the editor styles itself in a shadow root, through constructed style sheets, along with HSTS, isolation from other origins' windows and requests, and no MIME sniffing. `src/security-headers.test.ts` fails if any of them weakens.
-- `pnpm-workspace.yaml` saves exact versions in `package.json`, refuses a dependency whose `engines` exclude the project's Node.js, installs only releases at least 7 days old, and refuses a release published with weaker evidence of where it comes from (provenance, trusted publisher) than an earlier one of the same package. It runs no dependency's install script, and an install fails on one it does not list: list it there, `false` unless the dependency cannot work without it, with the reason.
-- CI installs from the lockfile with `pnpm install --frozen-lockfile`, which checks every locked version against those rules again, verifies registry signatures, blocks critical advisories in any dependency, and blocks any advisory in the dependencies that ship. GitHub's dependency graph does not read pnpm 12's lockfile yet ([dependabot-core#15904](https://github.com/dependabot/dependabot-core/issues/15904)), so Dependabot raises no security alert: these audits are the advisory check, and the Audit workflow also runs them every day on `dev`, between pushes.
-- Dependabot proposes dependency and GitHub Actions updates weekly, for releases at least 7 days old. pnpm (`packageManager` in `package.json`) and Node.js (`devEngines`) follow the same rule, Node.js on an LTS line.
-- Workflows pin every action to a commit SHA, start from no permissions and grant each job only what it needs; zizmor audits them in CI, and gitleaks scans the full history on every push and every pull request from a fork. The zizmor and gitleaks versions are pinned in the workflows and bumped by hand.
+The app's access token can read and write the user's whole Drive, so the app runs under a strict Content Security Policy with Trusted Types, and the repository guards its supply chain, as [`docs/development.md`](docs/development.md#supply-chain-and-code-safety) lists.
 
 ## Contributing
 
 [`CONTRIBUTING.md`](CONTRIBUTING.md) says how to propose a change, and [`SECURITY.md`](SECURITY.md) how to report a vulnerability, privately. Issues and pull requests are public: leave out real file names, addresses and notes. Everyone who takes part follows the [code of conduct](CODE_OF_CONDUCT.md).
-
-## Deployment
-
-Once CI passes, every push to `dev` deploys staging to the `FIREBASE_HOSTING_SITE` site of the `FIREBASE_PROJECT_ID` project, and every push to `main` deploys production to the `PRODUCTION_FIREBASE_HOSTING_SITE` site of the same project: `firebase.json` names the deploy target `app`, and CI maps it to the site. The deploy job only runs firebase-tools on the `dist/` that the check job built, and it authenticates through Workload Identity Federation, so no service account key exists. In this repository, staging is Edgeweave's https://md-staging.corp.edgeweave.tech, and production https://md.corp.edgeweave.tech. The job is skipped while `FIREBASE_PROJECT_ID` is unset, so a fork deploys nothing until it sets its own, and for `main` while `PRODUCTION_FIREBASE_HOSTING_SITE` is too; once they are set, CI stops before building if any other variable below is missing:
-
-| Variable                           | Value                                                                               |
-| ---------------------------------- | ----------------------------------------------------------------------------------- |
-| `FIREBASE_PROJECT_ID`              | The Google Cloud project that hosts both sites                                      |
-| `FIREBASE_HOSTING_SITE`            | The Hosting site that serves staging, such as `<project>-staging`                   |
-| `PRODUCTION_FIREBASE_HOSTING_SITE` | The Hosting site that serves production, such as the project's default, `<project>` |
-| `VITE_GOOGLE_CLIENT_ID`            | The OAuth client ID that the build embeds, as in Configuration                      |
-| `GCP_WORKLOAD_IDENTITY_PROVIDER`   | `projects/<number>/locations/global/workloadIdentityPools/github/providers/drivemd` |
-| `GCP_SERVICE_ACCOUNT`              | `github-deploy@<project>.iam.gserviceaccount.com`                                   |
-
-One-time setup, by an owner of the project:
-
-1. Add Firebase to the project, start Hosting, add the staging site (`FIREBASE_HOSTING_SITE`), and connect your staging domain to that site and your production domain to the production site (`PRODUCTION_FIREBASE_HOSTING_SITE`, the project's default one or another), adding the DNS records Firebase gives. Make the staging domain a sibling of production's, not a subdomain of it, as the spec's Domains explains.
-2. Create the deploy account, which can only manage Firebase Hosting, and let only the CI workflow of your repository, `<owner>/<repo>`, on `dev` and `main`, use it:
-
-```sh
-PROJECT_ID=<project-id>
-# GitHub's own spelling of the repository, since the condition below compares it case for case.
-REPO=$(gh repo view <owner>/<repo> --json nameWithOwner --jq .nameWithOwner)
-PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
-REPO_ID=$(gh api "repos/$REPO" --jq .id)
-SA="github-deploy@$PROJECT_ID.iam.gserviceaccount.com"
-
-gcloud services enable iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com --project "$PROJECT_ID"
-gcloud iam service-accounts create github-deploy --project "$PROJECT_ID" --display-name "GitHub deploy"
-sleep 60  # IAM takes up to a minute before a new account can be granted roles.
-for role in roles/firebasehosting.admin roles/serviceusage.apiKeysViewer; do
-  gcloud projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$SA" --role "$role" --condition=None
-done
-gcloud iam workload-identity-pools create github --project "$PROJECT_ID" --location global --display-name "GitHub Actions"
-gcloud iam workload-identity-pools providers create-oidc drivemd --project "$PROJECT_ID" --location global \
-  --workload-identity-pool github --issuer-uri https://token.actions.githubusercontent.com \
-  --attribute-mapping "google.subject=assertion.sub,attribute.repository_id=assertion.repository_id" \
-  --attribute-condition "assertion.repository_id == '$REPO_ID' && assertion.event_name in ['push', 'workflow_dispatch'] && assertion.ref in ['refs/heads/dev', 'refs/heads/main'] && assertion.workflow_ref == '$REPO/.github/workflows/ci.yml@' + assertion.ref"
-gcloud iam service-accounts add-iam-policy-binding "$SA" --project "$PROJECT_ID" --role roles/iam.workloadIdentityUser \
-  --member "principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository_id/$REPO_ID"
-
-gh variable set VITE_GOOGLE_CLIENT_ID --repo "$REPO" --body "<client-id>"
-gh variable set FIREBASE_PROJECT_ID --repo "$REPO" --body "$PROJECT_ID"
-gh variable set FIREBASE_HOSTING_SITE --repo "$REPO" --body "<staging-site-id>"
-gh variable set PRODUCTION_FIREBASE_HOSTING_SITE --repo "$REPO" --body "<production-site-id>"
-gh variable set GCP_SERVICE_ACCOUNT --repo "$REPO" --body "$SA"
-gh variable set GCP_WORKLOAD_IDENTITY_PROVIDER --repo "$REPO" --body "projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/drivemd"
-```
-
-Releases follow the spec's [Versions](docs/SPEC.md#recommended-tech-stack): `package.json` on `dev` names the next one, and a pull request to `main` fails CI if that version is already tagged. Once production is deployed, the release job tags the merge commit `v<version>` and publishes a GitHub release with the merge commit's body as notes; a rerun on the same commit changes nothing. A release whose run never deployed, because a later push to `main` overtook it, gets no tag: create it by hand with `gh release create v<version> --target <merge commit>`. Right after a release, give `package.json` on `dev` the next version with `pnpm version <version> --no-git-tag-version`, in a pull request of its own.
-
-A run deploys only its branch's latest commit: re-running an older one fails rather than putting its older build back, and Hosting's release history, in the Firebase console, rolls a site back.
-
-Both sites belong to one project, which also holds the OAuth client, the Drive UI integration and the Marketplace listing. Firebase grants Hosting rights on a whole project, not on a site, so the deploy account can deploy either site: whatever reaches `dev` must be trusted as much as what reaches `main`.
-
-CI deploys by itself. To deploy by hand, map the target to a site first, which writes a `.firebaserc` that git ignores: `pnpm exec firebase target:apply hosting app <site-id> --project <project-id>`, then `pnpm run deploy --project <project-id>`.
-
-To see the headers and cache rules as Hosting serves them, run `pnpm run build`, map the target once with `pnpm exec firebase target:apply hosting app demo-drivemd --project demo-drivemd`, then run `pnpm exec firebase emulators:start --only hosting --project demo-drivemd` and open http://127.0.0.1:5000 (sign-in does not work on that origin).
-
-## Drive integration
-
-Drive's **Open with** menu opens production through a private Google Workspace Marketplace listing, installed for the organization, which the spec's [Drive integration section](docs/SPEC.md#drive-open-with-integration-via-private-marketplace) sets up step by step in the Google Cloud and Admin consoles. In Drive's settings, under Manage apps, each user can make DriveMD the default app for .md files, so that a double click opens it rather than Google Docs. Drive's **New** menu does not offer DriveMD, as the spec's requirement 9 explains. `docs/listing/` holds the images the listing uploads: the icons, `public/icon.svg` rendered at 16, 32, 48, 64, 96, 128 and 256 pixels on a transparent background, the card banner and a screenshot taken on made-up data.
 
 ## License
 

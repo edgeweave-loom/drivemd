@@ -10,7 +10,7 @@ We are building **DriveMD**, a web app to browse, view and edit Markdown (.md) f
 
 The recommended approach is a static single-page app (Vite + React + TypeScript). It signs in with Google Identity Services, calls the Drive REST API v3 directly, edits with CodeMirror 6 and renders with react-markdown. The app has no backend: sign-in passed the milestone 1 test on a real iPhone, so v1 needs no token backend (see Tokens). Users reach files through a built-in file navigator, and on desktop also through Drive's own **Open with** menu, via a private Google Workspace Marketplace listing.
 
-DriveMD is open source, under the GNU Affero General Public License, version 3 or later, so that other Google Workspace organizations can run it, and so that a modified version served to users stays open. This spec describes Edgeweave's own deployment, for Edgeweave's organization; the README explains how another organization runs its own.
+DriveMD is open source, under the GNU Affero General Public License, version 3 or later, so that other Google Workspace organizations can run it, and so that a modified version served to users stays open. This spec describes Edgeweave's own deployment, for Edgeweave's organization; [`self-hosting.md`](self-hosting.md) explains how another organization runs its own.
 
 ## Users, platforms and scope
 
@@ -174,7 +174,7 @@ Set the OAuth app's audience to **Internal**: apps used only inside our Workspac
 2. Enable the Google Drive API.
 3. In Google Auth Platform, set Audience to **Internal**, and the app name to **DriveMD** under Branding, as the Marketplace listing names it.
 4. Create an OAuth client of type **Web application**. Add `https://md.corp.edgeweave.tech`, `https://md-staging.corp.edgeweave.tech` and `http://localhost:5173` (for development) as authorized JavaScript origins. Origins must match exactly, with no wildcards, and a phone cannot reach `localhost`: the staging domain is needed from milestone 1 to test on a real iPhone.
-5. For the live Drive checks, create a second OAuth client of type **Desktop app**. Only a test account of the organization signs in with it, never a person's account, and its Drive holds nothing but what the checks create (see the README).
+5. For the live Drive checks, create a second OAuth client of type **Desktop app**. Only a test account of the organization signs in with it, never a person's account, and its Drive holds nothing but what the checks create (see [Live Drive checks](development.md#live-drive-checks)).
 
 **Scopes**
 
