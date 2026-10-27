@@ -1,23 +1,36 @@
-import { isolateHistory } from "@codemirror/commands";
+import {
+  defaultKeymap,
+  historyKeymap,
+  isolateHistory,
+} from "@codemirror/commands";
 import { highlightingFor, syntaxTree } from "@codemirror/language";
 import { searchPanelOpen } from "@codemirror/search";
 import {
+  Annotation,
   EditorState,
+  Facet,
   StateEffect,
   StateField,
+  Transaction,
+  type ChangeSpec,
+  type StateEffectType,
   type Extension,
   type Range,
 } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
+  keymap,
   ViewPlugin,
   WidgetType,
   type DecorationSet,
+  type Rect,
   type ViewUpdate,
 } from "@codemirror/view";
 import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
 import { highlightTree } from "@lezer/highlight";
+import { findInNote } from "./find.ts";
+import { TOUCH } from "./layout.ts";
 
 interface Stretch {
   from: number;
@@ -431,9 +444,13 @@ interface Part {
 
 type Alignment = "left" | "right" | "center" | null;
 
+// The table each frame drawn shows, from which a cell edited in place is
+// drawn again as its editor closes.
+const drawing = new WeakMap<Element, Table>();
+
 /**
- * A table, drawn as the viewer draws it, which a tap or a click on a cell
- * shows as written, the cursor in that cell's Markdown.
+ * A table, drawn as the viewer draws it, whose cells a tap or a click
+ * edits in place.
  */
 class Table extends WidgetType {
   readonly source: string;
@@ -457,49 +474,101 @@ class Table extends WidgetType {
     const head = table.createTHead();
     const body = table.createTBody();
     const columns = this.rows[0]?.length ?? 0;
-    this.rows.forEach((cells, at) => {
+    this.rows.forEach((_, at) => {
       const row = (at === 0 ? head : body).insertRow();
       for (let column = 0; column < columns; column++) {
         const cell = document.createElement(at === 0 ? "th" : "td");
-        const alignment = this.alignments[column];
-        if (alignment) cell.style.textAlign = alignment;
-        for (const { text, style } of cells[column] ?? []) {
-          if (style === null) {
-            cell.append(text);
-          } else {
-            const span = document.createElement("span");
-            span.className = style;
-            span.textContent = text;
-            cell.append(span);
-          }
-        }
+        this.fill(cell, at, column);
         row.append(cell);
       }
     });
     frame.append(table);
+    drawing.set(frame, this);
     return frame;
+  }
+  /** Draws a cell's text, aligned as its column. */
+  fill(cell: HTMLTableCellElement, row: number, column: number): void {
+    cell.style.textAlign = this.alignments[column] ?? "";
+    cell.replaceChildren(
+      ...(this.rows[row]?.[column] ?? []).map(({ text, style }) => {
+        if (style === null) return text;
+        const span = document.createElement("span");
+        span.className = style;
+        span.textContent = text;
+        return span;
+      }),
+    );
+  }
+  /**
+   * Draws the cells around one edited in place anew, that cell keeping its
+   * editor, while the table keeps its rows and columns.
+   */
+  override updateDOM(dom: HTMLElement): boolean {
+    const table = dom.querySelector("table");
+    if (!table?.querySelector(".cm-editor")) return false;
+    const rows = [...table.rows];
+    const columns = this.rows[0]?.length ?? 0;
+    if (
+      rows.length !== this.rows.length ||
+      rows.some((row) => row.cells.length !== columns)
+    ) {
+      return false;
+    }
+    // As typed in a cell, the other cells but rarely change.
+    const before = drawing.get(dom);
+    const same = (row: number, column: number) =>
+      before !== undefined &&
+      before.alignments[column] === this.alignments[column] &&
+      JSON.stringify(before.rows[row]?.[column]) ===
+        JSON.stringify(this.rows[row]?.[column]);
+    rows.forEach((row, at) => {
+      for (const cell of row.cells) {
+        const column = cell.cellIndex;
+        if (!cell.querySelector(".cm-editor") && !same(at, column)) {
+          this.fill(cell, at, column);
+        }
+      }
+    });
+    drawing.set(dom, this);
+    return true;
+  }
+  // A cell's editor goes with its table.
+  override destroy(dom: HTMLElement): void {
+    for (const element of dom.querySelectorAll<HTMLElement>(".cm-editor")) {
+      EditorView.findFromDOM(element)?.destroy();
+    }
   }
   override get estimatedHeight(): number {
     return this.rows.length * 42;
   }
-  // The editor takes its cells' taps and clicks, which show the table as
-  // written, and leaves the browser the rest, such as its scroll bar's.
+  // The editor takes its cells' taps and clicks, which edit them, and
+  // leaves the browser the rest, such as its scroll bar's, and a cell's
+  // editor its own.
   override ignoreEvent(event: Event): boolean {
-    return tableCell(event.target) === null;
+    return (
+      tableCell(event.target) === null ||
+      (event.target instanceof Element &&
+        event.target.closest(".cm-table .cm-editor") !== null)
+    );
   }
+}
+
+/** A field that `effect` sets, false at first. */
+function flag(effect: StateEffectType<boolean>): StateField<boolean> {
+  return StateField.define<boolean>({
+    create: () => false,
+    update: (value, transaction) =>
+      transaction.effects.reduce(
+        (set, one) => (one.is(effect) ? one.value : set),
+        value,
+      ),
+  });
 }
 
 const focused = StateEffect.define<boolean>();
 
 // Whether the editor has the focus, which a state field cannot ask the view.
-const hasFocus = StateField.define<boolean>({
-  create: () => false,
-  update: (value, transaction) =>
-    transaction.effects.reduce(
-      (has, effect) => (effect.is(focused) ? effect.value : has),
-      value,
-    ),
-});
+const hasFocus = flag(focused);
 
 /**
  * Tells `hasFocus` of the view's focus once it changes. CodeMirror's own
@@ -708,50 +777,383 @@ function tableCell(target: EventTarget | null): HTMLTableCellElement | null {
     : null;
 }
 
-/**
- * Shows the cell's table as written, the cursor at the end of the cell's
- * text and the focus in the editor, the cell's row staying where it was
- * on the screen, as far as the page scrolls.
- */
-function editCell(view: EditorView, cell: HTMLTableCellElement): void {
-  const frame = cell.closest(".cm-table");
+/** Where a cell drawn is in its table: its row, the head's first. */
+interface Place {
+  row: number;
+  column: number;
+}
+
+function placeOf(cell: HTMLTableCellElement): Place | null {
   const row = cell.parentElement;
-  if (!frame || !(row instanceof HTMLTableRowElement)) return;
+  return row instanceof HTMLTableRowElement
+    ? { row: row.rowIndex, column: cell.cellIndex }
+    : null;
+}
+
+/** The table drawn in `frame`, in the note's syntax tree. */
+function tableIn(view: EditorView, frame: Element): SyntaxNode | null {
   let node: SyntaxNode | null = syntaxTree(view.state).resolveInner(
     view.posAtDOM(frame),
     1,
   );
   while (node && node.name !== "Table") node = node.parent;
-  if (!node) return;
-  // The head's row is the table's first line, and the body's follow the
-  // delimiter row.
-  const line = tableRows(node)[row.rowIndex === 0 ? 0 : row.rowIndex + 1];
-  if (!line) return;
-  const stretch = cellsOf(view.state, line)[cell.cellIndex];
-  const head = stretch ? trimmed(view.state, stretch).to : line.to;
-  const top = row.getBoundingClientRect().top + window.scrollY;
-  // Focused at once, so that the table shows as written as the cursor
-  // moves, and the row is measured as it is then.
-  view.focus();
-  view.dispatch({ selection: { anchor: head }, effects: focused.of(true) });
-  view.requestMeasure({
-    read: () => pageTop(view, head) - top,
-    write: (shift) => {
-      if (Math.abs(shift) >= 1) window.scrollBy(0, shift);
-    },
-  });
+  return node;
+}
+
+/** A row's line in its table: the head's, or a body's after the delimiter row. */
+function rowOf(table: SyntaxNode, row: number): SyntaxNode | undefined {
+  return tableRows(table)[row === 0 ? 0 : row + 1];
+}
+
+/**
+ * A cell's text in the note, without the spaces around it: in a blank
+ * cell, after its first space, if any. None for a cell its row lacks.
+ */
+function cellText(
+  state: EditorState,
+  table: SyntaxNode,
+  { row, column }: Place,
+): Stretch | null {
+  const line = rowOf(table, row);
+  const cell = line && cellsOf(state, line)[column];
+  if (!cell) return null;
+  if (state.sliceDoc(cell.from, cell.to).trim()) return trimmed(state, cell);
+  const at = Math.min(cell.to, cell.from + 1);
+  return { from: at, to: at };
+}
+
+/** Extensions of a cell's editor: the note's language and styling. */
+export const cellSetup = Facet.define<Extension>();
+
+// A cell's edit, which the note already holds, or the note's, which the
+// cell already holds.
+const fromCell = Annotation.define<boolean>();
+const fromNote = Annotation.define<boolean>();
+
+const cellFocused = StateEffect.define<boolean>();
+
+// Whether a cell edited in place has the focus, rather than the note.
+const inCellField = flag(cellFocused);
+
+/** Whether a table's cell edited in place has the focus. */
+export function inCell(state: EditorState): boolean {
+  return state.field(inCellField, false) ?? false;
+}
+
+/** The editor of the table's cell edited in place, if any. */
+export function cellEditor(view: EditorView): EditorView | null {
+  return view.plugin(editingCells)?.editing?.cell ?? null;
+}
+
+/**
+ * The changes that keep a cell's text in its cell, as GFM and Lezer read a
+ * row, counting backslashes: a line break, which would end the row, turns
+ * into the viewer's `<br>`; a pipe after an even run of backslashes, which
+ * would end the cell, is escaped; and an odd run at the text's end, which
+ * would escape the pipe `after` it, takes a space.
+ */
+function keptInCell(text: string, after: string): ChangeSpec[] {
+  const fixes: ChangeSpec[] = [];
+  let escaped = false;
+  for (let at = 0; at < text.length; at++) {
+    const char = text[at];
+    if (char === "\n") fixes.push({ from: at, to: at + 1, insert: "<br>" });
+    else if (char === "|" && !escaped) fixes.push({ from: at, insert: "\\" });
+    escaped = !escaped && char === "\\";
+  }
+  if (escaped && after === "|") fixes.push({ from: text.length, insert: " " });
+  return fixes;
+}
+
+/** A cell edited in place, its editor, and its text's stretch in the note. */
+interface Editing extends Stretch {
+  cell: EditorView;
+  host: HTMLTableCellElement;
+}
+
+/**
+ * Edits a table's cells in place, as Obsidian does: a cell tapped or
+ * clicked takes an editor of its own, which shows its Markdown, the table
+ * drawn around it. Its edits are the note's, which holds the text and its
+ * history, so that undo takes them back as any other: a cell's editor
+ * holds its cell's text alone, which can thus never take or break a row.
+ * Tab moves to the next cell, Shift+Tab to the one before, Enter to the
+ * one below, and Escape shows the table as written.
+ */
+const editingCells = ViewPlugin.fromClass(
+  class {
+    editing: Editing | null = null;
+    readonly view: EditorView;
+    constructor(view: EditorView) {
+      this.view = view;
+    }
+    /**
+     * Edits a cell drawn, the cursor at its text's end, or the one edited
+     * where its cursor is. While Find in note is open, as for a cell its
+     * row lacks, shows its table as written, the cursor at the cell's end,
+     * or at the row's: a table shows so where Find in note's selection is.
+     */
+    open(host: HTMLTableCellElement): void {
+      const { editing, view } = this;
+      if (editing?.host === host) {
+        editing.cell.focus();
+        return;
+      }
+      const frame = host.closest(".cm-table");
+      const place = placeOf(host);
+      const table = frame && tableIn(view, frame);
+      if (!place || !table) return;
+      const text = cellText(view.state, table, place);
+      this.close();
+      if (!text || searchPanelOpen(view.state)) {
+        view.focus();
+        view.dispatch({
+          selection: {
+            anchor: text?.to ?? rowOf(table, place.row)?.to ?? table.to,
+          },
+        });
+        return;
+      }
+      const doc = view.state.sliceDoc(text.from, text.to);
+      host.replaceChildren();
+      host.classList.add("cm-cell-edited");
+      const cell: EditorView = new EditorView({
+        parent: host,
+        root: view.root instanceof ShadowRoot ? view.root : document,
+        state: EditorState.create({
+          doc,
+          selection: { anchor: doc.length },
+          extensions: this.setup(),
+        }),
+        dispatchTransactions: (transactions) => {
+          this.pass(cell, transactions);
+        },
+      });
+      this.editing = { cell, host, ...text };
+      cell.focus();
+      view.dispatch({
+        selection: { anchor: text.to },
+        effects: [focused.of(false), cellFocused.of(true)],
+      });
+    }
+    setup(): Extension {
+      const { view } = this;
+      return [
+        view.state.facet(cellSetup),
+        EditorState.transactionFilter.of((transaction) => {
+          const { editing } = this;
+          if (
+            !editing ||
+            !transaction.docChanged ||
+            transaction.annotation(fromNote)
+          ) {
+            return transaction;
+          }
+          const fixes = keptInCell(
+            transaction.newDoc.toString(),
+            view.state.sliceDoc(editing.to, editing.to + 1),
+          );
+          return fixes.length === 0
+            ? transaction
+            : [transaction, { changes: fixes, sequential: true }];
+        }),
+        keymap.of([
+          { key: "Tab", run: () => this.step(1), shift: () => this.step(-1) },
+          { key: "Enter", run: () => this.down() },
+          { key: "Escape", run: () => this.leave() },
+          // The note's history and Find in note.
+          ...historyKeymap.flatMap(({ run, ...binding }) =>
+            run ? [{ ...binding, run: () => run(view) }] : [],
+          ),
+          { key: "Mod-f", run: () => findInNote(view) },
+          ...defaultKeymap,
+        ]),
+        EditorView.contentAttributes.of({ "aria-label": "Cell" }),
+        EditorView.domEventHandlers({
+          blur: (_event, cell) => {
+            // Once the focus has gone where it goes, as to another cell.
+            queueMicrotask(() => {
+              if (this.editing?.cell === cell && !cell.hasFocus) this.close();
+            });
+          },
+        }),
+        // The note's, clear of the keyboard toolbar and the app bar.
+        EditorView.scrollMargins.of(() => margins(view)),
+        ViewPlugin.define((cell) => ({
+          destroy: () => {
+            this.closed(cell);
+          },
+        })),
+      ];
+    }
+    /** Makes a cell's edits, and its cursor, the note's. */
+    pass(cell: EditorView, transactions: readonly Transaction[]): void {
+      for (const transaction of transactions) {
+        cell.update([transaction]);
+        const { editing } = this;
+        if (
+          editing?.cell !== cell ||
+          transaction.annotation(fromNote) ||
+          (!transaction.docChanged && !transaction.selection)
+        ) {
+          continue;
+        }
+        const { from } = editing;
+        const changes: ChangeSpec[] = [];
+        transaction.changes.iterChanges((fromA, toA, _from, _to, text) => {
+          changes.push({
+            from: from + fromA,
+            to: from + toA,
+            insert: text.toString(),
+          });
+        });
+        const { anchor, head } = transaction.newSelection.main;
+        const userEvent = transaction.annotation(Transaction.userEvent);
+        this.view.dispatch({
+          changes,
+          selection: { anchor: from + anchor, head: from + head },
+          annotations: fromCell.of(true),
+          // A cursor moved in a cell scrolls the cell, not the note.
+          ...(transaction.docChanged && userEvent ? { userEvent } : {}),
+        });
+      }
+    }
+    update(update: ViewUpdate) {
+      const { editing } = this;
+      if (!editing || !update.docChanged) return;
+      editing.from = update.changes.mapPos(editing.from, -1);
+      editing.to = update.changes.mapPos(editing.to, 1);
+      const { cell } = editing;
+      const text = update.state.sliceDoc(editing.from, editing.to);
+      const passed = update.transactions.every((one) =>
+        one.annotation(fromCell),
+      );
+      if (passed && text === cell.state.sliceDoc()) return;
+      // Undone, redone or formatted in the note, as from the keyboard
+      // toolbar, or changed by the note's own filters: the cell shows its
+      // text and selection as they are now, unless the note's selection
+      // left it, or its text its cell. A line break ends its row, which
+      // draws the table anew.
+      const { anchor, head } = update.state.selection.main;
+      const within = (at: number) => at >= editing.from && at <= editing.to;
+      const after = update.state.sliceDoc(editing.to, editing.to + 1);
+      if (
+        !within(anchor) ||
+        !within(head) ||
+        keptInCell(text, after).length > 0
+      ) {
+        queueMicrotask(() => {
+          if (this.editing !== editing) return;
+          this.close();
+          this.view.focus();
+        });
+        return;
+      }
+      cell.dispatch({
+        changes: { from: 0, to: cell.state.doc.length, insert: text },
+        selection: { anchor: anchor - editing.from, head: head - editing.from },
+        annotations: fromNote.of(true),
+      });
+    }
+    /** Ends the editing of a cell, which shows drawn again. */
+    close(): void {
+      this.editing?.cell.destroy();
+    }
+    /** Once a cell's editor is gone, by its table's or by `close`. */
+    closed(cell: EditorView): void {
+      const { editing, view } = this;
+      if (editing?.cell !== cell) return;
+      this.editing = null;
+      const { host } = editing;
+      host.classList.remove("cm-cell-edited");
+      const frame = host.closest(".cm-table");
+      const place = placeOf(host);
+      if (frame && place)
+        drawing.get(frame)?.fill(host, place.row, place.column);
+      // Never within an update of the note's, nor once another cell is
+      // edited, as from Tab.
+      queueMicrotask(() => {
+        if (!this.editing && view.plugin(editingCells) && inCell(view.state)) {
+          view.dispatch({ effects: cellFocused.of(false) });
+        }
+      });
+    }
+    /** Edits the next cell of the table, or the one before, if any. */
+    step(by: 1 | -1): boolean {
+      return this.go((place, columns) => {
+        const at = place.row * columns + place.column + by;
+        return { row: Math.floor(at / columns), column: at % columns };
+      });
+    }
+    /** Edits the cell below, if any. */
+    down(): boolean {
+      return this.go((place) => ({ ...place, row: place.row + 1 }));
+    }
+    /**
+     * Edits the first cell the table's rows hold that `next` takes the
+     * cell edited to, from cell to cell; the key is taken either way.
+     */
+    go(next: (place: Place, columns: number) => Place): boolean {
+      const { editing, view } = this;
+      const frame = editing?.host.closest(".cm-table");
+      const table = frame?.querySelector("table");
+      let place = editing && placeOf(editing.host);
+      const node = frame && tableIn(view, frame);
+      if (!table || !place || !node) return true;
+      const columns = table.rows[0]?.cells.length ?? 1;
+      for (;;) {
+        place = next(place, columns);
+        const host = table.rows[place.row]?.cells[place.column];
+        if (!host || place.row < 0 || place.column < 0) return true;
+        if (cellText(view.state, node, place)) {
+          this.open(host);
+          return true;
+        }
+      }
+    }
+    /** Shows the table as written, the cursor where it was in the cell. */
+    leave(): boolean {
+      const { editing, view } = this;
+      if (!editing) return false;
+      const at = editing.from + editing.cell.state.selection.main.head;
+      this.close();
+      view.focus();
+      view.dispatch({ selection: { anchor: at } });
+      return true;
+    }
+    destroy() {
+      this.close();
+    }
+  },
+);
+
+/**
+ * The note's scroll margins, the widest on each side, as CodeMirror takes
+ * them: the keyboard toolbar's and the app bar's, and its panels'.
+ */
+function margins(view: EditorView): Partial<Rect> {
+  const all = view.state
+    .facet(EditorView.scrollMargins)
+    .map((marginOf) => marginOf(view) ?? {});
+  const widest = (side: keyof Rect) =>
+    Math.max(0, ...all.map((margin) => margin[side] ?? 0));
+  return {
+    top: widest("top"),
+    bottom: widest("bottom"),
+    left: widest("left"),
+    right: widest("right"),
+  };
 }
 
 // Where and when a finger pressed a table's cell, until it lifts.
 let cellPressed: Press | null = null;
 
 /**
- * A click on a table's cell, or a finger's tap, shows the table as
- * written, the cursor in that cell. A finger's tap does so as it lifts,
- * its end kept from the browser, which would place the cursor itself: in
- * WebKit, at the note's start. A finger that moves scrolls the table or
- * the page, and one that stays down as long as a long press is left to
- * the system.
+ * A click on a table's cell, or a finger's tap, edits that cell. A
+ * finger's tap does so as it lifts, its end kept from the browser, which
+ * would place the cursor itself: in WebKit, at the note's start. A finger
+ * that moves scrolls the table or the page, and one that stays down as
+ * long as a long press is left to the system.
  */
 const editingTables = EditorView.domEventHandlers({
   mousedown(event, view) {
@@ -760,7 +1162,7 @@ const editingTables = EditorView.domEventHandlers({
       event.shiftKey || event.metaKey || event.ctrlKey || event.altKey;
     if (!cell || event.button !== 0 || modified) return false;
     event.preventDefault();
-    editCell(view, cell);
+    view.plugin(editingCells)?.open(cell);
     return true;
   },
   touchstart(event) {
@@ -777,7 +1179,7 @@ const editingTables = EditorView.domEventHandlers({
     const cell = tableCell(event.target);
     if (!cell || !tapped(event, press)) return false;
     event.preventDefault();
-    editCell(view, cell);
+    view.plugin(editingCells)?.open(cell);
     return true;
   },
 });
@@ -838,6 +1240,25 @@ const LOOK = EditorView.theme({
     fontWeight: "500",
     lineHeight: "1.25rem",
   },
+  // A cell edited in place shows where the focus is on the cursor's line's
+  // color, with a text field's active indicator under its text, which
+  // starts at its edge, and its Markdown in the cell's own type.
+  ".cm-table .cm-cell-edited": {
+    backgroundColor: "var(--surface-container-low)",
+    boxShadow: "inset 0 -2px 0 var(--primary)",
+  },
+  ".cm-table .cm-editor": { outline: "none" },
+  ".cm-table .cm-scroller": {
+    fontFamily: "inherit",
+    lineHeight: "inherit",
+    overflow: "visible",
+  },
+  ".cm-table .cm-content": { padding: "0" },
+  ".cm-table .cm-line": { padding: "0" },
+  // Safari zooms in on a field whose text is smaller.
+  [`@media ${TOUCH}`]: {
+    ".cm-table th .cm-editor": { fontSize: "max(16px, 1em)" },
+  },
 });
 
 /**
@@ -857,6 +1278,8 @@ export const livePreview: Extension = [
   followingFocus,
   tables,
   editingTables,
+  inCellField,
+  editingCells,
   LOOK,
 ];
 

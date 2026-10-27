@@ -2243,6 +2243,14 @@ body:has(> .keyboard-toolbar) .editor {
   content: none;
 }
 
+/* A key off in a table's cell, as a disabled button, which would take the
+   focus from the cell. */
+.keyboard-toolbar button[aria-disabled="true"] {
+  background-image: none;
+  color: color-mix(in srgb, var(--on-surface) 38%, transparent);
+  cursor: default;
+}
+
 /* Find in note (docs/DESIGN.md, Find in note): over the source's top, under
    the app bar, from edge to edge of its sheet; on a phone, in the app bar's
    place. */

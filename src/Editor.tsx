@@ -56,7 +56,7 @@ import { KeyboardToolbar, TOOLBAR_HEIGHT } from "./KeyboardToolbar.tsx";
 import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
 import { useLayout, useTouch } from "./layout.ts";
-import { livePreview } from "./live-preview.ts";
+import { cellEditor, cellSetup, inCell, livePreview } from "./live-preview.ts";
 import { oneEditPerKey } from "./one-edit-per-key.ts";
 import { linkAt } from "./source-links.ts";
 import type { LineBreak } from "./text.ts";
@@ -221,12 +221,37 @@ function followLinks(follow: (href: string) => void): Extension {
   });
 }
 
+// Markdown's blocks, which a table's cell cannot hold: its text is inline.
+const BLOCKS = [
+  "ATXHeading",
+  "Blockquote",
+  "BulletList",
+  "FencedCode",
+  "HTMLBlock",
+  "HorizontalRule",
+  "IndentedCode",
+  "LinkReference",
+  "OrderedList",
+  "SetextHeading",
+  "Table",
+];
+
 // Visual or Source, which the editor switches between as it stays.
 const MODE = new Compartment();
 
 function inMode(visual: boolean): Extension {
   return visual
-    ? [livePreview, EditorView.contentAttributes.of({ "aria-label": "Note" })]
+    ? [
+        livePreview,
+        // A table's cell edited in place, in the source's light styling.
+        cellSetup.of([
+          markdown({ base: markdownLanguage, extensions: { remove: BLOCKS } }),
+          syntaxHighlighting(LIGHT),
+          syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+          oneEditPerKey,
+        ]),
+        EditorView.contentAttributes.of({ "aria-label": "Note" }),
+      ]
     : EditorView.contentAttributes.of({ "aria-label": "Markdown source" });
 }
 
@@ -328,6 +353,8 @@ export function Editor({
   const editor = useRef<EditorView | null>(null);
   const field = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
+  // Whether a table's cell edited in place has the focus.
+  const [cell, setCell] = useState(false);
   // The address of the link the cursor is in, which the toolbar follows.
   const [link, setLink] = useState<string>();
   // Find in note's query and matches, while it is open.
@@ -339,7 +366,12 @@ export function Editor({
   const opening = useEffectEvent(() => ({ initial, visual }));
   const edited = useEffectEvent((update: ViewUpdate) => {
     if (update.docChanged) onChange(update.state.sliceDoc());
-    if (update.focusChanged) setFocused(update.view.hasFocus);
+    // A table's cell edited in place has the focus for the note.
+    const celled = inCell(update.state);
+    if (update.focusChanged || celled !== inCell(update.startState)) {
+      setFocused(update.view.hasFocus || celled);
+      setCell(celled);
+    }
     if (update.docChanged || update.selectionSet) {
       setLink(linkAt(update.state, update.state.selection.main.head));
     }
@@ -486,6 +518,8 @@ export function Editor({
       {toolbar && (
         <KeyboardToolbar
           link={link}
+          inCell={cell}
+          // A cell edited in place follows what the keys do to its text.
           onCommand={(command) => {
             if (editor.current) command(editor.current);
           }}
@@ -495,7 +529,9 @@ export function Editor({
           // close, placed the cursor before it showed, where iOS scrolls it
           // above the keyboard only, under the toolbar.
           onSettle={(before) => {
-            const view = editor.current;
+            const note = editor.current;
+            // In a table's cell edited in place, the cell's own cursor.
+            const view = note && (cellEditor(note) ?? note);
             if (view && onScreen(view, before)) {
               view.dispatch({
                 effects: EditorView.scrollIntoView(view.state.selection.main),

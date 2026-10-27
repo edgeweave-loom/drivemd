@@ -293,7 +293,7 @@ test("draws a quote in Visual, a bar per level, its marks shown where the cursor
   );
 });
 
-test("draws a table in Visual, which a tap shows as written, the row staying under the finger", async ({
+test("draws a table in Visual, whose cell a tap edits in place, the table staying drawn", async ({
   page,
   drive,
 }, info) => {
@@ -304,7 +304,7 @@ test("draws a table in Visual, which a tap shows as written, the row staying und
   plan.content = [
     "# The plan\n\n",
     ...lines(1),
-    "\n| Step | **Owner** |\n| :--- | ---: |\n| Tea | Ada |\n| Cups | Grace |\n\n",
+    "\n| Step | **Owner** |\n| :--- | ---: |\n| Tea | _Ada_ |\n| Cups | Grace |\n\n",
     ...lines(31),
   ].join("");
   const note = await editInVisual(page);
@@ -338,25 +338,46 @@ test("draws a table in Visual, which a tap shows as written, the row staying und
   if (info.project.name === "desktop-chromium") await cell.click();
   else await cell.tap();
 
-  const row = note.locator(".cm-line").filter({ hasText: "| Tea |" });
-  await expect(table).toHaveCount(0);
-  await expect(row).toBeVisible();
-  // The row's top where the cell's was, as far as a pixel.
-  await expect
-    .poll(async () => (await row.boundingBox())?.y)
-    .toBeCloseTo(before, -0.5);
+  // The cell shows its Markdown, focused, in the table still drawn, which
+  // stays where it was.
+  const editing = note.getByRole("textbox", { name: "Cell" });
+  await expect(editing).toBeFocused();
+  await expect(editing).toHaveText("_Ada_");
+  await expect(table.getByRole("columnheader")).toHaveText(["Step", "Owner"]);
+  expect((await cell.boundingBox())?.y).toBeCloseTo(before, -0.5);
+  if (info.project.metadata.layout !== "wide") {
+    const keys = page.getByRole("toolbar", { name: "Formatting" });
+    await expect(keys.getByRole("button", { name: "Bold" })).toBeEnabled();
+    await expect(keys.getByRole("button", { name: "Heading" })).toBeDisabled();
+  }
 
   // Looked at, and written over nowhere: nothing to save.
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(drive.writes).toEqual([]);
 
-  // The cursor at the cell's end, where typing edits it alone.
+  // The cursor at the cell's end, where typing edits it alone, a pipe
+  // escaped; Tab edits the next cell.
+  await page.keyboard.type(" | Grace");
+  await expect(editing).toHaveText("_Ada_ \\| Grace");
+  await page.keyboard.press("Tab");
+  await expect(editing).toHaveText("Cups");
   await page.keyboard.type("!");
-  await expect(row).toHaveText("| Tea | Ada! |");
+  // The line above the table, which the screen still shows.
+  const line = note.locator(".cm-line").filter({ hasText: "Line 30." });
+  if (info.project.name === "desktop-chromium") await line.click();
+  else await line.tap();
+  await expect(editing).toHaveCount(0);
+  await expect(table.getByRole("cell")).toHaveText([
+    "Tea",
+    "Ada | Grace",
+    "Cups!",
+    "Grace",
+  ]);
+
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("plan")?.content)).toContain(
-    "\n| Step | **Owner** |\n| :--- | ---: |\n| Tea | Ada! |\n| Cups | Grace |\n\n",
+    "\n| Step | **Owner** |\n| :--- | ---: |\n| Tea | _Ada_ \\| Grace |\n| Cups! | Grace |\n\n",
   );
 });
 
