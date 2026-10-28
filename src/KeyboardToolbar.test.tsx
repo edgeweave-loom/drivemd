@@ -237,7 +237,7 @@ describe("the keyboard toolbar", () => {
     tap("Undo");
     expect(view.state.sliceDoc()).toBe(text);
     // Off, but still keeping the focus where it is, and the keyboard up.
-    for (const name of ["Heading", "List", "Checkbox", "Indent", "Outdent"]) {
+    for (const name of ["Heading", "List", "Checkbox"]) {
       const key = screen.getByRole("button", { name });
       expect(key).toHaveAttribute("aria-disabled", "true");
       expect(fireEvent.mouseDown(key)).toBe(false);
@@ -260,6 +260,63 @@ describe("the keyboard toolbar", () => {
     });
     tap("Open link");
     expect(onFollow).toHaveBeenCalledExactlyOnceWith("plan.md");
+  });
+
+  it("moves from cell to cell with Indent and Outdent, and edits the table from the Table key's menu, the focus staying", async () => {
+    holdTouch(true);
+    const view = open("| Tea | Cups |\n| - | - |\n| 1 | 2 |", undefined, true);
+    const edited = () => {
+      const element = view.contentDOM.querySelector<HTMLElement>(
+        ".cm-table .cm-editor",
+      );
+      return element && EditorView.findFromDOM(element);
+    };
+    fireEvent.mouseDown(view.contentDOM.querySelectorAll("td")[0] ?? document);
+    await screen.findByRole("toolbar", { name: "Formatting" });
+    expect(screen.queryByRole("button", { name: "Indent" })).toBeNull();
+
+    tap("Next cell");
+    expect(edited()?.state.sliceDoc()).toBe("2");
+    expect(edited()?.hasFocus).toBe(true);
+    tap("Previous cell");
+    expect(edited()?.state.sliceDoc()).toBe("1");
+
+    // The menu's first key, which keeps the focus, and the keyboard up.
+    const key = screen.getByRole("button", { name: "Table" });
+    expect(toolbar()?.querySelector("button")).toBe(key);
+    expect(key).toHaveAttribute("aria-haspopup", "menu");
+    expect(fireEvent.mouseDown(key)).toBe(false);
+    tap("Table");
+    const menu = screen.getByRole("menu", { name: "Table" });
+    const item = screen.getByRole("menuitem", {
+      name: "Add column to the left",
+    });
+    expect(item).not.toHaveFocus();
+    expect(fireEvent.mouseDown(item)).toBe(false);
+    fireEvent.click(item);
+
+    expect(view.state.sliceDoc()).toBe(
+      "|  | Tea | Cups |\n| --- | - | - |\n|  | 1 | 2 |",
+    );
+    expect(menu).not.toBeVisible();
+    expect(edited()?.state.sliceDoc()).toBe("");
+    expect(edited()?.hasFocus).toBe(true);
+    tap("Table");
+    tap("Table");
+    expect(menu).not.toBeVisible();
+    expect(edited()?.hasFocus).toBe(true);
+    // Its cell left, it closes, its items being that cell's.
+    tap("Table");
+    tap("Next cell");
+    expect(menu).not.toBeVisible();
+    expect(edited()?.state.sliceDoc()).toBe("1");
+  });
+
+  it("keeps the Table key to a table's cells", async () => {
+    await editing("| Tea |\n| - |");
+
+    expect(screen.queryByRole("button", { name: "Table" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Indent" })).toBeVisible();
   });
 
   it("finds text in the note, its field taking the focus within the tap", async () => {

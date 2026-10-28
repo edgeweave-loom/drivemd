@@ -473,6 +473,99 @@ test("moves through a table's cells with the arrows, and adds rows past its end"
   );
 });
 
+test("edits a table's rows and columns from its menu, a right-click's or the Table key's", async ({
+  page,
+  drive,
+}, info) => {
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content =
+    "# The plan\n\n| Step | Owner |\n| --- | --- |\n| Tea | Ada |\n| Cups | Grace |\n\nNotes.\n";
+  const note = await editInVisual(page);
+  const table = note.getByRole("table");
+  const editing = note.getByRole("textbox", { name: "Cell" });
+  const menu = page.getByRole("menu", { name: "Table" });
+  const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+  const mouse = info.project.name === "desktop-chromium";
+  const ada = table.getByRole("cell", { name: "Ada" });
+
+  if (mouse) {
+    await ada.click({ button: "right" });
+    await expect(menu).toBeVisible();
+    await expect(editing).toHaveText("Ada");
+    await expect(
+      menu.getByRole("menuitem", { name: "Add row above" }),
+    ).toBeFocused();
+  } else {
+    await ada.tap();
+    await expect(editing).toBeFocused();
+    const key = toolbar.getByRole("button", { name: "Table" });
+    await expect(toolbar.getByRole("button").first()).toHaveAccessibleName(
+      "Table",
+    );
+    await key.click();
+    await expect(menu).toBeVisible();
+    // Above the key, on the screen, the cell keeping the focus, and the
+    // keyboard.
+    const [shown, bar] = await Promise.all([
+      menu.boundingBox(),
+      toolbar.boundingBox(),
+    ]);
+    if (!shown || !bar) throw new Error("Not laid out");
+    expect(shown.y).toBeGreaterThanOrEqual(0);
+    expect(shown.y + shown.height).toBeLessThanOrEqual(bar.y + 1);
+    await expect(editing).toBeFocused();
+  }
+  const pick = async (name: string) => {
+    if (!(await menu.isVisible())) {
+      if (mouse) await editing.click({ button: "right" });
+      else await toolbar.getByRole("button", { name: "Table" }).click();
+    }
+    await menu
+      .getByRole(name.startsWith("Align") ? "menuitemradio" : "menuitem", {
+        name,
+      })
+      .click();
+    await expect(menu).toBeHidden();
+    await expect(editing).toBeFocused();
+  };
+  await menu.getByRole("menuitem", { name: "Add column to the left" }).click();
+  await expect(menu).toBeHidden();
+  await expect(editing).toBeFocused();
+  await expect(editing).toHaveText("");
+  await page.keyboard.type("2");
+  await pick("Align center");
+  await expect(table.getByRole("columnheader").nth(1)).toHaveCSS(
+    "text-align",
+    "center",
+  );
+  await pick("Move row down");
+  await expect(editing).toHaveText("2");
+  if (mouse) {
+    // From the keyboard too, and Escape gives the cell the focus back.
+    await page.keyboard.press("Shift+F10");
+    await expect(menu).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect(editing).toBeFocused();
+  } else if (info.project.name === "ipad-webkit") {
+    // A trackpad's right-click, which WebKit asks the menu for as the press
+    // starts, and would close it as it ends.
+    await table.getByRole("cell", { name: "Grace" }).click({ button: "right" });
+    await expect(menu).toBeVisible();
+    await expect(editing).toHaveText("Grace");
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect(editing).toBeFocused();
+  }
+
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("plan")?.content)).toBe(
+    "# The plan\n\n| Step |  | Owner |\n| --- | :-: | --- |\n| Cups |  | Grace |\n| Tea | 2 | Ada |\n\nNotes.\n",
+  );
+});
+
 test("scrolls the cell a key moves to into view, sideways too", async ({
   page,
   drive,

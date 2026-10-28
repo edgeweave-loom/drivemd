@@ -15,6 +15,7 @@ import {
   toggleBold,
   toggleList,
 } from "./formatting.ts";
+import { stepCell } from "./live-preview.ts";
 import { keepRoom, keepVisible } from "./visual-viewport.ts";
 
 /** The toolbar's height, which the editor keeps clear of the cursor. */
@@ -26,6 +27,8 @@ const KEYS: {
   icon: IconName;
   /** Whether it changes the lines the cursor is on, which a cell lacks. */
   lines?: true;
+  /** What it does in a table's cell edited in place instead. */
+  inCell?: { name: string; command: Command };
 }[] = [
   {
     name: "Undo",
@@ -70,12 +73,14 @@ const KEYS: {
     command: indentLines,
     icon: "format_indent_increase",
     lines: true,
+    inCell: { name: "Next cell", command: stepCell(1) },
   },
   {
     name: "Outdent",
     command: outdentLines,
     icon: "format_indent_decrease",
     lines: true,
+    inCell: { name: "Previous cell", command: stepCell(-1) },
   },
   {
     name: "Find in note",
@@ -90,11 +95,14 @@ const KEYS: {
  * for Markdown. The keys never take the focus, so the keyboard stays. In a
  * link, Link opens it instead, as nothing else does from a touch screen.
  * In a table's cell edited in place, the keys of lines are off: their marks
- * would break its row.
+ * would break its row. There, Indent and Outdent move to the next cell and
+ * the one before, as Tab and Shift+Tab, and a Table key opens the table's
+ * menu, `tableMenu`, above it.
  */
 export function KeyboardToolbar({
   link,
   inCell = false,
+  tableMenu,
   onCommand,
   onFollow,
   onSettle,
@@ -103,6 +111,8 @@ export function KeyboardToolbar({
   link: string | undefined;
   /** Whether the cursor is in a table's cell edited in place. */
   inCell?: boolean;
+  /** The table's menu's id, which the Table key opens in a cell. */
+  tableMenu?: string;
   onCommand: (command: Command) => void;
   onFollow: (href: string) => void;
   /**
@@ -134,20 +144,32 @@ export function KeyboardToolbar({
       aria-label="Formatting"
       className="keyboard-toolbar"
     >
-      {KEYS.map(({ name, command, icon, lines }) => {
+      {inCell && tableMenu !== undefined && (
+        <button
+          type="button"
+          aria-label="Table"
+          aria-haspopup="menu"
+          popoverTarget={tableMenu}
+          onMouseDown={keepFocus}
+        >
+          <Icon name="table_edit" />
+        </button>
+      )}
+      {KEYS.map(({ name, command, icon, lines, inCell: celled }) => {
         const follows = command === insertLink ? link : undefined;
+        const key = (inCell ? celled : undefined) ?? { name, command };
         // Off, but still kept from taking the focus, and the keyboard down.
-        const off = inCell && lines;
+        const off = inCell && lines && !celled;
         return (
           <button
             key={name}
             type="button"
-            aria-label={follows === undefined ? name : "Open link"}
+            aria-label={follows === undefined ? key.name : "Open link"}
             aria-disabled={off ? true : undefined}
             onMouseDown={keepFocus}
             onClick={() => {
               if (off) return;
-              if (follows === undefined) onCommand(command);
+              if (follows === undefined) onCommand(key.command);
               else onFollow(follows);
             }}
           >

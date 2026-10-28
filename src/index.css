@@ -671,6 +671,31 @@ button.account {
   }
 }
 
+/* A table's menu (docs/DESIGN.md, Table menu): at a right-click, or above
+   the keyboard toolbar's Table key, scrolling where its room is short, and
+   dense under a mouse, since it is long. */
+.table-menu {
+  inset: auto;
+  margin: 0;
+  overflow-y: auto;
+}
+
+@media (pointer: fine) {
+  .table-menu > button {
+    min-height: 32px;
+  }
+}
+
+.table-menu > [aria-checked="true"] {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+.table-menu > [aria-disabled="true"] {
+  color: color-mix(in srgb, var(--on-surface) 38%, transparent);
+  cursor: default;
+}
+
 .account-menu,
 .actions-menu {
   inset: calc(var(--app-bar-height) + env(safe-area-inset-top) - var(--space-2))
