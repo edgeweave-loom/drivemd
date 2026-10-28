@@ -440,13 +440,10 @@ const ticking = EditorView.domEventHandlers({
 });
 
 /**
- * A part of a cell's text, drawn in the editor's highlighting, a line
- * break in it standing for a tag such as `<br>`.
+ * A part of a cell's text, drawn in the editor's highlighting, or null for
+ * a line break, which a tag such as `<br>` draws.
  */
-interface Part {
-  text: string;
-  style: string | null;
-}
+type Part = { text: string; style: string | null } | null;
 
 type Alignment = "left" | "right" | "center" | null;
 
@@ -496,21 +493,14 @@ class Table extends WidgetType {
   fill(cell: HTMLTableCellElement, row: number, column: number): void {
     cell.style.textAlign = this.alignments[column] ?? "";
     cell.replaceChildren(
-      ...(this.rows[row]?.[column] ?? []).flatMap(
-        ({ text, style }): (Node | string)[] => {
-          if (style === null) {
-            return text
-              .split("\n")
-              .flatMap((line, at) =>
-                at === 0 ? [line] : [document.createElement("br"), line],
-              );
-          }
-          const span = document.createElement("span");
-          span.className = style;
-          span.textContent = text;
-          return [span];
-        },
-      ),
+      ...(this.rows[row]?.[column] ?? []).map((part) => {
+        if (part === null) return document.createElement("br");
+        if (part.style === null) return part.text;
+        const span = document.createElement("span");
+        span.className = part.style;
+        span.textContent = part.text;
+        return span;
+      }),
     );
   }
   /**
@@ -785,13 +775,14 @@ function parts(state: EditorState, { from, to }: Stretch): Part[] {
   const result: Part[] = [];
   sorted.slice(1).forEach((end, at) => {
     const start = sorted[at] ?? from;
-    const broken = breaks.has(start);
+    if (breaks.has(start)) {
+      result.push(null);
+      return;
+    }
     const covers = (range: Stretch) => range.from <= start && range.to >= end;
-    if (!broken && hidden.some(covers)) return;
-    // Only text without a style draws its line breaks, and a tag drawn
-    // before CodeMirror parses the HTML in it takes the style around it.
-    const style = broken ? null : (styled.find(covers)?.style ?? null);
-    const text = broken ? "\n" : state.sliceDoc(start, end);
+    if (hidden.some(covers)) return;
+    const style = styled.find(covers)?.style ?? null;
+    const text = state.sliceDoc(start, end);
     const previous = result.at(-1);
     if (previous?.style === style) previous.text += text;
     else result.push({ text, style });
@@ -888,7 +879,8 @@ export function cellEditor(view: EditorView): EditorView | null {
 /**
  * The changes that keep a cell's text in its cell, as GFM and Lezer read a
  * row, counting backslashes: a line break, which would end the row, turns
- * into the viewer's `<br>`; a pipe after an even run of backslashes, which
+ * into the viewer's `<br>`, after a space past an odd run of backslashes,
+ * which would escape its `<`; a pipe after an even run, which
  * would end the cell, is escaped; and an odd run at the text's end, which
  * would escape the pipe `after` it, takes a space.
  */
@@ -897,8 +889,11 @@ function keptInCell(text: string, after: string): ChangeSpec[] {
   let escaped = false;
   for (let at = 0; at < text.length; at++) {
     const char = text[at];
-    if (char === "\n") fixes.push({ from: at, to: at + 1, insert: "<br>" });
-    else if (char === "|" && !escaped) fixes.push({ from: at, insert: "\\" });
+    if (char === "\n") {
+      fixes.push({ from: at, to: at + 1, insert: escaped ? " <br>" : "<br>" });
+    } else if (char === "|" && !escaped) {
+      fixes.push({ from: at, insert: "\\" });
+    }
     escaped = !escaped && char === "\\";
   }
   if (escaped && after === "|") fixes.push({ from: text.length, insert: " " });

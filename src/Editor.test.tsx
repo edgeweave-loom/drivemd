@@ -1151,6 +1151,21 @@ describe("Visual's tables", () => {
     );
   });
 
+  it("keeps a backslash from escaping the <br> of a line break after it", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "Ada");
+
+    type(cell, "\\");
+    pressed(view, "Enter", { shiftKey: true });
+    // An even run of backslashes escapes nothing.
+    type(cell, "x\\\\\ny");
+
+    expect(cell.state.sliceDoc()).toBe("_Ada_\\ <br>x\\\\<br>y");
+    pressed(view, "Tab");
+    expect(cells(view)[1]?.[1]).toBe("Ada\\ \nx\\\ny");
+  });
+
   it("never lets a backslash take a pipe out of its place, as GFM counts them", async () => {
     const { view } = open("|a|b|\n|-|-|\n| Boil \\| pour | 1 |", "\n", true);
     await parsed(view);
