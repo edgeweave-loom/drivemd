@@ -439,11 +439,11 @@ const ticking = EditorView.domEventHandlers({
   },
 });
 
-/** A part of a cell's text, drawn in the editor's highlighting. */
-interface Part {
-  text: string;
-  style: string | null;
-}
+/**
+ * A part of a cell's text, drawn in the editor's highlighting, or null for
+ * a line break, which a tag such as `<br>` draws.
+ */
+type Part = { text: string; style: string | null } | null;
 
 type Alignment = "left" | "right" | "center" | null;
 
@@ -493,11 +493,12 @@ class Table extends WidgetType {
   fill(cell: HTMLTableCellElement, row: number, column: number): void {
     cell.style.textAlign = this.alignments[column] ?? "";
     cell.replaceChildren(
-      ...(this.rows[row]?.[column] ?? []).map(({ text, style }) => {
-        if (style === null) return text;
+      ...(this.rows[row]?.[column] ?? []).map((part) => {
+        if (part === null) return document.createElement("br");
+        if (part.style === null) return part.text;
         const span = document.createElement("span");
-        span.className = style;
-        span.textContent = text;
+        span.className = part.style;
+        span.textContent = part.text;
         return span;
       }),
     );
@@ -723,19 +724,32 @@ function alignments(delimiter: string): Alignment[] {
     });
 }
 
+// A tag that the viewer draws as a line break, as `<br>`, `<br />` or
+// `</br>`.
+const LINE_BREAK = /^<\/?br[\s/>]/i;
+
 /**
  * A cell's text in the editor's highlighting, its symbols hidden as Visual
- * hides them, and an escape's backslash too, as the viewer does, so that
- * an escaped pipe shows in its cell.
+ * hides them, and as the viewer does, an escape's backslash, so that an
+ * escaped pipe shows in its cell, and a tag such as `<br>` a line break,
+ * which no row can hold otherwise.
  */
 function parts(state: EditorState, { from, to }: Stretch): Part[] {
   const hidden: Stretch[] = [];
+  const breaks = new Set<number>();
   syntaxTree(state).iterate({
     from,
     to,
     enter: (node) => {
       if (node.name === "Escape") {
         hidden.push({ from: node.from, to: node.from + 1 });
+      }
+      if (
+        node.name === "HTMLTag" &&
+        LINE_BREAK.test(state.sliceDoc(node.from, node.to))
+      ) {
+        hidden.push({ from: node.from, to: node.to });
+        breaks.add(node.from);
       }
       for (const symbol of symbols(state, node)) {
         if (symbol.value === HIDDEN) hidden.push(symbol);
@@ -761,10 +775,13 @@ function parts(state: EditorState, { from, to }: Stretch): Part[] {
   const result: Part[] = [];
   sorted.slice(1).forEach((end, at) => {
     const start = sorted[at] ?? from;
-    if (hidden.some((range) => range.from <= start && range.to >= end)) return;
-    const style =
-      styled.find((range) => range.from <= start && range.to >= end)?.style ??
-      null;
+    if (breaks.has(start)) {
+      result.push(null);
+      return;
+    }
+    const covers = (range: Stretch) => range.from <= start && range.to >= end;
+    if (hidden.some(covers)) return;
+    const style = styled.find(covers)?.style ?? null;
     const text = state.sliceDoc(start, end);
     const previous = result.at(-1);
     if (previous?.style === style) previous.text += text;
@@ -862,7 +879,8 @@ export function cellEditor(view: EditorView): EditorView | null {
 /**
  * The changes that keep a cell's text in its cell, as GFM and Lezer read a
  * row, counting backslashes: a line break, which would end the row, turns
- * into the viewer's `<br>`; a pipe after an even run of backslashes, which
+ * into the viewer's `<br>`, after a space past an odd run of backslashes,
+ * which would escape its `<`; a pipe after an even run, which
  * would end the cell, is escaped; and an odd run at the text's end, which
  * would escape the pipe `after` it, takes a space.
  */
@@ -871,8 +889,11 @@ function keptInCell(text: string, after: string): ChangeSpec[] {
   let escaped = false;
   for (let at = 0; at < text.length; at++) {
     const char = text[at];
-    if (char === "\n") fixes.push({ from: at, to: at + 1, insert: "<br>" });
-    else if (char === "|" && !escaped) fixes.push({ from: at, insert: "\\" });
+    if (char === "\n") {
+      fixes.push({ from: at, to: at + 1, insert: escaped ? " <br>" : "<br>" });
+    } else if (char === "|" && !escaped) {
+      fixes.push({ from: at, insert: "\\" });
+    }
     escaped = !escaped && char === "\\";
   }
   if (escaped && after === "|") fixes.push({ from: text.length, insert: " " });

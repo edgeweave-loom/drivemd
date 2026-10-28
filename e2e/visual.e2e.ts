@@ -447,8 +447,9 @@ test("moves through a table's cells with the arrows, and adds rows past its end"
   await expect(editing).toHaveText("1");
   await page.keyboard.type("0");
 
-  // Tab past the last cell adds a row; Shift+Enter writes <br>; Enter on
-  // the last row adds another, in the same column.
+  // Tab past the last cell adds a row; Shift+Enter writes <br>, which the
+  // cell left draws as a line break; Enter on the last row adds another
+  // row, in the same column.
   await page.keyboard.press("Tab");
   await expect(editing).toBeFocused();
   await expect(editing).toHaveText("");
@@ -460,6 +461,10 @@ test("moves through a table's cells with the arrows, and adds rows past its end"
   await expect(editing).toHaveText("");
   await page.keyboard.type("Sugar");
   await expect(table.getByRole("row")).toHaveCount(5);
+  const milk = table.getByRole("row").nth(3).getByRole("cell").first();
+  await expect
+    .poll(() => milk.evaluate((cell: HTMLElement) => cell.innerText))
+    .toBe("Milk\noat");
 
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();

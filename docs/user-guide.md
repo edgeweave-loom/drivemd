@@ -108,7 +108,7 @@ The device remembers whether you last chose Visual or Source, and opens the edit
 While editing:
 
 - **Enter** continues a list or a task list.
-- In a table's cell, in Visual, **Tab** moves to the next cell, **Shift+Tab** to the one before, and **Enter** to the one below; **Tab** in the last cell, and **Enter** with no cell below, add a row. The arrow keys move from cell to cell, and out of the table at its edges; from the line above or below a table, they move into its cells. **Shift+Enter** starts a new line in the cell, written `<br>`, and **Escape** shows the table's Markdown. A `|` you type is written `\|`, so that it stays in its cell.
+- In a table's cell, in Visual, **Tab** moves to the next cell, **Shift+Tab** to the one before, and **Enter** to the one below; **Tab** in the last cell, and **Enter** with no cell below, add a row. The arrow keys move from cell to cell, and out of the table at its edges; from the line above or below a table, they move into its cells. **Shift+Enter** starts a new line in the cell, written `<br>`, which the table shows as a new line once you leave the cell; on a phone, type `<br>`. **Escape** shows the table's Markdown. A `|` you type is written `\|`, so that it stays in its cell.
 - **Find in note**, from Cmd/Ctrl+F or the keyboard toolbar, counts the matches, steps through them, matches case, whole words or a regular expression, and replaces one match or all of them.
 - **Cmd/Ctrl+click** on a link opens it.
 - To finish, pick **Viewing** on a computer or a tablet, or tap the check in Back's place on a phone: both save first.
