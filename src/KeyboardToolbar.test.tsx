@@ -305,6 +305,11 @@ describe("the keyboard toolbar", () => {
     tap("Table");
     expect(menu).not.toBeVisible();
     expect(edited()?.hasFocus).toBe(true);
+    // Its cell left, it closes, its items being that cell's.
+    tap("Table");
+    tap("Next cell");
+    expect(menu).not.toBeVisible();
+    expect(edited()?.state.sliceDoc()).toBe("1");
   });
 
   it("keeps the Table key to a table's cells", async () => {

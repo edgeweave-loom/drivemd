@@ -63,10 +63,11 @@ import {
   inCell,
   livePreview,
   tableMenu,
+  type TableMenuControl,
 } from "./live-preview.ts";
 import { oneEditPerKey } from "./one-edit-per-key.ts";
 import { linkAt } from "./source-links.ts";
-import { TableMenu, type TableMenuHandle } from "./TableMenu.tsx";
+import { TableMenu } from "./TableMenu.tsx";
 import type { LineBreak } from "./text.ts";
 import { keepVisible } from "./visual-viewport.ts";
 
@@ -269,7 +270,7 @@ function extensions(
   changed: (update: ViewUpdate) => void,
   follow: (href: string) => void,
   clearance: () => { top: number; bottom: number } | null,
-  menuAt: (x: number, y: number) => void,
+  menu: TableMenuControl,
 ): Extension[] {
   return [
     // Lines join with the file's own break, whatever the browser sends.
@@ -311,7 +312,7 @@ function extensions(
     EditorView.updateListener.of(changed),
     followLinks(follow),
     // A right-click on a table's cell in Visual opens its menu.
-    tableMenu.of(menuAt),
+    tableMenu.of(menu),
     // The cursor stays clear of the keyboard toolbar and the app bar when
     // the editor scrolls to it.
     EditorView.scrollMargins.of(clearance),
@@ -452,10 +453,7 @@ export function Editor({
     onFollow(href);
   });
   const menuId = useId();
-  const menu = useRef<TableMenuHandle>(null);
-  const menuAt = useEffectEvent((x: number, y: number) => {
-    menu.current?.openAt(x, y);
-  });
+  const menu = useRef<TableMenuControl>(null);
 
   useEffect(() => {
     const element = host.current;
@@ -465,14 +463,14 @@ export function Editor({
       element,
       EditorState.create({
         doc: initial,
-        extensions: extensions(
-          lineBreak,
-          visual,
-          edited,
-          followed,
-          clearance,
-          menuAt,
-        ),
+        extensions: extensions(lineBreak, visual, edited, followed, clearance, {
+          openAt: (x, y) => {
+            menu.current?.openAt(x, y);
+          },
+          close: () => {
+            menu.current?.close();
+          },
+        }),
       }),
     );
     editor.current = view;

@@ -958,48 +958,71 @@ function withCell(line: Written, at: number, cell: string): string {
 }
 
 /**
- * A line without its `at`th cell and a pipe beside it. A cell left alone
- * takes a pipe on each edge, without which its line would be no row, or
- * its table no table.
+ * A line without its `at`th cell and a pipe beside it. A cell left at an
+ * edge without its pipe takes it, at a line's start, where its text could
+ * start a list, a heading or a quote, or at its end where empty; a cell
+ * left alone pipes on both, without which its line would be no row, or its
+ * table no table.
  */
 function withoutCell(line: Written, at: number): string {
   const { text, cells, texts, lead, trail } = line;
-  const [gone, next, before] = [cells[at], texts[at + 1], cells[at - 1]];
-  let left: string;
-  if (gone && next) {
-    // Up to the next cell, past its pipe, or at the line's start, its text.
-    left =
-      at > 0 || lead
-        ? text.slice(0, gone.from) + text.slice(gone.to + 1)
-        : text.slice(next.from);
-  } else if (gone && before) {
-    left = text.slice(0, before.to) + text.slice(gone.to);
-  } else {
-    return "|  |";
+  if (cells.length === 1) return "|  |";
+  if (cells.length === 2 && !(lead && trail)) {
+    const kept = texts[1 - at];
+    return `| ${kept ? text.slice(kept.from, kept.to) : ""} |`;
   }
-  if (cells.length > 2) return left;
-  return `${lead ? "" : "| "}${trail ? left : `${left.trimEnd()} |`}`;
+  const [gone, before] = [cells[at], texts[at - 1]];
+  if (!gone) return text;
+  if (cells[at + 1]) {
+    // Up to the next cell, past its pipe, or at the line's start, from the
+    // pipe after it, which then leads the line.
+    return at > 0 || lead
+      ? text.slice(0, gone.from) + text.slice(gone.to + 1)
+      : text.slice(gone.to);
+  }
+  // From the pipe before it.
+  return (
+    text.slice(0, gone.from - 1) +
+    (!trail && before && before.from === before.to ? "|" : text.slice(gone.to))
+  );
 }
 
 /**
  * A line with its `at`th cell and the next one trading places, each with
- * the spaces around it, which a padded table's columns keep; at an edge
- * without its pipe, their texts alone.
+ * the spaces around it, which a padded table's columns keep. At an edge
+ * without its pipe, their texts alone trade places, a space apart from
+ * the pipes, so that a backslash ending one escapes none; one coming to
+ * the line's start takes the pipe before it, and an empty one at its end
+ * the pipe after it.
  */
 function swapped(line: Written, at: number): string {
-  const { text, lead, trail } = line;
-  const edge = (at === 0 && !lead) || (at + 2 === line.cells.length && !trail);
-  const [one, other] = edge
-    ? [line.texts[at], line.texts[at + 1]]
-    : [line.cells[at], line.cells[at + 1]];
-  if (!one || !other) return text;
-  return [
-    text.slice(0, one.from),
-    text.slice(other.from, other.to),
-    text.slice(one.to, other.from),
-    text.slice(one.from, one.to),
-    text.slice(other.to),
-  ].join("");
+  const { text, cells, texts, lead, trail } = line;
+  const [one, other, first, second] = [
+    cells[at],
+    cells[at + 1],
+    texts[at],
+    texts[at + 1],
+  ];
+  if (!one || !other || !first || !second) return text;
+  const start = at === 0 && !lead;
+  const end = at + 2 === cells.length && !trail;
+  if (!start && !end) {
+    return [
+      text.slice(0, one.from),
+      text.slice(other.from, other.to),
+      text.slice(one.to, other.from),
+      text.slice(one.from, one.to),
+      text.slice(other.to),
+    ].join("");
+  }
+  const [was, now] = [
+    text.slice(first.from, first.to),
+    text.slice(second.from, second.to),
+  ];
+  if (was === now) return text;
+  const before = `${start ? "|" : ""} ${now} `;
+  const after = end ? (was ? ` ${was}` : "  |") : ` ${was} `;
+  return `${text.slice(0, one.from)}${before}|${after}${text.slice(other.to)}`;
 }
 
 /** A delimiter row's cell's marks for `alignment`, as wide as they were. */
@@ -1171,15 +1194,37 @@ export function cellEditor(view: EditorView): EditorView | null {
   return view.plugin(editingCells)?.editing?.cell ?? null;
 }
 
-/** Opens the table's menu at a point, for the cell edited in place. */
+/** The table's menu: opened at a point, for the cell edited in place. */
+export interface TableMenuControl {
+  openAt: (x: number, y: number) => void;
+  close: () => void;
+}
+
 export const tableMenu = Facet.define<
-  (x: number, y: number) => void,
-  ((x: number, y: number) => void) | undefined
+  TableMenuControl,
+  TableMenuControl | undefined
 >({ combine: (values) => values[0] });
 
 /** The table's menu for the cell edited in place, if any. */
 export function tableMenuOf(view: EditorView): CellMenu | null {
-  return view.plugin(editingCells)?.menu() ?? null;
+  const at = view.plugin(editingCells)?.where();
+  return at ? cellMenu(view.state, at) : null;
+}
+
+/** The table's menu for a cell of a table drawn in `frame`. */
+function cellMenu(
+  state: EditorState,
+  { place, frame, table }: { place: Place; frame: Element; table: SyntaxNode },
+): CellMenu {
+  const lines = tableRows(table);
+  return {
+    edits: editsAt(
+      place,
+      lines.length - 1,
+      lines[0] ? cellsOf(state, lines[0]).length : 0,
+    ),
+    alignment: drawing.get(frame)?.alignments[place.column] ?? null,
+  };
 }
 
 /**
@@ -1283,6 +1328,8 @@ const editingCells = ViewPlugin.fromClass(
     editing: Editing | null = null;
     // Whether the table's menu has the focus, the cell edited staying so.
     holding = false;
+    // The press whose end the table's menu waits for.
+    pressing: AbortController | null = null;
     readonly view: EditorView;
     constructor(view: EditorView) {
       this.view = view;
@@ -1536,6 +1583,9 @@ const editingCells = ViewPlugin.fromClass(
       const place = placeOf(host);
       if (frame && place)
         drawing.get(frame)?.fill(host, place.row, place.column);
+      // Its menu, which would edit another cell, shown or waited for.
+      this.pressing?.abort();
+      view.state.facet(tableMenu)?.close();
       // Never within an update of the note's, nor once another cell is
       // edited, as from Tab.
       queueMicrotask(() => {
@@ -1653,21 +1703,27 @@ const editingCells = ViewPlugin.fromClass(
      * pipes only.
      */
     addRow(column: number): void {
+      const table = this.where()?.table;
+      if (!table) return;
+      const last = { row: tableRows(table).length - 2, column };
+      const done = tableEdited(this.view.state, table, last, "addRowBelow");
+      this.close();
+      this.rewrite(table, done);
+    }
+    /** The cell edited, its place, and its table drawn and written. */
+    where(): {
+      editing: Editing;
+      place: Place;
+      frame: Element;
+      table: SyntaxNode;
+    } | null {
       const { editing, view } = this;
       const frame = editing?.host.closest(".cm-table");
-      const node = frame && tableIn(view, frame);
-      if (!node) return;
-      const { state } = view;
-      this.close();
-      this.rewrite(node, {
-        changes: [
-          {
-            from: state.doc.lineAt(node.to).to,
-            insert: state.lineBreak + emptyRow(state, node),
-          },
-        ],
-        to: { row: tableRows(node).length - 1, column },
-      });
+      const place = editing && placeOf(editing.host);
+      const table = frame && tableIn(view, frame);
+      return editing && place && frame && table
+        ? { editing, place, frame, table }
+        : null;
     }
     /**
      * Writes `changes` to `table`, as one step for undo, apart from the
@@ -1704,45 +1760,45 @@ const editingCells = ViewPlugin.fromClass(
      * end.
      */
     menuAt(host: HTMLTableCellElement, event: MouseEvent): boolean {
-      const show = this.view.state.facet(tableMenu);
-      if (!show) return false;
+      const menu = this.view.state.facet(tableMenu);
+      if (!menu) return false;
+      this.pressing?.abort();
       this.open(host);
       if (this.editing?.host !== host) return false;
-      this.holding = true;
       const { clientX: x, clientY: y } = event;
       const { left, right, top, bottom } = host.getBoundingClientRect();
       const within = x >= left && x <= right && y >= top && y <= bottom;
+      // Unless the cell was left meanwhile.
       const shown = () => {
-        show(within ? x : left, within ? y : bottom);
+        if (this.editing?.host !== host) return;
+        this.holding = true;
+        menu.openAt(within ? x : left, within ? y : bottom);
       };
-      if (event.buttons === 0) shown();
-      else {
-        addEventListener(
-          "pointerup",
-          () => {
-            setTimeout(shown);
-          },
-          { once: true, capture: true },
-        );
+      if (event.buttons === 0) {
+        shown();
+        return true;
       }
+      // Once the press ends, after the browser's own reaction to its end,
+      // unless the system takes it over.
+      const pressing = new AbortController();
+      this.pressing = pressing;
+      const options = { capture: true, signal: pressing.signal };
+      addEventListener(
+        "pointerup",
+        () => {
+          pressing.abort();
+          setTimeout(shown);
+        },
+        options,
+      );
+      addEventListener(
+        "pointercancel",
+        () => {
+          pressing.abort();
+        },
+        options,
+      );
       return true;
-    }
-    /** The table's menu for the cell edited, if any. */
-    menu(): CellMenu | null {
-      const { editing, view } = this;
-      const frame = editing?.host.closest(".cm-table");
-      const place = editing && placeOf(editing.host);
-      const table = frame && tableIn(view, frame);
-      const [head] = table ? tableRows(table) : [];
-      if (!frame || !place || !table || !head) return null;
-      return {
-        edits: editsAt(
-          place,
-          tableRows(table).length - 1,
-          cellsOf(view.state, head).length,
-        ),
-        alignment: drawing.get(frame)?.alignments[place.column] ?? null,
-      };
     }
     /**
      * Makes `edit` from the table's menu to the cell edited, then edits the
@@ -1750,14 +1806,10 @@ const editingCells = ViewPlugin.fromClass(
      * change nothing: whether it applies.
      */
     edit(edit: TableEdit): boolean {
-      const { editing, view } = this;
-      const frame = editing?.host.closest(".cm-table");
-      const place = editing && placeOf(editing.host);
-      const table = frame && tableIn(view, frame);
-      if (!editing || !place || !table || !this.menu()?.edits.has(edit)) {
-        return false;
-      }
-      const done = tableEdited(view.state, table, place, edit);
+      const at = this.where();
+      if (!at || !cellMenu(this.view.state, at).edits.has(edit)) return false;
+      const { editing, place, table } = at;
+      const done = tableEdited(this.view.state, table, place, edit);
       if (done.changes.length === 0) {
         editing.cell.focus();
         return true;

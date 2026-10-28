@@ -18,13 +18,9 @@ import {
   type Alignment,
   type CellMenu,
   type TableEdit,
+  type TableMenuControl,
 } from "./live-preview.ts";
 import { moveInMenu } from "./menu.ts";
-
-/** Opens the table's menu at a point, its first item focused. */
-export interface TableMenuHandle {
-  openAt: (x: number, y: number) => void;
-}
 
 // Obsidian's items, in its words.
 const GROUPS: [TableEdit, string][][] = [
@@ -93,7 +89,7 @@ export function TableMenu({
 }: {
   id: string;
   editor: RefObject<EditorView | null>;
-  ref?: Ref<TableMenuHandle>;
+  ref?: Ref<TableMenuControl>;
 }) {
   const menu = useRef<HTMLDivElement>(null);
   const [cell, setCell] = useState<CellMenu | null>(null);
@@ -109,6 +105,9 @@ export function TableMenu({
         element.showPopover();
         element.querySelector<HTMLElement>('[role^="menuitem"]')?.focus();
       },
+      close() {
+        menu.current?.hidePopover();
+      },
     }),
     [],
   );
@@ -120,6 +119,8 @@ export function TableMenu({
         if ((event as ToggleEvent).newState !== "open") return;
         const note = editor.current;
         const now = note && tableMenuOf(note);
+        const at = point.current;
+        point.current = null;
         if (!now) {
           event.preventDefault();
           return;
@@ -127,8 +128,6 @@ export function TableMenu({
         flushSync(() => {
           setCell(now);
         });
-        const at = point.current;
-        point.current = null;
         const key = document
           .querySelector(`[popovertarget="${id}"]`)
           ?.getBoundingClientRect();

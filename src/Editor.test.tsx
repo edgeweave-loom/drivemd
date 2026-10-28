@@ -1897,6 +1897,90 @@ describe("Visual's tables", () => {
     expect(await screen.findByRole("menu", { name: "Table" })).toBeVisible();
   });
 
+  it("keeps the cell a press asks the menu for edited, as the menu open closes before it ends", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const menu = menuOn(view, "Ada");
+    const boil = within(view.contentDOM).getByRole("cell", {
+      name: "Boil | pour",
+    });
+
+    // As a Mac asks for it: the menu open closes, and the browser tells of
+    // it a moment later, before the press ends.
+    expect(fireEvent.contextMenu(boil, { buttons: 2 })).toBe(false);
+    act(() => {
+      menu.dispatchEvent(
+        Object.assign(new Event("toggle"), { newState: "closed" }),
+      );
+    });
+    fireEvent.pointerUp(window);
+    await waitFor(() => {
+      expect(menu).toBeVisible();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(cellEditor(view)?.state.sliceDoc()).toBe("Boil \\| pour");
+  });
+
+  it("opens no menu for a press whose cell closed before it ended", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const ada = within(view.contentDOM).getByRole("cell", { name: "Ada" });
+    fireEvent.contextMenu(ada, { buttons: 2 });
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 0 } });
+    });
+    await waitFor(() => {
+      expect(cellEditor(view)).toBeNull();
+    });
+    // Even edited again before the press ends.
+    editCell(view, "Ada");
+
+    fireEvent.pointerUp(window);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.queryByRole("menu", { name: "Table" })).toBeNull();
+    // Nor does it hold the cell edited next once the focus leaves it.
+    editCell(view, "Step");
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 0 } });
+    });
+    await waitFor(() => {
+      expect(cellEditor(view)).toBeNull();
+    });
+  });
+
+  it("opens no menu for a press the system takes over", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const ada = within(view.contentDOM).getByRole("cell", { name: "Ada" });
+
+    fireEvent.contextMenu(ada, { buttons: 2 });
+    fireEvent.pointerCancel(window);
+    fireEvent.pointerUp(window);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.queryByRole("menu", { name: "Table" })).toBeNull();
+    expect(cellEditor(view)?.state.sliceDoc()).toBe("_Ada_");
+  });
+
+  it("closes the table's menu with its cell, as Source shows the note", async () => {
+    const { view, showIn } = open(NOTE, "\n", true);
+    await parsed(view);
+    const menu = menuOn(view, "Ada");
+
+    showIn(false);
+
+    expect(menu).not.toBeVisible();
+  });
+
   it("closes the cell edited once the focus leaves the table's menu for the note", async () => {
     const { view } = open(NOTE, "\n", true);
     await parsed(view);
@@ -2020,37 +2104,68 @@ describe("Visual's tables", () => {
       [
         [
           "Add column to the right",
+          "A",
           "| A |  | B | C |\n| - | --- | - | - |\n| 1 |\n| 2 |  | 3 | 4 | 5 |",
         ],
         [
           "Move column right",
+          "A",
           "| B | A | C |\n| - | - | - |\n|  | 1 |\n| 3 | 2 | 4 | 5 |",
         ],
-        ["Delete column", "| B | C |\n| - | - |\n|  |\n| 3 | 4 | 5 |"],
+        ["Delete column", "A", "| B | C |\n| - | - |\n|  |\n| 3 | 4 | 5 |"],
       ],
     ],
     [
       "without edge pipes",
       "A | B\n--|--\n1 | 2",
       [
-        ["Add column to the left", "|  | A | B\n| --- | --|--\n|  | 1 | 2"],
-        ["Move column right", "B | A\n--|--\n2 | 1"],
-        ["Delete column", "| B |\n| -- |\n| 2 |"],
+        [
+          "Add column to the left",
+          "A",
+          "|  | A | B\n| --- | --|--\n|  | 1 | 2",
+        ],
+        ["Move column right", "A", "| B | A\n--|--\n| 2 | 1"],
+        ["Delete column", "A", "| B |\n| -- |\n| 2 |"],
+      ],
+    ],
+    [
+      // As adding a column writes them: an empty cell at an edge takes its
+      // pipe.
+      "with empty cells, without edge pipes",
+      "A |  | C\n--|--|--\n1 |  | 3",
+      [
+        ["Move column left", "", "|  | A | C\n--|--|--\n|  | 1 | 3"],
+        ["Delete column", "A", "|  | C\n|--|--\n|  | 3"],
+        ["Delete column", "C", "A |  |\n--|--\n1 |  |"],
+      ],
+    ],
+    [
+      // Which would start a list, a heading or a quote at a line's start
+      // without its pipe, or escape the pipe after it.
+      "without edge pipes, its cells' texts taking a pipe before them",
+      "a | - | # c\n--- | - | ---\n1 | > 2 | 3\\",
+      [
+        ["Delete column", "a", "| - | # c\n| - | ---\n| > 2 | 3\\"],
+        [
+          "Move column left",
+          "-",
+          "| - | a | # c\n| - | --- | ---\n| > 2 | 1 | 3\\",
+        ],
+        ["Move column right", "-", "a | # c | -\n--- | --- | -\n1 | 3\\ | > 2"],
       ],
     ],
     [
       "aligned, its delimiter row's cells keeping their width",
       "| A | B | C |\n| - | :---: | ----- |",
       [
-        ["Align left", "| A | B | C |\n| :- | :---: | ----- |"],
-        ["Align right", "| A | B | C |\n| - | :---: | ----: |"],
+        ["Align left", "A", "| A | B | C |\n| :- | :---: | ----- |"],
+        ["Align right", "C", "| A | B | C |\n| - | :---: | ----: |"],
       ],
     ],
   ])("edits a table %s from its menu", async (_, text, edits) => {
-    for (const [item = "", written] of edits) {
+    for (const [item = "", name = "", written] of edits) {
       const { view } = open(text, "\n", true);
       await parsed(view);
-      const name = item === "Align right" ? "C" : "A";
 
       expect(picked(view, name, item)[0]).toBe(written);
       cleanup();
