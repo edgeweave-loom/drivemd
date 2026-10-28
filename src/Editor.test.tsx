@@ -11,6 +11,7 @@ import { EditorSelection, EditorState, StateEffect } from "@codemirror/state";
 import { runScopeHandlers, EditorView } from "@codemirror/view";
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -1689,21 +1690,29 @@ describe("Visual's tables", () => {
     });
   });
 
-  it("shows a missing cell's table as written, the cursor at its row's end", async () => {
-    const { view } = open(NOTE, "\n", true);
-    await parsed(view);
-    const row = [...view.contentDOM.querySelectorAll("tr")][1];
-    const missing = row?.cells[2];
-    if (!missing) throw new Error("No missing cell");
+  it.each([
+    ["a click", fireEvent.mouseDown, false],
+    // Its menu left to the browser.
+    ["a right-click", fireEvent.contextMenu, true],
+  ])(
+    "shows a missing cell's table as written from %s, the cursor at its row's end",
+    async (_, click, browsers) => {
+      const { view } = open(NOTE, "\n", true);
+      await parsed(view);
+      const row = [...view.contentDOM.querySelectorAll("tr")][1];
+      const missing = row?.cells[2];
+      if (!missing) throw new Error("No missing cell");
 
-    fireEvent.mouseDown(missing);
+      expect(click(missing)).toBe(browsers);
 
-    expect(cellEditor(view)).toBeNull();
-    expect(view.hasFocus).toBe(true);
-    expect(view.state.selection.main.head).toBe(
-      NOTE.indexOf("| _Ada_ |") + "| _Ada_ |".length,
-    );
-  });
+      expect(screen.queryByRole("menu", { name: "Table" })).toBeNull();
+      expect(cellEditor(view)).toBeNull();
+      expect(view.hasFocus).toBe(true);
+      expect(view.state.selection.main.head).toBe(
+        NOTE.indexOf("| _Ada_ |") + "| _Ada_ |".length,
+      );
+    },
+  );
 
   it("leaves a click with Shift, or with Cmd or Ctrl, to the editor", async () => {
     const { view } = open(NOTE, "\n", true);
@@ -1789,6 +1798,356 @@ describe("Visual's tables", () => {
     } finally {
       Reflect.deleteProperty(Range.prototype, "getClientRects");
     }
+  });
+
+  /** The table's menu, opened from a right-click on the cell `name`. */
+  function menuOn(view: EditorView, name: string) {
+    const drawn = [...view.contentDOM.querySelectorAll("th, td")].find(
+      (cell) => cell.textContent === name,
+    );
+    expect(fireEvent.contextMenu(drawn ?? document.body)).toBe(false);
+    return screen.getByRole("menu", { name: "Table" });
+  }
+
+  function items(menu: HTMLElement) {
+    return [...menu.querySelectorAll<HTMLElement>('[role^="menuitem"]')];
+  }
+
+  /**
+   * Picks `item` from the table's menu on the cell `name`, then tells of
+   * the note, and of the cell edited after.
+   */
+  function picked(view: EditorView, name: string, item: string) {
+    const menu = menuOn(view, name);
+    const chosen = items(menu).find((one) => one.textContent === item);
+    if (!chosen) throw new Error(`No item ${item}`);
+    fireEvent.click(chosen);
+    expect(menu).not.toBeVisible();
+    const cell = cellEditor(view);
+    return [view.state.sliceDoc(), cell?.state.sliceDoc(), cell?.hasFocus];
+  }
+
+  it("opens the table's menu from a right-click on a cell, drawn or edited, which it edits", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+
+    const menu = menuOn(view, "Ada");
+
+    expect(cellEditor(view)?.state.sliceDoc()).toBe("_Ada_");
+    expect(items(menu).map((item) => item.textContent)).toEqual([
+      "Add row above",
+      "Add row below",
+      "Move row up",
+      "Move row down",
+      "Delete row",
+      "Add column to the left",
+      "Add column to the right",
+      "Move column left",
+      "Move column right",
+      "Delete column",
+      "Align left",
+      "Align center",
+      "Align right",
+    ]);
+    expect(
+      within(menu).getByRole("menuitem", { name: "Add row above" }),
+    ).toHaveFocus();
+    // The cell stays edited while the menu has the focus.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const cell = cellEditor(view);
+    expect(cell?.state.sliceDoc()).toBe("_Ada_");
+
+    // Closed without a pick, as by Escape: the cell takes the focus back.
+    act(() => {
+      menu.hidePopover();
+    });
+    expect(cell?.hasFocus).toBe(true);
+    expect(fireEvent.contextMenu(cell?.contentDOM ?? document.body)).toBe(
+      false,
+    );
+    expect(menu).toBeVisible();
+    expect(cellEditor(view)).toBe(cell);
+    expect(view.state.sliceDoc()).toBe(NOTE);
+
+    // Once the menu has closed, leaving the cell closes it, as ever.
+    act(() => {
+      menu.hidePopover();
+      view.focus();
+      view.dispatch({ selection: { anchor: 0 } });
+    });
+    await waitFor(() => {
+      expect(cellEditor(view)).toBeNull();
+    });
+  });
+
+  it("opens the table's menu once a press that asks for it ends, which would close it", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const ada = within(view.contentDOM).getByRole("cell", { name: "Ada" });
+
+    // As a Mac asks for it, and WebKit then closes it as the press ends.
+    expect(fireEvent.contextMenu(ada, { buttons: 2 })).toBe(false);
+    expect(screen.queryByRole("menu", { name: "Table" })).toBeNull();
+    expect(cellEditor(view)?.state.sliceDoc()).toBe("_Ada_");
+    fireEvent.pointerUp(window);
+    expect(screen.queryByRole("menu", { name: "Table" })).toBeNull();
+
+    expect(await screen.findByRole("menu", { name: "Table" })).toBeVisible();
+  });
+
+  it("closes the cell edited once the focus leaves the table's menu for the note", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const menu = menuOn(view, "Ada");
+
+    // Outside the table, which stays drawn, before the menu closes, as a
+    // browser closes it once the click's press is over.
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 0 } });
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(cellEditor(view)).not.toBeNull();
+    act(() => {
+      menu.hidePopover();
+    });
+
+    expect(cellEditor(view)).toBeNull();
+  });
+
+  it("leaves a finger's long press on a cell to the system", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const pressed = (target: Element) => {
+      const event = new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(event, "pointerType", { value: "touch" });
+      return target.dispatchEvent(event);
+    };
+
+    expect(
+      pressed(within(view.contentDOM).getByRole("cell", { name: "Ada" })),
+    ).toBe(true);
+    expect(pressed(editCell(view, "Ada").contentDOM)).toBe(true);
+    expect(screen.queryByRole("menu", { name: "Table" })).toBeNull();
+  });
+
+  const TABLE = "| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |";
+
+  it.each([
+    [
+      "Add row above",
+      "3",
+      "| A | B |\n| --- | --- |\n| 1 | 2 |\n|  |  |\n| 3 | 4 |",
+      "",
+    ],
+    [
+      "Add row below",
+      "A",
+      "| A | B |\n| --- | --- |\n|  |  |\n| 1 | 2 |\n| 3 | 4 |",
+      "",
+    ],
+    ["Move row up", "4", "| A | B |\n| --- | --- |\n| 3 | 4 |\n| 1 | 2 |", "4"],
+    [
+      "Move row down",
+      "1",
+      "| A | B |\n| --- | --- |\n| 3 | 4 |\n| 1 | 2 |",
+      "1",
+    ],
+    // The cell edited after is the next row's, or the one before's.
+    ["Delete row", "2", "| A | B |\n| --- | --- |\n| 3 | 4 |", "4"],
+    ["Delete row", "4", "| A | B |\n| --- | --- |\n| 1 | 2 |", "2"],
+    [
+      "Add column to the left",
+      "2",
+      "| A |  | B |\n| --- | --- | --- |\n| 1 |  | 2 |\n| 3 |  | 4 |",
+      "",
+    ],
+    // A row that ends before the new column gets its empty cell from GFM:
+    // its own cell stays edited.
+    [
+      "Add column to the right",
+      "B",
+      "| A | B |  |\n| --- | --- | --- |\n| 1 | 2 |\n| 3 | 4 |",
+      "",
+    ],
+    [
+      "Add column to the right",
+      "2",
+      "| A | B |  |\n| --- | --- | --- |\n| 1 | 2 |\n| 3 | 4 |",
+      "2",
+    ],
+    [
+      "Move column right",
+      "A",
+      "| B | A |\n| --- | --- |\n| 2 | 1 |\n| 4 | 3 |",
+      "A",
+    ],
+    [
+      "Move column left",
+      "4",
+      "| B | A |\n| --- | --- |\n| 2 | 1 |\n| 4 | 3 |",
+      "4",
+    ],
+    ["Delete column", "1", "| B |\n| --- |\n| 2 |\n| 4 |", "2"],
+    ["Delete column", "B", "| A |\n| --- |\n| 1 |\n| 3 |", "A"],
+    [
+      "Align center",
+      "B",
+      "| A | B |\n| --- | :-: |\n| 1 | 2 |\n| 3 | 4 |",
+      "B",
+    ],
+  ])(
+    "does %s on %s from the table's menu, writing only the lines it must",
+    async (item, name, written, edited) => {
+      const { view } = open(TABLE, "\n", true);
+      await parsed(view);
+
+      expect(picked(view, name, item)).toEqual([written, edited, true]);
+    },
+  );
+
+  it.each([
+    [
+      "rows shorter or longer than the head",
+      "| A | B | C |\n| - | - | - |\n| 1 |\n| 2 | 3 | 4 | 5 |",
+      [
+        [
+          "Add column to the right",
+          "| A |  | B | C |\n| - | --- | - | - |\n| 1 |\n| 2 |  | 3 | 4 | 5 |",
+        ],
+        [
+          "Move column right",
+          "| B | A | C |\n| - | - | - |\n|  | 1 |\n| 3 | 2 | 4 | 5 |",
+        ],
+        ["Delete column", "| B | C |\n| - | - |\n|  |\n| 3 | 4 | 5 |"],
+      ],
+    ],
+    [
+      "without edge pipes",
+      "A | B\n--|--\n1 | 2",
+      [
+        ["Add column to the left", "|  | A | B\n| --- | --|--\n|  | 1 | 2"],
+        ["Move column right", "B | A\n--|--\n2 | 1"],
+        ["Delete column", "| B |\n| -- |\n| 2 |"],
+      ],
+    ],
+    [
+      "aligned, its delimiter row's cells keeping their width",
+      "| A | B | C |\n| - | :---: | ----- |",
+      [
+        ["Align left", "| A | B | C |\n| :- | :---: | ----- |"],
+        ["Align right", "| A | B | C |\n| - | :---: | ----: |"],
+      ],
+    ],
+  ])("edits a table %s from its menu", async (_, text, edits) => {
+    for (const [item = "", written] of edits) {
+      const { view } = open(text, "\n", true);
+      await parsed(view);
+      const name = item === "Align right" ? "C" : "A";
+
+      expect(picked(view, name, item)[0]).toBe(written);
+      cleanup();
+    }
+  });
+
+  it("adds a row to an indented table, in the file's line breaks, and deletes it", async () => {
+    const text = "Tea\r\n\r\n  | A | B |\r\n  | - | - |\r\n  | 1 | 2 |";
+    const { view } = open(text, "\r\n", true);
+    await parsed(view);
+
+    expect(picked(view, "2", "Add row above")[0]).toBe(
+      "Tea\r\n\r\n  | A | B |\r\n  | - | - |\r\n  |  |  |\r\n  | 1 | 2 |",
+    );
+    expect(picked(view, "", "Delete row")[0]).toBe(text);
+  });
+
+  it("offers only the table's edits that apply to the cell, its column's alignment checked", async () => {
+    const text = "| A | B |\n| - | -: |\n| 1 | 2 |\n| 3 | 4 |";
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+    const offered = (name: string) => {
+      const menu = menuOn(view, name);
+      const all = items(menu);
+      act(() => {
+        menu.hidePopover();
+      });
+      const marked = (attribute: string) =>
+        all
+          .filter((item) => item.getAttribute(attribute) === "true")
+          .map((item) => item.textContent);
+      return [marked("aria-disabled"), marked("aria-checked")];
+    };
+
+    // Nothing moves the head, nor comes above it, as GFM's table starts
+    // with its head.
+    expect(offered("A")).toEqual([
+      [
+        "Add row above",
+        "Move row up",
+        "Move row down",
+        "Delete row",
+        "Move column left",
+      ],
+      [],
+    ]);
+    expect(offered("2")).toEqual([
+      ["Move row up", "Move column right"],
+      ["Align right"],
+    ]);
+    expect(offered("3")).toEqual([["Move row down", "Move column left"], []]);
+
+    // An item that is off does nothing, and leaves the menu open.
+    const menu = menuOn(view, "A");
+    fireEvent.click(
+      within(menu).getByRole("menuitem", { name: "Move row up" }),
+    );
+    expect(menu).toBeVisible();
+    expect(view.state.sliceDoc()).toBe(text);
+    act(() => {
+      menu.hidePopover();
+    });
+    // Nor does the alignment its column has.
+    expect(picked(view, "2", "Align right")).toEqual([text, "2", true]);
+  });
+
+  it("keeps a table's last column", async () => {
+    const { view } = open("| A |\n| - |", "\n", true);
+    await parsed(view);
+
+    expect(
+      within(menuOn(view, "A")).getByRole("menuitem", {
+        name: "Delete column",
+      }),
+    ).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("undoes an edit from the table's menu on its own, apart from the typing around it", async () => {
+    // Typed at the line's end, where the row comes.
+    const text = "A | B\n--|--\n1 | 2";
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+    type(editCell(view, "2"), "!");
+    picked(view, "2!", "Add row below");
+    const cell = cellEditor(view);
+    if (!cell) throw new Error("No cell's editor");
+    type(cell, "x");
+    const undo = () => {
+      act(() => {
+        press(cellEditor(view) ?? view, "z", { ctrlKey: true });
+      });
+      return view.state.sliceDoc();
+    };
+
+    expect(undo()).toBe(`${text}!\n|  |  |`);
+    expect(undo()).toBe(`${text}!`);
+    expect(undo()).toBe(text);
   });
 
   it("deletes the line break after a table, not the table", async () => {

@@ -445,7 +445,7 @@ const ticking = EditorView.domEventHandlers({
  */
 type Part = { text: string; style: string | null } | null;
 
-type Alignment = "left" | "right" | "center" | null;
+export type Alignment = "left" | "right" | "center" | null;
 
 // The table each frame drawn shows, from which a cell edited in place is
 // drawn again as its editor closes.
@@ -685,12 +685,18 @@ function tableRows(node: SyntaxNode): SyntaxNode[] {
 
 /** Each cell of a row, between its pipes, with the spaces around its text. */
 function cellsOf(state: EditorState, row: SyntaxNode): Stretch[] {
-  const pipes = row.getChildren("TableDelimiter");
+  const pipes =
+    row.name === "TableDelimiter"
+      ? // The delimiter row, whose pipes Lezer leaves unmarked.
+        [...state.sliceDoc(row.from, row.to).matchAll(/\|/g)].map(
+          ({ index }) => row.from + index,
+        )
+      : row.getChildren("TableDelimiter").map((pipe) => pipe.from);
   const cells: Stretch[] = [];
   let from = row.from;
   for (const pipe of pipes) {
-    cells.push({ from, to: pipe.from });
-    from = pipe.to;
+    cells.push({ from, to: pipe });
+    from = pipe + 1;
   }
   cells.push({ from, to: row.to });
   const blank = (cell: Stretch | undefined) =>
@@ -853,6 +859,295 @@ function cellText(
   return { from: at, to: at };
 }
 
+/** What the table's menu does to the cell edited in place. */
+export type TableEdit =
+  | "addRowAbove"
+  | "addRowBelow"
+  | "moveRowUp"
+  | "moveRowDown"
+  | "deleteRow"
+  | "addColumnLeft"
+  | "addColumnRight"
+  | "moveColumnLeft"
+  | "moveColumnRight"
+  | "deleteColumn"
+  | "alignLeft"
+  | "alignCenter"
+  | "alignRight";
+
+/** The edits that apply to a cell, and its column's alignment. */
+export interface CellMenu {
+  edits: ReadonlySet<TableEdit>;
+  alignment: Alignment;
+}
+
+/**
+ * The edits that apply to the cell at `place`, in a table of `rows`, its
+ * head's included, and `columns`: nothing moves the head or comes above
+ * it, since a GFM table starts with its head and its delimiter row, and a
+ * table keeps a column.
+ */
+function editsAt(
+  { row, column }: Place,
+  rows: number,
+  columns: number,
+): Set<TableEdit> {
+  const edits: [TableEdit, boolean][] = [
+    ["addRowAbove", row > 0],
+    ["addRowBelow", true],
+    ["moveRowUp", row > 1],
+    ["moveRowDown", row > 0 && row < rows - 1],
+    ["deleteRow", row > 0],
+    ["addColumnLeft", true],
+    ["addColumnRight", true],
+    ["moveColumnLeft", column > 0],
+    ["moveColumnRight", column < columns - 1],
+    ["deleteColumn", columns > 1],
+    ["alignLeft", true],
+    ["alignCenter", true],
+    ["alignRight", true],
+  ];
+  return new Set(edits.flatMap(([edit, applies]) => (applies ? [edit] : [])));
+}
+
+/**
+ * A table's line as written, past its indent: its text, its cells in it
+ * with and without the spaces around their text, and whether a pipe ends
+ * it on each side.
+ */
+interface Written {
+  text: string;
+  cells: Stretch[];
+  texts: Stretch[];
+  lead: boolean;
+  trail: boolean;
+}
+
+function asWritten(state: EditorState, row: SyntaxNode): Written {
+  const text = state.sliceDoc(row.from, row.to);
+  const within = ({ from, to }: Stretch) => ({
+    from: from - row.from,
+    to: to - row.from,
+  });
+  const cells = cellsOf(state, row);
+  return {
+    text,
+    cells: cells.map(within),
+    texts: cells.map((cell) => within(trimmed(state, cell))),
+    lead: (cells[0]?.from ?? row.from) > row.from,
+    trail: (cells.at(-1)?.to ?? row.to) < row.to,
+  };
+}
+
+/**
+ * A line with `cell` as its `at`th, between a space on each side and a
+ * pipe, which an empty first or last cell needs on its edge too.
+ */
+function withCell(line: Written, at: number, cell: string): string {
+  const { text, cells, lead, trail } = line;
+  const before = cells[at];
+  if (before) {
+    return at > 0 || lead
+      ? `${text.slice(0, before.from)} ${cell} |${text.slice(before.from)}`
+      : `| ${cell} | ${text}`;
+  }
+  const end = (cells.at(-1)?.to ?? text.length) + 1;
+  return trail
+    ? `${text.slice(0, end)} ${cell} |${text.slice(end)}`
+    : `${text} | ${cell} |`;
+}
+
+/**
+ * A line without its `at`th cell and a pipe beside it. A cell left alone
+ * takes a pipe on each edge, without which its line would be no row, or
+ * its table no table.
+ */
+function withoutCell(line: Written, at: number): string {
+  const { text, cells, texts, lead, trail } = line;
+  const [gone, next, before] = [cells[at], texts[at + 1], cells[at - 1]];
+  let left: string;
+  if (gone && next) {
+    // Up to the next cell, past its pipe, or at the line's start, its text.
+    left =
+      at > 0 || lead
+        ? text.slice(0, gone.from) + text.slice(gone.to + 1)
+        : text.slice(next.from);
+  } else if (gone && before) {
+    left = text.slice(0, before.to) + text.slice(gone.to);
+  } else {
+    return "|  |";
+  }
+  if (cells.length > 2) return left;
+  return `${lead ? "" : "| "}${trail ? left : `${left.trimEnd()} |`}`;
+}
+
+/**
+ * A line with its `at`th cell and the next one trading places, each with
+ * the spaces around it, which a padded table's columns keep; at an edge
+ * without its pipe, their texts alone.
+ */
+function swapped(line: Written, at: number): string {
+  const { text, lead, trail } = line;
+  const edge = (at === 0 && !lead) || (at + 2 === line.cells.length && !trail);
+  const [one, other] = edge
+    ? [line.texts[at], line.texts[at + 1]]
+    : [line.cells[at], line.cells[at + 1]];
+  if (!one || !other) return text;
+  return [
+    text.slice(0, one.from),
+    text.slice(other.from, other.to),
+    text.slice(one.to, other.from),
+    text.slice(one.from, one.to),
+    text.slice(other.to),
+  ].join("");
+}
+
+/** A delimiter row's cell's marks for `alignment`, as wide as they were. */
+function marks(width: number, alignment: Alignment): string {
+  const left = alignment === "left" || alignment === "center";
+  const right = alignment === "right" || alignment === "center";
+  const dashes = Math.max(1, width - Number(left) - Number(right));
+  return `${left ? ":" : ""}${"-".repeat(dashes)}${right ? ":" : ""}`;
+}
+
+/**
+ * The row that a table takes empty, `|  |  |`: the delimiter row's indent,
+ * a pipe at each edge, and a space on each side of each cell, whatever the
+ * table's own edges, since GFM holds an empty cell between pipes only.
+ */
+function emptyRow(state: EditorState, table: SyntaxNode): string {
+  const [head, delimiter] = tableRows(table);
+  if (!head || !delimiter) return "";
+  const indent = state.sliceDoc(
+    state.doc.lineAt(delimiter.from).from,
+    delimiter.from,
+  );
+  return `${indent}|${"  |".repeat(cellsOf(state, head).length)}`;
+}
+
+/** The alignment each of the table's menu's edits of alignment gives. */
+export const ALIGNING = {
+  alignLeft: "left",
+  alignCenter: "center",
+  alignRight: "right",
+} as const satisfies Partial<Record<TableEdit, Alignment>>;
+
+/**
+ * The changes that make `edit` to the cell at `place` of `table`, which
+ * write only the lines that must change, and the cell to edit then: the
+ * one added or moved, the next in place of one deleted, or in a row too
+ * short for it, the row's own.
+ */
+function tableEdited(
+  state: EditorState,
+  table: SyntaxNode,
+  place: Place,
+  edit: TableEdit,
+): { changes: ChangeSpec[]; to: Place } {
+  const { row, column } = place;
+  const lines = tableRows(table);
+  const columns = lines[0] ? cellsOf(state, lines[0]).length : 0;
+  const { doc, lineBreak } = state;
+  const line = (at: number) => doc.lineAt(rowOf(table, at)?.from ?? table.to);
+  // Every line, as `write` writes it given its place: the head's 0, the
+  // delimiter row's 1.
+  const rewritten = (write: (line: Written, at: number) => string) =>
+    lines.flatMap((one, at) => {
+      const was = asWritten(state, one);
+      const text = write(was, at);
+      return text === was.text
+        ? []
+        : [{ from: one.from, to: one.to, insert: text }];
+    });
+  switch (edit) {
+    case "addRowAbove":
+      return {
+        changes: [
+          { from: line(row).from, insert: emptyRow(state, table) + lineBreak },
+        ],
+        to: place,
+      };
+    case "addRowBelow": {
+      // Under the head, past the delimiter row.
+      const { to } = doc.lineAt((lines[row + 1] ?? table).to);
+      return {
+        changes: [{ from: to, insert: lineBreak + emptyRow(state, table) }],
+        to: { row: row + 1, column },
+      };
+    }
+    case "moveRowUp":
+    case "moveRowDown": {
+      const by = edit === "moveRowUp" ? -1 : 1;
+      const [one, other] = [line(row), line(row + by)];
+      return {
+        changes: [
+          { from: one.from, to: one.to, insert: other.text },
+          { from: other.from, to: other.to, insert: one.text },
+        ],
+        to: { row: row + by, column },
+      };
+    }
+    case "deleteRow": {
+      const gone = line(row);
+      return {
+        changes: [{ from: gone.from - 1, to: gone.to }],
+        to: { row: row < lines.length - 2 ? row : row - 1, column },
+      };
+    }
+    case "addColumnLeft":
+    case "addColumnRight": {
+      const at = column + Number(edit === "addColumnRight");
+      return {
+        changes: rewritten((one, index) =>
+          index < 2 || one.cells.length > at
+            ? withCell(one, at, index === 1 ? "---" : "")
+            : one.text,
+        ),
+        to: { row, column: at },
+      };
+    }
+    case "moveColumnLeft":
+    case "moveColumnRight": {
+      const at = edit === "moveColumnLeft" ? column - 1 : column;
+      return {
+        // A row with the first cell but not the next leaves the first's
+        // place empty.
+        changes: rewritten((one) =>
+          one.cells.length > at + 1
+            ? swapped(one, at)
+            : one.cells.length > at
+              ? withCell(one, at, "")
+              : one.text,
+        ),
+        to: { row, column: at === column ? column + 1 : at },
+      };
+    }
+    case "deleteColumn":
+      return {
+        changes: rewritten((one) =>
+          one.cells.length > column ? withoutCell(one, column) : one.text,
+        ),
+        to: { row, column: column === columns - 1 ? column - 1 : column },
+      };
+    default: {
+      const alignment = ALIGNING[edit];
+      return {
+        // The delimiter row's cell alone, the same alignment writing the
+        // same marks.
+        changes: rewritten((one, index) => {
+          const marked = one.texts[column];
+          return index === 1 && marked
+            ? one.text.slice(0, marked.from) +
+                marks(marked.to - marked.from, alignment) +
+                one.text.slice(marked.to)
+            : one.text;
+        }),
+        to: place,
+      };
+    }
+  }
+}
+
 /** Extensions of a cell's editor: the note's language and styling. */
 export const cellSetup = Facet.define<Extension>();
 
@@ -874,6 +1169,46 @@ export function inCell(state: EditorState): boolean {
 /** The editor of the table's cell edited in place, if any. */
 export function cellEditor(view: EditorView): EditorView | null {
   return view.plugin(editingCells)?.editing?.cell ?? null;
+}
+
+/** Opens the table's menu at a point, for the cell edited in place. */
+export const tableMenu = Facet.define<
+  (x: number, y: number) => void,
+  ((x: number, y: number) => void) | undefined
+>({ combine: (values) => values[0] });
+
+/** The table's menu for the cell edited in place, if any. */
+export function tableMenuOf(view: EditorView): CellMenu | null {
+  return view.plugin(editingCells)?.menu() ?? null;
+}
+
+/**
+ * Makes an edit from the table's menu to the cell edited in place:
+ * whether it applies.
+ */
+export function editTable(view: EditorView, edit: TableEdit): boolean {
+  return view.plugin(editingCells)?.edit(edit) ?? false;
+}
+
+/**
+ * Once the table's menu has closed, gives the focus `back` to the cell
+ * edited, which stays edited, or else closes it.
+ */
+export function tableMenuClosed(view: EditorView, back: boolean): void {
+  view.plugin(editingCells)?.released(back);
+}
+
+/**
+ * Tab, or Shift+Tab, in a table's cell edited in place: the keyboard
+ * toolbar's Indent and Outdent there, since a phone's keyboard has no Tab.
+ */
+export function stepCell(by: 1 | -1): Command {
+  return (view) => view.plugin(editingCells)?.tab(by) ?? false;
+}
+
+/** Whether a finger's long press asks for the menu, which is the system's. */
+function pressedLong(event: MouseEvent): boolean {
+  return (event as Partial<PointerEvent>).pointerType === "touch";
 }
 
 /**
@@ -946,6 +1281,8 @@ function atEdge(cell: EditorView, by: 1 | -1): boolean {
 const editingCells = ViewPlugin.fromClass(
   class {
     editing: Editing | null = null;
+    // Whether the table's menu has the focus, the cell edited staying so.
+    holding = false;
     readonly view: EditorView;
     constructor(view: EditorView) {
       this.view = view;
@@ -1090,8 +1427,20 @@ const editingCells = ViewPlugin.fromClass(
           blur: (_event, cell) => {
             // Once the focus has gone where it goes, as to another cell.
             queueMicrotask(() => {
-              if (this.editing?.cell === cell && !cell.hasFocus) this.close();
+              if (
+                this.editing?.cell === cell &&
+                !cell.hasFocus &&
+                !this.holding
+              )
+                this.close();
             });
+          },
+          contextmenu: (event) => {
+            const host = this.editing?.host;
+            if (!host || pressedLong(event)) return false;
+            const shown = this.menuAt(host, event);
+            if (shown) event.preventDefault();
+            return shown;
           },
         }),
         // The note's, clear of the keyboard toolbar and the app bar.
@@ -1307,29 +1656,126 @@ const editingCells = ViewPlugin.fromClass(
       const { editing, view } = this;
       const frame = editing?.host.closest(".cm-table");
       const node = frame && tableIn(view, frame);
-      const [head, delimiter] = node ? tableRows(node) : [];
-      if (!node || !head || !delimiter) return;
-      const { doc } = view.state;
-      const from = doc.lineAt(node.from).from;
-      const indent = view.state.sliceDoc(
-        doc.lineAt(delimiter.from).from,
-        delimiter.from,
-      );
-      const columns = cellsOf(view.state, head).length;
+      if (!node) return;
+      const { state } = view;
       this.close();
-      view.dispatch({
-        changes: {
-          from: doc.lineAt(node.to).to,
-          insert: `${view.state.lineBreak}${indent}|${"  |".repeat(columns)}`,
-        },
-        // Undone on its own, not with the edits next to it.
-        annotations: isolateHistory.of("full"),
+      this.rewrite(node, {
+        changes: [
+          {
+            from: state.doc.lineAt(node.to).to,
+            insert: state.lineBreak + emptyRow(state, node),
+          },
+        ],
+        to: { row: tableRows(node).length - 1, column },
       });
-      const rows = frameAt(view, from)?.querySelector("table")?.rows;
-      const host = rows?.[rows.length - 1]?.cells[column];
+    }
+    /**
+     * Writes `changes` to `table`, as one step for undo, apart from the
+     * edits next to it, then edits the cell `to`, or should its row lack
+     * it, the row's last.
+     */
+    rewrite(
+      table: SyntaxNode,
+      { changes, to }: { changes: ChangeSpec[]; to: Place },
+    ): void {
+      const { view } = this;
+      const from = view.state.doc.lineAt(table.from).from;
+      view.dispatch({ changes, annotations: isolateHistory.of("full") });
+      const frame = frameAt(view, from);
+      const node = frame && tableIn(view, frame);
+      const row = frame?.querySelector("table")?.rows[to.row];
+      if (!node || !row) return;
+      let { column } = to;
+      while (column > 0 && !cellText(view.state, node, { ...to, column })) {
+        column -= 1;
+      }
+      const host = row.cells[column];
       if (!host) return;
       this.open(host);
       this.reveal();
+    }
+    /**
+     * Opens the table's menu on a cell, edited first, where `event` asks
+     * for it within the cell: whether it does. A cell its row lacks, or one
+     * clicked while Find in note is open, shows its table as written
+     * instead. From the keyboard, the point the browser gives may be
+     * outside the cell. A press that asks for the menu as it starts, as on
+     * a Mac, would close it as it ends, in WebKit: the menu waits for its
+     * end.
+     */
+    menuAt(host: HTMLTableCellElement, event: MouseEvent): boolean {
+      const show = this.view.state.facet(tableMenu);
+      if (!show) return false;
+      this.open(host);
+      if (this.editing?.host !== host) return false;
+      this.holding = true;
+      const { clientX: x, clientY: y } = event;
+      const { left, right, top, bottom } = host.getBoundingClientRect();
+      const within = x >= left && x <= right && y >= top && y <= bottom;
+      const shown = () => {
+        show(within ? x : left, within ? y : bottom);
+      };
+      if (event.buttons === 0) shown();
+      else {
+        addEventListener(
+          "pointerup",
+          () => {
+            setTimeout(shown);
+          },
+          { once: true, capture: true },
+        );
+      }
+      return true;
+    }
+    /** The table's menu for the cell edited, if any. */
+    menu(): CellMenu | null {
+      const { editing, view } = this;
+      const frame = editing?.host.closest(".cm-table");
+      const place = editing && placeOf(editing.host);
+      const table = frame && tableIn(view, frame);
+      const [head] = table ? tableRows(table) : [];
+      if (!frame || !place || !table || !head) return null;
+      return {
+        edits: editsAt(
+          place,
+          tableRows(table).length - 1,
+          cellsOf(view.state, head).length,
+        ),
+        alignment: drawing.get(frame)?.alignments[place.column] ?? null,
+      };
+    }
+    /**
+     * Makes `edit` from the table's menu to the cell edited, then edits the
+     * cell it leaves edited, or gives the cell the focus back should it
+     * change nothing: whether it applies.
+     */
+    edit(edit: TableEdit): boolean {
+      const { editing, view } = this;
+      const frame = editing?.host.closest(".cm-table");
+      const place = editing && placeOf(editing.host);
+      const table = frame && tableIn(view, frame);
+      if (!editing || !place || !table || !this.menu()?.edits.has(edit)) {
+        return false;
+      }
+      const done = tableEdited(view.state, table, place, edit);
+      if (done.changes.length === 0) {
+        editing.cell.focus();
+        return true;
+      }
+      this.close();
+      this.rewrite(table, done);
+      return true;
+    }
+    /**
+     * Once the table's menu has closed: the cell edited takes the focus
+     * `back`, or closes where the focus went elsewhere.
+     */
+    released(back: boolean): void {
+      this.holding = false;
+      const { editing } = this;
+      if (!editing || editing.cell.hasFocus) return;
+      if (back) editing.cell.focus();
+      else this.close();
     }
     /** Shows the table as written, the cursor where it was in the cell. */
     leave(): boolean {
@@ -1369,11 +1815,12 @@ function margins(view: EditorView): Partial<Rect> {
 let cellPressed: Press | null = null;
 
 /**
- * A click on a table's cell, or a finger's tap, edits that cell. A
- * finger's tap does so as it lifts, its end kept from the browser, which
- * would place the cursor itself: in WebKit, at the note's start. A finger
- * that moves scrolls the table or the page, and one that stays down as
- * long as a long press is left to the system.
+ * A click on a table's cell, or a finger's tap, edits that cell, and a
+ * right-click opens its menu too. A finger's tap does so as it lifts, its
+ * end kept from the browser, which would place the cursor itself: in
+ * WebKit, at the note's start. A finger that moves scrolls the table or
+ * the page, and one that stays down as long as a long press is left to the
+ * system.
  */
 const editingTables = EditorView.domEventHandlers({
   mousedown(event, view) {
@@ -1384,6 +1831,13 @@ const editingTables = EditorView.domEventHandlers({
     event.preventDefault();
     view.plugin(editingCells)?.open(cell);
     return true;
+  },
+  contextmenu(event, view) {
+    const cell = tableCell(event.target);
+    if (!cell || pressedLong(event)) return false;
+    const shown = view.plugin(editingCells)?.menuAt(cell, event) ?? false;
+    if (shown) event.preventDefault();
+    return shown;
   },
   touchstart(event) {
     const touch = event.changedTouches[0];

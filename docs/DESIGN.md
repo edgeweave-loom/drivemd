@@ -109,6 +109,7 @@ Material Symbols Outlined, at weight 400, grade 0 and optical size 24, filled on
 | `ios_share`                                | How to add DriveMD to the Home Screen               |
 | `undo`, `redo`, `title`, `format_bold`, …  | The keyboard toolbar's keys, as the spec lists them |
 | `open_in_new`                              | Open link, the toolbar's Link key in a link         |
+| `table_edit`                               | The toolbar's Table key, in a table's cell          |
 
 The DriveMD mark, `public/icon.svg`, shows at 40 px in the app bar (32 px on a phone) and is never recolored or redrawn.
 
@@ -138,6 +139,7 @@ Measurements are in CSS pixels; colors are tokens.
 - **Snackbar.** `inverse-surface`, `--radius-xs`, `--elevation-3`, at the bottom left (bottom on a phone): one past-tense sentence ("Saved to Google Drive") and at most one action in `inverse-primary`, gone after 4 seconds, 10 with an action.
 - **Dialog.** `surface-container-high`, `--radius-xl`, `--elevation-3`, over a `scrim` at 32%: the question as its title, one or two sentences of consequence, then Cancel and the action named by its verb, a loss in danger.
 - **Keyboard toolbar.** `surface-container`, 48 px, 44 px keys that scroll sideways, as the spec describes it; its background runs on below it to the screen's bottom.
+- **Table menu.** In Visual, for a table's cell: a menu as the others, with Obsidian's items in three groups between rules: Add row above, Add row below, Move row up, Move row down, Delete row; Add column to the left, Add column to the right, Move column left, Move column right, Delete column; Align left, Align center, Align right, the column's own on `secondary-container`, announced as a checked radio item. An item that does not apply is off, in `on-surface` at 38%. A right-click opens it at the pointer, its items 32 px tall under a mouse, since it is long; on a touch screen, the keyboard toolbar's **Table** key, first in the row while a cell is edited, opens it above the key, its items 48 px. It scrolls where the room between the app bar and the toolbar is shorter.
 - **Find in note.** While editing, one row: the field, a 40 px pill on `surface-container-high` at the editor's 16 px, `search` before it on a wider screen where the bar is 480 px wide or more; the count in body-medium `on-surface-variant` ("3 of 14", "14 matches", "No matches"); Previous and Next match; and Find options, a menu of Match case, Whole word and Regular expression, each checked while on, then Replace, which adds a second row: the Replace with field, then Replace and Replace all as text buttons. On a phone it takes the app bar's place, Back at its start, as the search does; on a wider screen it sticks over the source's top, under the app bar, on `sheet` from edge to edge of it with a rule in `outline-variant` under it, Close at its end. Its buttons never take the focus, so that a touch screen's keyboard stays up, as the keyboard toolbar's keys do. Matches show on `secondary-container`, the selected one on `primary-container` outlined in `primary`, and the selected text's other occurrences on `primary` at 12%.
 
 ## In the app

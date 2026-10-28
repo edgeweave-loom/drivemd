@@ -39,6 +39,7 @@ import { tags } from "@lezer/highlight";
 import {
   useEffect,
   useEffectEvent,
+  useId,
   useImperativeHandle,
   useLayoutEffect,
   useRef,
@@ -56,9 +57,16 @@ import { KeyboardToolbar, TOOLBAR_HEIGHT } from "./KeyboardToolbar.tsx";
 import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
 import { useLayout, useTouch } from "./layout.ts";
-import { cellEditor, cellSetup, inCell, livePreview } from "./live-preview.ts";
+import {
+  cellEditor,
+  cellSetup,
+  inCell,
+  livePreview,
+  tableMenu,
+} from "./live-preview.ts";
 import { oneEditPerKey } from "./one-edit-per-key.ts";
 import { linkAt } from "./source-links.ts";
+import { TableMenu, type TableMenuHandle } from "./TableMenu.tsx";
 import type { LineBreak } from "./text.ts";
 import { keepVisible } from "./visual-viewport.ts";
 
@@ -261,6 +269,7 @@ function extensions(
   changed: (update: ViewUpdate) => void,
   follow: (href: string) => void,
   clearance: () => { top: number; bottom: number } | null,
+  menuAt: (x: number, y: number) => void,
 ): Extension[] {
   return [
     // Lines join with the file's own break, whatever the browser sends.
@@ -301,6 +310,8 @@ function extensions(
     MODE.of(inMode(visual)),
     EditorView.updateListener.of(changed),
     followLinks(follow),
+    // A right-click on a table's cell in Visual opens its menu.
+    tableMenu.of(menuAt),
     // The cursor stays clear of the keyboard toolbar and the app bar when
     // the editor scrolls to it.
     EditorView.scrollMargins.of(clearance),
@@ -440,6 +451,11 @@ export function Editor({
   const followed = useEffectEvent((href: string) => {
     onFollow(href);
   });
+  const menuId = useId();
+  const menu = useRef<TableMenuHandle>(null);
+  const menuAt = useEffectEvent((x: number, y: number) => {
+    menu.current?.openAt(x, y);
+  });
 
   useEffect(() => {
     const element = host.current;
@@ -449,7 +465,14 @@ export function Editor({
       element,
       EditorState.create({
         doc: initial,
-        extensions: extensions(lineBreak, visual, edited, followed, clearance),
+        extensions: extensions(
+          lineBreak,
+          visual,
+          edited,
+          followed,
+          clearance,
+          menuAt,
+        ),
       }),
     );
     editor.current = view;
@@ -515,10 +538,12 @@ export function Editor({
     <>
       {phone ? <InSlot name="find">{bar}</InSlot> : bar}
       <div className="editor" ref={host} />
+      <TableMenu id={menuId} editor={editor} ref={menu} />
       {toolbar && (
         <KeyboardToolbar
           link={link}
           inCell={cell}
+          tableMenu={menuId}
           // A cell edited in place follows what the keys do to its text.
           onCommand={(command) => {
             if (editor.current) command(editor.current);
