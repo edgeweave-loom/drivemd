@@ -970,12 +970,16 @@ describe("Visual's tables", () => {
     "After",
   ].join("\n");
 
-  /** Each row of the table drawn, its cells' text, bold text in **. */
+  /**
+   * Each row of the table drawn, its cells' text, bold text in ** and a
+   * line break drawn as one.
+   */
   function cells(view: EditorView) {
     return [...view.contentDOM.querySelectorAll("tr")].map((row) =>
       [...row.cells].map((cell) =>
         [...cell.childNodes]
           .map((node) => {
+            if (node instanceof HTMLBRElement) return "\n";
             const text = node.textContent ?? "";
             return node instanceof HTMLElement &&
               getComputedStyle(node).fontWeight === "700"
@@ -1007,6 +1011,26 @@ describe("Visual's tables", () => {
       ),
     ).toEqual(["left", "right", "center"]);
     expect(looks(view)).toEqual(["Tea", "", "", "After"]);
+  });
+
+  it("draws a <br> in a cell as a line break, as the viewer does", async () => {
+    const text = [
+      "| Tea | Cups |",
+      "| - | - |",
+      '| Milk<br>oat | <BR/>2<br />3</br>4<br class="z">5 |',
+      '| `a<br>b` \\<br> <i title="<br>"> | <bra> **e<br>f** |',
+    ].join("\n");
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+
+    expect(cells(view)).toEqual([
+      ["Tea", "Cups"],
+      ["Milk\noat", "\n2\n3\n4\n5"],
+      // Neither in code, nor escaped, nor another tag.
+      ['a<br>b <br> <i title="<br>">', "<bra> **e**\n**f**"],
+    ]);
+    // Drawn as the viewer draws them.
+    expect(view.contentDOM.querySelectorAll("td br")).toHaveLength(6);
   });
 
   it("shows a table's Markdown while the selection is in it with the focus", async () => {
@@ -1358,7 +1382,7 @@ describe("Visual's tables", () => {
     expect(undo()).toBe(text);
   });
 
-  it("writes Shift+Enter in a cell as <br>, staying in it", async () => {
+  it("writes Shift+Enter in a cell as <br>, staying in it, and draws it as a line break", async () => {
     const { view } = open(NOTE, "\n", true);
     await parsed(view);
     const cell = editCell(view, "Ada");
@@ -1369,6 +1393,12 @@ describe("Visual's tables", () => {
     ]);
     expect(cellEditor(view)).toBe(cell);
     expect(view.state.sliceDoc()).toBe(NOTE.replace("_Ada_", "_Ada_<br>"));
+
+    type(cell, "x");
+    pressed(view, "Tab");
+    expect(cells(view)[1]?.[1]).toBe("Ada\nx");
+    // Edited again, the cell shows its <br> as written.
+    expect(editCell(view, "Adax").contentDOM.textContent).toBe("_Ada_<br>x");
   });
 
   it("moves from cell to cell with the arrows: Up and Down in the column, Left and Right from the text's edge", async () => {

@@ -439,7 +439,10 @@ const ticking = EditorView.domEventHandlers({
   },
 });
 
-/** A part of a cell's text, drawn in the editor's highlighting. */
+/**
+ * A part of a cell's text, drawn in the editor's highlighting, a line
+ * break in it standing for a tag such as `<br>`.
+ */
 interface Part {
   text: string;
   style: string | null;
@@ -493,13 +496,21 @@ class Table extends WidgetType {
   fill(cell: HTMLTableCellElement, row: number, column: number): void {
     cell.style.textAlign = this.alignments[column] ?? "";
     cell.replaceChildren(
-      ...(this.rows[row]?.[column] ?? []).map(({ text, style }) => {
-        if (style === null) return text;
-        const span = document.createElement("span");
-        span.className = style;
-        span.textContent = text;
-        return span;
-      }),
+      ...(this.rows[row]?.[column] ?? []).flatMap(
+        ({ text, style }): (Node | string)[] => {
+          if (style === null) {
+            return text
+              .split("\n")
+              .flatMap((line, at) =>
+                at === 0 ? [line] : [document.createElement("br"), line],
+              );
+          }
+          const span = document.createElement("span");
+          span.className = style;
+          span.textContent = text;
+          return [span];
+        },
+      ),
     );
   }
   /**
@@ -723,19 +734,32 @@ function alignments(delimiter: string): Alignment[] {
     });
 }
 
+// A tag that the viewer draws as a line break, as `<br>`, `<br />` or
+// `</br>`.
+const LINE_BREAK = /^<\/?br[\s/>]/i;
+
 /**
  * A cell's text in the editor's highlighting, its symbols hidden as Visual
- * hides them, and an escape's backslash too, as the viewer does, so that
- * an escaped pipe shows in its cell.
+ * hides them, and as the viewer does, an escape's backslash, so that an
+ * escaped pipe shows in its cell, and a tag such as `<br>` a line break,
+ * which no row can hold otherwise.
  */
 function parts(state: EditorState, { from, to }: Stretch): Part[] {
   const hidden: Stretch[] = [];
+  const breaks = new Set<number>();
   syntaxTree(state).iterate({
     from,
     to,
     enter: (node) => {
       if (node.name === "Escape") {
         hidden.push({ from: node.from, to: node.from + 1 });
+      }
+      if (
+        node.name === "HTMLTag" &&
+        LINE_BREAK.test(state.sliceDoc(node.from, node.to))
+      ) {
+        hidden.push({ from: node.from, to: node.to });
+        breaks.add(node.from);
       }
       for (const symbol of symbols(state, node)) {
         if (symbol.value === HIDDEN) hidden.push(symbol);
@@ -761,11 +785,13 @@ function parts(state: EditorState, { from, to }: Stretch): Part[] {
   const result: Part[] = [];
   sorted.slice(1).forEach((end, at) => {
     const start = sorted[at] ?? from;
-    if (hidden.some((range) => range.from <= start && range.to >= end)) return;
-    const style =
-      styled.find((range) => range.from <= start && range.to >= end)?.style ??
-      null;
-    const text = state.sliceDoc(start, end);
+    const broken = breaks.has(start);
+    const covers = (range: Stretch) => range.from <= start && range.to >= end;
+    if (!broken && hidden.some(covers)) return;
+    // Only text without a style draws its line breaks, and a tag drawn
+    // before CodeMirror parses the HTML in it takes the style around it.
+    const style = broken ? null : (styled.find(covers)?.style ?? null);
+    const text = broken ? "\n" : state.sliceDoc(start, end);
     const previous = result.at(-1);
     if (previous?.style === style) previous.text += text;
     else result.push({ text, style });
