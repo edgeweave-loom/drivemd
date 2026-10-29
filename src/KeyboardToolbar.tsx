@@ -157,7 +157,6 @@ export function KeyboardToolbar({
         key={name}
         type="button"
         aria-label={follows === undefined ? name : "Open link"}
-        onMouseDown={keepFocus}
         onClick={() => {
           if (follows === undefined) onCommand(command);
           else onFollow(follows);
@@ -173,6 +172,8 @@ export function KeyboardToolbar({
       role="toolbar"
       aria-label="Formatting"
       className="keyboard-toolbar"
+      // Its keys, the rules between them and its edges alike.
+      onMouseDown={keepFocus}
     >
       {cell ? (
         <>
@@ -183,8 +184,7 @@ export function KeyboardToolbar({
               {group.map(({ edit, name, icon }) => {
                 const aligning = ALIGNS[edit];
                 // Off where its edit does not apply, which a tap then
-                // leaves undone, but still kept from taking the focus, and
-                // the keyboard down.
+                // leaves undone, as a disabled button would take the focus.
                 const off = !cell.edits.has(edit);
                 return (
                   <button
@@ -195,7 +195,6 @@ export function KeyboardToolbar({
                     aria-pressed={
                       aligning ? cell.alignment === aligning : undefined
                     }
-                    onMouseDown={keepFocus}
                     onClick={() => {
                       onCommand((view) => editTable(view, edit));
                     }}
@@ -214,7 +213,6 @@ export function KeyboardToolbar({
             aria-label="Table options"
             aria-haspopup="menu"
             popoverTarget={tableMenu}
-            onMouseDown={keepFocus}
           >
             <Icon name="more_vert" />
           </button>

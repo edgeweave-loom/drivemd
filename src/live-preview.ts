@@ -528,7 +528,10 @@ class Table extends WidgetType {
     rows.forEach((row, at) => {
       for (const cell of row.cells) {
         const column = cell.cellIndex;
-        if (!cell.querySelector(".cm-editor") && !same(at, column)) {
+        if (cell.querySelector(".cm-editor")) {
+          // Its editor stays, aligned as its column now is, as after Undo.
+          cell.style.textAlign = this.alignments[column] ?? "";
+        } else if (!same(at, column)) {
           this.fill(cell, at, column);
         }
       }

@@ -524,10 +524,15 @@ test("edits a table's rows and columns from its menu or the keyboard toolbar's k
   } else {
     await ada.tap();
     await expect(editing).toBeFocused();
-    // Undo first, then the table's own keys.
+    // Undo first, then the table's own keys, in view on the narrowest
+    // phones, 375 px wide.
     await expect(toolbar.getByRole("button").nth(1)).toHaveAccessibleName(
       "Add row below",
     );
+    const last = await toolbar
+      .getByRole("button", { name: "Align right" })
+      .boundingBox();
+    expect((last?.x ?? Infinity) + (last?.width ?? 0)).toBeLessThanOrEqual(375);
     await fromKey(() => options.click());
   }
   const pick = async (name: string) => {

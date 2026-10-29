@@ -2301,12 +2301,13 @@ body:has(> .keyboard-toolbar) .editor {
   color: var(--on-secondary-container);
 }
 
-/* Between a table's groups of keys. */
+/* Between a table's groups of keys, narrow enough that Undo and the
+   table's keys fit a 375 px screen. */
 .keyboard-toolbar > hr {
   flex: none;
   width: 1px;
   height: 24px;
-  margin: 0 var(--space-1);
+  margin: 0 2px;
   border: none;
   background: var(--outline-variant);
 }
