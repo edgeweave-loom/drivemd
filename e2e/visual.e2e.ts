@@ -537,6 +537,8 @@ test("edits a table's rows and columns from its menu or the keyboard toolbar's k
       .getByRole("button", { name: "Align right" })
       .boundingBox();
     expect((last?.x ?? Infinity) + (last?.width ?? 0)).toBeLessThanOrEqual(375);
+    // The keys past them, which scroll, keep their width.
+    expect((await options.boundingBox())?.width).toBe(44);
     await fromKey(() => options.click());
   }
   const pick = async (name: string) => {

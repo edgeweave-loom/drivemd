@@ -300,8 +300,9 @@ describe("the keyboard toolbar", () => {
       "Find in note",
       "Table options",
     ]);
-    // Between Undo and Redo, the rows', the columns', the alignment's and
-    // the rest, keeping the focus, and the keyboard up, as the keys do.
+    // After Undo and Redo, then between the rows', the columns', the
+    // alignment's and the rest, keeping the focus, and the keyboard up, as
+    // the keys do.
     const rules = toolbar()?.querySelectorAll("hr") ?? [];
     expect(rules).toHaveLength(4);
     for (const rule of rules) expect(fireEvent.mouseDown(rule)).toBe(false);
@@ -328,6 +329,15 @@ describe("the keyboard toolbar", () => {
     expect(pressed()).toEqual(["true", "false", "false"]);
     // The cell edited aligned as its column again, as the others.
     expect(host()?.style.textAlign).toBe("left");
+    // And Redo aligns them all again.
+    tap("Redo");
+    expect(view.state.sliceDoc()).toBe(
+      "| Tea | Cups |\n| :-: | - |\n| 1 | 2 |",
+    );
+    expect(pressed()).toEqual(["false", "true", "false"]);
+    expect(host()?.style.textAlign).toBe("center");
+    expect(edited()?.hasFocus).toBe(true);
+    tap("Undo");
 
     tap("Add row below");
     expect(view.state.sliceDoc()).toBe(
