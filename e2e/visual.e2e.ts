@@ -473,7 +473,7 @@ test("moves through a table's cells with the arrows, and adds rows past its end"
   );
 });
 
-test("edits a table's rows and columns from its menu, a right-click's or the Table key's", async ({
+test("edits a table's rows and columns from its menu or the keyboard toolbar's keys", async ({
   page,
   drive,
 }, info) => {
@@ -486,8 +486,33 @@ test("edits a table's rows and columns from its menu, a right-click's or the Tab
   const editing = note.getByRole("textbox", { name: "Cell" });
   const menu = page.getByRole("menu", { name: "Table" });
   const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+  const options = toolbar.getByRole("button", { name: "Table options" });
   const mouse = info.project.name === "desktop-chromium";
   const ada = table.getByRole("cell", { name: "Ada" });
+  /**
+   * Opens the menu from the Table options key, which shows above it, its
+   * right edge with the key's, or with the screen's where the key runs past
+   * it, under the app bar, the cell keeping the focus, and the keyboard.
+   */
+  const fromKey = async (open: () => Promise<void>) => {
+    await open();
+    await expect(menu).toBeVisible();
+    const [shown, key, bar] = await Promise.all([
+      menu.boundingBox(),
+      options.boundingBox(),
+      page.getByRole("banner").boundingBox(),
+    ]);
+    const width = page.viewportSize()?.width;
+    if (!shown || !key || !bar || !width) throw new Error("Not laid out");
+    expect(shown.y).toBeGreaterThanOrEqual(bar.y + bar.height);
+    expect(shown.y + shown.height).toBeLessThanOrEqual(key.y);
+    expect(shown.y + shown.height).toBeGreaterThan(key.y - 8);
+    expect(shown.x + shown.width).toBeCloseTo(
+      Math.min(key.x + key.width, width - 8),
+      0,
+    );
+    await expect(editing).toBeFocused();
+  };
 
   if (mouse) {
     await ada.click({ button: "right" });
@@ -499,34 +524,28 @@ test("edits a table's rows and columns from its menu, a right-click's or the Tab
   } else {
     await ada.tap();
     await expect(editing).toBeFocused();
-    const key = toolbar.getByRole("button", { name: "Table" });
-    await expect(toolbar.getByRole("button").first()).toHaveAccessibleName(
-      "Table",
+    // Undo first, then the table's own keys.
+    await expect(toolbar.getByRole("button").nth(1)).toHaveAccessibleName(
+      "Add row below",
     );
-    await key.click();
-    await expect(menu).toBeVisible();
-    // Above the key, on the screen, the cell keeping the focus, and the
-    // keyboard.
-    const [shown, bar] = await Promise.all([
-      menu.boundingBox(),
-      toolbar.boundingBox(),
-    ]);
-    if (!shown || !bar) throw new Error("Not laid out");
-    expect(shown.y).toBeGreaterThanOrEqual(0);
-    expect(shown.y + shown.height).toBeLessThanOrEqual(bar.y + 1);
-    await expect(editing).toBeFocused();
+    await fromKey(() => options.click());
   }
   const pick = async (name: string) => {
-    if (!(await menu.isVisible())) {
-      if (mouse) await editing.click({ button: "right" });
-      else await toolbar.getByRole("button", { name: "Table" }).click();
+    const key = toolbar.getByRole("button", { name });
+    if (!mouse && (await key.count()) > 0) {
+      await key.click();
+    } else {
+      if (!(await menu.isVisible())) {
+        if (mouse) await editing.click({ button: "right" });
+        else await options.click();
+      }
+      await menu
+        .getByRole(name.startsWith("Align") ? "menuitemradio" : "menuitem", {
+          name,
+        })
+        .click();
+      await expect(menu).toBeHidden();
     }
-    await menu
-      .getByRole(name.startsWith("Align") ? "menuitemradio" : "menuitem", {
-        name,
-      })
-      .click();
-    await expect(menu).toBeHidden();
     await expect(editing).toBeFocused();
   };
   await menu.getByRole("menuitem", { name: "Add column to the left" }).click();
@@ -539,6 +558,11 @@ test("edits a table's rows and columns from its menu, a right-click's or the Tab
     "text-align",
     "center",
   );
+  if (!mouse) {
+    await expect(
+      toolbar.getByRole("button", { name: "Align center" }),
+    ).toHaveAttribute("aria-pressed", "true");
+  }
   await pick("Move row down");
   await expect(editing).toHaveText("2");
   if (mouse) {
@@ -550,14 +574,30 @@ test("edits a table's rows and columns from its menu, a right-click's or the Tab
     await expect(editing).toBeFocused();
   } else if (info.project.name === "ipad-webkit") {
     // A trackpad's right-click, which WebKit asks the menu for as the press
-    // starts, and would close it as it ends.
+    // starts, and would close it as it ends, with all the items.
     await table.getByRole("cell", { name: "Grace" }).click({ button: "right" });
     await expect(menu).toBeVisible();
+    await expect(menu.getByRole("menuitem")).toHaveCount(10);
     await expect(editing).toHaveText("Grace");
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
     await expect(editing).toBeFocused();
+    // Then above the key again.
+    await fromKey(() => options.click());
+    await page.keyboard.press("Escape");
+  } else {
+    // Its key past the screen's edge, as the toolbar scrolls.
+    await toolbar.evaluate((bar) => {
+      bar.scrollLeft = bar.scrollWidth - bar.clientWidth - 24;
+    });
+    await fromKey(() =>
+      options.evaluate((key) => {
+        (key as HTMLElement).click();
+      }),
+    );
+    await page.keyboard.press("Escape");
   }
+  await expect(menu).toBeHidden();
 
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();

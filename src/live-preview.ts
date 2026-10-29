@@ -1243,14 +1243,6 @@ export function tableMenuClosed(view: EditorView, back: boolean): void {
   view.plugin(editingCells)?.released(back);
 }
 
-/**
- * Tab, or Shift+Tab, in a table's cell edited in place: the keyboard
- * toolbar's Indent and Outdent there, since a phone's keyboard has no Tab.
- */
-export function stepCell(by: 1 | -1): Command {
-  return (view) => view.plugin(editingCells)?.tab(by) ?? false;
-}
-
 /** Whether a finger's long press asks for the menu, which is the system's. */
 function pressedLong(event: MouseEvent): boolean {
   return (event as Partial<PointerEvent>).pointerType === "touch";

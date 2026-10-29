@@ -672,12 +672,31 @@ button.account {
 }
 
 /* A table's menu (docs/DESIGN.md, Table menu): at a right-click, or above
-   the keyboard toolbar's Table key, scrolling where its room is short, and
-   dense under a mouse, since it is long. */
+   the keyboard toolbar's Table options key, scrolling where its room is
+   short, and dense under a mouse, since it is long. */
 .table-menu {
   inset: auto;
   margin: 0;
   overflow-y: auto;
+}
+
+/* Above the toolbar's end, where the key is anchors aside. */
+.table-menu.options {
+  inset: auto calc(var(--space-2) + env(safe-area-inset-right))
+    calc(var(--keyboard-toolbar-height) + var(--space-1)) auto;
+}
+
+/* Its right edge with the key's, or with the screen's should the key run
+   past it, by the key's anchor: with the keyboard up on an iPhone, a menu
+   placed at the key's box from script showed hundreds of pixels above it. */
+@supports (anchor-name: --table-options) {
+  .table-menu.options {
+    position-anchor: --table-options;
+    inset: auto
+      max(anchor(right), calc(var(--space-2) + env(safe-area-inset-right)))
+      anchor(top) auto;
+    margin: 0 0 var(--space-1);
+  }
 }
 
 @media (pointer: fine) {
@@ -2274,6 +2293,26 @@ body:has(> .keyboard-toolbar) .editor {
   background-image: none;
   color: color-mix(in srgb, var(--on-surface) 38%, transparent);
   cursor: default;
+}
+
+/* A table's column's own alignment. */
+.keyboard-toolbar button[aria-pressed="true"] {
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+/* Between a table's groups of keys. */
+.keyboard-toolbar > hr {
+  flex: none;
+  width: 1px;
+  height: 24px;
+  margin: 0 var(--space-1);
+  border: none;
+  background: var(--outline-variant);
+}
+
+.keyboard-toolbar .table-options {
+  anchor-name: --table-options;
 }
 
 /* Find in note (docs/DESIGN.md, Find in note): over the source's top, under

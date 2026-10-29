@@ -63,6 +63,8 @@ import {
   inCell,
   livePreview,
   tableMenu,
+  tableMenuOf,
+  type CellMenu,
   type TableMenuControl,
 } from "./live-preview.ts";
 import { oneEditPerKey } from "./one-edit-per-key.ts";
@@ -365,8 +367,9 @@ export function Editor({
   const editor = useRef<EditorView | null>(null);
   const field = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
-  // Whether a table's cell edited in place has the focus.
-  const [cell, setCell] = useState(false);
+  // The table's cell edited in place that has the focus, if any: the edits
+  // that apply to it, and its column's alignment, which the toolbar shows.
+  const [cell, setCell] = useState<CellMenu | null>(null);
   // The address of the link the cursor is in, which the toolbar follows.
   const [link, setLink] = useState<string>();
   // Find in note's query and matches, while it is open.
@@ -382,7 +385,11 @@ export function Editor({
     const celled = inCell(update.state);
     if (update.focusChanged || celled !== inCell(update.startState)) {
       setFocused(update.view.hasFocus || celled);
-      setCell(celled);
+    }
+    // Anew as the cell, its table or its column's alignment change.
+    if (celled || inCell(update.startState)) {
+      const now = tableMenuOf(update.view);
+      setCell((was) => (cellKey(was) === cellKey(now) ? was : now));
     }
     if (update.docChanged || update.selectionSet) {
       setLink(linkAt(update.state, update.state.selection.main.head));
@@ -540,7 +547,7 @@ export function Editor({
       {toolbar && (
         <KeyboardToolbar
           link={link}
-          inCell={cell}
+          cell={cell}
           tableMenu={menuId}
           // A cell edited in place follows what the keys do to its text.
           onCommand={(command) => {
@@ -565,6 +572,11 @@ export function Editor({
       )}
     </>
   );
+}
+
+/** A cell's edits and alignment, to compare. */
+function cellKey(cell: CellMenu | null): string {
+  return cell ? [cell.alignment, ...cell.edits].join() : "";
 }
 
 interface Found {
