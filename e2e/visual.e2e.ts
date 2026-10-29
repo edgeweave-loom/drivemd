@@ -348,7 +348,8 @@ test("draws a table in Visual, whose cell a tap edits in place, the table stayin
   if (info.project.metadata.layout !== "wide") {
     const keys = page.getByRole("toolbar", { name: "Formatting" });
     await expect(keys.getByRole("button", { name: "Bold" })).toBeEnabled();
-    await expect(keys.getByRole("button", { name: "Heading" })).toBeDisabled();
+    // The keys of lines give way to the table's.
+    await expect(keys.getByRole("button", { name: "Heading" })).toHaveCount(0);
   }
 
   // Looked at, and written over nowhere: nothing to save.
