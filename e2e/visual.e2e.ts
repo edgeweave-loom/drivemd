@@ -293,6 +293,75 @@ test("draws a quote in Visual, a bar per level, its marks shown where the cursor
   );
 });
 
+test("draws a table in a quote in Visual beside its bars, whose cells a tap edits in place", async ({
+  page,
+  drive,
+}, info) => {
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content =
+    "# The plan\n\nTea.\n\n> Cups\n> | Step | Owner |\n>| --- | --- |\n> | Tea | Ada |\n\nCups.\n";
+  const note = await editInVisual(page);
+  const quote = note.locator(".cm-line").nth(4);
+  const frame = note.locator(".cm-table");
+  const table = frame.getByRole("table");
+  await expect(quote).toHaveText("Cups");
+  await expect(table.getByRole("cell")).toHaveText(["Tea", "Ada"]);
+
+  // The quote's bar beside it, as beside the quote's line, the table where
+  // the line's text starts, as quiet.
+  const em = Number.parseFloat(
+    await quote.evaluate((element) => getComputedStyle(element).fontSize),
+  );
+  await expect(frame).toHaveCSS("background-image", /linear-gradient/);
+  await expect(frame).toHaveCSS(
+    "background-size",
+    `${String(1.25 * em)}px 100%`,
+  );
+  const [quoteBox, frameBox, tableBox] = await Promise.all([
+    quote.boundingBox(),
+    frame.boundingBox(),
+    table.boundingBox(),
+  ]);
+  if (!quoteBox || !frameBox || !tableBox) throw new Error("Not shown");
+  const inset = Number.parseFloat(
+    await quote.evaluate((element) => getComputedStyle(element).paddingLeft),
+  );
+  expect(frameBox.x).toBeCloseTo(quoteBox.x, 0);
+  expect(tableBox.x).toBeCloseTo(quoteBox.x + inset, 0);
+  const color = (element: typeof quote) =>
+    element.evaluate((one) => getComputedStyle(one).color);
+  expect(await color(frame)).toBe(await color(quote));
+
+  // Looked at, and written over nowhere: nothing to save.
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(drive.writes).toEqual([]);
+
+  // A cell edited in place, then a row added past the last, with the
+  // marks of the line before it.
+  const cell = table.getByRole("cell", { name: "Ada" });
+  if (info.project.name === "desktop-chromium") await cell.click();
+  else await cell.tap();
+  const editing = note.getByRole("textbox", { name: "Cell" });
+  await expect(editing).toBeFocused();
+  await expect(editing).toHaveText("Ada");
+  await page.keyboard.type("!");
+  await page.keyboard.press("Tab");
+  await expect(editing).toHaveText("");
+  await page.keyboard.type("Milk");
+  const line = note.locator(".cm-line").filter({ hasText: "Tea." });
+  if (info.project.name === "desktop-chromium") await line.click();
+  else await line.tap();
+  await expect(editing).toHaveCount(0);
+  await expect(table.getByRole("cell")).toHaveText(["Tea", "Ada!", "Milk", ""]);
+
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("plan")?.content)).toBe(
+    "# The plan\n\nTea.\n\n> Cups\n> | Step | Owner |\n>| --- | --- |\n> | Tea | Ada! |\n> | Milk |  |\n\nCups.\n",
+  );
+});
+
 test("draws a table in Visual, whose cell a tap edits in place, the table staying drawn", async ({
   page,
   drive,
@@ -677,4 +746,31 @@ test("scrolls a table wider than a phone within itself", async ({
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
+});
+
+test("scrolls a table in a quote sideways clear of its bars", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(info.project.metadata.layout !== "phone", "For a phone");
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  const long = "A rather long cell that takes most of a phone's width";
+  plan.content = `# The plan\n\n> > | One | Two |\n> > | --- | --- |\n> > | ${long} | ${long} |\n`;
+  const frame = (await editInVisual(page)).locator(".cm-table");
+  await expect(frame.getByRole("table")).toBeVisible();
+
+  // Scrolled, its cells pass under neither bar, which stays where it was.
+  const bars = await frame.evaluate((element) => {
+    element.scrollLeft = 200;
+    const { left, top, height } = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const start = left + Number.parseFloat(style.backgroundPositionX);
+    const level = Number.parseFloat(style.backgroundSize) / 2;
+    const root = element.getRootNode() as ShadowRoot;
+    return [start + 1, start + level + 1].map(
+      (x) => root.elementFromPoint(x, top + height / 2) === element,
+    );
+  });
+  expect(bars).toEqual([true, true]);
 });

@@ -460,19 +460,32 @@ class Table extends WidgetType {
   readonly alignments: Alignment[];
   // The head's row, then the body's, each cell's text in parts.
   readonly rows: Part[][][];
-  constructor(source: string, alignments: Alignment[], rows: Part[][][]) {
+  // How many quotes it is in, which its source tells: its lines after the
+  // first hold their marks.
+  readonly depth: number;
+  constructor(
+    source: string,
+    alignments: Alignment[],
+    rows: Part[][][],
+    depth: number,
+  ) {
     super();
     this.source = source;
     this.alignments = alignments;
     this.rows = rows;
+    this.depth = depth;
   }
   override eq(other: Table): boolean {
     return other.source === this.source;
   }
   toDOM(): HTMLElement {
-    // A table wider than the note scrolls sideways within this frame.
+    // A table wider than the note scrolls sideways within this frame, which
+    // draws its quotes' bars, as their lines do.
     const frame = document.createElement("div");
-    frame.className = "cm-table";
+    frame.className =
+      this.depth > 0
+        ? `cm-table cm-quote cm-quote-${String(this.depth)}`
+        : "cm-table";
     const table = document.createElement("table");
     const head = table.createTHead();
     const body = table.createTBody();
@@ -603,9 +616,9 @@ const followingFocus = ViewPlugin.define((view) => {
 /**
  * Visual's tables, drawn but where the selection is while the editor has
  * the focus, or while Find in note is open, so that its match shows. A
- * table replaces lines, which only a state field may. A table in a quote
- * or a list, whose lines start with their marks, stays as written. A
- * table is no unit: an edit beside it never takes it whole.
+ * table replaces lines, which only a state field may, a quote's marks
+ * included. A table in a list, whose lines start with its marks, stays as
+ * written. A table is no unit: an edit beside it never takes it whole.
  */
 const tables = StateField.define<DecorationSet>({
   create: (state) => drawnTables(state),
@@ -643,17 +656,23 @@ function drawnTables(
   syntaxTree(state).iterate({
     enter: (node) => {
       if (node.name !== "Table") {
-        // The note, its front matter's or its Markdown's, but no block in it.
-        return node.name === "Document" || node.name === "Body";
+        // The note, its front matter's or its Markdown's, and its quotes,
+        // but no other block in it.
+        return ["Document", "Body", "Blockquote"].includes(node.name);
       }
-      // An indented table's lines whole.
+      const depth = quoteDepth(state, node.node);
+      // An indented table's lines whole, or a quoted one's, with its marks.
       const from = state.doc.lineAt(node.from).from;
       const { to } = node;
-      if (writing.some((line) => from <= line.to && to >= line.from)) {
+      if (
+        depth === null ||
+        writing.some((line) => from <= line.to && to >= line.from)
+      ) {
         return false;
       }
       const widget =
-        kept.get(state.sliceDoc(node.from, to)) ?? table(state, node.node);
+        kept.get(state.sliceDoc(node.from, to)) ??
+        table(state, node.node, depth);
       ranges.push(Decoration.replace({ widget, block: true }).range(from, to));
       return false;
     },
@@ -661,7 +680,32 @@ function drawnTables(
   return Decoration.set(ranges);
 }
 
-function table(state: EditorState, node: SyntaxNode): Table {
+/**
+ * How many quotes a table is in, or none where it stays as written: deeper
+ * than the bars Visual draws, or with a line that lacks its quotes' marks,
+ * a lazy line, at which GFM ends the table, as the viewer reads it, but
+ * Lezer does not.
+ */
+function quoteDepth(state: EditorState, table: SyntaxNode): number | null {
+  let depth = 0;
+  let around = table.parent;
+  while (around?.name === "Blockquote") {
+    depth++;
+    around = around.parent;
+  }
+  const marks = ">".repeat(depth);
+  const whole = tableRows(table).every(
+    (row) => lineStart(state, row).replace(/[ \t]/g, "") === marks,
+  );
+  return depth <= QUOTE_LINES.length && whole ? depth : null;
+}
+
+/** What comes before a table's line on its line: its quotes' marks, its indent. */
+function lineStart(state: EditorState, row: SyntaxNode): string {
+  return state.sliceDoc(state.doc.lineAt(row.from).from, row.from);
+}
+
+function table(state: EditorState, node: SyntaxNode, depth: number): Table {
   const [header, delimiter, ...body] = tableRows(node);
   const columns = header ? cellsOf(state, header).length : 0;
   return new Table(
@@ -676,13 +720,19 @@ function table(state: EditorState, node: SyntaxNode): Table {
           ]
         : [],
     ),
+    depth,
   );
 }
 
-/** A table's lines' nodes: its head, its delimiter row, then its rows. */
+/**
+ * A table's lines' nodes: its head, its delimiter row, then its rows, but
+ * the marks of a quote around it, which Lezer files under it.
+ */
 function tableRows(node: SyntaxNode): SyntaxNode[] {
   const rows: SyntaxNode[] = [];
-  for (let row = node.firstChild; row; row = row.nextSibling) rows.push(row);
+  for (let row = node.firstChild; row; row = row.nextSibling) {
+    if (row.name !== "QuoteMark") rows.push(row);
+  }
   return rows;
 }
 
@@ -821,14 +871,12 @@ function placeOf(cell: HTMLTableCellElement): Place | null {
 
 /**
  * The table drawn in `frame`, in the note's syntax tree: from its first
- * line, past its indent, which the frame draws but the table lacks.
+ * line's end, past its indent and its quotes' marks, which the frame draws
+ * but the table lacks.
  */
 function tableIn(view: EditorView, frame: Element): SyntaxNode | null {
-  const { from, text } = view.state.doc.lineAt(view.posAtDOM(frame));
-  let node: SyntaxNode | null = syntaxTree(view.state).resolveInner(
-    from + text.length - text.trimStart().length,
-    1,
-  );
+  const { to } = view.state.doc.lineAt(view.posAtDOM(frame));
+  let node: SyntaxNode | null = syntaxTree(view.state).resolveInner(to, -1);
   while (node && node.name !== "Table") node = node.parent;
   return node;
 }
@@ -1037,18 +1085,19 @@ function marks(width: number, alignment: Alignment): string {
 }
 
 /**
- * The row that a table takes empty, `|  |  |`: the delimiter row's indent,
- * a pipe at each edge, and a space on each side of each cell, whatever the
- * table's own edges, since GFM holds an empty cell between pipes only.
+ * The row that a table takes empty next to its line `beside`, `|  |  |`:
+ * that line's quotes' marks and indent, as written, a pipe at each edge,
+ * and a space on each side of each cell, whatever the table's own edges,
+ * since GFM holds an empty cell between pipes only.
  */
-function emptyRow(state: EditorState, table: SyntaxNode): string {
-  const [head, delimiter] = tableRows(table);
-  if (!head || !delimiter) return "";
-  const indent = state.sliceDoc(
-    state.doc.lineAt(delimiter.from).from,
-    delimiter.from,
-  );
-  return `${indent}|${"  |".repeat(cellsOf(state, head).length)}`;
+function emptyRow(
+  state: EditorState,
+  table: SyntaxNode,
+  beside: SyntaxNode,
+): string {
+  const [head] = tableRows(table);
+  const columns = head ? cellsOf(state, head).length : 0;
+  return `${lineStart(state, beside)}|${"  |".repeat(columns)}`;
 }
 
 /** The alignment each of the table's menu's edits of alignment gives. */
@@ -1074,7 +1123,6 @@ function tableEdited(
   const lines = tableRows(table);
   const columns = lines[0] ? cellsOf(state, lines[0]).length : 0;
   const { doc, lineBreak } = state;
-  const line = (at: number) => doc.lineAt(rowOf(table, at)?.from ?? table.to);
   // Every line, as `write` writes it given its place: the head's 0, the
   // delimiter row's 1.
   const rewritten = (write: (line: Written, at: number) => string) =>
@@ -1085,36 +1133,58 @@ function tableEdited(
         ? []
         : [{ from: one.from, to: one.to, insert: text }];
     });
+  // A row's line past its quotes' marks and its indent, which stay with it.
+  const rowLine = (at: number) => {
+    const node = rowOf(table, at);
+    return node ? { from: node.from, to: doc.lineAt(node.from).to } : null;
+  };
   switch (edit) {
-    case "addRowAbove":
+    case "addRowAbove": {
+      const below = rowOf(table, row);
       return {
-        changes: [
-          { from: line(row).from, insert: emptyRow(state, table) + lineBreak },
-        ],
+        changes: below
+          ? [
+              {
+                from: doc.lineAt(below.from).from,
+                insert: emptyRow(state, table, below) + lineBreak,
+              },
+            ]
+          : [],
         to: place,
       };
+    }
     case "addRowBelow": {
       // Under the head, past the delimiter row.
-      const { to } = doc.lineAt((lines[row + 1] ?? table).to);
+      const above = lines[row + 1];
       return {
-        changes: [{ from: to, insert: lineBreak + emptyRow(state, table) }],
+        changes: above
+          ? [
+              {
+                from: doc.lineAt(above.to).to,
+                insert: lineBreak + emptyRow(state, table, above),
+              },
+            ]
+          : [],
         to: { row: row + 1, column },
       };
     }
     case "moveRowUp":
     case "moveRowDown": {
       const by = edit === "moveRowUp" ? -1 : 1;
-      const [one, other] = [line(row), line(row + by)];
+      const [one, other] = [rowLine(row), rowLine(row + by)];
       return {
-        changes: [
-          { from: one.from, to: one.to, insert: other.text },
-          { from: other.from, to: other.to, insert: one.text },
-        ],
+        changes:
+          one && other
+            ? [
+                { ...one, insert: state.sliceDoc(other.from, other.to) },
+                { ...other, insert: state.sliceDoc(one.from, one.to) },
+              ]
+            : [],
         to: { row: row + by, column },
       };
     }
     case "deleteRow": {
-      const gone = line(row);
+      const gone = doc.lineAt(rowOf(table, row)?.from ?? table.to);
       return {
         changes: [{ from: gone.from - 1, to: gone.to }],
         to: { row: row < lines.length - 2 ? row : row - 1, column },
@@ -1966,15 +2036,17 @@ const LOOK = EditorView.theme({
   },
   // The viewer's quote, quieter: a 0.25em bar per level, then 1em before
   // its text, and 1em after it per level.
-  ".cm-line.cm-quote": {
-    paddingLeft: "calc(var(--text-inset) + var(--quote-depth) * 1.25em)",
-    paddingRight: "calc(var(--text-inset) + var(--quote-depth) * 1em)",
+  ".cm-quote": {
     color: "var(--on-surface-variant)",
     backgroundImage:
       "repeating-linear-gradient(to right, var(--outline-variant) 0 0.25em, transparent 0.25em 1.25em)",
     backgroundPosition: "var(--text-inset) 0",
     backgroundSize: "calc(var(--quote-depth) * 1.25em) 100%",
     backgroundRepeat: "no-repeat",
+  },
+  ".cm-line.cm-quote": {
+    paddingLeft: "calc(var(--text-inset) + var(--quote-depth) * 1.25em)",
+    paddingRight: "calc(var(--text-inset) + var(--quote-depth) * 1em)",
   },
   ...Object.fromEntries(
     QUOTE_LINES.map((_, at) => [
@@ -1989,6 +2061,15 @@ const LOOK = EditorView.theme({
     padding: "0 var(--text-inset)",
     // Its width the note's, however wide its table.
     contain: "inline-size",
+  },
+  // In a quote, its bars in the frame's border, which the table scrolls
+  // clear of, as the viewer's table does within its quote.
+  ".cm-table.cm-quote": {
+    borderLeft:
+      "calc(var(--text-inset) + var(--quote-depth) * 1.25em) solid transparent",
+    paddingLeft: "0",
+    paddingRight: "calc(var(--text-inset) + var(--quote-depth) * 1em)",
+    backgroundOrigin: "border-box",
   },
   ".cm-table table": { borderCollapse: "collapse", width: "max-content" },
   ".cm-table :is(th, td)": {
