@@ -482,10 +482,7 @@ class Table extends WidgetType {
     // A table wider than the note scrolls sideways within this frame, which
     // draws its quotes' bars, as their lines do.
     const frame = document.createElement("div");
-    frame.className =
-      this.depth > 0
-        ? `cm-table cm-quote cm-quote-${String(this.depth)}`
-        : "cm-table";
+    frame.className = this.frameClass();
     const table = document.createElement("table");
     const head = table.createTHead();
     const body = table.createTBody();
@@ -501,6 +498,12 @@ class Table extends WidgetType {
     frame.append(table);
     drawing.set(frame, this);
     return frame;
+  }
+  /** Its frame's classes, which draw its quotes' bars. */
+  frameClass(): string {
+    return this.depth > 0
+      ? `cm-table cm-quote cm-quote-${String(this.depth)}`
+      : "cm-table";
   }
   /** Draws a cell's text, aligned as its column. */
   fill(cell: HTMLTableCellElement, row: number, column: number): void {
@@ -518,7 +521,8 @@ class Table extends WidgetType {
   }
   /**
    * Draws the cells around one edited in place anew, that cell keeping its
-   * editor, while the table keeps its rows and columns.
+   * editor, and its quotes' bars, while the table keeps its rows and
+   * columns.
    */
   override updateDOM(dom: HTMLElement): boolean {
     const table = dom.querySelector("table");
@@ -549,6 +553,7 @@ class Table extends WidgetType {
         }
       }
     });
+    dom.className = this.frameClass();
     drawing.set(dom, this);
     return true;
   }
@@ -660,16 +665,14 @@ function drawnTables(
         // but no other block in it.
         return ["Document", "Body", "Blockquote"].includes(node.name);
       }
-      const depth = quoteDepth(state, node.node);
       // An indented table's lines whole, or a quoted one's, with its marks.
       const from = state.doc.lineAt(node.from).from;
       const { to } = node;
-      if (
-        depth === null ||
-        writing.some((line) => from <= line.to && to >= line.from)
-      ) {
+      if (writing.some((line) => from <= line.to && to >= line.from)) {
         return false;
       }
+      const depth = quoteDepth(state, node.node);
+      if (depth === null) return false;
       const widget =
         kept.get(state.sliceDoc(node.from, to)) ??
         table(state, node.node, depth);
@@ -1763,9 +1766,9 @@ const editingCells = ViewPlugin.fromClass(
     }
     /**
      * Adds an empty row after the table's last, then edits its cell in
-     * `column`. Its indent is the delimiter row's, and it takes a pipe at
-     * each edge, whatever the table's: GFM holds an empty cell between
-     * pipes only.
+     * `column`. It takes the last row's quotes' marks and indent, as
+     * written, and a pipe at each edge, whatever the table's: GFM holds an
+     * empty cell between pipes only.
      */
     addRow(column: number): void {
       const table = this.where()?.table;

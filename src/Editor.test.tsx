@@ -1814,6 +1814,28 @@ describe("Visual's tables", () => {
     expect(looks(view)).toEqual(["‹[›!note‹] Tea›", "", "", "After"]);
   });
 
+  it("draws a table's quote bars anew as its quote changes around a cell edited", async () => {
+    const { view } = open("> | A | B |\n> | - | - |\n> | 1 | 2 |", "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "1");
+
+    // Out of its quote, as undo may take it, the cell staying edited.
+    act(() => {
+      view.dispatch({
+        changes: [
+          { from: 0, to: 2 },
+          { from: 12, to: 14 },
+          { from: 24, to: 26 },
+        ],
+      });
+    });
+
+    expect(cellEditor(view)).toBe(cell);
+    expect(view.contentDOM.querySelector(".cm-table")?.className).toBe(
+      "cm-table",
+    );
+  });
+
   it("shows all the marks of a table in a quote while one of its lines is written", async () => {
     const { view } = open("> | A | B |\n> | - | - |\n> | 1 | 2 |", "\n", true);
     await parsed(view);
