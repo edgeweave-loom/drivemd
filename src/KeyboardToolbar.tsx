@@ -30,19 +30,21 @@ interface Key {
   lines?: true;
 }
 
-const UNDO: Key = {
-  name: "Undo",
-  command: undo,
-  icon: "undo",
-};
-
-const KEYS: Key[] = [
-  UNDO,
+const HISTORY: Key[] = [
+  {
+    name: "Undo",
+    command: undo,
+    icon: "undo",
+  },
   {
     name: "Redo",
     command: redo,
     icon: "redo",
   },
+];
+
+const KEYS: Key[] = [
+  ...HISTORY,
   {
     name: "Heading",
     command: cycleHeading,
@@ -90,9 +92,9 @@ const KEYS: Key[] = [
   },
 ];
 
-// In a table's cell, the keys that leave its row whole but Undo, which
-// comes first, as a key there deletes a row or a column at a tap.
-const IN_CELL = KEYS.filter((key) => key !== UNDO && !key.lines);
+// In a table's cell, the keys that leave its row whole but Undo and Redo,
+// which come first, as a key there deletes a row or a column at a tap.
+const IN_CELL = KEYS.filter((key) => !HISTORY.includes(key) && !key.lines);
 
 // The table's keys, in their groups.
 const TABLE_KEYS = TABLE_EDITS.map((group) =>
@@ -177,7 +179,7 @@ export function KeyboardToolbar({
     >
       {cell ? (
         <>
-          {keyOf(UNDO)}
+          {HISTORY.map(keyOf)}
           {TABLE_KEYS.map((group) => (
             <Fragment key={group[0]?.edit}>
               <hr aria-orientation="vertical" />
