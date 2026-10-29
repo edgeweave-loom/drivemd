@@ -194,7 +194,7 @@ describe("the keyboard toolbar", () => {
     expect(view.state.sliceDoc()).toBe("Te[]()a at [noon](plan.md#noon).");
   });
 
-  it("acts on a table's cell edited in place, but for the keys of lines", async () => {
+  it("acts on a table's cell edited in place, without the keys of lines", async () => {
     holdTouch(true);
     const onFollow = vi.fn<(href: string) => void>();
     const text = "| Tea | [noon](plan.md) |\n| - | - |";
@@ -236,25 +236,18 @@ describe("the keyboard toolbar", () => {
     ).toBe("Tea");
     tap("Undo");
     expect(view.state.sliceDoc()).toBe(text);
-    // Off, but still keeping the focus where it is, and the keyboard up.
-    for (const name of ["Heading", "List", "Checkbox"]) {
-      const key = screen.getByRole("button", { name });
-      expect(key).toHaveAttribute("aria-disabled", "true");
-      expect(fireEvent.mouseDown(key)).toBe(false);
-      tap(name);
+    // Their marks would break its row.
+    for (const name of ["Heading", "List", "Checkbox", "Indent", "Outdent"]) {
+      expect(screen.queryByRole("button", { name })).toBeNull();
     }
-    expect(view.state.sliceDoc()).toBe(text);
 
-    // From cell to cell, the toolbar stays, its keys of lines still off.
+    // From cell to cell, the toolbar stays, its keys of lines still out.
     const link = edit(1);
     await act(async () => {
       await Promise.resolve();
     });
     expect(toolbar()).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Heading" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
+    expect(screen.queryByRole("button", { name: "Heading" })).toBeNull();
     act(() => {
       link.dispatch({ selection: { anchor: 2 } });
     });
@@ -262,32 +255,162 @@ describe("the keyboard toolbar", () => {
     expect(onFollow).toHaveBeenCalledExactlyOnceWith("plan.md");
   });
 
-  it("moves from cell to cell with Indent and Outdent, and edits the table from the Table key's menu, the focus staying", async () => {
+  /** Edits the cell `name` of the note's table, on a touch screen. */
+  async function inTable(text: string, name: string) {
     holdTouch(true);
-    const view = open("| Tea | Cups |\n| - | - |\n| 1 | 2 |", undefined, true);
+    const view = open(text, undefined, true);
+    const cell = [...view.contentDOM.querySelectorAll("th, td")].find(
+      (drawn) => drawn.textContent === name,
+    );
+    fireEvent.mouseDown(cell ?? document.body);
+    await screen.findByRole("toolbar", { name: "Formatting" });
     const edited = () => {
       const element = view.contentDOM.querySelector<HTMLElement>(
         ".cm-table .cm-editor",
       );
       return element && EditorView.findFromDOM(element);
     };
-    fireEvent.mouseDown(view.contentDOM.querySelectorAll("td")[0] ?? document);
-    await screen.findByRole("toolbar", { name: "Formatting" });
-    expect(screen.queryByRole("button", { name: "Indent" })).toBeNull();
+    return { view, edited };
+  }
 
-    tap("Next cell");
+  function keys() {
+    return [...(toolbar()?.querySelectorAll("button") ?? [])].map((key) =>
+      key.getAttribute("aria-label"),
+    );
+  }
+
+  it("holds a table's frequent edits in its cells, Undo first, the focus staying", async () => {
+    const { view, edited } = await inTable(
+      "| Tea | Cups |\n| :- | - |\n| 1 | 2 |",
+      "1",
+    );
+
+    expect(keys()).toEqual([
+      "Undo",
+      "Add row below",
+      "Delete row",
+      "Add column to the right",
+      "Delete column",
+      "Align left",
+      "Align center",
+      "Align right",
+      "Redo",
+      "Bold",
+      "Link",
+      "Find in note",
+      "Table options",
+    ]);
+    // Between Undo, the rows', the columns', the alignment's and the rest,
+    // keeping the focus, and the keyboard up, as the keys do.
+    const rules = toolbar()?.querySelectorAll("hr") ?? [];
+    expect(rules).toHaveLength(4);
+    for (const rule of rules) expect(fireEvent.mouseDown(rule)).toBe(false);
+    // The column's own alignment pressed.
+    const pressed = () =>
+      ["Align left", "Align center", "Align right"].map((name) =>
+        screen.getByRole("button", { name }).getAttribute("aria-pressed"),
+      );
+    expect(pressed()).toEqual(["true", "false", "false"]);
+    const key = screen.getByRole("button", { name: "Align center" });
+    // It keeps the focus, and the keyboard up.
+    expect(fireEvent.mouseDown(key)).toBe(false);
+    tap("Align center");
+    expect(view.state.sliceDoc()).toBe(
+      "| Tea | Cups |\n| :-: | - |\n| 1 | 2 |",
+    );
+    expect(pressed()).toEqual(["false", "true", "false"]);
+    expect(edited()?.hasFocus).toBe(true);
+    const host = () =>
+      view.contentDOM.querySelector<HTMLElement>(".cm-cell-edited");
+    expect(host()?.style.textAlign).toBe("center");
+    tap("Undo");
+    expect(view.state.sliceDoc()).toBe("| Tea | Cups |\n| :- | - |\n| 1 | 2 |");
+    expect(pressed()).toEqual(["true", "false", "false"]);
+    // The cell edited aligned as its column again, as the others.
+    expect(host()?.style.textAlign).toBe("left");
+
+    tap("Add row below");
+    expect(view.state.sliceDoc()).toBe(
+      "| Tea | Cups |\n| :- | - |\n| 1 | 2 |\n|  |  |",
+    );
+    expect(edited()?.state.sliceDoc()).toBe("");
+    expect(edited()?.hasFocus).toBe(true);
+    tap("Delete row");
+    expect(view.state.sliceDoc()).toBe("| Tea | Cups |\n| :- | - |\n| 1 | 2 |");
+    expect(edited()?.state.sliceDoc()).toBe("1");
+    tap("Add column to the right");
+    expect(view.state.sliceDoc()).toBe(
+      "| Tea |  | Cups |\n| :- | --- | - |\n| 1 |  | 2 |",
+    );
+    expect(edited()?.hasFocus).toBe(true);
+    tap("Delete column");
+    expect(view.state.sliceDoc()).toBe("| Tea | Cups |\n| :- | - |\n| 1 | 2 |");
     expect(edited()?.state.sliceDoc()).toBe("2");
     expect(edited()?.hasFocus).toBe(true);
-    tap("Previous cell");
-    expect(edited()?.state.sliceDoc()).toBe("1");
+    // The cell's column's alignment, as it moved.
+    expect(pressed()).toEqual(["false", "false", "false"]);
+  });
 
-    // The menu's first key, which keeps the focus, and the keyboard up.
-    const key = screen.getByRole("button", { name: "Table" });
-    expect(toolbar()?.querySelector("button")).toBe(key);
+  it("keeps a table's keys off where their edits do not apply", async () => {
+    const { view, edited } = await inTable("| Tea |\n| - |\n| 1 |", "Tea");
+    const off = () =>
+      [...(toolbar()?.querySelectorAll('[aria-disabled="true"]') ?? [])].map(
+        (key) => key.getAttribute("aria-label"),
+      );
+
+    expect(off()).toEqual(["Delete row", "Delete column"]);
+    // Still keeping the focus, and the keyboard up.
+    const key = screen.getByRole("button", { name: "Delete row" });
+    expect(fireEvent.mouseDown(key)).toBe(false);
+    tap("Delete row");
+    tap("Delete column");
+    expect(view.state.sliceDoc()).toBe("| Tea |\n| - |\n| 1 |");
+    expect(edited()?.hasFocus).toBe(true);
+    // None pressed in a column without its alignment.
+    expect(screen.getByRole("button", { name: "Align left" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    // Anew in another cell of the column, its alignment the same.
+    fireEvent.mouseDown(view.contentDOM.querySelector("td") ?? document.body);
+    await waitFor(() => {
+      expect(off()).toEqual(["Delete column"]);
+    });
+    // And gone with the cell, as the note takes the focus.
+    act(() => {
+      view.focus();
+    });
+    await waitFor(() => {
+      expect(keys()).toContain("Heading");
+    });
+    expect(keys()).not.toContain("Table options");
+  });
+
+  it("holds a table's other edits in the menu of its Table options key, above it, the focus staying", async () => {
+    const { view, edited } = await inTable(
+      "| Tea | Cups |\n| - | - |\n| 1 | 2 |",
+      "1",
+    );
+
+    const key = screen.getByRole("button", { name: "Table options" });
     expect(key).toHaveAttribute("aria-haspopup", "menu");
     expect(fireEvent.mouseDown(key)).toBe(false);
-    tap("Table");
+    tap("Table options");
     const menu = screen.getByRole("menu", { name: "Table" });
+    expect(
+      [...menu.querySelectorAll('[role^="menuitem"]')].map(
+        (item) => item.textContent,
+      ),
+    ).toEqual([
+      "Add row above",
+      "Move row up",
+      "Move row down",
+      "Add column to the left",
+      "Move column left",
+      "Move column right",
+    ]);
+    expect(menu.querySelectorAll("hr")).toHaveLength(1);
     const item = screen.getByRole("menuitem", {
       name: "Add column to the left",
     });
@@ -301,21 +424,33 @@ describe("the keyboard toolbar", () => {
     expect(menu).not.toBeVisible();
     expect(edited()?.state.sliceDoc()).toBe("");
     expect(edited()?.hasFocus).toBe(true);
-    tap("Table");
-    tap("Table");
+    tap("Table options");
+    tap("Table options");
     expect(menu).not.toBeVisible();
     expect(edited()?.hasFocus).toBe(true);
+
+    // A right-click's holds them all.
+    const drawn = [...view.contentDOM.querySelectorAll("td")].find(
+      (cell) => cell.textContent === "2",
+    );
+    expect(fireEvent.contextMenu(drawn ?? document.body)).toBe(false);
+    expect(menu.querySelectorAll('[role^="menuitem"]')).toHaveLength(13);
+    act(() => {
+      menu.hidePopover();
+    });
+
     // Its cell left, it closes, its items being that cell's.
-    tap("Table");
-    tap("Next cell");
+    tap("Table options");
+    expect(menu).toBeVisible();
+    fireEvent.mouseDown(view.contentDOM.querySelector("th") ?? document.body);
     expect(menu).not.toBeVisible();
-    expect(edited()?.state.sliceDoc()).toBe("1");
   });
 
-  it("keeps the Table key to a table's cells", async () => {
+  it("keeps a table's keys to its cells", async () => {
     await editing("| Tea |\n| - |");
 
-    expect(screen.queryByRole("button", { name: "Table" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Table options" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add row below" })).toBeNull();
     expect(screen.getByRole("button", { name: "Indent" })).toBeVisible();
   });
 
