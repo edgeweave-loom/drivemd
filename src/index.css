@@ -2301,8 +2301,13 @@ body:has(> .keyboard-toolbar) .editor {
   color: var(--on-secondary-container);
 }
 
-/* Between a table's groups of keys, narrow enough that Undo and the
-   table's keys fit a 375 px screen. */
+/* In a table's cell, whose keys go in groups between rules, narrower, so
+   that Undo, Redo and the table's keys fit a 375 px screen. */
+.keyboard-toolbar:has(> hr) button {
+  width: 40px;
+}
+
+/* Between a table's groups of keys. */
 .keyboard-toolbar > hr {
   flex: none;
   width: 1px;

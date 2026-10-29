@@ -279,7 +279,7 @@ describe("the keyboard toolbar", () => {
     );
   }
 
-  it("holds a table's frequent edits in its cells, Undo first, the focus staying", async () => {
+  it("holds a table's frequent edits in its cells, after Undo and Redo, the focus staying", async () => {
     const { view, edited } = await inTable(
       "| Tea | Cups |\n| :- | - |\n| 1 | 2 |",
       "1",
@@ -287,6 +287,7 @@ describe("the keyboard toolbar", () => {
 
     expect(keys()).toEqual([
       "Undo",
+      "Redo",
       "Add row below",
       "Delete row",
       "Add column to the right",
@@ -294,14 +295,13 @@ describe("the keyboard toolbar", () => {
       "Align left",
       "Align center",
       "Align right",
-      "Redo",
       "Bold",
       "Link",
       "Find in note",
       "Table options",
     ]);
-    // Between Undo, the rows', the columns', the alignment's and the rest,
-    // keeping the focus, and the keyboard up, as the keys do.
+    // Between Undo and Redo, the rows', the columns', the alignment's and
+    // the rest, keeping the focus, and the keyboard up, as the keys do.
     const rules = toolbar()?.querySelectorAll("hr") ?? [];
     expect(rules).toHaveLength(4);
     for (const rule of rules) expect(fireEvent.mouseDown(rule)).toBe(false);

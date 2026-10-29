@@ -525,9 +525,12 @@ test("edits a table's rows and columns from its menu or the keyboard toolbar's k
   } else {
     await ada.tap();
     await expect(editing).toBeFocused();
-    // Undo first, then the table's own keys, in view on the narrowest
-    // phones, 375 px wide.
+    // Undo and Redo first, then the table's own keys, in view on the
+    // narrowest phones, 375 px wide.
     await expect(toolbar.getByRole("button").nth(1)).toHaveAccessibleName(
+      "Redo",
+    );
+    await expect(toolbar.getByRole("button").nth(2)).toHaveAccessibleName(
       "Add row below",
     );
     const last = await toolbar
