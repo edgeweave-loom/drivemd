@@ -1,6 +1,7 @@
 import {
   defaultKeymap,
   historyKeymap,
+  insertNewline,
   isolateHistory,
 } from "@codemirror/commands";
 import { highlightingFor, syntaxTree } from "@codemirror/language";
@@ -31,7 +32,7 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
-import { highlightTree } from "@lezer/highlight";
+import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
 import { findInNote } from "./find.ts";
 import { TOUCH } from "./layout.ts";
 
@@ -156,6 +157,159 @@ function drawnQuote(quote: SyntaxNode): boolean {
   let around: SyntaxNode | null = quote;
   while (around?.name === "Blockquote") around = around.parent;
   return around?.name === "Document";
+}
+
+/** A code block's language, at its first line's end, as Obsidian shows it. */
+class Language extends WidgetType {
+  readonly name: string;
+  constructor(name: string) {
+    super();
+    this.name = name;
+  }
+  override eq(other: Language): boolean {
+    return other.name === this.name;
+  }
+  toDOM(): HTMLElement {
+    const label = document.createElement("span");
+    label.className = "cm-code-language";
+    label.textContent = this.name;
+    return label;
+  }
+}
+
+const LANGUAGE_LINE = Decoration.line({ class: "cm-code-language-line" });
+
+// Inline code, its backticks on its chip while they show.
+const CHIP = "cm-inline-code";
+const INLINE_CODE = Decoration.mark({ class: CHIP });
+
+// A code block's lines, its first and last rounding its corners.
+const CODE_LINES = {
+  middle: Decoration.line({ class: "cm-code-block" }),
+  first: Decoration.line({ class: "cm-code-block cm-code-first" }),
+  last: Decoration.line({ class: "cm-code-block cm-code-last" }),
+  only: Decoration.line({ class: "cm-code-block cm-code-first cm-code-last" }),
+};
+
+/** Code's tokens in the viewer's roles (docs/DESIGN.md, Color). */
+const CODE_COLORS = tagHighlighter([
+  { tag: tags.comment, class: "cm-code-comment" },
+  { tag: tags.meta, class: "cm-code-meta" },
+  {
+    tag: [tags.keyword, tags.typeName, tags.standard(tags.name), tags.url],
+    class: "cm-code-keyword",
+  },
+  {
+    tag: [tags.literal, tags.atom, tags.character, tags.regexp],
+    class: "cm-code-literal",
+  },
+  {
+    tag: [
+      tags.attributeName,
+      tags.propertyName,
+      tags.variableName,
+      tags.tagName,
+    ],
+    class: "cm-code-name",
+  },
+  {
+    tag: [
+      tags.function(tags.variableName),
+      tags.function(tags.propertyName),
+      tags.className,
+      tags.heading,
+      tags.strong,
+    ],
+    class: "cm-code-title",
+  },
+  { tag: tags.emphasis, class: "cm-code-emphasis" },
+  { tag: tags.inserted, class: "cm-code-inserted" },
+  { tag: tags.deleted, class: "cm-code-deleted" },
+]);
+
+/**
+ * Visual's code, as the viewer's: inline code on its chip, and code blocks
+ * drawn on their lines, their code colored.
+ */
+const coding = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = codeDecorations(view);
+    }
+    update(update: ViewUpdate) {
+      if (
+        update.docChanged ||
+        update.viewportChanged ||
+        syntaxTree(update.startState) !== syntaxTree(update.state)
+      ) {
+        this.decorations = codeDecorations(update.view);
+      }
+    }
+  },
+  { decorations: (plugin) => plugin.decorations },
+);
+
+function codeDecorations(view: EditorView): DecorationSet {
+  const { state } = view;
+  const { from, to } = view.viewport;
+  const ranges: Range<Decoration>[] = [];
+  syntaxTree(state).iterate({
+    from,
+    to,
+    enter: (node) => {
+      if (node.name === "InlineCode") {
+        ranges.push(INLINE_CODE.range(node.from, node.to));
+        return false;
+      }
+      if (node.name !== "FencedCode" && node.name !== "CodeBlock") return;
+      if (!drawnCode(node.node)) return false;
+      const first = state.doc.lineAt(node.from);
+      const last = state.doc.lineAt(node.to);
+      for (let at = Math.max(from, first.from); at <= Math.min(to, last.to);) {
+        const line = state.doc.lineAt(at);
+        const edge =
+          line.from === first.from
+            ? line.from === last.from
+              ? "only"
+              : "first"
+            : line.from === last.from
+              ? "last"
+              : "middle";
+        ranges.push(CODE_LINES[edge].range(line.from));
+        at = line.to + 1;
+      }
+      const code = node.node.getChild("CodeText");
+      if (code) {
+        highlightTree(
+          syntaxTree(state),
+          CODE_COLORS,
+          (start, end, style) => {
+            ranges.push(Decoration.mark({ class: style }).range(start, end));
+          },
+          Math.max(from, code.from),
+          Math.min(to, code.to),
+        );
+      }
+      return false;
+    },
+  });
+  return Decoration.set(ranges, true);
+}
+
+/**
+ * Whether Visual draws a code block: at the note's top, or in quotes
+ * drawn, as deep as their bars go, but not in a list, whose indent it
+ * would cover.
+ */
+function drawnCode(code: SyntaxNode): boolean {
+  let depth = 0;
+  let around = code.parent;
+  while (around?.name === "Blockquote") {
+    depth++;
+    around = around.parent;
+  }
+  return around?.name === "Document" && depth <= QUOTE_LINES.length;
 }
 
 // The last finger has lifted from the text.
@@ -791,18 +945,22 @@ function alignments(delimiter: string): Alignment[] {
 const LINE_BREAK = /^<\/?br[\s/>]/i;
 
 /**
- * A cell's text in the editor's highlighting, its symbols hidden as Visual
- * hides them, and as the viewer does, an escape's backslash, so that an
- * escaped pipe shows in its cell, and a tag such as `<br>` a line break,
- * which no row can hold otherwise.
+ * A cell's text in the editor's highlighting, its inline code on its chip,
+ * its symbols hidden as Visual hides them, and as the viewer does, an
+ * escape's backslash, so that an escaped pipe shows in its cell, and a tag
+ * such as `<br>` a line break, which no row can hold otherwise.
  */
 function parts(state: EditorState, { from, to }: Stretch): Part[] {
   const hidden: Stretch[] = [];
+  const chips: Stretch[] = [];
   const breaks = new Set<number>();
   syntaxTree(state).iterate({
     from,
     to,
     enter: (node) => {
+      if (node.name === "InlineCode") {
+        chips.push({ from: node.from, to: node.to });
+      }
       if (node.name === "Escape") {
         hidden.push({ from: node.from, to: node.from + 1 });
       }
@@ -829,7 +987,7 @@ function parts(state: EditorState, { from, to }: Stretch): Part[] {
     to,
   );
   const edges = new Set([from, to]);
-  for (const stretch of [...hidden, ...styled]) {
+  for (const stretch of [...hidden, ...chips, ...styled]) {
     edges.add(Math.min(to, Math.max(from, stretch.from)));
     edges.add(Math.min(to, Math.max(from, stretch.to)));
   }
@@ -843,7 +1001,10 @@ function parts(state: EditorState, { from, to }: Stretch): Part[] {
     }
     const covers = (range: Stretch) => range.from <= start && range.to >= end;
     if (hidden.some(covers)) return;
-    const style = styled.find(covers)?.style ?? null;
+    const style =
+      [styled.find(covers)?.style, chips.some(covers) && CHIP]
+        .filter(Boolean)
+        .join(" ") || null;
     const text = state.sliceDoc(start, end);
     const previous = result.at(-1);
     if (previous?.style === style) previous.text += text;
@@ -915,6 +1076,7 @@ function cellText(
 
 /** What the table's menu does to the cell edited in place. */
 export type TableEdit =
+  | "lineBreak"
   | "addRowAbove"
   | "addRowBelow"
   | "moveRowUp"
@@ -947,6 +1109,7 @@ function editsAt(
   columns: number,
 ): Set<TableEdit> {
   const edits: [TableEdit, boolean][] = [
+    ["lineBreak", true],
     ["addRowAbove", row > 0],
     ["addRowBelow", true],
     ["moveRowUp", row > 1],
@@ -1120,7 +1283,7 @@ function tableEdited(
   state: EditorState,
   table: SyntaxNode,
   place: Place,
-  edit: TableEdit,
+  edit: Exclude<TableEdit, "lineBreak">,
 ): { changes: ChangeSpec[]; to: Place } {
   const { row, column } = place;
   const lines = tableRows(table);
@@ -1508,7 +1671,13 @@ const editingCells = ViewPlugin.fromClass(
         }),
         keymap.of([
           { key: "Tab", run: () => this.tab(1), shift: () => this.tab(-1) },
-          { key: "Enter", run: () => this.enter() },
+          // Shift+Enter, a line break alone, which CodeMirror's own would
+          // write twice between brackets, taking the spaces after it.
+          {
+            key: "Enter",
+            run: () => this.enter(),
+            shift: (cell) => insertNewline(cell),
+          },
           {
             key: "ArrowUp",
             run: () => this.move(rowing(-1)) || this.out(-1, true),
@@ -1871,12 +2040,14 @@ const editingCells = ViewPlugin.fromClass(
     /**
      * Makes `edit` from the table's menu to the cell edited, then edits the
      * cell it leaves edited, or gives the cell the focus back should it
-     * change nothing: whether it applies.
+     * change nothing: whether it applies. A line break is Shift+Enter's, in
+     * the cell.
      */
     edit(edit: TableEdit): boolean {
       const at = this.where();
       if (!at || !cellMenu(this.view.state, at).edits.has(edit)) return false;
       const { editing, place, table } = at;
+      if (edit === "lineBreak") return insertNewline(editing.cell);
       const done = tableEdited(this.view.state, table, place, edit);
       if (done.changes.length === 0) {
         editing.cell.focus();
@@ -2057,6 +2228,71 @@ const LOOK = EditorView.theme({
       { "--quote-depth": String(at + 1) },
     ]),
   ),
+  // The viewer's code block, as far in as its quote's text, its text 1rem
+  // further in, drawn under its lines, whose height it keeps: its fences'
+  // lines, hidden, are its padding.
+  ".cm-line.cm-code-block": {
+    position: "relative",
+    paddingLeft:
+      "calc(var(--text-inset) + var(--quote-depth, 0) * 1.25em + 1rem)",
+    paddingRight:
+      "calc(var(--text-inset) + var(--quote-depth, 0) * 1em + 1rem)",
+  },
+  ".cm-code-block::before": {
+    content: '""',
+    position: "absolute",
+    inset:
+      "0 calc(var(--text-inset) + var(--quote-depth, 0) * 1em) 0 calc(var(--text-inset) + var(--quote-depth, 0) * 1.25em)",
+    zIndex: "-1",
+    background: "var(--surface-container-high)",
+  },
+  ".cm-code-first::before": {
+    borderTopLeftRadius: "var(--radius-sm)",
+    borderTopRightRadius: "var(--radius-sm)",
+  },
+  ".cm-code-last::before": {
+    borderBottomLeftRadius: "var(--radius-sm)",
+    borderBottomRightRadius: "var(--radius-sm)",
+  },
+  // The cursor's line marked at its start alone, the block staying whole.
+  "&.cm-focused .cm-activeLine.cm-code-block": {
+    backgroundColor: "transparent",
+  },
+  // Markdown's code at the code's size, as the viewer's: the light
+  // styling's headings would make its lines taller.
+  ".cm-code-block span:not(.cm-code-language)": { fontSize: "inherit" },
+  // The viewer's chip, at the code's own size, which Safari needs: the
+  // same padding whether its backticks show or not.
+  ".cm-inline-code": {
+    padding: "0.2em 0.4em",
+    borderRadius: "var(--radius-xs)",
+    background: "var(--surface-container-high)",
+  },
+  ".cm-code-language-line": { textAlign: "end" },
+  ".cm-code-language": {
+    color: "var(--on-surface-variant)",
+    fontSize: "0.875em",
+  },
+  ".cm-code-comment": {
+    color: "var(--on-surface-variant)",
+    fontStyle: "italic",
+  },
+  ".cm-code-meta": { color: "var(--on-surface-variant)" },
+  ".cm-code-keyword": { color: "var(--primary)" },
+  ".cm-code-literal": { color: "var(--tertiary)" },
+  ".cm-code-name": { color: "var(--secondary)" },
+  ".cm-code-title": { fontWeight: "600" },
+  ".cm-code-emphasis": { fontStyle: "italic" },
+  ".cm-code-inserted": {
+    background: "var(--diff-added)",
+    color: "var(--on-tertiary-container)",
+    textDecoration: "underline",
+  },
+  ".cm-code-deleted": {
+    background: "var(--diff-removed)",
+    color: "var(--on-error-container)",
+    textDecoration: "line-through",
+  },
   // The viewer's table, as Drive lists files: a rule under each row, the
   // head quieter, as far in as the lines' text.
   ".cm-table": {
@@ -2120,6 +2356,7 @@ export const livePreview: Extension = [
   ),
   ticking,
   quoting,
+  coding,
   hasFocus,
   followingFocus,
   tables,
@@ -2180,31 +2417,39 @@ function hidden(view: EditorView, writing: Stretch[]): DecorationSet {
 
 /**
  * The lines the selection touches, each stretch of them from start to end,
- * with the whole of a table it touches, which shows as written.
+ * with the whole of a table or a fenced code block it touches, which shows
+ * as written.
  */
 function linesWritten(state: EditorState): Stretch[] {
   return state.selection.ranges.map((range) => ({
-    from: state.doc.lineAt(tableAround(state, range.from)?.from ?? range.from)
+    from: state.doc.lineAt(blockAround(state, range.from)?.from ?? range.from)
       .from,
-    to: state.doc.lineAt(tableAround(state, range.to)?.to ?? range.to).to,
+    to: state.doc.lineAt(blockAround(state, range.to)?.to ?? range.to).to,
   }));
 }
 
 /**
- * The table that `at` is in, if any: one left as written, in a quote, shows
- * all its marks too, so that its columns line up.
+ * The table or fenced code block that `at` is in, if any, the outermost,
+ * since a block of Markdown holds its own: one left as written, in a
+ * quote, shows all its marks too, so that its lines line up.
  */
-function tableAround(state: EditorState, at: number): SyntaxNode | null {
-  let node: SyntaxNode | null = syntaxTree(state).resolveInner(at, 0);
-  while (node && node.name !== "Table") node = node.parent;
-  return node;
+function blockAround(state: EditorState, at: number): SyntaxNode | null {
+  let block: SyntaxNode | null = null;
+  for (
+    let node: SyntaxNode | null = syntaxTree(state).resolveInner(at, 0);
+    node;
+    node = node.parent
+  ) {
+    if (node.name === "Table" || node.name === "FencedCode") block = node;
+  }
+  return block;
 }
 
 /**
  * Visual's symbols, hidden or drawn: emphasis' `*` and `_`,
- * strikethrough's `~~`, inline code's backticks, a heading's `#`, a link's
- * brackets and address, a list item's marker, a thematic break, and a
- * quote's `>`.
+ * strikethrough's `~~`, inline code's backticks, a code block's fences, a
+ * heading's `#`, a link's brackets and address, a list item's marker, a
+ * thematic break, and a quote's `>`.
  */
 function symbols(state: EditorState, node: SyntaxNodeRef): Range<Decoration>[] {
   switch (node.name) {
@@ -2212,7 +2457,7 @@ function symbols(state: EditorState, node: SyntaxNodeRef): Range<Decoration>[] {
     case "StrikethroughMark":
       return [hide(node)];
     case "CodeMark":
-      return node.node.parent?.name === "InlineCode" ? [hide(node)] : [];
+      return codeMark(state, node);
     case "HeaderMark":
       return headerMark(state, node).map(hide);
     case "Link":
@@ -2254,6 +2499,33 @@ function quoteMark(state: EditorState, node: SyntaxNodeRef): Stretch[] {
       from: before.trim() ? node.from : line.from,
       to: space ? node.to + 1 : node.to,
     },
+  ];
+}
+
+/**
+ * Inline code's backticks, or a code block's fence, with the indent before
+ * it and what follows it on its line: its opening fence's language shows
+ * at the line's end.
+ */
+function codeMark(
+  state: EditorState,
+  node: SyntaxNodeRef,
+): Range<Decoration>[] {
+  const code = node.node.parent;
+  if (code?.name === "InlineCode") return [hide(node)];
+  if (code?.name !== "FencedCode" || !drawnCode(code)) return [];
+  const line = state.doc.lineAt(node.from);
+  const before = state.sliceDoc(line.from, node.from);
+  const fence = { from: before.trim() ? node.from : line.from, to: line.to };
+  const info = code.getChild("CodeInfo");
+  if (node.from !== code.firstChild?.from || !info) return [hide(fence)];
+  const [language = ""] = state.sliceDoc(info.from, info.to).split(/\s/);
+  return [
+    LANGUAGE_LINE.range(line.from),
+    Decoration.replace({ widget: new Language(language) }).range(
+      fence.from,
+      fence.to,
+    ),
   ];
 }
 

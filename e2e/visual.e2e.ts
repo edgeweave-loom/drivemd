@@ -589,7 +589,7 @@ test("edits a table's rows and columns from its menu or the keyboard toolbar's k
     await expect(menu).toBeVisible();
     await expect(editing).toHaveText("Ada");
     await expect(
-      menu.getByRole("menuitem", { name: "Add row above" }),
+      menu.getByRole("menuitem", { name: "Insert line break" }),
     ).toBeFocused();
   } else {
     await ada.tap();
@@ -670,7 +670,7 @@ test("edits a table's rows and columns from its menu or the keyboard toolbar's k
     // starts, and would close it as it ends, with all the items.
     await table.getByRole("cell", { name: "Grace" }).click({ button: "right" });
     await expect(menu).toBeVisible();
-    await expect(menu.getByRole("menuitem")).toHaveCount(10);
+    await expect(menu.getByRole("menuitem")).toHaveCount(11);
     await expect(editing).toHaveText("Grace");
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
@@ -692,6 +692,82 @@ test("edits a table's rows and columns from its menu or the keyboard toolbar's k
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("plan")?.content)).toBe(
     "# The plan\n\n| Step |  | Owner |\n| --- | :-: | --- |\n| Cups |  | Grace |\n| Tea | 2 | Ada |\n\nNotes.\n",
+  );
+});
+
+test("writes a line break in a table's cell from its menu, which a phone's keyboard has no Shift+Enter for", async ({
+  page,
+  drive,
+}, info) => {
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content =
+    "# The plan\n\n| Step | Owner |\n| --- | --- |\n| Tea | Ada |\n\nNotes.\n";
+  const note = await editInVisual(page);
+  const table = note.getByRole("table");
+  const editing = note.getByRole("textbox", { name: "Cell" });
+  const menu = page.getByRole("menu", { name: "Table" });
+  const item = menu.getByRole("menuitem", { name: "Insert line break" });
+  const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+  const mouse = info.project.name === "desktop-chromium";
+  const shortcut = () =>
+    item.evaluate((one) => getComputedStyle(one, "::after").content);
+  const ada = table.getByRole("cell", { name: "Ada" });
+  if (mouse) await ada.click();
+  else await ada.tap();
+  await page.keyboard.type("!");
+
+  if (mouse) {
+    // Past the text's end, where the cursor stays.
+    const box = await editing.boundingBox();
+    if (!box) throw new Error("Not laid out");
+    await editing.click({
+      button: "right",
+      position: { x: box.width - 1, y: box.height / 2 },
+    });
+    await expect(item).toBeFocused();
+    // Its shortcut shows at its end, out of its name.
+    await expect(item).toHaveAccessibleName("Insert line break");
+    expect(await shortcut()).toContain("Shift+Enter");
+  } else {
+    await toolbar.getByRole("button", { name: "Table options" }).click();
+    await expect(menu).toBeVisible();
+    expect(await shortcut()).toBe("none");
+  }
+  await item.click();
+  await expect(menu).toBeHidden();
+  await expect(editing).toBeFocused();
+  await expect(editing).toHaveText("Ada!<br>");
+  // Undo takes it back alone.
+  const undo = (name: "Undo" | "Redo") =>
+    mouse
+      ? page.keyboard.press(
+          name === "Undo" ? "ControlOrMeta+z" : "ControlOrMeta+y",
+        )
+      : toolbar.getByRole("button", { name }).click();
+  await undo("Undo");
+  await expect(editing).toHaveText("Ada!");
+  await undo("Redo");
+  await expect(editing).toHaveText("Ada!<br>");
+  await page.keyboard.type("Lovelace");
+  await expect(editing).toBeFocused();
+
+  const heading = note.getByText("The plan");
+  if (mouse) await heading.click();
+  else await heading.tap();
+  await expect(editing).toHaveCount(0);
+  await expect
+    .poll(() =>
+      table
+        .getByRole("cell")
+        .nth(1)
+        .evaluate((cell: HTMLElement) => cell.innerText),
+    )
+    .toBe("Ada!\nLovelace");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("plan")?.content)).toBe(
+    "# The plan\n\n| Step | Owner |\n| --- | --- |\n| Tea | Ada!<br>Lovelace |\n\nNotes.\n",
   );
 });
 

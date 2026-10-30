@@ -97,10 +97,10 @@ const KEYS: Key[] = [
 // which come first, as a key there deletes a row or a column at a tap.
 const IN_CELL = KEYS.filter((key) => !HISTORY.includes(key) && !key.lines);
 
-// The table's keys, in their groups.
+// The table's keys, in their groups, those with none left out.
 const TABLE_KEYS = TABLE_EDITS.map((group) =>
   group.flatMap(({ edit, name, icon }) => (icon ? [{ edit, name, icon }] : [])),
-);
+).filter((group) => group.length > 0);
 
 /**
  * The formatting keys pinned above a touch screen's keyboard while the

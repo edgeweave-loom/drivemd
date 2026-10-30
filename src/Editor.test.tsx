@@ -919,6 +919,137 @@ describe("Visual", () => {
     expect(view.state.sliceDoc()).toBe("Tea\n- [ ] Boil");
   });
 
+  it("draws a code block as the viewer does, its fences hidden, its language at its first line's end", async () => {
+    const { view } = open(
+      [
+        "Tea",
+        "```js title",
+        "const a = 1;",
+        "```",
+        "",
+        "    indented",
+        "",
+        "- Listed",
+        "  ```",
+        "  x",
+        "  ```",
+        "",
+        "> ~~~",
+        "> quoted",
+        "> ~~~",
+      ].join("\n"),
+      "\n",
+      true,
+    );
+    await parsed(view);
+    const edges = () =>
+      [...view.contentDOM.querySelectorAll(".cm-line")].map((line) =>
+        line.classList.contains("cm-code-block")
+          ? ["first", "last"]
+              .filter((edge) => line.classList.contains(`cm-code-${edge}`))
+              .join(" ") || "middle"
+          : "",
+      );
+
+    // A code block in a list as written, which it would cover the indent of.
+    expect(edges()).toEqual([
+      "",
+      "first",
+      "middle",
+      "last",
+      "",
+      "first last",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "first",
+      "middle",
+      "last",
+    ]);
+    expect(looks(view)).toEqual([
+      "Tea",
+      // Smaller than the code, as the viewer's quieter labels.
+      "‹⟨js⟩›",
+      "const a = 1;",
+      "",
+      "",
+      "    indented",
+      "",
+      "• Listed",
+      "  ‹```›",
+      "  x",
+      "  ‹```›",
+      "",
+      "",
+      "‹quoted›",
+      "",
+    ]);
+  });
+
+  it("draws inline code on the viewer's chip, its backticks on it while they show, in a table's cell too", async () => {
+    const { view } = open(
+      "Some `water` and ``a ` b``.\n\n| Tea |\n| --- |\n| `cup` |",
+      "\n",
+      true,
+    );
+    await parsed(view);
+    const chips = () =>
+      [...view.contentDOM.querySelectorAll(".cm-inline-code")].map(
+        (chip) => chip.textContent,
+      );
+
+    expect(chips()).toEqual(["water", "a ` b", "cup"]);
+
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 1 } });
+    });
+    await waitFor(() => {
+      expect(chips()).toEqual(["`water`", "``a ` b``", "cup"]);
+    });
+  });
+
+  it("shows a code block's fences while the selection is in it with the focus", async () => {
+    const { view } = open("Tea\n```js\nconst a = 1;\n```", "\n", true);
+    await parsed(view);
+
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 15 } });
+    });
+
+    await waitFor(() => {
+      expect(looks(view)).toEqual(["Tea", "‹```›js", "const a = 1;", "‹```›"]);
+    });
+  });
+
+  it("colors code as the viewer does, and leaves Markdown in a code block as written", async () => {
+    for (const name of ["js", "markdown"]) {
+      await LanguageDescription.matchLanguageName(languages, name)?.load();
+    }
+    const { view } = open(
+      "```js\n// Tea\nconst cups = 2;\n```\n\n```markdown\n# Not a heading\n**not bold**\n```",
+      "\n",
+      true,
+    );
+    await parsed(view);
+    const colored = (role: string) =>
+      [...view.contentDOM.querySelectorAll(`.cm-code-${role}`)].map(
+        (token) => token.textContent,
+      );
+
+    expect(colored("comment")).toEqual(["// Tea"]);
+    expect(colored("keyword")).toContain("const");
+    expect(colored("literal")).toContain("2");
+    expect(looks(view).slice(6, 8)).toEqual([
+      "‹#›** Not a heading**",
+      "‹**›**not bold**‹**›",
+    ]);
+  });
+
   it("skips a hidden symbol as one unit", async () => {
     const { view } = open("**Tea**", "\n", true);
     await parsed(view);
@@ -2000,6 +2131,7 @@ describe("Visual's tables", () => {
 
     expect(cellEditor(view)?.state.sliceDoc()).toBe("_Ada_");
     expect(items(menu).map((item) => item.textContent)).toEqual([
+      "Insert line break",
       "Add row above",
       "Add row below",
       "Move row up",
@@ -2015,7 +2147,7 @@ describe("Visual's tables", () => {
       "Align right",
     ]);
     expect(
-      within(menu).getByRole("menuitem", { name: "Add row above" }),
+      within(menu).getByRole("menuitem", { name: "Insert line break" }),
     ).toHaveFocus();
     // The cell stays edited while the menu has the focus.
     await act(async () => {
@@ -2046,6 +2178,82 @@ describe("Visual's tables", () => {
       expect(cellEditor(view)).toBeNull();
     });
   });
+
+  it("writes a line break from the table's menu in place of the cell's selection, as Shift+Enter, one edit for undo", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "Ada");
+    type(cell, "x");
+    const menuOnCell = () => {
+      expect(fireEvent.contextMenu(cell.contentDOM)).toBe(false);
+      return screen.getByRole("menu", { name: "Table" });
+    };
+    const menu = menuOnCell();
+    const item = within(menu).getByRole("menuitem", {
+      name: "Insert line break",
+    });
+    expect(item).toHaveAttribute("aria-keyshortcuts", "Shift+Enter");
+    act(() => {
+      cell.dispatch({ selection: { anchor: 1, head: 4 } });
+    });
+
+    fireEvent.click(item);
+
+    expect(menu).not.toBeVisible();
+    expect(cellEditor(view)).toBe(cell);
+    expect(cell.hasFocus).toBe(true);
+    expect([cell.state.sliceDoc(), cell.state.selection.main.head]).toEqual([
+      "_<br>_x",
+      5,
+    ]);
+    expect(view.state.sliceDoc()).toBe(NOTE.replace("_Ada_", "_<br>_x"));
+    act(() => {
+      press(cell, "z", { ctrlKey: true });
+    });
+    expect(view.state.sliceDoc()).toBe(NOTE.replace("_Ada_", "_Ada_x"));
+
+    // After an odd run of backslashes, as Shift+Enter's.
+    act(() => {
+      cell.dispatch({ selection: { anchor: 6 } });
+    });
+    type(cell, "\\");
+    fireEvent.click(
+      within(menuOnCell()).getByRole("menuitem", {
+        name: "Insert line break",
+      }),
+    );
+    expect(cell.state.sliceDoc()).toBe("_Ada_x\\ <br>");
+    pressed(view, "Tab");
+    // `_Ada_x` holds no emphasis, and `\ ` escapes nothing.
+    expect(cells(view)[1]?.[1]).toBe("_Ada_x\\ \n");
+  });
+
+  it.each(["Shift+Enter", "the table's menu"])(
+    "writes a line break from %s and nothing else, the spaces after the cursor kept, one between brackets",
+    async (from) => {
+      const text = "| A |\n| - |\n| (x) y z |";
+      const { view } = open(text, "\n", true);
+      await parsed(view);
+      const cell = editCell(view, "(x) y z");
+      const broken = (at: number) => {
+        act(() => {
+          cell.dispatch({ selection: { anchor: at } });
+        });
+        if (from === "Shift+Enter") {
+          pressed(view, "Enter", { shiftKey: true });
+        } else {
+          expect(fireEvent.contextMenu(cell.contentDOM)).toBe(false);
+          fireEvent.click(
+            screen.getByRole("menuitem", { name: "Insert line break" }),
+          );
+        }
+        return cell.state.sliceDoc();
+      };
+
+      expect(broken(5)).toBe("(x) y<br> z");
+      expect(broken(2)).toBe("(x<br>) y<br> z");
+    },
+  );
 
   it("opens the table's menu once a press that asks for it ends, which would close it", async () => {
     const { view } = open(NOTE, "\n", true);
