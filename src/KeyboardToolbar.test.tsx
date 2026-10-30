@@ -301,10 +301,10 @@ describe("the keyboard toolbar", () => {
       "Table options",
     ]);
     // After Undo and Redo, then between the rows', the columns', the
-    // alignment's and the rest, keeping the focus, and the keyboard up, as
-    // the keys do.
+    // alignment's and the rest, and before Table options, keeping the
+    // focus, and the keyboard up, as the keys do.
     const rules = toolbar()?.querySelectorAll("hr") ?? [];
-    expect(rules).toHaveLength(4);
+    expect(rules).toHaveLength(5);
     for (const rule of rules) expect(fireEvent.mouseDown(rule)).toBe(false);
     // The column's own alignment pressed.
     const pressed = () =>

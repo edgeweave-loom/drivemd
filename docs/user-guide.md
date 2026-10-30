@@ -179,7 +179,7 @@ DriveMD then opens on Home, in a window of its own, clear of the notch, the came
 
 ### The keyboard toolbar
 
-While you edit on a touch screen, a row of keys sits above the keyboard. It scrolls sideways when it does not fit, and its keys keep the keyboard up. In a table's cell, the keys that change lines (Heading, List, Checkbox, Indent and Outdent) give way to the table's keys, after **Undo** and **Redo**; tap another cell to move to it.
+While you edit on a touch screen, a row of keys sits above the keyboard. It scrolls sideways when it does not fit, which a key cut in half under a shade at its edge shows, and its keys keep the keyboard up. In a table's cell, the keys that change lines (Heading, List, Checkbox, Indent and Outdent) give way to the table's keys, after **Undo** and **Redo**, and **Table options** stays at the row's right end; tap another cell to move to it.
 
 | Key                                               | What it does                                                                                                            |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |

@@ -686,15 +686,14 @@ button.account {
     calc(var(--keyboard-toolbar-height) + var(--space-1)) auto;
 }
 
-/* Its right edge with the key's, or with the screen's should the key run
-   past it, by the key's anchor: with the keyboard up on an iPhone, a menu
-   placed at the key's box from script showed hundreds of pixels above it. */
+/* Right above the key, which the toolbar holds at its right end, by the
+   key's anchor: with the keyboard up on an iPhone, a menu placed at the
+   key's box from script showed hundreds of pixels above it. */
 @supports (anchor-name: --table-options) {
   .table-menu.options {
     position-anchor: --table-options;
-    inset: auto
-      max(anchor(right), calc(var(--space-2) + env(safe-area-inset-right)))
-      anchor(top) auto;
+    inset: auto calc(var(--space-2) + env(safe-area-inset-right)) anchor(top)
+      auto;
     margin: 0 0 var(--space-1);
   }
 }
@@ -2236,9 +2235,10 @@ dialog.drawer > .close {
 }
 
 /* Pinned above a touch screen's keyboard, at the height the editor keeps
-   clear of the cursor (TOOLBAR_HEIGHT); it scrolls sideways on phones. Its
-   keys stay clear of the notch. A phone shows it over the keyboard only,
-   which covers the home bar, so it adds no inset under them. */
+   clear of the cursor (TOOLBAR_HEIGHT); its keys scroll sideways on
+   phones, but Table options, held at its right end. Its keys stay clear of
+   the notch. A phone shows it over the keyboard only, which covers the
+   home bar, so it adds no inset under them. */
 .keyboard-toolbar {
   position: fixed;
   right: 0;
@@ -2249,7 +2249,6 @@ dialog.drawer > .close {
   align-items: center;
   height: var(--keyboard-toolbar-height);
   padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
-  overflow-x: auto;
   border-top: 1px solid var(--outline-variant);
   background: var(--surface-container);
   /* Its background runs on below it, down past the screen's bottom: in
@@ -2257,7 +2256,65 @@ dialog.drawer > .close {
      float between it and the keyboard, where taps go to Safari. A shadow
      neither scrolls with the row's keys nor takes taps. */
   box-shadow: 0 50lvh 0 50lvh var(--surface-container);
+}
+
+/* The keys that scroll, widened by --key-scale (src/peek.ts) so that the
+   last one in view is cut in the middle of its icon: cut in its margin, or
+   between two keys, the row looked whole. */
+.keyboard-toolbar .keys {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  align-self: stretch;
+  min-width: 0;
+  overflow-x: auto;
   scrollbar-width: none;
+}
+
+/* A shade over each end that hides keys, which goes as the row scrolls to
+   it, where scroll-driven animations run (Chrome 115, Safari 26). */
+.keyboard-toolbar .keys::before,
+.keyboard-toolbar .keys::after {
+  position: sticky;
+  z-index: 1;
+  flex: none;
+  align-self: stretch;
+  width: 32px;
+  opacity: 0;
+  pointer-events: none;
+  content: "";
+}
+
+.keyboard-toolbar .keys::before {
+  left: 0;
+  margin-right: -32px;
+  background: linear-gradient(to right, var(--surface-container), transparent);
+}
+
+.keyboard-toolbar .keys::after {
+  right: 0;
+  margin-left: -32px;
+  background: linear-gradient(to left, var(--surface-container), transparent);
+}
+
+@supports (animation-timeline: scroll()) {
+  .keyboard-toolbar .keys::before {
+    animation: shade linear both;
+    animation-timeline: scroll(nearest inline);
+    animation-range: 0 32px;
+  }
+
+  .keyboard-toolbar .keys::after {
+    animation: shade linear both reverse;
+    animation-timeline: scroll(nearest inline);
+    animation-range: calc(100% - 32px) 100%;
+  }
+}
+
+@keyframes shade {
+  to {
+    opacity: 1;
+  }
 }
 
 /* The note's end scrolls clear of it; the page already keeps clear of the
@@ -2274,7 +2331,7 @@ body:has(> .keyboard-toolbar) .editor {
 
 .keyboard-toolbar button {
   flex: none;
-  width: 44px;
+  width: calc(44px * var(--key-scale, 1));
   height: 44px;
   padding: 0;
   border: none;
@@ -2302,13 +2359,13 @@ body:has(> .keyboard-toolbar) .editor {
 }
 
 /* In a table's cell, the keys before a rule, Undo, Redo and the table's,
-   narrower, so that they fit a 375 px screen; the rest scroll. */
-.keyboard-toolbar > button:has(~ hr) {
-  width: 40px;
+   narrower, so that more of them show. */
+.keyboard-toolbar .keys > button:has(~ hr) {
+  width: calc(40px * var(--key-scale, 1));
 }
 
-/* Between a table's groups of keys. */
-.keyboard-toolbar > hr {
+/* Between a table's groups of keys, and before Table options. */
+.keyboard-toolbar hr {
   flex: none;
   width: 1px;
   height: 24px;

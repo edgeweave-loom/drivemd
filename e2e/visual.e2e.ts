@@ -594,20 +594,33 @@ test("edits a table's rows and columns from its menu or the keyboard toolbar's k
   } else {
     await ada.tap();
     await expect(editing).toBeFocused();
-    // Undo and Redo first, then the table's own keys, in view on the
-    // narrowest phones, 375 px wide.
+    // Undo and Redo first, then the table's own keys.
     await expect(toolbar.getByRole("button").nth(1)).toHaveAccessibleName(
       "Redo",
     );
     await expect(toolbar.getByRole("button").nth(2)).toHaveAccessibleName(
       "Add row below",
     );
-    const last = await toolbar
-      .getByRole("button", { name: "Align right" })
-      .boundingBox();
-    expect((last?.x ?? Infinity) + (last?.width ?? 0)).toBeLessThanOrEqual(375);
-    // The keys past them, which scroll, keep their width.
-    expect((await options.boundingBox())?.width).toBe(44);
+    // Table options held at the row's right end; where the keys before it
+    // scroll, as on a phone held upright, the last one in view is cut in
+    // its middle, which tells that they do.
+    const held = await options.boundingBox();
+    expect(held?.width).toBe(44);
+    expect((held?.x ?? 0) + (held?.width ?? 0)).toBe(
+      page.viewportSize()?.width,
+    );
+    const { scrolls, cut } = await toolbar.locator(".keys").evaluate((row) => {
+      const edge = row.getBoundingClientRect().right;
+      const key = [...row.querySelectorAll("button")]
+        .map((button) => button.getBoundingClientRect())
+        .find(({ left, right }) => left < edge && right > edge);
+      return {
+        scrolls: row.scrollWidth > row.clientWidth,
+        cut: key ? (edge - key.left) / key.width : null,
+      };
+    });
+    expect(scrolls).toBe(info.project.name === "iphone-webkit");
+    if (scrolls) expect(cut).toBeCloseTo(0.5, 1);
     await fromKey(() => options.click());
   }
   const pick = async (name: string) => {
@@ -666,15 +679,11 @@ test("edits a table's rows and columns from its menu or the keyboard toolbar's k
     await fromKey(() => options.click());
     await page.keyboard.press("Escape");
   } else {
-    // Its key past the screen's edge, as the toolbar scrolls.
-    await toolbar.evaluate((bar) => {
-      bar.scrollLeft = bar.scrollWidth - bar.clientWidth - 24;
+    // Its key held where it was as the keys scroll to their end.
+    await toolbar.locator(".keys").evaluate((row) => {
+      row.scrollLeft = row.scrollWidth;
     });
-    await fromKey(() =>
-      options.evaluate((key) => {
-        (key as HTMLElement).click();
-      }),
-    );
+    await fromKey(() => options.click());
     await page.keyboard.press("Escape");
   }
   await expect(menu).toBeHidden();

@@ -16,6 +16,7 @@ import {
   toggleList,
 } from "./formatting.ts";
 import { editTable, type CellMenu } from "./live-preview.ts";
+import { peekScale, rowItems } from "./peek.ts";
 import { ALIGNS, TABLE_EDITS } from "./table-edits.ts";
 import { keepRoom, keepVisible } from "./visual-viewport.ts";
 
@@ -108,8 +109,10 @@ const TABLE_KEYS = TABLE_EDITS.map((group) =>
  * link, Link opens it instead, as nothing else does from a touch screen.
  * In a table's cell edited in place, the keys of lines leave, since their
  * marks would break its row, for the table's most frequent edits, its
- * column's alignment pressed; a Table options key, last, opens the table's
- * menu, `tableMenu`, above it, with the others.
+ * column's alignment pressed; a Table options key, held at the row's right
+ * end, opens the table's menu, `tableMenu`, above it, with the others.
+ * The keys that do not fit scroll sideways, the last one in view cut in the
+ * middle of its icon, under a shade, so that the row shows it scrolls.
  */
 export function KeyboardToolbar({
   link,
@@ -137,6 +140,26 @@ export function KeyboardToolbar({
   onSettle: (before: number) => void;
 }) {
   const bar = useRef<HTMLDivElement>(null);
+  const row = useRef<HTMLDivElement>(null);
+  const inCell = cell !== null;
+  useLayoutEffect(() => {
+    const keys = row.current;
+    if (!keys) return;
+    // Its keys anew, from their start, as a cell is entered or left.
+    keys.scrollLeft = 0;
+    const fit = () => {
+      keys.style.removeProperty("--key-scale");
+      keys.style.setProperty(
+        "--key-scale",
+        String(peekScale(rowItems(keys), keys.clientWidth)),
+      );
+    };
+    fit();
+    addEventListener("resize", fit);
+    return () => {
+      removeEventListener("resize", fit);
+    };
+  }, [inCell]);
   const settled = useEffectEvent(onSettle);
   useLayoutEffect(() => {
     if (!bar.current) return;
@@ -177,38 +200,47 @@ export function KeyboardToolbar({
       // Its keys, the rules between them and its edges alike.
       onMouseDown={keepFocus}
     >
-      {cell ? (
+      <div ref={row} className="keys">
+        {cell ? (
+          <>
+            {HISTORY.map(keyOf)}
+            {TABLE_KEYS.map((group) => (
+              <Fragment key={group[0]?.edit}>
+                <hr aria-orientation="vertical" />
+                {group.map(({ edit, name, icon }) => {
+                  const aligning = ALIGNS[edit];
+                  // Off where its edit does not apply, which a tap then
+                  // leaves undone, as a disabled button would take the focus.
+                  const off = !cell.edits.has(edit);
+                  return (
+                    <button
+                      key={edit}
+                      type="button"
+                      aria-label={name}
+                      aria-disabled={off || undefined}
+                      aria-pressed={
+                        aligning ? cell.alignment === aligning : undefined
+                      }
+                      onClick={() => {
+                        onCommand((view) => editTable(view, edit));
+                      }}
+                    >
+                      <Icon name={icon} />
+                    </button>
+                  );
+                })}
+              </Fragment>
+            ))}
+            <hr aria-orientation="vertical" />
+            {IN_CELL.map(keyOf)}
+          </>
+        ) : (
+          KEYS.map(keyOf)
+        )}
+      </div>
+      {cell && (
         <>
-          {HISTORY.map(keyOf)}
-          {TABLE_KEYS.map((group) => (
-            <Fragment key={group[0]?.edit}>
-              <hr aria-orientation="vertical" />
-              {group.map(({ edit, name, icon }) => {
-                const aligning = ALIGNS[edit];
-                // Off where its edit does not apply, which a tap then
-                // leaves undone, as a disabled button would take the focus.
-                const off = !cell.edits.has(edit);
-                return (
-                  <button
-                    key={edit}
-                    type="button"
-                    aria-label={name}
-                    aria-disabled={off || undefined}
-                    aria-pressed={
-                      aligning ? cell.alignment === aligning : undefined
-                    }
-                    onClick={() => {
-                      onCommand((view) => editTable(view, edit));
-                    }}
-                  >
-                    <Icon name={icon} />
-                  </button>
-                );
-              })}
-            </Fragment>
-          ))}
           <hr aria-orientation="vertical" />
-          {IN_CELL.map(keyOf)}
           <button
             type="button"
             className="table-options"
@@ -219,8 +251,6 @@ export function KeyboardToolbar({
             <Icon name="more_vert" />
           </button>
         </>
-      ) : (
-        KEYS.map(keyOf)
       )}
     </div>,
     document.body,
