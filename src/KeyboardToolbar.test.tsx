@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Editor } from "./Editor.tsx";
@@ -413,6 +414,7 @@ describe("the keyboard toolbar", () => {
         (item) => item.textContent,
       ),
     ).toEqual([
+      "Insert line break",
       "Add row above",
       "Move row up",
       "Move row down",
@@ -420,7 +422,7 @@ describe("the keyboard toolbar", () => {
       "Move column left",
       "Move column right",
     ]);
-    expect(menu.querySelectorAll("hr")).toHaveLength(1);
+    expect(menu.querySelectorAll("hr")).toHaveLength(2);
     const item = screen.getByRole("menuitem", {
       name: "Add column to the left",
     });
@@ -444,7 +446,7 @@ describe("the keyboard toolbar", () => {
       (cell) => cell.textContent === "2",
     );
     expect(fireEvent.contextMenu(drawn ?? document.body)).toBe(false);
-    expect(menu.querySelectorAll('[role^="menuitem"]')).toHaveLength(13);
+    expect(menu.querySelectorAll('[role^="menuitem"]')).toHaveLength(14);
     act(() => {
       menu.hidePopover();
     });
@@ -454,6 +456,31 @@ describe("the keyboard toolbar", () => {
     expect(menu).toBeVisible();
     fireEvent.mouseDown(view.contentDOM.querySelector("th") ?? document.body);
     expect(menu).not.toBeVisible();
+  });
+
+  it("writes a line break in a cell from its Table options menu, the focus staying", async () => {
+    const { view, edited } = await inTable(
+      "| Tea | Cups |\n| - | - |\n| 1 | 2 |",
+      "1",
+    );
+
+    tap("Table options");
+    const menu = screen.getByRole("menu", { name: "Table" });
+    const item = within(menu).getByRole("menuitem", {
+      name: "Insert line break",
+    });
+    // A shortcut the on-screen keyboard lacks.
+    expect(item).not.toHaveAttribute("aria-keyshortcuts");
+    expect(item).not.toHaveFocus();
+    expect(fireEvent.mouseDown(item)).toBe(false);
+    fireEvent.click(item);
+
+    expect(menu).not.toBeVisible();
+    expect(view.state.sliceDoc()).toBe(
+      "| Tea | Cups |\n| - | - |\n| 1<br> | 2 |",
+    );
+    expect(edited()?.state.sliceDoc()).toBe("1<br>");
+    expect(edited()?.hasFocus).toBe(true);
   });
 
   it("keeps a table's keys to its cells", async () => {

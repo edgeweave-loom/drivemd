@@ -66,14 +66,14 @@ function placeAbove(menu: HTMLElement, key: DOMRect) {
 }
 
 /**
- * The menu of a table's cell edited in place, as Obsidian's: its row and
- * its column added, moved or deleted, and its column's alignment, the
- * edits that do not apply off. A right-click opens it at the pointer, its
- * first item focused; on a touch screen, the keyboard toolbar's Table
- * options key opens it above the key, with the items the toolbar lacks,
- * which never take the focus, so that the keyboard stays up. Closed
- * without an edit, it gives the cell back the focus, unless something else
- * took it.
+ * The menu of a table's cell edited in place, as Obsidian's: a line break
+ * in the cell, its row and its column added, moved or deleted, and its
+ * column's alignment, the edits that do not apply off. A right-click opens
+ * it at the pointer, its first item focused, with the line break's
+ * shortcut; on a touch screen, the keyboard toolbar's Table options key
+ * opens it above the key, with the items the toolbar lacks, which never
+ * take the focus, so that the keyboard stays up. Closed without an edit,
+ * it gives the cell back the focus, unless something else took it.
  */
 export function TableMenu({
   id,
@@ -173,7 +173,7 @@ export function TableMenu({
       {groups.map((group, at) => (
         <Fragment key={group[0]?.edit}>
           {at > 0 && <hr />}
-          {group.map(({ edit, name }) => {
+          {group.map(({ edit, name, keys }) => {
             const aligning = ALIGNS[edit];
             const off = !cell?.edits.has(edit);
             return (
@@ -185,6 +185,7 @@ export function TableMenu({
                   aligning ? cell?.alignment === aligning : undefined
                 }
                 aria-disabled={off || undefined}
+                aria-keyshortcuts={all ? keys : undefined}
                 onMouseDown={keepFocus}
                 onClick={() => {
                   const note = editor.current;

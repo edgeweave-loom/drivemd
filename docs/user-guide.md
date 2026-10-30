@@ -108,8 +108,8 @@ The device remembers whether you last chose Visual or Source, and opens the edit
 While editing:
 
 - **Enter** continues a list or a task list.
-- In a table's cell, in Visual, **Tab** moves to the next cell, **Shift+Tab** to the one before, and **Enter** to the one below; **Tab** in the last cell, and **Enter** with no cell below, add a row. The arrow keys move from cell to cell, and out of the table at its edges; from the line above or below a table, they move into its cells. **Shift+Enter** starts a new line in the cell, written `<br>`, which the table shows as a new line once you leave the cell; on a phone, type `<br>`. **Escape** shows the table's Markdown. A `|` you type is written `\|`, so that it stays in its cell.
-- **Right-click** a table's cell, in Visual, for the table's menu: add a row above or below it, or a column to its left or right, move its row or its column, delete them, or align its column left, center or right: Markdown aligns a whole column, never a single cell. On a phone or a tablet, the keyboard toolbar shows the frequent ones as keys while you edit a cell, and its **Table options** key opens the menu with the others. DriveMD writes only the lines that change, never realigning the table's columns, and **Undo** takes each change back on its own.
+- In a table's cell, in Visual, **Tab** moves to the next cell, **Shift+Tab** to the one before, and **Enter** to the one below; **Tab** in the last cell, and **Enter** with no cell below, add a row. The arrow keys move from cell to cell, and out of the table at its edges; from the line above or below a table, they move into its cells. **Shift+Enter** starts a new line in the cell, written `<br>`, which the table shows as a new line once you leave the cell; on a phone or a tablet, tap **Table options** in the keyboard toolbar, then **Insert line break**. **Escape** shows the table's Markdown. A `|` you type is written `\|`, so that it stays in its cell.
+- **Right-click** a table's cell, in Visual, for the table's menu: start a new line in the cell, as **Shift+Enter** does, add a row above or below it, or a column to its left or right, move its row or its column, delete them, or align its column left, center or right: Markdown aligns a whole column, never a single cell. On a phone or a tablet, the keyboard toolbar shows the frequent ones as keys while you edit a cell, and its **Table options** key opens the menu with the others. DriveMD writes only the lines that change, never realigning the table's columns, and **Undo** takes each change back on its own.
 - A table in a quote, or in a callout, is drawn and edited the same way. Its lines keep their `>` as you wrote them, and a row you add takes those of the line next to it.
 - **Find in note**, from Cmd/Ctrl+F or the keyboard toolbar, counts the matches, steps through them, matches case, whole words or a regular expression, and replaces one match or all of them.
 - **Cmd/Ctrl+click** on a link opens it.
@@ -181,20 +181,20 @@ DriveMD then opens on Home, in a window of its own, clear of the notch, the came
 
 While you edit on a touch screen, a row of keys sits above the keyboard. It scrolls sideways when it does not fit, and its keys keep the keyboard up. In a table's cell, the keys that change lines (Heading, List, Checkbox, Indent and Outdent) give way to the table's keys, after **Undo** and **Redo**; tap another cell to move to it.
 
-| Key                                               | What it does                                                                                                            |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| **Undo**, **Redo**                                | Take back or redo one change                                                                                            |
-| **Heading**                                       | `#`, `##`, `###`, then text again                                                                                       |
-| **Bold**                                          | Wraps the selection in `**`, or takes it away                                                                           |
-| **List**                                          | Adds or removes a `- ` bullet                                                                                           |
-| **Checkbox**                                      | An open task, a done one, then a plain list item again                                                                  |
-| **Link**, **Open link**                           | Makes the selection a link; in a link, opens it                                                                         |
-| **Indent**, **Outdent**                           | Moves a list item one level in or out, lined up with the item above, with tabs where the list uses tabs                 |
-| **Find in note**                                  | Opens the find bar: in the app bar's place on a phone, under it on a tablet                                             |
-| **Add row below**, **Delete row**                 | In a table's cell, adds a row under its row, or deletes its row                                                         |
-| **Add column to the right**, **Delete column**    | In a table's cell, adds a column after its column, or deletes its column                                                |
-| **Align left**, **Align center**, **Align right** | In a table's cell, aligns its column; the column's own is highlighted                                                   |
-| **Table options**                                 | In a table's cell, opens the table's menu with the rest: a row above, a column to the left, and moving rows and columns |
+| Key                                               | What it does                                                                                                                                    |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Undo**, **Redo**                                | Take back or redo one change                                                                                                                    |
+| **Heading**                                       | `#`, `##`, `###`, then text again                                                                                                               |
+| **Bold**                                          | Wraps the selection in `**`, or takes it away                                                                                                   |
+| **List**                                          | Adds or removes a `- ` bullet                                                                                                                   |
+| **Checkbox**                                      | An open task, a done one, then a plain list item again                                                                                          |
+| **Link**, **Open link**                           | Makes the selection a link; in a link, opens it                                                                                                 |
+| **Indent**, **Outdent**                           | Moves a list item one level in or out, lined up with the item above, with tabs where the list uses tabs                                         |
+| **Find in note**                                  | Opens the find bar: in the app bar's place on a phone, under it on a tablet                                                                     |
+| **Add row below**, **Delete row**                 | In a table's cell, adds a row under its row, or deletes its row                                                                                 |
+| **Add column to the right**, **Delete column**    | In a table's cell, adds a column after its column, or deletes its column                                                                        |
+| **Align left**, **Align center**, **Align right** | In a table's cell, aligns its column; the column's own is highlighted                                                                           |
+| **Table options**                                 | In a table's cell, opens the table's menu with the rest: a new line in the cell, a row above, a column to the left, and moving rows and columns |
 
 The line you type stays clear of the toolbar, and so does the note's end. The phone neither corrects words, adds capitals nor curls quotes in a note, so that what you type is what is saved, and two spaces after a word, Markdown's line break, stay two spaces rather than becoming a period.
 

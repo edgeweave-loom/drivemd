@@ -680,6 +680,15 @@ button.account {
   overflow-y: auto;
 }
 
+/* An item's shortcut at its end, from a right-click, which the item's
+   name leaves out: its aria-keyshortcuts tells it. */
+.table-menu > button[aria-keyshortcuts]::after {
+  content: attr(aria-keyshortcuts) / "";
+  margin-inline-start: auto;
+  color: var(--on-surface-variant);
+  font-weight: 400;
+}
+
 /* Above the toolbar's end, where the key is anchors aside. */
 .table-menu.options {
   inset: auto calc(var(--space-2) + env(safe-area-inset-right))

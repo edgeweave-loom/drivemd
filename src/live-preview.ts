@@ -1,6 +1,7 @@
 import {
   defaultKeymap,
   historyKeymap,
+  insertNewline,
   isolateHistory,
 } from "@codemirror/commands";
 import { highlightingFor, syntaxTree } from "@codemirror/language";
@@ -915,6 +916,7 @@ function cellText(
 
 /** What the table's menu does to the cell edited in place. */
 export type TableEdit =
+  | "lineBreak"
   | "addRowAbove"
   | "addRowBelow"
   | "moveRowUp"
@@ -947,6 +949,7 @@ function editsAt(
   columns: number,
 ): Set<TableEdit> {
   const edits: [TableEdit, boolean][] = [
+    ["lineBreak", true],
     ["addRowAbove", row > 0],
     ["addRowBelow", true],
     ["moveRowUp", row > 1],
@@ -1120,7 +1123,7 @@ function tableEdited(
   state: EditorState,
   table: SyntaxNode,
   place: Place,
-  edit: TableEdit,
+  edit: Exclude<TableEdit, "lineBreak">,
 ): { changes: ChangeSpec[]; to: Place } {
   const { row, column } = place;
   const lines = tableRows(table);
@@ -1508,7 +1511,13 @@ const editingCells = ViewPlugin.fromClass(
         }),
         keymap.of([
           { key: "Tab", run: () => this.tab(1), shift: () => this.tab(-1) },
-          { key: "Enter", run: () => this.enter() },
+          // Shift+Enter, a line break alone, which CodeMirror's own would
+          // write twice between brackets, taking the spaces after it.
+          {
+            key: "Enter",
+            run: () => this.enter(),
+            shift: (cell) => insertNewline(cell),
+          },
           {
             key: "ArrowUp",
             run: () => this.move(rowing(-1)) || this.out(-1, true),
@@ -1871,12 +1880,14 @@ const editingCells = ViewPlugin.fromClass(
     /**
      * Makes `edit` from the table's menu to the cell edited, then edits the
      * cell it leaves edited, or gives the cell the focus back should it
-     * change nothing: whether it applies.
+     * change nothing: whether it applies. A line break is Shift+Enter's, in
+     * the cell.
      */
     edit(edit: TableEdit): boolean {
       const at = this.where();
       if (!at || !cellMenu(this.view.state, at).edits.has(edit)) return false;
       const { editing, place, table } = at;
+      if (edit === "lineBreak") return insertNewline(editing.cell);
       const done = tableEdited(this.view.state, table, place, edit);
       if (done.changes.length === 0) {
         editing.cell.focus();
