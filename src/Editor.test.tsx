@@ -1571,7 +1571,7 @@ describe("Visual's tables", () => {
   });
 
   it("keeps an arrow in the Markdown of a table shown as written", async () => {
-    const { view } = open("> | A | B |\n> | - | - |\n\nTea", "\n", true);
+    const { view } = open("- | A | B |\n  | - | - |\n\nTea", "\n", true);
     await parsed(view);
     act(() => {
       view.focus();
@@ -1757,9 +1757,30 @@ describe("Visual's tables", () => {
     expect(cellEditor(view)?.hasFocus).toBe(true);
   });
 
-  it("leaves a table in a quote or a list as written, and Source's", async () => {
+  it("leaves a table as written in a list, past six quotes, or with a line lacking its quotes' marks, and Source's", async () => {
     const { view, showIn } = open(
-      "> | A | B |\n> | - | - |\n\n- | E |\n  | - |\n\nTea\n\n  | C | D |\n  | - | - |",
+      [
+        "- | A |",
+        "  | - |",
+        "",
+        "- > | B |",
+        "  > | - |",
+        "",
+        // Lazy lines, which end a GFM table, as the viewer reads it.
+        "> | C |",
+        "> | - |",
+        "| 1 |",
+        "",
+        "> > | D |",
+        "> > | - |",
+        "> | 2 |",
+        "",
+        "> > > > > > > | E |",
+        "> > > > > > > | - |",
+        "",
+        "  | F |",
+        "  | - |",
+      ].join("\n"),
       "\n",
       true,
     );
@@ -1767,37 +1788,181 @@ describe("Visual's tables", () => {
 
     // An indented table, at the note's top level, is drawn, and its cells
     // edited.
-    expect(cells(view)).toEqual([["C", "D"]]);
-    expect(editCell(view, "D").state.sliceDoc()).toBe("D");
+    expect(cells(view)).toEqual([["F"]]);
+    expect(editCell(view, "F").state.sliceDoc()).toBe("F");
     showIn(false);
     expect(view.contentDOM.querySelector("table")).toBeNull();
+  });
+
+  it("draws a table in a quote or a callout beside its quote's bars, quieter, its marks hidden", async () => {
+    const { view } = open(
+      "> [!note] Tea\n> | A | B |\n>| - | - |\n>  | 1 | 2 |\n>\n> > | C |\n> >| - |\n>> | 3 |\n\nAfter",
+      "\n",
+      true,
+    );
+    await parsed(view);
+
+    expect(cells(view)).toEqual([["A", "B"], ["1", "2"], ["C"], ["3"]]);
+    const frames = [...view.contentDOM.querySelectorAll(".cm-table")];
+    expect(
+      frames.map((frame) => /\bcm-quote-(\d)\b/.exec(frame.className)?.[1]),
+    ).toEqual(["1", "2"]);
+    expect(frames.map((frame) => getComputedStyle(frame).color)).toEqual([
+      "var(--on-surface-variant)",
+      "var(--on-surface-variant)",
+    ]);
+    expect(looks(view)).toEqual(["‹[›!note‹] Tea›", "", "", "After"]);
+  });
+
+  it("draws a table's quote bars anew as its quote changes around a cell edited", async () => {
+    const { view } = open("> | A | B |\n> | - | - |\n> | 1 | 2 |", "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "1");
+
+    // Out of its quote, as undo may take it, the cell staying edited.
+    act(() => {
+      view.dispatch({
+        changes: [
+          { from: 0, to: 2 },
+          { from: 12, to: 14 },
+          { from: 24, to: 26 },
+        ],
+      });
+    });
+
+    expect(cellEditor(view)).toBe(cell);
+    expect(view.contentDOM.querySelector(".cm-table")?.className).toBe(
+      "cm-table",
+    );
   });
 
   it("shows all the marks of a table in a quote while one of its lines is written", async () => {
     const { view } = open("> | A | B |\n> | - | - |\n> | 1 | 2 |", "\n", true);
     await parsed(view);
-    expect(looks(view)).toEqual(["‹| A | B |›", "‹| - | - |›", "‹| 1 | 2 |›"]);
+    expect(cells(view)).toEqual([
+      ["A", "B"],
+      ["1", "2"],
+    ]);
 
-    Object.defineProperty(Range.prototype, "getClientRects", {
-      value: () => document.createElement("span").getClientRects(),
-      configurable: true,
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 30 } });
     });
-    try {
-      act(() => {
-        view.focus();
-        view.dispatch({ selection: { anchor: 30 } });
-      });
-      // So that its columns line up.
-      await waitFor(() => {
-        expect(looks(view)).toEqual([
-          "‹> | A | B |›",
-          "‹> | - | - |›",
-          "‹> | 1 | 2 |›",
-        ]);
-      });
-    } finally {
-      Reflect.deleteProperty(Range.prototype, "getClientRects");
+    // So that its columns line up.
+    await waitFor(() => {
+      expect(looks(view)).toEqual([
+        "‹> | A | B |›",
+        "‹> | - | - |›",
+        "‹> | 1 | 2 |›",
+      ]);
+    });
+  });
+
+  it("edits the cells of a table in a quote in place, its marks as written", async () => {
+    const text =
+      "> Tea\n>\n> > | A | B |\n>>| - | - |\n> >  | 1 | 2 |\n\nAfter";
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+
+    type(editCell(view, "1"), "!");
+    expect(pressed(view, "Tab")).toEqual(["2", 1]);
+    expect(pressed(view, "ArrowUp")).toEqual(["B", 1]);
+    expect(view.state.sliceDoc()).toBe(text.replace("1", "1!"));
+
+    // From the line before, into its first cell.
+    act(() => {
+      press(cellEditor(view) ?? view, "Escape");
+      view.dispatch({ selection: { anchor: text.indexOf("\n> >") } });
+    });
+    await waitFor(() => {
+      expect(cells(view)).toHaveLength(2);
+    });
+    act(() => {
+      press(view, "ArrowRight");
+    });
+    expect(cellEditor(view)?.state.sliceDoc()).toBe("A");
+  });
+
+  it("adds a row to a table in a quote with the marks and indent of the line it comes next to, as written", async () => {
+    const text = "> | A | B |\n>| - | - |\n>  | 1 | 2 |";
+    for (const [name, item, written] of [
+      ["A", "Add row below", "> | A | B |\n>| - | - |\n>|  |  |\n>  | 1 | 2 |"],
+      [
+        "1",
+        "Add row above",
+        "> | A | B |\n>| - | - |\n>  |  |  |\n>  | 1 | 2 |",
+      ],
+    ] as const) {
+      const { view } = open(text, "\n", true);
+      await parsed(view);
+
+      expect(picked(view, name, item)[0]).toBe(written);
+      cleanup();
     }
+
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+    editCell(view, "2");
+    expect(pressed(view, "Tab")).toEqual(["", 0]);
+    expect(view.state.sliceDoc()).toBe(`${text}\n>  |  |  |`);
+    cleanup();
+
+    const nested = "> > | A |\n> >| - |\n>> | 1 |";
+    const { view: other } = open(nested, "\n", true);
+    await parsed(other);
+    editCell(other, "1");
+    expect(pressed(other, "Enter")).toEqual(["", 0]);
+    expect(other.state.sliceDoc()).toBe(`${nested}\n>> |  |`);
+  });
+
+  it.each([
+    ["in a quote", "> | A |\n> | - |\n>  | 1 |\n>| 2 |", ">  | 2 |\n>| 1 |"],
+    ["indented", "| A |\n| - |\n  | 1 |\n| 2 |", "  | 2 |\n| 1 |"],
+  ])(
+    "moves a row of a table %s, each line keeping its marks and indent",
+    async (_, text, moved) => {
+      const { view } = open(text, "\n", true);
+      await parsed(view);
+
+      expect(picked(view, "1", "Move row down")).toEqual([
+        `${text.split("\n").slice(0, 2).join("\n")}\n${moved}`,
+        "1",
+        true,
+      ]);
+    },
+  );
+
+  it.each([
+    [
+      "Add column to the left",
+      "2",
+      "> | A |  | B |\n>| - | --- | - |\n>  | 1 |  | 2 |",
+    ],
+    ["Move column right", "A", "> | B | A |\n>| - | - |\n>  | 2 | 1 |"],
+    ["Delete column", "A", "> | B |\n>| - |\n>  | 2 |"],
+    ["Align center", "B", "> | A | B |\n>| - | :-: |\n>  | 1 | 2 |"],
+    ["Delete row", "1", "> | A | B |\n>| - | - |"],
+  ])(
+    "does %s on %s in a table in a quote, never writing its marks",
+    async (item, name, written) => {
+      const { view } = open(
+        "> | A | B |\n>| - | - |\n>  | 1 | 2 |",
+        "\n",
+        true,
+      );
+      await parsed(view);
+
+      expect(picked(view, name, item)[0]).toBe(written);
+    },
+  );
+
+  it("puts a pipe before a cell an edit takes to the start of a quoted line", async () => {
+    const { view } = open("> A | B\n> --|--\n> 1 | 2", "\n", true);
+    await parsed(view);
+
+    expect(picked(view, "A", "Delete column")[0]).toBe(
+      "> | B |\n> | -- |\n> | 2 |",
+    );
   });
 
   /** The table's menu, opened from a right-click on the cell `name`. */

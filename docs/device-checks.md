@@ -123,6 +123,11 @@ Make four made-up notes in the test account's My Drive, from the app on the iPho
   > A quote with **bold** words, long enough to wrap onto a second line on a phone held upright.
   > > A nested quote
 
+  > A quote holding a table
+  > > | Milk | Sugar |
+  > > | --- | ---: |
+  >> | Oat | 1 |
+
   Setext heading
   ==============
 
@@ -283,7 +288,7 @@ To make a conflict, open `device-check-other.md` in two Safari tabs (the second 
 
 ### K. Visual, Source and Viewing (v2)
 
-On `device-check-visual.md`, which **Edit** opens in Visual, the editor's default mode, on a device that never chose another. The spec's v2 section says what Visual hides and draws. Stage 1 is done once typing, selecting and deleting across formatted text work on a real iPhone: the report says which of these checks a real iPhone must repeat, K4 to K10, K14, K19, K20 and K25 at least, since the Simulator's text input is not the device's.
+On `device-check-visual.md`, which **Edit** opens in Visual, the editor's default mode, on a device that never chose another. The spec's v2 section says what Visual hides and draws. Stage 1 is done once typing, selecting and deleting across formatted text work on a real iPhone: the report says which of these checks a real iPhone must repeat, K4 to K10, K14, K19, K20, K25 and K26 at least, since the Simulator's text input is not the device's.
 
 **Android:** typing on Gboard's keys. Gboard sends what it types through composition: it holds the word being typed as marked text, which it may rewrite as it goes, where iOS does that only for Japanese or Chinese. Visual changes a line's text as the cursor enters it, so these checks watch for letters or symbols lost, doubled or moved. The emulator runs Gboard itself, so it stands for a phone here, as it did for milestone 8: the report says which checks a real phone must repeat, if any, and why.
 
@@ -326,6 +331,8 @@ On `device-check-visual.md`, which **Edit** opens in Visual, the editor's defaul
 - **K24. Back** (Android). With Gboard up and the cursor in the paragraph, press Back: Gboard goes, and the editor keeps the focus, as D8 says; record whether the paragraph keeps its symbols shown. Tap the open task's box: it ticks, and Gboard stays down.
 - **K25. Table rows and columns.** Tap "Tea" in the table: the keyboard toolbar shows **Undo** and **Redo**, then the table's keys in groups between rules, all in view without scrolling: **Add row below** and **Delete row**, **Add column to the right** and **Delete column**, then **Align left**, **Align center** and **Align right**, with **Delete row** off and **Align left** highlighted; the two delete keys show a cross where the add keys show a plus. Tap **Align center**: "Tea" moves to the middle of its column, above "Green | hot", and **Align center** is highlighted; tap **Undo**: "Tea" moves back, and **Align left** is highlighted again; tap **Redo**, then **Undo**: "Tea" centers, then moves back. Scroll the toolbar to its end and tap **Table options** (⋮): a menu shows right above the key, its right edge with the key's, under the app bar and within the screen, with **Add row above**, **Move row up**, **Move row down**, **Add column to the left**, **Move column left** and **Move column right**, with **Add row above**, **Move row up**, **Move row down** and **Move column left** off; tap the note's heading to close it. Tap "2" in the table, then **Add column to the right**: an empty column comes after **Cups**, the cursor in its cell on the row of "2", the keyboard staying up; type `3`. Tap **Align center**: **Align center** is highlighted, `3` staying put, alone in its column, which is no wider. Tap **Table options**, then **Move column left**: the new column comes before **Cups**, the cursor still in `3`. Tap **Add row below**, then **Delete row**: a row comes under the table's last and goes again, the keyboard staying up. Tap a line outside the table: Source shows the table as `| Tea |  | Cups | A column wide enough to scroll on a phone |`, `| :-- | :-: | ---: | ----------------------------------------- |` and `| Green \| hot | 3 | **2** | Some words to make it wider than the screen |`, with no other line changed. Touch and hold "Tea": iOS shows its loupe or selects a word, and no table menu shows. Then tap **Undo** until **Save** reads **Saved**. Hold the iPhone sideways, tap "Tea", then **Table options**: the menu shows above the key and under the app bar, scrolling if it is taller than the room between them. A real iPhone must repeat this one.
   - **Android:** Gboard staying up as the iPhone's keyboard does. A long press on "Tea" selects a word or shows Chrome's own menu, never the table's menu: Chrome asks for the context menu with a long press.
+- **K26. A table in a quote.** The keyboard down, the table under "A quote holding a table" shows as Preview shows it, "Sugar" aligned right, no `>` showing, two bars on its left running on from the line above it, its text starting where that line's does, as quiet. A finger sliding along the table scrolls it, if wider than the screen, its cells passing under neither bar. Tap "Oat": that cell alone shows its text, the cursor after it, the table drawn around it and no `>` showing, and the keyboard toolbar shows the table's keys. Type ` milk`, then tap the keyboard's Return: a row comes under the table's last, the cursor in its **Milk** cell, the keyboard staying up; type `Soy`. Tap **Table options**, then **Move row up**: "Soy" comes above "Oat milk", the cursor still in it. Tap a line outside the table: Source shows `> A quote holding a table`, `> > | Milk | Sugar |`, `> > | --- | ---: |`, `>> | Soy |  |` and `>> | Oat milk | 1 |`, each line's `>` as written, with no other line changed. Then tap **Undo** until **Save** reads **Saved**. A real iPhone must repeat this one.
+  - **Android:** Gboard's Return as the iPhone's.
 
 **Android:** then tap Undo until Save reads **Saved**, so that K21 to K24, which come after K16's save, leave no unsaved changes for the next context.
 
@@ -354,6 +361,6 @@ In Samsung Internet, a tab that an intent opened, such as `mobile_open_url`'s, h
 1. The run: date, staging's version, Xcode, the iOS runtime, the devices, and what could not be set up; on Android, the versions that Version names.
 2. A table of every check, by device and context: the check, its verdict, and the screenshots.
 3. For each FAIL: the steps, what was expected, what showed, and the screenshots; for each BLOCKED, why, and what a real device should check.
-4. The checks a real iPhone or iPad must repeat, and why: section K's, K4 to K10, K14, K19, K20 and K25 at least, and any other whose result rests on the Simulator's text input.
+4. The checks a real iPhone or iPad must repeat, and why: section K's, K4 to K10, K14, K19, K20, K25 and K26 at least, and any other whose result rests on the Simulator's text input.
 5. The mockups: a verdict for each, and its differences.
 6. Draft issues for the FAILs, one per defect, each with a title in the repository's style (a sentence saying what the app should do), the steps and the device, and no screenshot that shows the account's email.
