@@ -43,7 +43,7 @@ The tokens are Material Design 3's color roles. Each has a light and a dark valu
 - `attention-container` is for a notice that needs a decision (a conflict, unsaved changes to restore), `error-container` for a failure, and `error` only for actions that lose data. Material 3 has no warning role: the amber attention colors are harmonized toward the teal.
 - What a version adds is underlined on `diff-added`, what it removes struck through on `diff-removed`: never told by color alone.
 - `brand-mark` is the icon's own teal, kept for the icon's plate. No text or control takes it.
-- Highlighted code takes the same roles, with no hue of its own: keywords and types `primary`, strings, numbers and literals `tertiary`, attributes, properties and variables `secondary`, comments `on-surface-variant` in italic, and names of functions, classes and sections the text's color at 600. Each holds 5:1 or more on a code block, `surface-container-high`, in both themes.
+- Highlighted code takes the same roles, with no hue of its own: keywords and types `primary`, strings, numbers and literals `tertiary`, attributes, properties and variables `secondary`, comments `on-surface-variant` in italic, and names of functions, classes and sections the text's color at 600, in the viewer and in Visual's code blocks alike. Each holds 5:1 or more on a code block, `surface-container-high`, in both themes.
 
 ## Type
 
