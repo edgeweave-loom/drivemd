@@ -919,6 +919,114 @@ describe("Visual", () => {
     expect(view.state.sliceDoc()).toBe("Tea\n- [ ] Boil");
   });
 
+  it("draws a code block as the viewer does, its fences hidden, its language at its first line's end", async () => {
+    const { view } = open(
+      [
+        "Tea",
+        "```js title",
+        "const a = 1;",
+        "```",
+        "",
+        "    indented",
+        "",
+        "- Listed",
+        "  ```",
+        "  x",
+        "  ```",
+        "",
+        "> ~~~",
+        "> quoted",
+        "> ~~~",
+      ].join("\n"),
+      "\n",
+      true,
+    );
+    await parsed(view);
+    const edges = () =>
+      [...view.contentDOM.querySelectorAll(".cm-line")].map((line) =>
+        line.classList.contains("cm-code-block")
+          ? ["first", "last"]
+              .filter((edge) => line.classList.contains(`cm-code-${edge}`))
+              .join(" ") || "middle"
+          : "",
+      );
+
+    // A code block in a list as written, which it would cover the indent of.
+    expect(edges()).toEqual([
+      "",
+      "first",
+      "middle",
+      "last",
+      "",
+      "first last",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "first",
+      "middle",
+      "last",
+    ]);
+    expect(looks(view)).toEqual([
+      "Tea",
+      // Smaller than the code, as the viewer's quieter labels.
+      "‹⟨js⟩›",
+      "const a = 1;",
+      "",
+      "",
+      "    indented",
+      "",
+      "• Listed",
+      "  ‹```›",
+      "  x",
+      "  ‹```›",
+      "",
+      "",
+      "‹quoted›",
+      "",
+    ]);
+  });
+
+  it("shows a code block's fences while the selection is in it with the focus", async () => {
+    const { view } = open("Tea\n```js\nconst a = 1;\n```", "\n", true);
+    await parsed(view);
+
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 15 } });
+    });
+
+    await waitFor(() => {
+      expect(looks(view)).toEqual(["Tea", "‹```›js", "const a = 1;", "‹```›"]);
+    });
+  });
+
+  it("colors code as the viewer does, and leaves Markdown in a code block as written", async () => {
+    for (const name of ["js", "markdown"]) {
+      await LanguageDescription.matchLanguageName(languages, name)?.load();
+    }
+    const { view } = open(
+      "```js\n// Tea\nconst cups = 2;\n```\n\n```markdown\n# Not a heading\n**not bold**\n```",
+      "\n",
+      true,
+    );
+    await parsed(view);
+    const colored = (role: string) =>
+      [...view.contentDOM.querySelectorAll(`.cm-code-${role}`)].map(
+        (token) => token.textContent,
+      );
+
+    expect(colored("comment")).toEqual(["// Tea"]);
+    expect(colored("keyword")).toContain("const");
+    expect(colored("literal")).toContain("2");
+    expect(looks(view).slice(6, 8)).toEqual([
+      "‹#›** Not a heading**",
+      "‹**›**not bold**‹**›",
+    ]);
+  });
+
   it("skips a hidden symbol as one unit", async () => {
     const { view } = open("**Tea**", "\n", true);
     await parsed(view);
