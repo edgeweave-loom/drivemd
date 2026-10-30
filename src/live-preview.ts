@@ -178,6 +178,10 @@ class Language extends WidgetType {
 
 const LANGUAGE_LINE = Decoration.line({ class: "cm-code-language-line" });
 
+// Inline code, its backticks on its chip while they show.
+const CHIP = "cm-inline-code";
+const INLINE_CODE = Decoration.mark({ class: CHIP });
+
 // A code block's lines, its first and last rounding its corners.
 const CODE_LINES = {
   middle: Decoration.line({ class: "cm-code-block" }),
@@ -223,14 +227,14 @@ const CODE_COLORS = tagHighlighter([
 ]);
 
 /**
- * Visual's code blocks, drawn as the viewer's on their lines, their code
- * colored as the viewer's.
+ * Visual's code, as the viewer's: inline code on its chip, and code blocks
+ * drawn on their lines, their code colored.
  */
 const coding = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
     constructor(view: EditorView) {
-      this.decorations = codeBlocks(view);
+      this.decorations = codeDecorations(view);
     }
     update(update: ViewUpdate) {
       if (
@@ -238,14 +242,14 @@ const coding = ViewPlugin.fromClass(
         update.viewportChanged ||
         syntaxTree(update.startState) !== syntaxTree(update.state)
       ) {
-        this.decorations = codeBlocks(update.view);
+        this.decorations = codeDecorations(update.view);
       }
     }
   },
   { decorations: (plugin) => plugin.decorations },
 );
 
-function codeBlocks(view: EditorView): DecorationSet {
+function codeDecorations(view: EditorView): DecorationSet {
   const { state } = view;
   const { from, to } = view.viewport;
   const ranges: Range<Decoration>[] = [];
@@ -253,6 +257,10 @@ function codeBlocks(view: EditorView): DecorationSet {
     from,
     to,
     enter: (node) => {
+      if (node.name === "InlineCode") {
+        ranges.push(INLINE_CODE.range(node.from, node.to));
+        return false;
+      }
       if (node.name !== "FencedCode" && node.name !== "CodeBlock") return;
       if (!drawnCode(node.node)) return false;
       const first = state.doc.lineAt(node.from);
@@ -936,18 +944,22 @@ function alignments(delimiter: string): Alignment[] {
 const LINE_BREAK = /^<\/?br[\s/>]/i;
 
 /**
- * A cell's text in the editor's highlighting, its symbols hidden as Visual
- * hides them, and as the viewer does, an escape's backslash, so that an
- * escaped pipe shows in its cell, and a tag such as `<br>` a line break,
- * which no row can hold otherwise.
+ * A cell's text in the editor's highlighting, its inline code on its chip,
+ * its symbols hidden as Visual hides them, and as the viewer does, an
+ * escape's backslash, so that an escaped pipe shows in its cell, and a tag
+ * such as `<br>` a line break, which no row can hold otherwise.
  */
 function parts(state: EditorState, { from, to }: Stretch): Part[] {
   const hidden: Stretch[] = [];
+  const chips: Stretch[] = [];
   const breaks = new Set<number>();
   syntaxTree(state).iterate({
     from,
     to,
     enter: (node) => {
+      if (node.name === "InlineCode") {
+        chips.push({ from: node.from, to: node.to });
+      }
       if (node.name === "Escape") {
         hidden.push({ from: node.from, to: node.from + 1 });
       }
@@ -974,7 +986,7 @@ function parts(state: EditorState, { from, to }: Stretch): Part[] {
     to,
   );
   const edges = new Set([from, to]);
-  for (const stretch of [...hidden, ...styled]) {
+  for (const stretch of [...hidden, ...chips, ...styled]) {
     edges.add(Math.min(to, Math.max(from, stretch.from)));
     edges.add(Math.min(to, Math.max(from, stretch.to)));
   }
@@ -988,7 +1000,10 @@ function parts(state: EditorState, { from, to }: Stretch): Part[] {
     }
     const covers = (range: Stretch) => range.from <= start && range.to >= end;
     if (hidden.some(covers)) return;
-    const style = styled.find(covers)?.style ?? null;
+    const style =
+      [styled.find(covers)?.style, chips.some(covers) && CHIP]
+        .filter(Boolean)
+        .join(" ") || null;
     const text = state.sliceDoc(start, end);
     const previous = result.at(-1);
     if (previous?.style === style) previous.text += text;
@@ -2235,6 +2250,13 @@ const LOOK = EditorView.theme({
   // Markdown's code at the code's size, as the viewer's: the light
   // styling's headings would make its lines taller.
   ".cm-code-block span:not(.cm-code-language)": { fontSize: "inherit" },
+  // The viewer's chip, at the code's own size, which Safari needs: the
+  // same padding whether its backticks show or not.
+  ".cm-inline-code": {
+    padding: "0.2em 0.4em",
+    borderRadius: "var(--radius-xs)",
+    background: "var(--surface-container-high)",
+  },
   ".cm-code-language-line": { textAlign: "end" },
   ".cm-code-language": {
     color: "var(--on-surface-variant)",

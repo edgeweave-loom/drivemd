@@ -989,6 +989,29 @@ describe("Visual", () => {
     ]);
   });
 
+  it("draws inline code on the viewer's chip, its backticks on it while they show, in a table's cell too", async () => {
+    const { view } = open(
+      "Some `water` and ``a ` b``.\n\n| Tea |\n| --- |\n| `cup` |",
+      "\n",
+      true,
+    );
+    await parsed(view);
+    const chips = () =>
+      [...view.contentDOM.querySelectorAll(".cm-inline-code")].map(
+        (chip) => chip.textContent,
+      );
+
+    expect(chips()).toEqual(["water", "a ` b", "cup"]);
+
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 1 } });
+    });
+    await waitFor(() => {
+      expect(chips()).toEqual(["`water`", "``a ` b``", "cup"]);
+    });
+  });
+
   it("shows a code block's fences while the selection is in it with the focus", async () => {
     const { view } = open("Tea\n```js\nconst a = 1;\n```", "\n", true);
     await parsed(view);
