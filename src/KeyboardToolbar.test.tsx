@@ -15,11 +15,13 @@ import { holdScreen, holdTouch } from "./test/screen.ts";
 function open(
   text: string,
   onFollow: (href: string) => void = () => undefined,
+  visual = false,
 ) {
   const { container } = render(
     <Editor
       initial={text}
       lineBreak={"\n"}
+      visual={visual}
       onChange={() => undefined}
       onFollow={onFollow}
     />,
@@ -190,6 +192,276 @@ describe("the keyboard toolbar", () => {
     expect(screen.queryByRole("button", { name: "Open link" })).toBeNull();
     tap("Link");
     expect(view.state.sliceDoc()).toBe("Te[]()a at [noon](plan.md#noon).");
+  });
+
+  it("acts on a table's cell edited in place, without the keys of lines", async () => {
+    holdTouch(true);
+    const onFollow = vi.fn<(href: string) => void>();
+    const text = "| Tea | [noon](plan.md) |\n| - | - |";
+    const view = open(text, onFollow, true);
+    const edit = (column: number) => {
+      const heads = view.contentDOM.querySelectorAll("th");
+      fireEvent.mouseDown(heads[column] ?? document.body);
+      const element = view.contentDOM.querySelector<HTMLElement>(
+        ".cm-table .cm-editor",
+      );
+      const cell = element && EditorView.findFromDOM(element);
+      if (!cell) throw new Error("No cell's editor");
+      return cell;
+    };
+
+    const cell = edit(0);
+    expect(
+      await screen.findByRole("toolbar", { name: "Formatting" }),
+    ).toBeVisible();
+    // Its cursor kept clear of the toolbar too.
+    const [kept] = margins(cell);
+    expect(kept?.bottom).toBe(
+      Math.max(...margins(view).map((margin) => margin?.bottom ?? 0)),
+    );
+    expect(kept?.bottom).toBeGreaterThan(0);
+    act(() => {
+      cell.dispatch({ selection: { anchor: 0, head: 3 } });
+    });
+    tap("Bold");
+    expect(view.state.sliceDoc()).toBe(
+      "| **Tea** | [noon](plan.md) |\n| - | - |",
+    );
+    // The cell follows, its text still selected.
+    expect(
+      cell.state.sliceDoc(
+        cell.state.selection.main.from,
+        cell.state.selection.main.to,
+      ),
+    ).toBe("Tea");
+    tap("Undo");
+    expect(view.state.sliceDoc()).toBe(text);
+    // Their marks would break its row.
+    for (const name of ["Heading", "List", "Checkbox", "Indent", "Outdent"]) {
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    }
+
+    // From cell to cell, the toolbar stays, its keys of lines still out.
+    const link = edit(1);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(toolbar()).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Heading" })).toBeNull();
+    act(() => {
+      link.dispatch({ selection: { anchor: 2 } });
+    });
+    tap("Open link");
+    expect(onFollow).toHaveBeenCalledExactlyOnceWith("plan.md");
+  });
+
+  /** Edits the cell `name` of the note's table, on a touch screen. */
+  async function inTable(text: string, name: string) {
+    holdTouch(true);
+    const view = open(text, undefined, true);
+    const cell = [...view.contentDOM.querySelectorAll("th, td")].find(
+      (drawn) => drawn.textContent === name,
+    );
+    fireEvent.mouseDown(cell ?? document.body);
+    await screen.findByRole("toolbar", { name: "Formatting" });
+    const edited = () => {
+      const element = view.contentDOM.querySelector<HTMLElement>(
+        ".cm-table .cm-editor",
+      );
+      return element && EditorView.findFromDOM(element);
+    };
+    return { view, edited };
+  }
+
+  function keys() {
+    return [...(toolbar()?.querySelectorAll("button") ?? [])].map((key) =>
+      key.getAttribute("aria-label"),
+    );
+  }
+
+  it("holds a table's frequent edits in its cells, after Undo and Redo, the focus staying", async () => {
+    const { view, edited } = await inTable(
+      "| Tea | Cups |\n| :- | - |\n| 1 | 2 |",
+      "1",
+    );
+
+    expect(keys()).toEqual([
+      "Undo",
+      "Redo",
+      "Add row below",
+      "Delete row",
+      "Add column to the right",
+      "Delete column",
+      "Align left",
+      "Align center",
+      "Align right",
+      "Bold",
+      "Link",
+      "Find in note",
+      "Table options",
+    ]);
+    // After Undo and Redo, then between the rows', the columns', the
+    // alignment's and the rest, keeping the focus, and the keyboard up, as
+    // the keys do.
+    const rules = toolbar()?.querySelectorAll("hr") ?? [];
+    expect(rules).toHaveLength(4);
+    for (const rule of rules) expect(fireEvent.mouseDown(rule)).toBe(false);
+    // The column's own alignment pressed.
+    const pressed = () =>
+      ["Align left", "Align center", "Align right"].map((name) =>
+        screen.getByRole("button", { name }).getAttribute("aria-pressed"),
+      );
+    expect(pressed()).toEqual(["true", "false", "false"]);
+    const key = screen.getByRole("button", { name: "Align center" });
+    // It keeps the focus, and the keyboard up.
+    expect(fireEvent.mouseDown(key)).toBe(false);
+    tap("Align center");
+    expect(view.state.sliceDoc()).toBe(
+      "| Tea | Cups |\n| :-: | - |\n| 1 | 2 |",
+    );
+    expect(pressed()).toEqual(["false", "true", "false"]);
+    expect(edited()?.hasFocus).toBe(true);
+    const host = () =>
+      view.contentDOM.querySelector<HTMLElement>(".cm-cell-edited");
+    expect(host()?.style.textAlign).toBe("center");
+    tap("Undo");
+    expect(view.state.sliceDoc()).toBe("| Tea | Cups |\n| :- | - |\n| 1 | 2 |");
+    expect(pressed()).toEqual(["true", "false", "false"]);
+    // The cell edited aligned as its column again, as the others.
+    expect(host()?.style.textAlign).toBe("left");
+    // And Redo aligns them all again.
+    tap("Redo");
+    expect(view.state.sliceDoc()).toBe(
+      "| Tea | Cups |\n| :-: | - |\n| 1 | 2 |",
+    );
+    expect(pressed()).toEqual(["false", "true", "false"]);
+    expect(host()?.style.textAlign).toBe("center");
+    expect(edited()?.hasFocus).toBe(true);
+    tap("Undo");
+
+    tap("Add row below");
+    expect(view.state.sliceDoc()).toBe(
+      "| Tea | Cups |\n| :- | - |\n| 1 | 2 |\n|  |  |",
+    );
+    expect(edited()?.state.sliceDoc()).toBe("");
+    expect(edited()?.hasFocus).toBe(true);
+    tap("Delete row");
+    expect(view.state.sliceDoc()).toBe("| Tea | Cups |\n| :- | - |\n| 1 | 2 |");
+    expect(edited()?.state.sliceDoc()).toBe("1");
+    tap("Add column to the right");
+    expect(view.state.sliceDoc()).toBe(
+      "| Tea |  | Cups |\n| :- | --- | - |\n| 1 |  | 2 |",
+    );
+    expect(edited()?.hasFocus).toBe(true);
+    tap("Delete column");
+    expect(view.state.sliceDoc()).toBe("| Tea | Cups |\n| :- | - |\n| 1 | 2 |");
+    expect(edited()?.state.sliceDoc()).toBe("2");
+    expect(edited()?.hasFocus).toBe(true);
+    // The cell's column's alignment, as it moved.
+    expect(pressed()).toEqual(["false", "false", "false"]);
+  });
+
+  it("keeps a table's keys off where their edits do not apply", async () => {
+    const { view, edited } = await inTable("| Tea |\n| - |\n| 1 |", "Tea");
+    const off = () =>
+      [...(toolbar()?.querySelectorAll('[aria-disabled="true"]') ?? [])].map(
+        (key) => key.getAttribute("aria-label"),
+      );
+
+    expect(off()).toEqual(["Delete row", "Delete column"]);
+    // Still keeping the focus, and the keyboard up.
+    const key = screen.getByRole("button", { name: "Delete row" });
+    expect(fireEvent.mouseDown(key)).toBe(false);
+    tap("Delete row");
+    tap("Delete column");
+    expect(view.state.sliceDoc()).toBe("| Tea |\n| - |\n| 1 |");
+    expect(edited()?.hasFocus).toBe(true);
+    // None pressed in a column without its alignment.
+    expect(screen.getByRole("button", { name: "Align left" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    // Anew in another cell of the column, its alignment the same.
+    fireEvent.mouseDown(view.contentDOM.querySelector("td") ?? document.body);
+    await waitFor(() => {
+      expect(off()).toEqual(["Delete column"]);
+    });
+    // And gone with the cell, as the note takes the focus.
+    act(() => {
+      view.focus();
+    });
+    await waitFor(() => {
+      expect(keys()).toContain("Heading");
+    });
+    expect(keys()).not.toContain("Table options");
+  });
+
+  it("holds a table's other edits in the menu of its Table options key, above it, the focus staying", async () => {
+    const { view, edited } = await inTable(
+      "| Tea | Cups |\n| - | - |\n| 1 | 2 |",
+      "1",
+    );
+
+    const key = screen.getByRole("button", { name: "Table options" });
+    expect(key).toHaveAttribute("aria-haspopup", "menu");
+    expect(fireEvent.mouseDown(key)).toBe(false);
+    tap("Table options");
+    const menu = screen.getByRole("menu", { name: "Table" });
+    expect(
+      [...menu.querySelectorAll('[role^="menuitem"]')].map(
+        (item) => item.textContent,
+      ),
+    ).toEqual([
+      "Add row above",
+      "Move row up",
+      "Move row down",
+      "Add column to the left",
+      "Move column left",
+      "Move column right",
+    ]);
+    expect(menu.querySelectorAll("hr")).toHaveLength(1);
+    const item = screen.getByRole("menuitem", {
+      name: "Add column to the left",
+    });
+    expect(item).not.toHaveFocus();
+    expect(fireEvent.mouseDown(item)).toBe(false);
+    fireEvent.click(item);
+
+    expect(view.state.sliceDoc()).toBe(
+      "|  | Tea | Cups |\n| --- | - | - |\n|  | 1 | 2 |",
+    );
+    expect(menu).not.toBeVisible();
+    expect(edited()?.state.sliceDoc()).toBe("");
+    expect(edited()?.hasFocus).toBe(true);
+    tap("Table options");
+    tap("Table options");
+    expect(menu).not.toBeVisible();
+    expect(edited()?.hasFocus).toBe(true);
+
+    // A right-click's holds them all.
+    const drawn = [...view.contentDOM.querySelectorAll("td")].find(
+      (cell) => cell.textContent === "2",
+    );
+    expect(fireEvent.contextMenu(drawn ?? document.body)).toBe(false);
+    expect(menu.querySelectorAll('[role^="menuitem"]')).toHaveLength(13);
+    act(() => {
+      menu.hidePopover();
+    });
+
+    // Its cell left, it closes, its items being that cell's.
+    tap("Table options");
+    expect(menu).toBeVisible();
+    fireEvent.mouseDown(view.contentDOM.querySelector("th") ?? document.body);
+    expect(menu).not.toBeVisible();
+  });
+
+  it("keeps a table's keys to its cells", async () => {
+    await editing("| Tea |\n| - |");
+
+    expect(screen.queryByRole("button", { name: "Table options" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add row below" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Indent" })).toBeVisible();
   });
 
   it("finds text in the note, its field taking the focus within the tap", async () => {
@@ -387,6 +659,49 @@ describe("the keyboard toolbar", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 1000));
     expect(scrolls).toEqual([1]);
+  });
+
+  it("scrolls to a table's cell edited in place once the keyboard has come over it", async () => {
+    const viewport = new Viewport();
+    Object.defineProperty(window, "visualViewport", {
+      value: viewport,
+      configurable: true,
+    });
+    holdTouch(true);
+    const view = open("| Tea |\n| - |", undefined, true);
+    fireEvent.mouseDown(view.contentDOM.querySelector("th") ?? document.body);
+    const element = view.contentDOM.querySelector<HTMLElement>(
+      ".cm-table .cm-editor",
+    );
+    const cell = element && EditorView.findFromDOM(element);
+    if (!cell) throw new Error("No cell's editor");
+    await screen.findByRole("toolbar", { name: "Formatting" });
+    // The cell's cursor under the keyboard, wherever the note's would be.
+    vi.spyOn(cell, "coordsAtPos").mockReturnValue({
+      left: 0,
+      right: 0,
+      top: 600,
+      bottom: 626,
+    });
+    vi.spyOn(view, "coordsAtPos").mockReturnValue(null);
+    const scrolls: number[] = [];
+    cell.dispatch({
+      effects: StateEffect.appendConfig.of(
+        EditorView.updateListener.of((update) => {
+          for (const { effects } of update.transactions) {
+            if (!effects.some((effect) => effect.is(StateEffect.appendConfig)))
+              scrolls.push(effects.length);
+          }
+        }),
+      ),
+    });
+
+    act(() => {
+      viewport.show(500);
+    });
+    await waitFor(() => {
+      expect(scrolls).toEqual([1]);
+    });
   });
 
   it.each([

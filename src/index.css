@@ -671,6 +671,50 @@ button.account {
   }
 }
 
+/* A table's menu (docs/DESIGN.md, Table menu): at a right-click, or above
+   the keyboard toolbar's Table options key, scrolling where its room is
+   short, and dense under a mouse, since it is long. */
+.table-menu {
+  inset: auto;
+  margin: 0;
+  overflow-y: auto;
+}
+
+/* Above the toolbar's end, where the key is anchors aside. */
+.table-menu.options {
+  inset: auto calc(var(--space-2) + env(safe-area-inset-right))
+    calc(var(--keyboard-toolbar-height) + var(--space-1)) auto;
+}
+
+/* Its right edge with the key's, or with the screen's should the key run
+   past it, by the key's anchor: with the keyboard up on an iPhone, a menu
+   placed at the key's box from script showed hundreds of pixels above it. */
+@supports (anchor-name: --table-options) {
+  .table-menu.options {
+    position-anchor: --table-options;
+    inset: auto
+      max(anchor(right), calc(var(--space-2) + env(safe-area-inset-right)))
+      anchor(top) auto;
+    margin: 0 0 var(--space-1);
+  }
+}
+
+@media (pointer: fine) {
+  .table-menu > button {
+    min-height: 32px;
+  }
+}
+
+.table-menu > [aria-checked="true"] {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+.table-menu > [aria-disabled="true"] {
+  color: color-mix(in srgb, var(--on-surface) 38%, transparent);
+  cursor: default;
+}
+
 .account-menu,
 .actions-menu {
   inset: calc(var(--app-bar-height) + env(safe-area-inset-top) - var(--space-2))
@@ -2241,6 +2285,40 @@ body:has(> .keyboard-toolbar) .editor {
 
 .keyboard-toolbar button::after {
   content: none;
+}
+
+/* A key off in a table's cell, as a disabled button, which would take the
+   focus from the cell. */
+.keyboard-toolbar button[aria-disabled="true"] {
+  background-image: none;
+  color: color-mix(in srgb, var(--on-surface) 38%, transparent);
+  cursor: default;
+}
+
+/* A table's column's own alignment. */
+.keyboard-toolbar button[aria-pressed="true"] {
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+/* In a table's cell, the keys before a rule, Undo, Redo and the table's,
+   narrower, so that they fit a 375 px screen; the rest scroll. */
+.keyboard-toolbar > button:has(~ hr) {
+  width: 40px;
+}
+
+/* Between a table's groups of keys. */
+.keyboard-toolbar > hr {
+  flex: none;
+  width: 1px;
+  height: 24px;
+  margin: 0 2px;
+  border: none;
+  background: var(--outline-variant);
+}
+
+.keyboard-toolbar .table-options {
+  anchor-name: --table-options;
 }
 
 /* Find in note (docs/DESIGN.md, Find in note): over the source's top, under
