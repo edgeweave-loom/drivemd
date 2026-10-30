@@ -39,6 +39,7 @@ import { tags } from "@lezer/highlight";
 import {
   useEffect,
   useEffectEvent,
+  useId,
   useImperativeHandle,
   useLayoutEffect,
   useRef,
@@ -56,9 +57,19 @@ import { KeyboardToolbar, TOOLBAR_HEIGHT } from "./KeyboardToolbar.tsx";
 import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
 import { useLayout, useTouch } from "./layout.ts";
-import { livePreview } from "./live-preview.ts";
+import {
+  cellEditor,
+  cellSetup,
+  inCell,
+  livePreview,
+  tableMenu,
+  tableMenuOf,
+  type CellMenu,
+  type TableMenuControl,
+} from "./live-preview.ts";
 import { oneEditPerKey } from "./one-edit-per-key.ts";
 import { linkAt } from "./source-links.ts";
+import { TableMenu } from "./TableMenu.tsx";
 import type { LineBreak } from "./text.ts";
 import { keepVisible } from "./visual-viewport.ts";
 
@@ -221,12 +232,37 @@ function followLinks(follow: (href: string) => void): Extension {
   });
 }
 
+// Markdown's blocks, which a table's cell cannot hold: its text is inline.
+const BLOCKS = [
+  "ATXHeading",
+  "Blockquote",
+  "BulletList",
+  "FencedCode",
+  "HTMLBlock",
+  "HorizontalRule",
+  "IndentedCode",
+  "LinkReference",
+  "OrderedList",
+  "SetextHeading",
+  "Table",
+];
+
 // Visual or Source, which the editor switches between as it stays.
 const MODE = new Compartment();
 
 function inMode(visual: boolean): Extension {
   return visual
-    ? [livePreview, EditorView.contentAttributes.of({ "aria-label": "Note" })]
+    ? [
+        livePreview,
+        // A table's cell edited in place, in the source's light styling.
+        cellSetup.of([
+          markdown({ base: markdownLanguage, extensions: { remove: BLOCKS } }),
+          syntaxHighlighting(LIGHT),
+          syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+          oneEditPerKey,
+        ]),
+        EditorView.contentAttributes.of({ "aria-label": "Note" }),
+      ]
     : EditorView.contentAttributes.of({ "aria-label": "Markdown source" });
 }
 
@@ -236,6 +272,7 @@ function extensions(
   changed: (update: ViewUpdate) => void,
   follow: (href: string) => void,
   clearance: () => { top: number; bottom: number } | null,
+  menu: TableMenuControl,
 ): Extension[] {
   return [
     // Lines join with the file's own break, whatever the browser sends.
@@ -276,6 +313,8 @@ function extensions(
     MODE.of(inMode(visual)),
     EditorView.updateListener.of(changed),
     followLinks(follow),
+    // A right-click on a table's cell in Visual opens its menu.
+    tableMenu.of(menu),
     // The cursor stays clear of the keyboard toolbar and the app bar when
     // the editor scrolls to it.
     EditorView.scrollMargins.of(clearance),
@@ -328,6 +367,9 @@ export function Editor({
   const editor = useRef<EditorView | null>(null);
   const field = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
+  // The table's cell edited in place that has the focus, if any: the edits
+  // that apply to it, and its column's alignment, which the toolbar shows.
+  const [cell, setCell] = useState<CellMenu | null>(null);
   // The address of the link the cursor is in, which the toolbar follows.
   const [link, setLink] = useState<string>();
   // Find in note's query and matches, while it is open.
@@ -339,7 +381,16 @@ export function Editor({
   const opening = useEffectEvent(() => ({ initial, visual }));
   const edited = useEffectEvent((update: ViewUpdate) => {
     if (update.docChanged) onChange(update.state.sliceDoc());
-    if (update.focusChanged) setFocused(update.view.hasFocus);
+    // A table's cell edited in place has the focus for the note.
+    const celled = inCell(update.state);
+    if (update.focusChanged || celled !== inCell(update.startState)) {
+      setFocused(update.view.hasFocus || celled);
+    }
+    // Anew as the cell, its table or its column's alignment change.
+    if (celled || inCell(update.startState)) {
+      const now = tableMenuOf(update.view);
+      setCell((was) => (cellKey(was) === cellKey(now) ? was : now));
+    }
     if (update.docChanged || update.selectionSet) {
       setLink(linkAt(update.state, update.state.selection.main.head));
     }
@@ -408,6 +459,8 @@ export function Editor({
   const followed = useEffectEvent((href: string) => {
     onFollow(href);
   });
+  const menuId = useId();
+  const menu = useRef<TableMenuControl>(null);
 
   useEffect(() => {
     const element = host.current;
@@ -417,7 +470,14 @@ export function Editor({
       element,
       EditorState.create({
         doc: initial,
-        extensions: extensions(lineBreak, visual, edited, followed, clearance),
+        extensions: extensions(lineBreak, visual, edited, followed, clearance, {
+          openAt: (x, y) => {
+            menu.current?.openAt(x, y);
+          },
+          close: () => {
+            menu.current?.close();
+          },
+        }),
       }),
     );
     editor.current = view;
@@ -483,9 +543,13 @@ export function Editor({
     <>
       {phone ? <InSlot name="find">{bar}</InSlot> : bar}
       <div className="editor" ref={host} />
+      <TableMenu id={menuId} editor={editor} ref={menu} />
       {toolbar && (
         <KeyboardToolbar
           link={link}
+          cell={cell}
+          tableMenu={menuId}
+          // A cell edited in place follows what the keys do to its text.
           onCommand={(command) => {
             if (editor.current) command(editor.current);
           }}
@@ -495,7 +559,9 @@ export function Editor({
           // close, placed the cursor before it showed, where iOS scrolls it
           // above the keyboard only, under the toolbar.
           onSettle={(before) => {
-            const view = editor.current;
+            const note = editor.current;
+            // In a table's cell edited in place, the cell's own cursor.
+            const view = note && (cellEditor(note) ?? note);
             if (view && onScreen(view, before)) {
               view.dispatch({
                 effects: EditorView.scrollIntoView(view.state.selection.main),
@@ -506,6 +572,11 @@ export function Editor({
       )}
     </>
   );
+}
+
+/** A cell's edits and alignment, to compare. */
+function cellKey(cell: CellMenu | null): string {
+  return cell ? [cell.alignment, ...cell.edits].join() : "";
 }
 
 interface Found {

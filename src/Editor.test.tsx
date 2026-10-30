@@ -7,10 +7,11 @@ import {
 } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { searchPanelOpen } from "@codemirror/search";
-import { EditorState, StateEffect } from "@codemirror/state";
+import { EditorSelection, EditorState, StateEffect } from "@codemirror/state";
 import { runScopeHandlers, EditorView } from "@codemirror/view";
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -918,6 +919,114 @@ describe("Visual", () => {
     expect(view.state.sliceDoc()).toBe("Tea\n- [ ] Boil");
   });
 
+  it("draws a code block as the viewer does, its fences hidden, its language at its first line's end", async () => {
+    const { view } = open(
+      [
+        "Tea",
+        "```js title",
+        "const a = 1;",
+        "```",
+        "",
+        "    indented",
+        "",
+        "- Listed",
+        "  ```",
+        "  x",
+        "  ```",
+        "",
+        "> ~~~",
+        "> quoted",
+        "> ~~~",
+      ].join("\n"),
+      "\n",
+      true,
+    );
+    await parsed(view);
+    const edges = () =>
+      [...view.contentDOM.querySelectorAll(".cm-line")].map((line) =>
+        line.classList.contains("cm-code-block")
+          ? ["first", "last"]
+              .filter((edge) => line.classList.contains(`cm-code-${edge}`))
+              .join(" ") || "middle"
+          : "",
+      );
+
+    // A code block in a list as written, which it would cover the indent of.
+    expect(edges()).toEqual([
+      "",
+      "first",
+      "middle",
+      "last",
+      "",
+      "first last",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "first",
+      "middle",
+      "last",
+    ]);
+    expect(looks(view)).toEqual([
+      "Tea",
+      // Smaller than the code, as the viewer's quieter labels.
+      "‹⟨js⟩›",
+      "const a = 1;",
+      "",
+      "",
+      "    indented",
+      "",
+      "• Listed",
+      "  ‹```›",
+      "  x",
+      "  ‹```›",
+      "",
+      "",
+      "‹quoted›",
+      "",
+    ]);
+  });
+
+  it("shows a code block's fences while the selection is in it with the focus", async () => {
+    const { view } = open("Tea\n```js\nconst a = 1;\n```", "\n", true);
+    await parsed(view);
+
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 15 } });
+    });
+
+    await waitFor(() => {
+      expect(looks(view)).toEqual(["Tea", "‹```›js", "const a = 1;", "‹```›"]);
+    });
+  });
+
+  it("colors code as the viewer does, and leaves Markdown in a code block as written", async () => {
+    for (const name of ["js", "markdown"]) {
+      await LanguageDescription.matchLanguageName(languages, name)?.load();
+    }
+    const { view } = open(
+      "```js\n// Tea\nconst cups = 2;\n```\n\n```markdown\n# Not a heading\n**not bold**\n```",
+      "\n",
+      true,
+    );
+    await parsed(view);
+    const colored = (role: string) =>
+      [...view.contentDOM.querySelectorAll(`.cm-code-${role}`)].map(
+        (token) => token.textContent,
+      );
+
+    expect(colored("comment")).toEqual(["// Tea"]);
+    expect(colored("keyword")).toContain("const");
+    expect(colored("literal")).toContain("2");
+    expect(looks(view).slice(6, 8)).toEqual([
+      "‹#›** Not a heading**",
+      "‹**›**not bold**‹**›",
+    ]);
+  });
+
   it("skips a hidden symbol as one unit", async () => {
     const { view } = open("**Tea**", "\n", true);
     await parsed(view);
@@ -970,12 +1079,16 @@ describe("Visual's tables", () => {
     "After",
   ].join("\n");
 
-  /** Each row of the table drawn, its cells' text, bold text in **. */
+  /**
+   * Each row of the table drawn, its cells' text, bold text in ** and a
+   * line break drawn as one.
+   */
   function cells(view: EditorView) {
     return [...view.contentDOM.querySelectorAll("tr")].map((row) =>
       [...row.cells].map((cell) =>
         [...cell.childNodes]
           .map((node) => {
+            if (node instanceof HTMLBRElement) return "\n";
             const text = node.textContent ?? "";
             return node instanceof HTMLElement &&
               getComputedStyle(node).fontWeight === "700"
@@ -1007,6 +1120,26 @@ describe("Visual's tables", () => {
       ),
     ).toEqual(["left", "right", "center"]);
     expect(looks(view)).toEqual(["Tea", "", "", "After"]);
+  });
+
+  it("draws a <br> in a cell as a line break, as the viewer does", async () => {
+    const text = [
+      "| Tea | Cups |",
+      "| - | - |",
+      '| Milk<br>oat | <BR/>2<br />3</br>4<br class="z">5 |',
+      '| `a<br>b` \\<br> <i title="<br>"> | <bra> **e<br>f** |',
+    ].join("\n");
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+
+    expect(cells(view)).toEqual([
+      ["Tea", "Cups"],
+      ["Milk\noat", "\n2\n3\n4\n5"],
+      // Neither in code, nor escaped, nor another tag.
+      ['a<br>b <br> <i title="<br>">', "<bra> **e**\n**f**"],
+    ]);
+    // Drawn as the viewer draws them.
+    expect(view.contentDOM.querySelectorAll("td br")).toHaveLength(6);
   });
 
   it("shows a table's Markdown while the selection is in it with the focus", async () => {
@@ -1052,20 +1185,642 @@ describe("Visual's tables", () => {
     expect(view.contentDOM.querySelector("table")).toBeNull();
   });
 
-  it("places the cursor in the cell clicked, in its Markdown", async () => {
+  /** The editor of the cell being edited in place, if any. */
+  function cellEditor(view: EditorView) {
+    const element = view.contentDOM.querySelector<HTMLElement>(
+      ".cm-table .cm-editor",
+    );
+    return element ? EditorView.findFromDOM(element) : null;
+  }
+
+  /** Edits the cell whose text shows as `name`, from a click. */
+  function editCell(view: EditorView, name: string) {
+    const drawn = [...view.contentDOM.querySelectorAll("th, td")].find(
+      (cell) => cell.textContent === name,
+    );
+    fireEvent.mouseDown(drawn ?? document.body);
+    const cell = cellEditor(view);
+    if (!cell) throw new Error("No cell's editor");
+    return cell;
+  }
+
+  function type(view: EditorView, text: string) {
+    act(() => {
+      view.dispatch(view.state.replaceSelection(text), {
+        userEvent: "input.type",
+      });
+    });
+  }
+
+  it("edits the cell clicked in place, its Markdown alone, the table staying drawn", async () => {
     const { view, onChange } = open(NOTE, "\n", true);
     await parsed(view);
-    const cell = within(view.contentDOM).getByRole("cell", { name: "Ada" });
 
-    fireEvent.mouseDown(cell);
+    const stepped = within(view.contentDOM).getByText("Step").firstChild;
+    const cell = editCell(view, "Ada");
 
+    expect(cell.hasFocus).toBe(true);
+    expect(cell.state.sliceDoc()).toBe("_Ada_");
+    expect(cell.state.selection.main.head).toBe(5);
+    expect(within(view.contentDOM).getByRole("textbox", { name: "Cell" })).toBe(
+      cell.contentDOM,
+    );
+    // Looked at, and written over nowhere.
+    expect(onChange).not.toHaveBeenCalled();
+
+    type(cell, "!");
+
+    const edited = NOTE.replace("_Ada_", "_Ada_!");
+    expect(view.state.sliceDoc()).toBe(edited);
+    expect(onChange).toHaveBeenLastCalledWith(edited);
+    // The other cells keep their drawing.
+    expect(stepped?.isConnected).toBe(true);
+    // A click in it is its own, not the note's.
+    fireEvent.mouseDown(cell.scrollDOM);
+    expect(cellEditor(view)).toBe(cell);
+    expect(cells(view)).toEqual([
+      ["Step", "**Owner**", "Left"],
+      ["Boil | pour", "_Ada_!", ""],
+      ["Cups", "", "More"],
+    ]);
+  });
+
+  it("writes a pipe typed in a cell escaped, and a line break as <br>", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "Ada");
+
+    type(cell, " | or\nGrace");
+    // A pipe escaped already stays as typed, and what follows a pipe too.
+    for (const key of [" ", "\\", "|", "|", "!"]) type(cell, key);
+
+    expect(cell.state.sliceDoc()).toBe("_Ada_ \\| or<br>Grace \\|\\|!");
+    expect(view.state.sliceDoc()).toBe(
+      NOTE.replace("_Ada_", "_Ada_ \\| or<br>Grace \\|\\|!"),
+    );
+  });
+
+  it("keeps a backslash from escaping the <br> of a line break after it", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "Ada");
+
+    type(cell, "\\");
+    pressed(view, "Enter", { shiftKey: true });
+    // An even run of backslashes escapes nothing.
+    type(cell, "x\\\\\ny");
+
+    expect(cell.state.sliceDoc()).toBe("_Ada_\\ <br>x\\\\<br>y");
+    pressed(view, "Tab");
+    expect(cells(view)[1]?.[1]).toBe("Ada\\ \nx\\\ny");
+  });
+
+  it("never lets a backslash take a pipe out of its place, as GFM counts them", async () => {
+    const { view } = open("|a|b|\n|-|-|\n| Boil \\| pour | 1 |", "\n", true);
+    await parsed(view);
+
+    // A backslash before the pipe that ends the cell would escape it.
+    const cell = editCell(view, "a");
+    type(cell, "\\");
+    expect(view.state.sliceDoc()).toBe(
+      "|a\\ |b|\n|-|-|\n| Boil \\| pour | 1 |",
+    );
+    expect(cell.state.selection.main.head).toBe(2);
+    type(cell, "*");
+    expect(cell.state.sliceDoc()).toBe("a\\* ");
+
+    // Nor does a backslash taken from an escaped pipe, or one that an
+    // escaped backslash ends.
+    const pipe = editCell(view, "Boil | pour");
+    act(() => {
+      pipe.dispatch({ changes: { from: 5, to: 6 }, userEvent: "delete" });
+    });
+    expect(pipe.state.sliceDoc()).toBe("Boil \\| pour");
+    act(() => {
+      pipe.dispatch({ selection: { anchor: 5 } });
+    });
+    type(pipe, "\\");
+    expect(pipe.state.sliceDoc()).toBe("Boil \\\\\\| pour");
+    expect(view.state.sliceDoc()).toContain("| Boil \\\\\\| pour | 1 |");
+  });
+
+  it("follows what the note's own filters make of a cell's edit", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "Ada");
+
+    // UTF-8 could not write a NUL back, which the note keeps out.
+    type(cell, "a\0b");
+    type(cell, "!");
+
+    expect(cell.state.sliceDoc()).toBe("_Ada_ab!");
+    expect(view.state.sliceDoc()).toBe(NOTE.replace("_Ada_", "_Ada_ab!"));
+  });
+
+  it("shows a table as written for a cell clicked while Find in note is open", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    act(() => {
+      press(view, "f", { ctrlKey: true });
+    });
+
+    fireEvent.mouseDown(
+      within(view.contentDOM).getByRole("cell", { name: "Ada" }),
+    );
+
+    expect(cellEditor(view)).toBeNull();
     expect(view.hasFocus).toBe(true);
     expect(view.state.selection.main.head).toBe(NOTE.indexOf("_Ada_") + 5);
+    expect(view.contentDOM.querySelector("table")).toBeNull();
+  });
+
+  it("keeps the cell's editor, and its cursor, for a click beside its text", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "Ada");
+    act(() => {
+      cell.dispatch({ selection: { anchor: 1 } });
+    });
+
+    const host = cell.dom.parentElement;
+    if (!host) throw new Error("No cell");
+    fireEvent.mouseDown(host);
+
+    expect(cellEditor(view)).toBe(cell);
+    expect(cell.state.selection.main.head).toBe(1);
+    expect(cell.hasFocus).toBe(true);
+  });
+
+  it("styles a cell's Markdown as inline text, which a cell holds", async () => {
+    const { view } = open("| # Total |\n| - |\n| > - one |", "\n", true);
+    await parsed(view);
+
+    // At the head's size, in its quieter color.
+    const head = editCell(view, "# Total");
+    expect(looks(head)).toEqual(["‹# Total›"]);
+    const body = editCell(view, "> - one");
+    expect(looks(body)).toEqual(["> - one"]);
+  });
+
+  it("undoes and redoes a cell's edits from the note's history", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "Ada");
+    type(cell, "!");
+
+    act(() => {
+      press(cell, "z", { ctrlKey: true });
+    });
+    expect(view.state.sliceDoc()).toBe(NOTE);
+    expect(cell.state.sliceDoc()).toBe("_Ada_");
+
+    act(() => {
+      press(cell, "y", { ctrlKey: true });
+    });
+    expect(view.state.sliceDoc()).toBe(NOTE.replace("_Ada_", "_Ada_!"));
+    expect(cell.state.sliceDoc()).toBe("_Ada_!");
+    expect(cellEditor(view)).toBe(cell);
+  });
+
+  it("moves to the next cell with Tab, back with Shift+Tab, and down with Enter, past cells a row lacks", async () => {
+    const text = "| A | B |\n| - | - |\n| 1 | 2 |\n| 3 |\n| 5 | 6 |";
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+    const moved = (key: string, modifiers: KeyboardEventInit = {}) => {
+      const cell = cellEditor(view);
+      if (!cell) throw new Error("No cell's editor");
+      act(() => {
+        press(cell, key, modifiers);
+      });
+      const next = cellEditor(view);
+      return [next?.state.sliceDoc(), next?.hasFocus];
+    };
+
+    editCell(view, "B");
+    expect(moved("Tab")).toEqual(["1", true]);
+    expect(moved("Tab")).toEqual(["2", true]);
+    expect(moved("Tab", { shiftKey: true })).toEqual(["1", true]);
+    expect(moved("Enter")).toEqual(["3", true]);
+    // Past a cell its row lacks.
+    expect(moved("Tab")).toEqual(["5", true]);
+    expect(moved("Tab", { shiftKey: true })).toEqual(["3", true]);
+    // The table's first cell stays the first.
+    editCell(view, "A");
+    expect(moved("Tab", { shiftKey: true })).toEqual(["A", true]);
+    expect(view.state.sliceDoc()).toBe(text);
+  });
+
+  /** Presses `key` in the cell edited, then tells of the one edited after. */
+  function pressed(
+    view: EditorView,
+    key: string,
+    modifiers: KeyboardEventInit = {},
+  ) {
+    const cell = cellEditor(view);
+    if (!cell) throw new Error("No cell's editor");
+    act(() => {
+      press(cell, key, modifiers);
+    });
+    const next = cellEditor(view);
+    return next && [next.state.sliceDoc(), next.state.selection.main.head];
+  }
+
+  it("adds a row from Tab past the last cell, or from Enter on the last row, a pipe at each edge", async () => {
+    const written = (rows: string) =>
+      `Tea\r\n\r\n  | A | B |\r\n  | :- | -: |\r\n${rows}\r\n\r\nAfter`;
+    const { view } = open(written("  | 1 | 2 |"), "\r\n", true);
+    await parsed(view);
+
+    // Its indent the delimiter row's, its empty cells a space on each side.
+    editCell(view, "2");
+    expect(pressed(view, "Tab")).toEqual(["", 0]);
+    expect(cellEditor(view)?.hasFocus).toBe(true);
+    expect(view.state.sliceDoc()).toBe(written("  | 1 | 2 |\r\n  |  |  |"));
+    const edited = () => {
+      const cell = cellEditor(view);
+      if (!cell) throw new Error("No cell's editor");
+      return cell;
+    };
+    type(edited(), "3");
+    expect(pressed(view, "Tab")).toEqual(["", 0]);
+
+    // In the column of the cell Enter leaves.
+    expect(pressed(view, "Enter")).toEqual(["", 0]);
+    expect(view.state.sliceDoc()).toBe(
+      written("  | 1 | 2 |\r\n  | 3 |  |\r\n  |  |  |"),
+    );
+    type(edited(), "4");
+    expect(view.state.sliceDoc()).toBe(
+      written("  | 1 | 2 |\r\n  | 3 |  |\r\n  |  | 4 |"),
+    );
+    expect(cells(view).at(-1)).toEqual(["", "4"]);
+  });
+
+  it.each([
+    ["without edge pipes", "A | B\n--|--\n1 | 2", "|  |  |"],
+    ["of a single column", "| A |\n| - |\n| 2 |", "|  |"],
+  ])(
+    "adds a row to a table %s with a pipe at each edge, as only those hold empty cells",
+    async (_, text, row) => {
+      const { view } = open(text, "\n", true);
+      await parsed(view);
+
+      editCell(view, "2");
+      expect(pressed(view, "Enter")).toEqual(["", 0]);
+
+      expect(view.state.sliceDoc()).toBe(`${text}\n${row}`);
+    },
+  );
+
+  it("adds a row from Enter past the last row that holds its column", async () => {
+    const text = "| A | B |\n| - | - |\n| 1 |\n| 3 |";
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+
+    editCell(view, "B");
+    expect(pressed(view, "Enter")).toEqual(["", 0]);
+
+    expect(view.state.sliceDoc()).toBe(`${text}\n|  |  |`);
+    expect(cells(view).at(-1)).toEqual(["", ""]);
+  });
+
+  it("undoes a row added on its own, apart from the typing before and after it", async () => {
+    // Typed at the line's end, where the row comes.
+    const text = "A | B\n--|--\n1 | 2";
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+    type(editCell(view, "2"), "!");
+    pressed(view, "Tab");
+    const cell = cellEditor(view);
+    if (!cell) throw new Error("No cell's editor");
+    type(cell, "3");
+    const undo = () => {
+      act(() => {
+        press(cellEditor(view) ?? view, "z", { ctrlKey: true });
+      });
+      return view.state.sliceDoc();
+    };
+
+    expect(undo()).toBe(`${text}!\n|  |  |`);
+    expect(undo()).toBe(`${text}!`);
+    expect(undo()).toBe(text);
+  });
+
+  it("writes Shift+Enter in a cell as <br>, staying in it, and draws it as a line break", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "Ada");
+
+    expect(pressed(view, "Enter", { shiftKey: true })).toEqual([
+      "_Ada_<br>",
+      9,
+    ]);
+    expect(cellEditor(view)).toBe(cell);
+    expect(view.state.sliceDoc()).toBe(NOTE.replace("_Ada_", "_Ada_<br>"));
+
+    type(cell, "x");
+    pressed(view, "Tab");
+    expect(cells(view)[1]?.[1]).toBe("Ada\nx");
+    // Edited again, the cell shows its <br> as written.
+    expect(editCell(view, "Adax").contentDOM.textContent).toBe("_Ada_<br>x");
+  });
+
+  it("moves from cell to cell with the arrows: Up and Down in the column, Left and Right from the text's edge", async () => {
+    const text = "| A | B |\n| - | - |\n| 1 | 2 |\n| 3 |\n| 5 | 6 |";
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+
+    editCell(view, "B");
+    expect(pressed(view, "ArrowDown")).toEqual(["2", 1]);
+    // Past a cell its row lacks.
+    expect(pressed(view, "ArrowDown")).toEqual(["6", 1]);
+    expect(pressed(view, "ArrowUp")).toEqual(["2", 1]);
+    // Within the text, then from its edge, to the end of the cell before.
+    expect(pressed(view, "ArrowLeft")).toEqual(["2", 0]);
+    expect(pressed(view, "ArrowLeft")).toEqual(["1", 1]);
+    // And from the row's first to the last of the row before.
+    act(() => {
+      cellEditor(view)?.dispatch({ selection: { anchor: 0 } });
+    });
+    expect(pressed(view, "ArrowLeft")).toEqual(["B", 1]);
+    // To the start of the cell after, past a cell its row lacks.
+    editCell(view, "3");
+    expect(pressed(view, "ArrowRight")).toEqual(["5", 0]);
+    // A selection, which an arrow ends, as anywhere.
+    act(() => {
+      cellEditor(view)?.dispatch({ selection: { anchor: 0, head: 1 } });
+    });
+    expect(pressed(view, "ArrowRight")).toEqual(["5", 1]);
+    expect(view.state.sliceDoc()).toBe(text);
+  });
+
+  it("leaves the table from its edges for the line before or after it", async () => {
+    const text = "Tea\n| A | B |\n| - | - |\n| 1 | 2 |\n\nAfter";
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+    const after = text.indexOf("\n\nAfter") + 1;
+    const left = (key: string) => {
+      expect(pressed(view, key)).toBeNull();
+      expect(view.hasFocus).toBe(true);
+      expect(view.contentDOM.querySelector("table")).not.toBeNull();
+      return view.state.selection.main.head;
+    };
+
+    editCell(view, "B");
+    expect(left("ArrowUp")).toBeLessThanOrEqual(3);
+    editCell(view, "2");
+    expect(left("ArrowDown")).toBe(after);
+    editCell(view, "A");
+    act(() => {
+      cellEditor(view)?.dispatch({ selection: { anchor: 0 } });
+    });
+    expect(left("ArrowLeft")).toBe(3);
+    editCell(view, "2");
+    expect(left("ArrowRight")).toBe(after);
+  });
+
+  it("keeps the arrows in the cell at the note's start and end", async () => {
+    const { view } = open("| A | B |\n| - | - |\n| 1 | 2 |", "\n", true);
+    await parsed(view);
+
+    const first = editCell(view, "A");
+    act(() => {
+      first.dispatch({ selection: { anchor: 0 } });
+    });
+    pressed(view, "ArrowUp");
+    pressed(view, "ArrowLeft");
+    expect(cellEditor(view)).toBe(first);
+    const last = editCell(view, "2");
+    pressed(view, "ArrowDown");
+    pressed(view, "ArrowRight");
+    expect(cellEditor(view)).toBe(last);
+  });
+
+  it("edits a cell from an arrow that takes the note's cursor into a table drawn", async () => {
+    const text = "Tea\n| A | B |\n| - | - |\n| 1 | 2 |\n| 3 |\n\nAfter";
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+    const after = text.indexOf("\n\nAfter") + 1;
+    const from = (at: number, key: string, modifiers?: KeyboardEventInit) => {
+      act(() => {
+        cellEditor(view)?.destroy();
+        view.focus();
+        view.dispatch({ selection: { anchor: at } });
+      });
+      act(() => {
+        press(view, key, modifiers);
+      });
+      const cell = cellEditor(view);
+      return cell && [cell.state.sliceDoc(), cell.state.selection.main.head];
+    };
+
+    // To the first cell's start, and the last's end.
+    expect(from(3, "ArrowRight")).toEqual(["A", 0]);
+    expect(cellEditor(view)?.hasFocus).toBe(true);
+    expect(view.state.selection.main.head).toBe(text.indexOf("A"));
+    expect(from(after, "ArrowLeft")).toEqual(["3", 1]);
+    // But from within the line.
+    expect(from(1, "ArrowRight")).toBeNull();
+    expect(view.state.selection.main.head).toBe(2);
+    // The head's cell, or the last row's, under the cursor, which jsdom
+    // puts at 0 px across: each column 100 px wide, the first from `left`.
+    let left = -50;
+    const laidOut = vi
+      .spyOn(HTMLTableCellElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLTableCellElement) {
+        return new DOMRect(left + this.cellIndex * 100, 0, 100, 20);
+      });
+    try {
+      expect(from(0, "ArrowDown")).toEqual(["A", 1]);
+      expect(from(after, "ArrowUp")).toEqual(["3", 1]);
+      left = -150;
+      expect(from(0, "ArrowDown")).toEqual(["B", 1]);
+      // Past a cell the last row lacks.
+      expect(from(after, "ArrowUp")).toEqual(["2", 1]);
+      // Before the first column, its cell.
+      left = 50;
+      expect(from(0, "ArrowDown")).toEqual(["A", 1]);
+      // Where the cursor's motion was going across, which CodeMirror keeps
+      // past a short line, and an arrow out of a cell leaves over its
+      // middle, so that the other arrow comes back to it.
+      left = -50;
+      act(() => {
+        cellEditor(view)?.destroy();
+        view.dispatch({
+          selection: EditorSelection.create([
+            EditorSelection.cursor(0, 0, undefined, 100),
+          ]),
+        });
+      });
+      act(() => {
+        press(view, "ArrowDown");
+      });
+      expect(pressed(view, "ArrowUp")).toBeNull();
+      expect(view.state.selection.main.goalColumn).toBe(100);
+      act(() => {
+        press(view, "ArrowDown");
+      });
+      expect(cellEditor(view)?.state.sliceDoc()).toBe("B");
+    } finally {
+      laidOut.mockRestore();
+    }
+    // A selection taken into a table takes its Markdown.
+    expect(from(3, "ArrowDown", { shiftKey: true })).toBeNull();
+    expect(from(3, "ArrowRight", { shiftKey: true })).toBeNull();
+    // An arrow from a selection ends it, as anywhere.
+    act(() => {
+      view.dispatch({ selection: { anchor: 0, head: 3 } });
+    });
+    act(() => {
+      press(view, "ArrowRight");
+    });
+    expect(cellEditor(view)).toBeNull();
+    expect(view.state.selection.main.head).toBe(3);
+  });
+
+  it("keeps an arrow in the Markdown of a table shown as written", async () => {
+    const { view } = open("- | A | B |\n  | - | - |\n\nTea", "\n", true);
+    await parsed(view);
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 24 } });
+    });
+
+    act(() => {
+      press(view, "ArrowUp");
+    });
+
+    expect(cellEditor(view)).toBeNull();
+    expect(view.state.selection.main.head).toBeLessThan(24);
+  });
+
+  it("keeps an arrow off a table a line away", async () => {
+    const { view } = open("Milk\n\n| A |\n| - |\n| 1 |", "\n", true);
+    await parsed(view);
+
+    for (const key of ["ArrowDown", "ArrowRight"]) {
+      act(() => {
+        view.focus();
+        view.dispatch({ selection: { anchor: 4 } });
+      });
+      act(() => {
+        press(view, key);
+      });
+      expect(cellEditor(view)).toBeNull();
+    }
+    // Right to the blank line, as Down would be but in jsdom, which lays
+    // nothing out.
+    expect(view.state.selection.main.head).toBe(5);
+  });
+
+  it("gives the note back the focus once its cursor or a pipe leaves the cell", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    act(() => {
+      view.dispatch({
+        changes: { from: 0, insert: "My " },
+        userEvent: "input",
+      });
+    });
+    let cell = editCell(view, "Ada");
+    type(cell, "!");
+
+    // Undone in the note, where the cursor was before the edit.
+    act(() => {
+      press(cell, "z", { ctrlKey: true });
+      press(cell, "z", { ctrlKey: true });
+    });
+    await waitFor(() => {
+      expect(cellEditor(view)).toBeNull();
+    });
+    expect(view.hasFocus).toBe(true);
+
+    cell = editCell(view, "Ada");
+    const at = view.state.sliceDoc().indexOf("_Ada_");
+    act(() => {
+      view.dispatch({ changes: { from: at, insert: "Grace | " } });
+    });
+    await waitFor(() => {
+      expect(cellEditor(view)).toBeNull();
+    });
+  });
+
+  it("finds in the note from a cell, as from the note", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "Ada");
+
+    act(() => {
+      press(cell, "f", { ctrlKey: true });
+    });
+
+    expect(searchPanelOpen(view.state)).toBe(true);
+    expect(screen.getByRole("textbox", { name: "Find" })).toHaveFocus();
+    await waitFor(() => {
+      expect(cellEditor(view)).toBeNull();
+    });
+  });
+
+  it("draws the cell again as the focus leaves it", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "Ada");
+    type(cell, "!");
+
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 0 } });
+    });
+
+    await waitFor(() => {
+      expect(cellEditor(view)).toBeNull();
+    });
+    expect(cell.dom.isConnected).toBe(false);
+    expect(cells(view)[1]).toEqual(["Boil | pour", "Ada!", ""]);
+  });
+
+  it("shows the table's Markdown on Escape, the cursor where it was in the cell", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "Ada");
+    act(() => {
+      cell.dispatch({ selection: { anchor: 1 } });
+    });
+
+    act(() => {
+      press(cell, "Escape");
+    });
+
+    expect(view.hasFocus).toBe(true);
+    expect(view.state.selection.main.head).toBe(NOTE.indexOf("_Ada_") + 1);
     await waitFor(() => {
       expect(view.contentDOM.querySelector("table")).toBeNull();
     });
-    expect(onChange).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["a click", fireEvent.mouseDown, false],
+    // Its menu left to the browser.
+    ["a right-click", fireEvent.contextMenu, true],
+  ])(
+    "shows a missing cell's table as written from %s, the cursor at its row's end",
+    async (_, click, browsers) => {
+      const { view } = open(NOTE, "\n", true);
+      await parsed(view);
+      const row = [...view.contentDOM.querySelectorAll("tr")][1];
+      const missing = row?.cells[2];
+      if (!missing) throw new Error("No missing cell");
+
+      expect(click(missing)).toBe(browsers);
+
+      expect(screen.queryByRole("menu", { name: "Table" })).toBeNull();
+      expect(cellEditor(view)).toBeNull();
+      expect(view.hasFocus).toBe(true);
+      expect(view.state.selection.main.head).toBe(
+        NOTE.indexOf("| _Ada_ |") + "| _Ada_ |".length,
+      );
+    },
+  );
 
   it("leaves a click with Shift, or with Cmd or Ctrl, to the editor", async () => {
     const { view } = open(NOTE, "\n", true);
@@ -1083,10 +1838,9 @@ describe("Visual's tables", () => {
     }
   });
 
-  it("places the cursor in the cell a finger taps, but not where it scrolls", async () => {
+  it("edits the cell a finger taps, but not where it scrolls", async () => {
     const { view } = open(NOTE, "\n", true);
     await parsed(view);
-    vi.spyOn(view, "posAtCoords").mockReturnValue(null);
     const cell = () =>
       within(view.contentDOM).getByRole("cell", { name: "More" });
     const touch = (clientX: number) => [{ clientX, clientY: 20 }];
@@ -1097,7 +1851,7 @@ describe("Visual's tables", () => {
       changedTouches: touch(10),
     });
     fireEvent.touchEnd(cell(), { touches: [], changedTouches: touch(90) });
-    expect(view.contentDOM.querySelector("table")).not.toBeNull();
+    expect(cellEditor(view)).toBeNull();
 
     fireEvent.touchStart(cell(), {
       touches: touch(10),
@@ -1107,51 +1861,681 @@ describe("Visual's tables", () => {
     expect(
       fireEvent.touchEnd(cell(), { touches: [], changedTouches: touch(12) }),
     ).toBe(false);
-    expect(view.state.selection.main.head).toBe(NOTE.indexOf("More") + 4);
-    await waitFor(() => {
-      expect(view.contentDOM.querySelector("table")).toBeNull();
-    });
+    expect(cellEditor(view)?.state.sliceDoc()).toBe("More");
+    expect(cellEditor(view)?.hasFocus).toBe(true);
   });
 
-  it("leaves a table in a quote or a list as written, and Source's", async () => {
+  it("leaves a table as written in a list, past six quotes, or with a line lacking its quotes' marks, and Source's", async () => {
     const { view, showIn } = open(
-      "> | A | B |\n> | - | - |\n\n- | E |\n  | - |\n\nTea\n\n  | C | D |\n  | - | - |",
+      [
+        "- | A |",
+        "  | - |",
+        "",
+        "- > | B |",
+        "  > | - |",
+        "",
+        // Lazy lines, which end a GFM table, as the viewer reads it.
+        "> | C |",
+        "> | - |",
+        "| 1 |",
+        "",
+        "> > | D |",
+        "> > | - |",
+        "> | 2 |",
+        "",
+        "> > > > > > > | E |",
+        "> > > > > > > | - |",
+        "",
+        "  | F |",
+        "  | - |",
+      ].join("\n"),
       "\n",
       true,
     );
     await parsed(view);
 
-    // An indented table, at the note's top level, is drawn.
-    expect(cells(view)).toEqual([["C", "D"]]);
+    // An indented table, at the note's top level, is drawn, and its cells
+    // edited.
+    expect(cells(view)).toEqual([["F"]]);
+    expect(editCell(view, "F").state.sliceDoc()).toBe("F");
     showIn(false);
     expect(view.contentDOM.querySelector("table")).toBeNull();
+  });
+
+  it("draws a table in a quote or a callout beside its quote's bars, quieter, its marks hidden", async () => {
+    const { view } = open(
+      "> [!note] Tea\n> | A | B |\n>| - | - |\n>  | 1 | 2 |\n>\n> > | C |\n> >| - |\n>> | 3 |\n\nAfter",
+      "\n",
+      true,
+    );
+    await parsed(view);
+
+    expect(cells(view)).toEqual([["A", "B"], ["1", "2"], ["C"], ["3"]]);
+    const frames = [...view.contentDOM.querySelectorAll(".cm-table")];
+    expect(
+      frames.map((frame) => /\bcm-quote-(\d)\b/.exec(frame.className)?.[1]),
+    ).toEqual(["1", "2"]);
+    expect(frames.map((frame) => getComputedStyle(frame).color)).toEqual([
+      "var(--on-surface-variant)",
+      "var(--on-surface-variant)",
+    ]);
+    expect(looks(view)).toEqual(["‹[›!note‹] Tea›", "", "", "After"]);
+  });
+
+  it("draws a table's quote bars anew as its quote changes around a cell edited", async () => {
+    const { view } = open("> | A | B |\n> | - | - |\n> | 1 | 2 |", "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "1");
+
+    // Out of its quote, as undo may take it, the cell staying edited.
+    act(() => {
+      view.dispatch({
+        changes: [
+          { from: 0, to: 2 },
+          { from: 12, to: 14 },
+          { from: 24, to: 26 },
+        ],
+      });
+    });
+
+    expect(cellEditor(view)).toBe(cell);
+    expect(view.contentDOM.querySelector(".cm-table")?.className).toBe(
+      "cm-table",
+    );
   });
 
   it("shows all the marks of a table in a quote while one of its lines is written", async () => {
     const { view } = open("> | A | B |\n> | - | - |\n> | 1 | 2 |", "\n", true);
     await parsed(view);
-    expect(looks(view)).toEqual(["‹| A | B |›", "‹| - | - |›", "‹| 1 | 2 |›"]);
+    expect(cells(view)).toEqual([
+      ["A", "B"],
+      ["1", "2"],
+    ]);
 
-    Object.defineProperty(Range.prototype, "getClientRects", {
-      value: () => document.createElement("span").getClientRects(),
-      configurable: true,
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 30 } });
     });
-    try {
-      act(() => {
-        view.focus();
-        view.dispatch({ selection: { anchor: 30 } });
-      });
-      // So that its columns line up.
-      await waitFor(() => {
-        expect(looks(view)).toEqual([
-          "‹> | A | B |›",
-          "‹> | - | - |›",
-          "‹> | 1 | 2 |›",
-        ]);
-      });
-    } finally {
-      Reflect.deleteProperty(Range.prototype, "getClientRects");
+    // So that its columns line up.
+    await waitFor(() => {
+      expect(looks(view)).toEqual([
+        "‹> | A | B |›",
+        "‹> | - | - |›",
+        "‹> | 1 | 2 |›",
+      ]);
+    });
+  });
+
+  it("edits the cells of a table in a quote in place, its marks as written", async () => {
+    const text =
+      "> Tea\n>\n> > | A | B |\n>>| - | - |\n> >  | 1 | 2 |\n\nAfter";
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+
+    type(editCell(view, "1"), "!");
+    expect(pressed(view, "Tab")).toEqual(["2", 1]);
+    expect(pressed(view, "ArrowUp")).toEqual(["B", 1]);
+    expect(view.state.sliceDoc()).toBe(text.replace("1", "1!"));
+
+    // From the line before, into its first cell.
+    act(() => {
+      press(cellEditor(view) ?? view, "Escape");
+      view.dispatch({ selection: { anchor: text.indexOf("\n> >") } });
+    });
+    await waitFor(() => {
+      expect(cells(view)).toHaveLength(2);
+    });
+    act(() => {
+      press(view, "ArrowRight");
+    });
+    expect(cellEditor(view)?.state.sliceDoc()).toBe("A");
+  });
+
+  it("adds a row to a table in a quote with the marks and indent of the line it comes next to, as written", async () => {
+    const text = "> | A | B |\n>| - | - |\n>  | 1 | 2 |";
+    for (const [name, item, written] of [
+      ["A", "Add row below", "> | A | B |\n>| - | - |\n>|  |  |\n>  | 1 | 2 |"],
+      [
+        "1",
+        "Add row above",
+        "> | A | B |\n>| - | - |\n>  |  |  |\n>  | 1 | 2 |",
+      ],
+    ] as const) {
+      const { view } = open(text, "\n", true);
+      await parsed(view);
+
+      expect(picked(view, name, item)[0]).toBe(written);
+      cleanup();
     }
+
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+    editCell(view, "2");
+    expect(pressed(view, "Tab")).toEqual(["", 0]);
+    expect(view.state.sliceDoc()).toBe(`${text}\n>  |  |  |`);
+    cleanup();
+
+    const nested = "> > | A |\n> >| - |\n>> | 1 |";
+    const { view: other } = open(nested, "\n", true);
+    await parsed(other);
+    editCell(other, "1");
+    expect(pressed(other, "Enter")).toEqual(["", 0]);
+    expect(other.state.sliceDoc()).toBe(`${nested}\n>> |  |`);
+  });
+
+  it.each([
+    ["in a quote", "> | A |\n> | - |\n>  | 1 |\n>| 2 |", ">  | 2 |\n>| 1 |"],
+    ["indented", "| A |\n| - |\n  | 1 |\n| 2 |", "  | 2 |\n| 1 |"],
+  ])(
+    "moves a row of a table %s, each line keeping its marks and indent",
+    async (_, text, moved) => {
+      const { view } = open(text, "\n", true);
+      await parsed(view);
+
+      expect(picked(view, "1", "Move row down")).toEqual([
+        `${text.split("\n").slice(0, 2).join("\n")}\n${moved}`,
+        "1",
+        true,
+      ]);
+    },
+  );
+
+  it.each([
+    [
+      "Add column to the left",
+      "2",
+      "> | A |  | B |\n>| - | --- | - |\n>  | 1 |  | 2 |",
+    ],
+    ["Move column right", "A", "> | B | A |\n>| - | - |\n>  | 2 | 1 |"],
+    ["Delete column", "A", "> | B |\n>| - |\n>  | 2 |"],
+    ["Align center", "B", "> | A | B |\n>| - | :-: |\n>  | 1 | 2 |"],
+    ["Delete row", "1", "> | A | B |\n>| - | - |"],
+  ])(
+    "does %s on %s in a table in a quote, never writing its marks",
+    async (item, name, written) => {
+      const { view } = open(
+        "> | A | B |\n>| - | - |\n>  | 1 | 2 |",
+        "\n",
+        true,
+      );
+      await parsed(view);
+
+      expect(picked(view, name, item)[0]).toBe(written);
+    },
+  );
+
+  it("puts a pipe before a cell an edit takes to the start of a quoted line", async () => {
+    const { view } = open("> A | B\n> --|--\n> 1 | 2", "\n", true);
+    await parsed(view);
+
+    expect(picked(view, "A", "Delete column")[0]).toBe(
+      "> | B |\n> | -- |\n> | 2 |",
+    );
+  });
+
+  /** The table's menu, opened from a right-click on the cell `name`. */
+  function menuOn(view: EditorView, name: string) {
+    const drawn = [...view.contentDOM.querySelectorAll("th, td")].find(
+      (cell) => cell.textContent === name,
+    );
+    expect(fireEvent.contextMenu(drawn ?? document.body)).toBe(false);
+    return screen.getByRole("menu", { name: "Table" });
+  }
+
+  function items(menu: HTMLElement) {
+    return [...menu.querySelectorAll<HTMLElement>('[role^="menuitem"]')];
+  }
+
+  /**
+   * Picks `item` from the table's menu on the cell `name`, then tells of
+   * the note, and of the cell edited after.
+   */
+  function picked(view: EditorView, name: string, item: string) {
+    const menu = menuOn(view, name);
+    const chosen = items(menu).find((one) => one.textContent === item);
+    if (!chosen) throw new Error(`No item ${item}`);
+    fireEvent.click(chosen);
+    expect(menu).not.toBeVisible();
+    const cell = cellEditor(view);
+    return [view.state.sliceDoc(), cell?.state.sliceDoc(), cell?.hasFocus];
+  }
+
+  it("opens the table's menu from a right-click on a cell, drawn or edited, which it edits", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+
+    const menu = menuOn(view, "Ada");
+
+    expect(cellEditor(view)?.state.sliceDoc()).toBe("_Ada_");
+    expect(items(menu).map((item) => item.textContent)).toEqual([
+      "Add row above",
+      "Add row below",
+      "Move row up",
+      "Move row down",
+      "Delete row",
+      "Add column to the left",
+      "Add column to the right",
+      "Move column left",
+      "Move column right",
+      "Delete column",
+      "Align left",
+      "Align center",
+      "Align right",
+    ]);
+    expect(
+      within(menu).getByRole("menuitem", { name: "Add row above" }),
+    ).toHaveFocus();
+    // The cell stays edited while the menu has the focus.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const cell = cellEditor(view);
+    expect(cell?.state.sliceDoc()).toBe("_Ada_");
+
+    // Closed without a pick, as by Escape: the cell takes the focus back.
+    act(() => {
+      menu.hidePopover();
+    });
+    expect(cell?.hasFocus).toBe(true);
+    expect(fireEvent.contextMenu(cell?.contentDOM ?? document.body)).toBe(
+      false,
+    );
+    expect(menu).toBeVisible();
+    expect(cellEditor(view)).toBe(cell);
+    expect(view.state.sliceDoc()).toBe(NOTE);
+
+    // Once the menu has closed, leaving the cell closes it, as ever.
+    act(() => {
+      menu.hidePopover();
+      view.focus();
+      view.dispatch({ selection: { anchor: 0 } });
+    });
+    await waitFor(() => {
+      expect(cellEditor(view)).toBeNull();
+    });
+  });
+
+  it("opens the table's menu once a press that asks for it ends, which would close it", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const ada = within(view.contentDOM).getByRole("cell", { name: "Ada" });
+
+    // As a Mac asks for it, and WebKit then closes it as the press ends.
+    expect(fireEvent.contextMenu(ada, { buttons: 2 })).toBe(false);
+    expect(screen.queryByRole("menu", { name: "Table" })).toBeNull();
+    expect(cellEditor(view)?.state.sliceDoc()).toBe("_Ada_");
+    fireEvent.pointerUp(window);
+    expect(screen.queryByRole("menu", { name: "Table" })).toBeNull();
+
+    expect(await screen.findByRole("menu", { name: "Table" })).toBeVisible();
+  });
+
+  it("keeps the cell a press asks the menu for edited, as the menu open closes before it ends", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const menu = menuOn(view, "Ada");
+    const boil = within(view.contentDOM).getByRole("cell", {
+      name: "Boil | pour",
+    });
+
+    // As a Mac asks for it: the menu open closes, and the browser tells of
+    // it a moment later, before the press ends.
+    expect(fireEvent.contextMenu(boil, { buttons: 2 })).toBe(false);
+    act(() => {
+      menu.dispatchEvent(
+        Object.assign(new Event("toggle"), { newState: "closed" }),
+      );
+    });
+    fireEvent.pointerUp(window);
+    await waitFor(() => {
+      expect(menu).toBeVisible();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(cellEditor(view)?.state.sliceDoc()).toBe("Boil \\| pour");
+  });
+
+  it("opens no menu for a press whose cell closed before it ended", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const ada = within(view.contentDOM).getByRole("cell", { name: "Ada" });
+    fireEvent.contextMenu(ada, { buttons: 2 });
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 0 } });
+    });
+    await waitFor(() => {
+      expect(cellEditor(view)).toBeNull();
+    });
+    // Even edited again before the press ends.
+    editCell(view, "Ada");
+
+    fireEvent.pointerUp(window);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.queryByRole("menu", { name: "Table" })).toBeNull();
+    // Nor does it hold the cell edited next once the focus leaves it.
+    editCell(view, "Step");
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 0 } });
+    });
+    await waitFor(() => {
+      expect(cellEditor(view)).toBeNull();
+    });
+  });
+
+  it("opens no menu for a press the system takes over", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const ada = within(view.contentDOM).getByRole("cell", { name: "Ada" });
+
+    fireEvent.contextMenu(ada, { buttons: 2 });
+    fireEvent.pointerCancel(window);
+    fireEvent.pointerUp(window);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.queryByRole("menu", { name: "Table" })).toBeNull();
+    expect(cellEditor(view)?.state.sliceDoc()).toBe("_Ada_");
+  });
+
+  it("closes the table's menu with its cell, as Source shows the note", async () => {
+    const { view, showIn } = open(NOTE, "\n", true);
+    await parsed(view);
+    const menu = menuOn(view, "Ada");
+
+    showIn(false);
+
+    expect(menu).not.toBeVisible();
+  });
+
+  it("closes the cell edited once the focus leaves the table's menu for the note", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const menu = menuOn(view, "Ada");
+
+    // Outside the table, which stays drawn, before the menu closes, as a
+    // browser closes it once the click's press is over.
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 0 } });
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(cellEditor(view)).not.toBeNull();
+    act(() => {
+      menu.hidePopover();
+    });
+
+    expect(cellEditor(view)).toBeNull();
+  });
+
+  it("leaves a finger's long press on a cell to the system", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const pressed = (target: Element) => {
+      const event = new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(event, "pointerType", { value: "touch" });
+      return target.dispatchEvent(event);
+    };
+
+    expect(
+      pressed(within(view.contentDOM).getByRole("cell", { name: "Ada" })),
+    ).toBe(true);
+    expect(pressed(editCell(view, "Ada").contentDOM)).toBe(true);
+    expect(screen.queryByRole("menu", { name: "Table" })).toBeNull();
+  });
+
+  const TABLE = "| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |";
+
+  it.each([
+    [
+      "Add row above",
+      "3",
+      "| A | B |\n| --- | --- |\n| 1 | 2 |\n|  |  |\n| 3 | 4 |",
+      "",
+    ],
+    [
+      "Add row below",
+      "A",
+      "| A | B |\n| --- | --- |\n|  |  |\n| 1 | 2 |\n| 3 | 4 |",
+      "",
+    ],
+    ["Move row up", "4", "| A | B |\n| --- | --- |\n| 3 | 4 |\n| 1 | 2 |", "4"],
+    [
+      "Move row down",
+      "1",
+      "| A | B |\n| --- | --- |\n| 3 | 4 |\n| 1 | 2 |",
+      "1",
+    ],
+    // The cell edited after is the next row's, or the one before's.
+    ["Delete row", "2", "| A | B |\n| --- | --- |\n| 3 | 4 |", "4"],
+    ["Delete row", "4", "| A | B |\n| --- | --- |\n| 1 | 2 |", "2"],
+    [
+      "Add column to the left",
+      "2",
+      "| A |  | B |\n| --- | --- | --- |\n| 1 |  | 2 |\n| 3 |  | 4 |",
+      "",
+    ],
+    // A row that ends before the new column gets its empty cell from GFM:
+    // its own cell stays edited.
+    [
+      "Add column to the right",
+      "B",
+      "| A | B |  |\n| --- | --- | --- |\n| 1 | 2 |\n| 3 | 4 |",
+      "",
+    ],
+    [
+      "Add column to the right",
+      "2",
+      "| A | B |  |\n| --- | --- | --- |\n| 1 | 2 |\n| 3 | 4 |",
+      "2",
+    ],
+    [
+      "Move column right",
+      "A",
+      "| B | A |\n| --- | --- |\n| 2 | 1 |\n| 4 | 3 |",
+      "A",
+    ],
+    [
+      "Move column left",
+      "4",
+      "| B | A |\n| --- | --- |\n| 2 | 1 |\n| 4 | 3 |",
+      "4",
+    ],
+    ["Delete column", "1", "| B |\n| --- |\n| 2 |\n| 4 |", "2"],
+    ["Delete column", "B", "| A |\n| --- |\n| 1 |\n| 3 |", "A"],
+    [
+      "Align center",
+      "B",
+      "| A | B |\n| --- | :-: |\n| 1 | 2 |\n| 3 | 4 |",
+      "B",
+    ],
+  ])(
+    "does %s on %s from the table's menu, writing only the lines it must",
+    async (item, name, written, edited) => {
+      const { view } = open(TABLE, "\n", true);
+      await parsed(view);
+
+      expect(picked(view, name, item)).toEqual([written, edited, true]);
+    },
+  );
+
+  it.each([
+    [
+      "rows shorter or longer than the head",
+      "| A | B | C |\n| - | - | - |\n| 1 |\n| 2 | 3 | 4 | 5 |",
+      [
+        [
+          "Add column to the right",
+          "A",
+          "| A |  | B | C |\n| - | --- | - | - |\n| 1 |\n| 2 |  | 3 | 4 | 5 |",
+        ],
+        [
+          "Move column right",
+          "A",
+          "| B | A | C |\n| - | - | - |\n|  | 1 |\n| 3 | 2 | 4 | 5 |",
+        ],
+        ["Delete column", "A", "| B | C |\n| - | - |\n|  |\n| 3 | 4 | 5 |"],
+      ],
+    ],
+    [
+      "without edge pipes",
+      "A | B\n--|--\n1 | 2",
+      [
+        [
+          "Add column to the left",
+          "A",
+          "|  | A | B\n| --- | --|--\n|  | 1 | 2",
+        ],
+        ["Move column right", "A", "| B | A\n--|--\n| 2 | 1"],
+        ["Delete column", "A", "| B |\n| -- |\n| 2 |"],
+      ],
+    ],
+    [
+      // As adding a column writes them: an empty cell at an edge takes its
+      // pipe.
+      "with empty cells, without edge pipes",
+      "A |  | C\n--|--|--\n1 |  | 3",
+      [
+        ["Move column left", "", "|  | A | C\n--|--|--\n|  | 1 | 3"],
+        ["Delete column", "A", "|  | C\n|--|--\n|  | 3"],
+        ["Delete column", "C", "A |  |\n--|--\n1 |  |"],
+      ],
+    ],
+    [
+      // Which would start a list, a heading or a quote at a line's start
+      // without its pipe, or escape the pipe after it.
+      "without edge pipes, its cells' texts taking a pipe before them",
+      "a | - | # c\n--- | - | ---\n1 | > 2 | 3\\",
+      [
+        ["Delete column", "a", "| - | # c\n| - | ---\n| > 2 | 3\\"],
+        [
+          "Move column left",
+          "-",
+          "| - | a | # c\n| - | --- | ---\n| > 2 | 1 | 3\\",
+        ],
+        ["Move column right", "-", "a | # c | -\n--- | --- | -\n1 | 3\\ | > 2"],
+      ],
+    ],
+    [
+      "aligned, its delimiter row's cells keeping their width",
+      "| A | B | C |\n| - | :---: | ----- |",
+      [
+        ["Align left", "A", "| A | B | C |\n| :- | :---: | ----- |"],
+        ["Align right", "C", "| A | B | C |\n| - | :---: | ----: |"],
+      ],
+    ],
+  ])("edits a table %s from its menu", async (_, text, edits) => {
+    for (const [item = "", name = "", written] of edits) {
+      const { view } = open(text, "\n", true);
+      await parsed(view);
+
+      expect(picked(view, name, item)[0]).toBe(written);
+      cleanup();
+    }
+  });
+
+  it("adds a row to an indented table, in the file's line breaks, and deletes it", async () => {
+    const text = "Tea\r\n\r\n  | A | B |\r\n  | - | - |\r\n  | 1 | 2 |";
+    const { view } = open(text, "\r\n", true);
+    await parsed(view);
+
+    expect(picked(view, "2", "Add row above")[0]).toBe(
+      "Tea\r\n\r\n  | A | B |\r\n  | - | - |\r\n  |  |  |\r\n  | 1 | 2 |",
+    );
+    expect(picked(view, "", "Delete row")[0]).toBe(text);
+  });
+
+  it("offers only the table's edits that apply to the cell, its column's alignment checked", async () => {
+    const text = "| A | B |\n| - | -: |\n| 1 | 2 |\n| 3 | 4 |";
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+    const offered = (name: string) => {
+      const menu = menuOn(view, name);
+      const all = items(menu);
+      act(() => {
+        menu.hidePopover();
+      });
+      const marked = (attribute: string) =>
+        all
+          .filter((item) => item.getAttribute(attribute) === "true")
+          .map((item) => item.textContent);
+      return [marked("aria-disabled"), marked("aria-checked")];
+    };
+
+    // Nothing moves the head, nor comes above it, as GFM's table starts
+    // with its head.
+    expect(offered("A")).toEqual([
+      [
+        "Add row above",
+        "Move row up",
+        "Move row down",
+        "Delete row",
+        "Move column left",
+      ],
+      [],
+    ]);
+    expect(offered("2")).toEqual([
+      ["Move row up", "Move column right"],
+      ["Align right"],
+    ]);
+    expect(offered("3")).toEqual([["Move row down", "Move column left"], []]);
+
+    // An item that is off does nothing, and leaves the menu open.
+    const menu = menuOn(view, "A");
+    fireEvent.click(
+      within(menu).getByRole("menuitem", { name: "Move row up" }),
+    );
+    expect(menu).toBeVisible();
+    expect(view.state.sliceDoc()).toBe(text);
+    act(() => {
+      menu.hidePopover();
+    });
+    // Nor does the alignment its column has.
+    expect(picked(view, "2", "Align right")).toEqual([text, "2", true]);
+  });
+
+  it("keeps a table's last column", async () => {
+    const { view } = open("| A |\n| - |", "\n", true);
+    await parsed(view);
+
+    expect(
+      within(menuOn(view, "A")).getByRole("menuitem", {
+        name: "Delete column",
+      }),
+    ).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("undoes an edit from the table's menu on its own, apart from the typing around it", async () => {
+    // Typed at the line's end, where the row comes.
+    const text = "A | B\n--|--\n1 | 2";
+    const { view } = open(text, "\n", true);
+    await parsed(view);
+    type(editCell(view, "2"), "!");
+    picked(view, "2!", "Add row below");
+    const cell = cellEditor(view);
+    if (!cell) throw new Error("No cell's editor");
+    type(cell, "x");
+    const undo = () => {
+      act(() => {
+        press(cellEditor(view) ?? view, "z", { ctrlKey: true });
+      });
+      return view.state.sliceDoc();
+    };
+
+    expect(undo()).toBe(`${text}!\n|  |  |`);
+    expect(undo()).toBe(`${text}!`);
+    expect(undo()).toBe(text);
   });
 
   it("deletes the line break after a table, not the table", async () => {

@@ -293,7 +293,76 @@ test("draws a quote in Visual, a bar per level, its marks shown where the cursor
   );
 });
 
-test("draws a table in Visual, which a tap shows as written, the row staying under the finger", async ({
+test("draws a table in a quote in Visual beside its bars, whose cells a tap edits in place", async ({
+  page,
+  drive,
+}, info) => {
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content =
+    "# The plan\n\nTea.\n\n> Cups\n> | Step | Owner |\n>| --- | --- |\n> | Tea | Ada |\n\nCups.\n";
+  const note = await editInVisual(page);
+  const quote = note.locator(".cm-line").nth(4);
+  const frame = note.locator(".cm-table");
+  const table = frame.getByRole("table");
+  await expect(quote).toHaveText("Cups");
+  await expect(table.getByRole("cell")).toHaveText(["Tea", "Ada"]);
+
+  // The quote's bar beside it, as beside the quote's line, the table where
+  // the line's text starts, as quiet.
+  const em = Number.parseFloat(
+    await quote.evaluate((element) => getComputedStyle(element).fontSize),
+  );
+  await expect(frame).toHaveCSS("background-image", /linear-gradient/);
+  await expect(frame).toHaveCSS(
+    "background-size",
+    `${String(1.25 * em)}px 100%`,
+  );
+  const [quoteBox, frameBox, tableBox] = await Promise.all([
+    quote.boundingBox(),
+    frame.boundingBox(),
+    table.boundingBox(),
+  ]);
+  if (!quoteBox || !frameBox || !tableBox) throw new Error("Not shown");
+  const inset = Number.parseFloat(
+    await quote.evaluate((element) => getComputedStyle(element).paddingLeft),
+  );
+  expect(frameBox.x).toBeCloseTo(quoteBox.x, 0);
+  expect(tableBox.x).toBeCloseTo(quoteBox.x + inset, 0);
+  const color = (element: typeof quote) =>
+    element.evaluate((one) => getComputedStyle(one).color);
+  expect(await color(frame)).toBe(await color(quote));
+
+  // Looked at, and written over nowhere: nothing to save.
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(drive.writes).toEqual([]);
+
+  // A cell edited in place, then a row added past the last, with the
+  // marks of the line before it.
+  const cell = table.getByRole("cell", { name: "Ada" });
+  if (info.project.name === "desktop-chromium") await cell.click();
+  else await cell.tap();
+  const editing = note.getByRole("textbox", { name: "Cell" });
+  await expect(editing).toBeFocused();
+  await expect(editing).toHaveText("Ada");
+  await page.keyboard.type("!");
+  await page.keyboard.press("Tab");
+  await expect(editing).toHaveText("");
+  await page.keyboard.type("Milk");
+  const line = note.locator(".cm-line").filter({ hasText: "Tea." });
+  if (info.project.name === "desktop-chromium") await line.click();
+  else await line.tap();
+  await expect(editing).toHaveCount(0);
+  await expect(table.getByRole("cell")).toHaveText(["Tea", "Ada!", "Milk", ""]);
+
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("plan")?.content)).toBe(
+    "# The plan\n\nTea.\n\n> Cups\n> | Step | Owner |\n>| --- | --- |\n> | Tea | Ada! |\n> | Milk |  |\n\nCups.\n",
+  );
+});
+
+test("draws a table in Visual, whose cell a tap edits in place, the table staying drawn", async ({
   page,
   drive,
 }, info) => {
@@ -304,7 +373,7 @@ test("draws a table in Visual, which a tap shows as written, the row staying und
   plan.content = [
     "# The plan\n\n",
     ...lines(1),
-    "\n| Step | **Owner** |\n| :--- | ---: |\n| Tea | Ada |\n| Cups | Grace |\n\n",
+    "\n| Step | **Owner** |\n| :--- | ---: |\n| Tea | _Ada_ |\n| Cups | Grace |\n\n",
     ...lines(31),
   ].join("");
   const note = await editInVisual(page);
@@ -338,26 +407,321 @@ test("draws a table in Visual, which a tap shows as written, the row staying und
   if (info.project.name === "desktop-chromium") await cell.click();
   else await cell.tap();
 
-  const row = note.locator(".cm-line").filter({ hasText: "| Tea |" });
-  await expect(table).toHaveCount(0);
-  await expect(row).toBeVisible();
-  // The row's top where the cell's was, as far as a pixel.
-  await expect
-    .poll(async () => (await row.boundingBox())?.y)
-    .toBeCloseTo(before, -0.5);
+  // The cell shows its Markdown, focused, in the table still drawn, which
+  // stays where it was.
+  const editing = note.getByRole("textbox", { name: "Cell" });
+  await expect(editing).toBeFocused();
+  await expect(editing).toHaveText("_Ada_");
+  await expect(table.getByRole("columnheader")).toHaveText(["Step", "Owner"]);
+  expect((await cell.boundingBox())?.y).toBeCloseTo(before, -0.5);
+  if (info.project.metadata.layout !== "wide") {
+    const keys = page.getByRole("toolbar", { name: "Formatting" });
+    await expect(keys.getByRole("button", { name: "Bold" })).toBeEnabled();
+    // The keys of lines give way to the table's.
+    await expect(keys.getByRole("button", { name: "Heading" })).toHaveCount(0);
+  }
 
   // Looked at, and written over nowhere: nothing to save.
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(drive.writes).toEqual([]);
 
-  // The cursor at the cell's end, where typing edits it alone.
+  // The cursor at the cell's end, where typing edits it alone, a pipe
+  // escaped; Tab edits the next cell.
+  await page.keyboard.type(" | Grace");
+  await expect(editing).toHaveText("_Ada_ \\| Grace");
+  await page.keyboard.press("Tab");
+  await expect(editing).toHaveText("Cups");
   await page.keyboard.type("!");
-  await expect(row).toHaveText("| Tea | Ada! |");
+  // The line above the table, which the screen still shows.
+  const line = note.locator(".cm-line").filter({ hasText: "Line 30." });
+  if (info.project.name === "desktop-chromium") await line.click();
+  else await line.tap();
+  await expect(editing).toHaveCount(0);
+  await expect(table.getByRole("cell")).toHaveText([
+    "Tea",
+    "Ada | Grace",
+    "Cups!",
+    "Grace",
+  ]);
+
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("plan")?.content)).toContain(
-    "\n| Step | **Owner** |\n| :--- | ---: |\n| Tea | Ada! |\n| Cups | Grace |\n\n",
+    "\n| Step | **Owner** |\n| :--- | ---: |\n| Tea | _Ada_ \\| Grace |\n| Cups! | Grace |\n\n",
   );
+});
+
+test("moves through a table's cells with the arrows, and adds rows past its end", async ({
+  page,
+  drive,
+}, info) => {
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content =
+    "# The plan\n\nA line wider than the table.\n| Step | **Owner** | Left |\n| :--- | ---: | :-: |\n| Tea | _Ada_ | 2 |\n| Cups | Grace | 1 |\n\nNotes.\n";
+  const note = await editInVisual(page);
+  const table = note.getByRole("table");
+  const owner = await table
+    .getByRole("columnheader", { name: "Owner" })
+    .boundingBox();
+  const line = await note
+    .locator(".cm-line")
+    .filter({ hasText: "A line wider" })
+    .boundingBox();
+  if (!owner || !line) throw new Error("Not laid out");
+  expect(line.width).toBeGreaterThan(
+    (await table.boundingBox())?.width ?? Infinity,
+  );
+
+  // Down from the line before edits the head's cell under the cursor.
+  const x = owner.x + owner.width / 2;
+  const y = line.y + line.height / 2;
+  if (info.project.name === "desktop-chromium") await page.mouse.click(x, y);
+  else await page.touchscreen.tap(x, y);
+  await page.keyboard.press("ArrowDown");
+  const editing = note.getByRole("textbox", { name: "Cell" });
+  await expect(editing).toBeFocused();
+  await expect(editing).toHaveText("**Owner**");
+  // Up leaves for the line before, above the cell's middle, from which Down
+  // comes back.
+  await page.keyboard.press("ArrowUp");
+  await expect(editing).toHaveCount(0);
+  await expect(note).toBeFocused();
+  await expect(table.getByRole("columnheader")).toHaveText([
+    "Step",
+    "Owner",
+    "Left",
+  ]);
+  await page.keyboard.press("ArrowDown");
+  await expect(editing).toHaveText("**Owner**");
+
+  // Down the column, then Right from the text's end to the next cell's
+  // start, and past the last out of the table.
+  await page.keyboard.press("ArrowDown");
+  await expect(editing).toHaveText("_Ada_");
+  await page.keyboard.press("ArrowDown");
+  await expect(editing).toHaveText("Grace");
+  // To the blank line after the table and back, to the same column.
+  await page.keyboard.press("ArrowDown");
+  await expect(editing).toHaveCount(0);
+  await page.keyboard.press("ArrowUp");
+  await expect(editing).toHaveText("Grace");
+  await page.keyboard.press("ArrowRight");
+  await expect(editing).toHaveText("1");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await expect(editing).toHaveCount(0);
+  await expect(note).toBeFocused();
+  // Left comes back to the last cell's end.
+  await page.keyboard.press("ArrowLeft");
+  await expect(editing).toHaveText("1");
+  await page.keyboard.type("0");
+
+  // Tab past the last cell adds a row; Shift+Enter writes <br>, which the
+  // cell left draws as a line break; Enter on the last row adds another
+  // row, in the same column.
+  await page.keyboard.press("Tab");
+  await expect(editing).toBeFocused();
+  await expect(editing).toHaveText("");
+  await page.keyboard.type("Milk");
+  await page.keyboard.press("Shift+Enter");
+  await page.keyboard.type("oat");
+  await expect(editing).toHaveText("Milk<br>oat");
+  await page.keyboard.press("Enter");
+  await expect(editing).toHaveText("");
+  await page.keyboard.type("Sugar");
+  await expect(table.getByRole("row")).toHaveCount(5);
+  const milk = table.getByRole("row").nth(3).getByRole("cell").first();
+  await expect
+    .poll(() => milk.evaluate((cell: HTMLElement) => cell.innerText))
+    .toBe("Milk\noat");
+
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("plan")?.content)).toBe(
+    "# The plan\n\nA line wider than the table.\n| Step | **Owner** | Left |\n| :--- | ---: | :-: |\n| Tea | _Ada_ | 2 |\n| Cups | Grace | 10 |\n| Milk<br>oat |  |  |\n| Sugar |  |  |\n\nNotes.\n",
+  );
+});
+
+test("edits a table's rows and columns from its menu or the keyboard toolbar's keys", async ({
+  page,
+  drive,
+}, info) => {
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content =
+    "# The plan\n\n| Step | Owner |\n| --- | --- |\n| Tea | Ada |\n| Cups | Grace |\n\nNotes.\n";
+  const note = await editInVisual(page);
+  const table = note.getByRole("table");
+  const editing = note.getByRole("textbox", { name: "Cell" });
+  const menu = page.getByRole("menu", { name: "Table" });
+  const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+  const options = toolbar.getByRole("button", { name: "Table options" });
+  const mouse = info.project.name === "desktop-chromium";
+  const ada = table.getByRole("cell", { name: "Ada" });
+  /**
+   * Opens the menu from the Table options key, which shows above it, its
+   * right edge with the key's, or with the screen's where the key runs past
+   * it, under the app bar, the cell keeping the focus, and the keyboard.
+   */
+  const fromKey = async (open: () => Promise<void>) => {
+    await open();
+    await expect(menu).toBeVisible();
+    const [shown, key, bar] = await Promise.all([
+      menu.boundingBox(),
+      options.boundingBox(),
+      page.getByRole("banner").boundingBox(),
+    ]);
+    const width = page.viewportSize()?.width;
+    if (!shown || !key || !bar || !width) throw new Error("Not laid out");
+    expect(shown.y).toBeGreaterThanOrEqual(bar.y + bar.height);
+    expect(shown.y + shown.height).toBeLessThanOrEqual(key.y);
+    expect(shown.y + shown.height).toBeGreaterThan(key.y - 8);
+    expect(shown.x + shown.width).toBeCloseTo(
+      Math.min(key.x + key.width, width - 8),
+      0,
+    );
+    await expect(editing).toBeFocused();
+  };
+
+  if (mouse) {
+    await ada.click({ button: "right" });
+    await expect(menu).toBeVisible();
+    await expect(editing).toHaveText("Ada");
+    await expect(
+      menu.getByRole("menuitem", { name: "Add row above" }),
+    ).toBeFocused();
+  } else {
+    await ada.tap();
+    await expect(editing).toBeFocused();
+    // Undo and Redo first, then the table's own keys, in view on the
+    // narrowest phones, 375 px wide.
+    await expect(toolbar.getByRole("button").nth(1)).toHaveAccessibleName(
+      "Redo",
+    );
+    await expect(toolbar.getByRole("button").nth(2)).toHaveAccessibleName(
+      "Add row below",
+    );
+    const last = await toolbar
+      .getByRole("button", { name: "Align right" })
+      .boundingBox();
+    expect((last?.x ?? Infinity) + (last?.width ?? 0)).toBeLessThanOrEqual(375);
+    // The keys past them, which scroll, keep their width.
+    expect((await options.boundingBox())?.width).toBe(44);
+    await fromKey(() => options.click());
+  }
+  const pick = async (name: string) => {
+    const key = toolbar.getByRole("button", { name });
+    if (!mouse && (await key.count()) > 0) {
+      await key.click();
+    } else {
+      if (!(await menu.isVisible())) {
+        if (mouse) await editing.click({ button: "right" });
+        else await options.click();
+      }
+      await menu
+        .getByRole(name.startsWith("Align") ? "menuitemradio" : "menuitem", {
+          name,
+        })
+        .click();
+      await expect(menu).toBeHidden();
+    }
+    await expect(editing).toBeFocused();
+  };
+  await menu.getByRole("menuitem", { name: "Add column to the left" }).click();
+  await expect(menu).toBeHidden();
+  await expect(editing).toBeFocused();
+  await expect(editing).toHaveText("");
+  await page.keyboard.type("2");
+  await pick("Align center");
+  await expect(table.getByRole("columnheader").nth(1)).toHaveCSS(
+    "text-align",
+    "center",
+  );
+  if (!mouse) {
+    await expect(
+      toolbar.getByRole("button", { name: "Align center" }),
+    ).toHaveAttribute("aria-pressed", "true");
+  }
+  await pick("Move row down");
+  await expect(editing).toHaveText("2");
+  if (mouse) {
+    // From the keyboard too, and Escape gives the cell the focus back.
+    await page.keyboard.press("Shift+F10");
+    await expect(menu).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect(editing).toBeFocused();
+  } else if (info.project.name === "ipad-webkit") {
+    // A trackpad's right-click, which WebKit asks the menu for as the press
+    // starts, and would close it as it ends, with all the items.
+    await table.getByRole("cell", { name: "Grace" }).click({ button: "right" });
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole("menuitem")).toHaveCount(10);
+    await expect(editing).toHaveText("Grace");
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect(editing).toBeFocused();
+    // Then above the key again.
+    await fromKey(() => options.click());
+    await page.keyboard.press("Escape");
+  } else {
+    // Its key past the screen's edge, as the toolbar scrolls.
+    await toolbar.evaluate((bar) => {
+      bar.scrollLeft = bar.scrollWidth - bar.clientWidth - 24;
+    });
+    await fromKey(() =>
+      options.evaluate((key) => {
+        (key as HTMLElement).click();
+      }),
+    );
+    await page.keyboard.press("Escape");
+  }
+  await expect(menu).toBeHidden();
+
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("plan")?.content)).toBe(
+    "# The plan\n\n| Step |  | Owner |\n| --- | :-: | --- |\n| Cups |  | Grace |\n| Tea | 2 | Ada |\n\nNotes.\n",
+  );
+});
+
+test("scrolls the cell a key moves to into view, sideways too", async ({
+  page,
+  drive,
+}, info) => {
+  // Thirty cells edited one after the other, slow in WebKit.
+  test.slow();
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  const wide = "A rather long cell that takes most of a phone's width";
+  const rows = Array.from(
+    { length: 30 },
+    (_, row) => `| ${String(row + 1)} | ${wide} | Last ${String(row + 1)} |\n`,
+  );
+  plan.content = `# The plan\n\n| One | Two | Three |\n| --- | --- | --- |\n${rows.join("")}\nNotes.\n`;
+  const note = await editInVisual(page);
+  const first = note.getByRole("cell", { name: "1", exact: true });
+  if (info.project.name === "desktop-chromium") await first.click();
+  else await first.tap();
+  const editing = note.getByRole("textbox", { name: "Cell" });
+  const edited = note.locator(".cm-cell-edited");
+  await expect(editing).toHaveText("1");
+  await expect(
+    note.getByRole("cell", { name: "30", exact: true }),
+  ).not.toBeInViewport();
+
+  for (let row = 1; row < 30; row++) await page.keyboard.press("ArrowDown");
+  await expect(editing).toHaveText("30");
+  await expect(edited).toBeInViewport();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await expect(editing).toHaveText("Last 30");
+  await expect(edited).toBeInViewport();
+  // A row added, its first cell back at the table's start.
+  await page.keyboard.press("Tab");
+  await expect(editing).toHaveText("");
+  await expect(edited).toBeInViewport();
 });
 
 test("scrolls a table wider than a phone within itself", async ({
@@ -382,4 +746,31 @@ test("scrolls a table wider than a phone within itself", async ({
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
+});
+
+test("scrolls a table in a quote sideways clear of its bars", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(info.project.metadata.layout !== "phone", "For a phone");
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  const long = "A rather long cell that takes most of a phone's width";
+  plan.content = `# The plan\n\n> > | One | Two |\n> > | --- | --- |\n> > | ${long} | ${long} |\n`;
+  const frame = (await editInVisual(page)).locator(".cm-table");
+  await expect(frame.getByRole("table")).toBeVisible();
+
+  // Scrolled, its cells pass under neither bar, which stays where it was.
+  const bars = await frame.evaluate((element) => {
+    element.scrollLeft = 200;
+    const { left, top, height } = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const start = left + Number.parseFloat(style.backgroundPositionX);
+    const level = Number.parseFloat(style.backgroundSize) / 2;
+    const root = element.getRootNode() as ShadowRoot;
+    return [start + 1, start + level + 1].map(
+      (x) => root.elementFromPoint(x, top + height / 2) === element,
+    );
+  });
+  expect(bars).toEqual([true, true]);
 });
