@@ -2,6 +2,7 @@ import { cursorCharRight, undo } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import {
   ensureSyntaxTree,
+  foldedRanges,
   LanguageDescription,
   syntaxTreeAvailable,
 } from "@codemirror/language";
@@ -24,7 +25,12 @@ import { Editor, type EditorHandle } from "./Editor.tsx";
 import { linkAt } from "./source-links.ts";
 import type { LineBreak } from "./text.ts";
 
-function open(text: string, lineBreak: LineBreak = "\n", visual = false) {
+function open(
+  text: string,
+  lineBreak: LineBreak = "\n",
+  visual = false,
+  vault = false,
+) {
   const onChange = vi.fn<(text: string) => void>();
   const handle = createRef<EditorHandle>();
   const editor = (inVisual: boolean) => (
@@ -33,6 +39,7 @@ function open(text: string, lineBreak: LineBreak = "\n", visual = false) {
       initial={text}
       lineBreak={lineBreak}
       visual={inVisual}
+      vault={vault}
       onChange={onChange}
       onFollow={() => undefined}
     />
@@ -76,6 +83,27 @@ function looks(view: EditorView) {
       .replaceAll("⟩⟨", "")
       .replaceAll("****", "");
   });
+}
+
+/**
+ * Each line's quotes as Visual draws them under a callout's line, outermost
+ * first: a quote's bar, `|`, or a callout's box, by its type, `^` where it
+ * starts and `_` where it ends.
+ */
+function frames(view: EditorView) {
+  return [...view.contentDOM.querySelectorAll(".cm-line")].map((line) =>
+    [...line.querySelectorAll<HTMLElement>(".cm-frame > span")]
+      .map((drawn) => {
+        if (drawn.classList.contains("cm-frame-bar")) return "|";
+        const type = /--callout-(\w+)/.exec(
+          drawn.style.getPropertyValue("--callout"),
+        )?.[1];
+        const top = drawn.classList.contains("cm-frame-top") ? "^" : "";
+        const bottom = drawn.classList.contains("cm-frame-bottom") ? "_" : "";
+        return `${type ?? ""}${top}${bottom}`;
+      })
+      .join(" "),
+  );
 }
 
 /** Waits for the editor's parse, which may end in the background. */
@@ -838,6 +866,169 @@ describe("Visual", () => {
     showIn(false);
     expect(looks(view)[0]).toBe("‹>› Some ‹**›**tea**‹**›");
     expect(depths().every((depth) => depth === 0)).toBe(true);
+  });
+
+  it("draws a vault's callout as the viewer does, its type's icon over its marks but on the line being written", async () => {
+    const { view } = open(
+      "> [!faq]+ Why?\n> Because.\nlazy\n\n> [!tldr]\n\n> \\[!note] Not\n\n- > [!tip] Listed\n\n> [!tip] Holds\n> > a quote",
+      "\n",
+      true,
+      true,
+    );
+    await parsed(view);
+    const lines = () => [...view.contentDOM.querySelectorAll(".cm-line")];
+    const icons = () =>
+      lines().map(
+        (line) =>
+          line.querySelector(".cm-callout-icon")?.getAttribute("data-icon") ??
+          null,
+      );
+
+    // An escaped marker, or a callout in a list, draws as a quote, and a
+    // quote in a callout as a bar in its box.
+    expect(frames(view)).toEqual([
+      "question^",
+      "question",
+      "question_",
+      "",
+      "abstract^_",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "tip^",
+      "tip_ |",
+    ]);
+    expect(icons().slice(0, 5)).toEqual([
+      "lucide-circle-question-mark",
+      null,
+      null,
+      null,
+      "lucide-clipboard-list",
+    ]);
+    // Untitled, it is titled by its type.
+    expect(looks(view).slice(0, 7)).toEqual([
+      "Why?",
+      "Because.",
+      "lazy",
+      "",
+      "Tldr",
+      "",
+      "‹\\[!note] Not›",
+    ]);
+
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 12 } });
+    });
+    await waitFor(() => {
+      expect(looks(view)[0]).toBe("‹> [!faq]+ ›Why?");
+    });
+    expect(icons()[0]).toBeNull();
+    expect(frames(view)[0]).toBe("question^");
+  });
+
+  it("draws callouts in quotes and callouts, six levels deep at most, as the viewer does", async () => {
+    const { view } = open(
+      "> Quoted\n> > [!tip] Inner\n> > text\n\n> [!note] Outer\n> > [!warning] In\n> > deep\n\n> > > > > > [!tip] Six\n\n> > > > > > > [!tip] Seven",
+      "\n",
+      true,
+      true,
+    );
+    await parsed(view);
+
+    expect(frames(view)).toEqual([
+      "",
+      "| tip^",
+      "| tip_",
+      "",
+      "note^",
+      "note warning^",
+      "note_ warning_",
+      "",
+      "| | | | | tip^_",
+      "",
+      "",
+    ]);
+    expect(looks(view).slice(0, 9)).toEqual([
+      "‹Quoted›",
+      "Inner",
+      "text",
+      "",
+      "Outer",
+      "In",
+      "deep",
+      "",
+      "Six",
+    ]);
+  });
+
+  it("folds a vault's callout as its `-` says, and a tap on its chevron folds or opens it, writing nothing", async () => {
+    const { view, onChange } = open(
+      "> [!faq]- Why?\n> Because.\n\n> [!tip]+ Open\n> Shown.\n\n> [!note]- Alone",
+      "\n",
+      true,
+      true,
+    );
+    await parsed(view);
+    const chevrons = () =>
+      [...view.contentDOM.querySelectorAll(".cm-callout-fold")].map((chevron) =>
+        chevron.classList.contains("cm-callout-folded"),
+      );
+    const shown = () =>
+      [...view.contentDOM.querySelectorAll(".cm-line")].map(
+        (line) => line.textContent,
+      );
+
+    // A callout with nothing past its title has nothing to fold.
+    await waitFor(() => {
+      expect(chevrons()).toEqual([true, false]);
+    });
+    expect(shown()).toEqual(["Why?", "", "Open", "Shown.", "", "Alone"]);
+    expect(frames(view)[0]).toBe("question^_");
+
+    view.dispatch({ selection: { anchor: 0 } });
+    const [folded, unfolded] =
+      view.contentDOM.querySelectorAll(".cm-callout-fold");
+    expect(fireEvent.mouseDown(unfolded ?? view.contentDOM)).toBe(false);
+    fireEvent.mouseDown(folded ?? view.contentDOM);
+    expect(chevrons()).toEqual([false, true]);
+    expect(shown()).toEqual(["Why?", "Because.", "", "Open", "", "Alone"]);
+    expect(view.state.selection.main.head).toBe(0);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("opens a folded callout as the selection goes into it, and steps the cursor over it", async () => {
+    const { view } = open(
+      "> [!faq]- Why?\n> Because.\n\n> [!faq]- Again\n> Hidden.\n\nAfter",
+      "\n",
+      true,
+      true,
+    );
+    await parsed(view);
+    await waitFor(() => {
+      expect(foldedRanges(view.state).size).toBe(2);
+    });
+
+    // At its end, which shows at its title's end, where it goes.
+    view.dispatch({ selection: { anchor: 52 } });
+    expect(view.state.selection.main.head).toBe(42);
+    expect(foldedRanges(view.state).size).toBe(2);
+    // As Find in note selects a match in it, or a link to a part places
+    // the cursor.
+    view.dispatch({ selection: { anchor: 45, head: 52 } });
+    expect(foldedRanges(view.state).size).toBe(1);
+    view.dispatch({ selection: { anchor: 20 } });
+    expect(foldedRanges(view.state).size).toBe(0);
+  });
+
+  it("draws a callout as a quote outside a vault", async () => {
+    const { view } = open("> [!tip] Title\n> Body", "\n", true);
+    await parsed(view);
+
+    expect(view.contentDOM.querySelector(".cm-callout")).toBeNull();
+    expect(looks(view)).toEqual(["‹[›!tip‹] Title›", "‹Body›"]);
   });
 
   it("hides the marks of the quotes drawn alone, with the space or tab after them and the indent before them", async () => {
