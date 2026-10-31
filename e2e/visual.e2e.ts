@@ -317,11 +317,10 @@ test("draws a vault's callout in Visual as the viewer does, its marks shown wher
   const orange = "rgb(236, 117, 0)";
   await expect(title).toHaveCSS("color", orange);
   for (const line of [title, body]) {
-    expect(
-      await line.evaluate(
-        (element) => getComputedStyle(element, "::before").borderLeftColor,
-      ),
-    ).toBe(orange);
+    await expect(line.locator(".cm-frame-box")).toHaveCSS(
+      "border-left-color",
+      orange,
+    );
   }
 
   // Its marks where the cursor is, on the same height.
@@ -386,6 +385,62 @@ test("folds a vault's callout in Visual as its `-` says, which a tap on its chev
   await expect(lines).toHaveCount(6);
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(drive.writes).toEqual([]);
+});
+
+test("draws a callout in a callout in Visual, a box in the box, its marks shown where the cursor is", async ({
+  page,
+  drive,
+}, info) => {
+  const today = drive.files.get("today");
+  if (!today) throw new Error("No today");
+  today.content = "> [!note] Plan\n> > [!warning] Dates\n> > Friday.\n";
+  const lines = (await editInVisual(page, "today")).locator(".cm-line");
+  const inner = lines.nth(1);
+  await expect(inner).toHaveText("Dates");
+
+  // One level in, as a quote's, in its own color, inside the outer box.
+  const [outer, box] = await inner
+    .locator(".cm-frame-box")
+    .evaluateAll((boxes) =>
+      boxes.map((drawn) => drawn.getBoundingClientRect()),
+    );
+  const em = Number.parseFloat(
+    await inner.evaluate((element) => getComputedStyle(element).fontSize),
+  );
+  expect((box?.left ?? 0) - (outer?.left ?? 0)).toBeCloseTo(1.25 * em, 0);
+  expect(box?.right).toBeLessThan(outer?.right ?? 0);
+  await expect(inner.locator(".cm-frame-box").nth(1)).toHaveCSS(
+    "border-left-color",
+    "rgb(236, 117, 0)",
+  );
+
+  if (info.project.name === "desktop-chromium") await inner.click();
+  else await inner.tap();
+  await expect(inner).toHaveText("> > [!warning] Dates");
+  await expect(lines.nth(0)).toHaveText("Plan");
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(drive.writes).toEqual([]);
+});
+
+test("draws a code block in a quote in Visual after its bar, its text 1rem in", async ({
+  page,
+  drive,
+}) => {
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content = "> Tea:\n> ```js\n> const tea = 1;\n> ```\n";
+  const lines = (await editInVisual(page)).locator(".cm-line");
+  const inset = (line: ReturnType<typeof lines.nth>) =>
+    line.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).paddingLeft),
+    );
+  const rem = await page.evaluate(() =>
+    Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+  );
+  expect(await inset(lines.nth(2))).toBeCloseTo(
+    (await inset(lines.nth(0))) + rem,
+    0,
+  );
 });
 
 test("draws a table in a quote in Visual beside its bars, whose cells a tap edits in place", async ({
