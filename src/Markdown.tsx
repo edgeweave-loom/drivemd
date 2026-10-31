@@ -32,7 +32,7 @@ import rehypeSlug from "rehype-slug";
 import remarkBreaks from "remark-breaks";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
-import { ICONS } from "./callout-icons.tsx";
+import { CHEVRON, ICONS } from "./callout-icons.tsx";
 import {
   CALLOUT_TYPES,
   isCalloutType,
@@ -926,8 +926,8 @@ function CalloutIcon({ type }: { type: CalloutType }) {
  */
 function CalloutFold() {
   return (
-    <Lucide name="chevron-down" className="callout-fold">
-      <path d="m6 9 6 6 6-6" />
+    <Lucide name={CHEVRON[0]} className="callout-fold">
+      {CHEVRON[1]}
     </Lucide>
   );
 }

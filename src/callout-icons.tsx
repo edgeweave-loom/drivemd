@@ -120,6 +120,14 @@ export const ICONS: Record<CalloutType, [name: string, drawing: ReactNode]> = {
   ],
 };
 
+/** The chevron that ends a folding callout's title. */
+export const CHEVRON: [name: string, drawing: ReactNode] = [
+  "chevron-down",
+  <>
+    <path d="m6 9 6 6 6-6" />
+  </>,
+];
+
 const SVG = "http://www.w3.org/2000/svg";
 
 /**
@@ -127,10 +135,21 @@ const SVG = "http://www.w3.org/2000/svg";
  * the editor, which draws its widgets without React.
  */
 export function calloutIcon(type: CalloutType): SVGSVGElement {
-  const [name, drawing] = ICONS[type];
+  return lucide(ICONS[type], "cm-callout-icon");
+}
+
+/** The chevron as the viewer's `CalloutFold` draws it, for the editor. */
+export function calloutFold(): SVGSVGElement {
+  return lucide(CHEVRON, "cm-callout-chevron");
+}
+
+function lucide(
+  [name, drawing]: [string, ReactNode],
+  className: string,
+): SVGSVGElement {
   const icon = document.createElementNS(SVG, "svg");
   for (const [attribute, value] of Object.entries({
-    class: "cm-callout-icon",
+    class: className,
     viewBox: "0 0 24 24",
     fill: "none",
     stroke: "currentColor",
