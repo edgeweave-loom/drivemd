@@ -245,7 +245,9 @@ function framedLine(levels: Level[]): Decoration {
   return Decoration.line({
     class: classes.join(" "),
     attributes: {
-      style: `padding-top: ${inner?.top ? "0.75rem" : "0"}; padding-bottom: calc(${String(ends)} * 0.75rem${gap})`,
+      // The boxes' padding below, which a code block ending with them
+      // stays clear of.
+      style: `--boxes-below: ${String(ends * 0.75)}rem; padding-top: ${inner?.top ? "0.75rem" : "0"}; padding-bottom: calc(var(--boxes-below)${gap})`,
     },
   });
 }
@@ -263,7 +265,7 @@ class Frame extends WidgetType {
     this.levels = levels;
   }
   override eq(other: Frame): boolean {
-    return JSON.stringify(other.levels) === JSON.stringify(this.levels);
+    return sameLevels(other, this);
   }
   toDOM(): HTMLElement {
     const frame = document.createElement("span");
@@ -300,13 +302,9 @@ interface Callout {
   folded: boolean;
 }
 
-// What a callout draws in Visual as a quote still, with its blocks.
-const QUOTED_ALONG = new Set(["Table", "FencedCode", "CodeBlock"]);
-
 /**
  * The callout a quote is, as the viewer reads it in a vault's note, if
- * Visual draws it: within the bars it draws, without a table or a code
- * block in it, which leave it drawn as a quote.
+ * Visual draws it: within the bars it draws.
  */
 function calloutOf(state: EditorState, quote: SyntaxNode): Callout | null {
   if (!state.facet(inVault) || !drawnQuote(quote)) return null;
@@ -321,12 +319,6 @@ function calloutOf(state: EditorState, quote: SyntaxNode): Callout | null {
   const line = state.doc.lineAt(first.from);
   const marker = calloutMarker(state.sliceDoc(first.from, line.to));
   if (!marker) return null;
-  for (
-    const inside = quote.cursor();
-    inside.next() && inside.from < quote.to;
-  ) {
-    if (QUOTED_ALONG.has(inside.name)) return null;
-  }
   const untitled = !state.sliceDoc(first.from + marker.length, line.to).trim();
   const last = state.doc.lineAt(quote.to);
   return {
@@ -1003,29 +995,29 @@ class Table extends WidgetType {
   readonly alignments: Alignment[];
   // The head's row, then the body's, each cell's text in parts.
   readonly rows: Part[][][];
-  // How many quotes it is in, which its source tells: its lines after the
-  // first hold their marks.
-  readonly depth: number;
+  // The quotes it is in, outermost first, which its source tells: its
+  // lines after the first hold their marks.
+  readonly levels: Level[];
   constructor(
     source: string,
     alignments: Alignment[],
     rows: Part[][][],
-    depth: number,
+    levels: Level[],
   ) {
     super();
     this.source = source;
     this.alignments = alignments;
     this.rows = rows;
-    this.depth = depth;
+    this.levels = levels;
   }
   override eq(other: Table): boolean {
-    return other.source === this.source;
+    return other.source === this.source && sameLevels(other, this);
   }
   toDOM(): HTMLElement {
     // A table wider than the note scrolls sideways within this frame, which
     // draws its quotes' bars, as their lines do.
     const frame = document.createElement("div");
-    frame.className = this.frameClass();
+    this.frame(frame);
     const table = document.createElement("table");
     const head = table.createTHead();
     const body = table.createTBody();
@@ -1042,11 +1034,53 @@ class Table extends WidgetType {
     drawing.set(frame, this);
     return frame;
   }
-  /** Its frame's classes, which draw its quotes' bars. */
-  frameClass(): string {
-    return this.depth > 0
-      ? `cm-table cm-quote cm-quote-${String(this.depth)}`
-      : "cm-table";
+  /**
+   * Its frame, which draws its quotes' bars, or in a callout, its quotes'
+   * bars and boxes, as its lines do, in its background, which stays as the
+   * table scrolls, the boxes' corners square: a box ending with it has
+   * the viewer's padding below it.
+   */
+  frame(frame: HTMLElement): void {
+    const { levels } = this;
+    const depth = String(levels.length);
+    const inner = levels[levels.length - 1];
+    frame.removeAttribute("style");
+    if (!levels.some((level) => level.callout)) {
+      frame.className =
+        levels.length > 0 ? `cm-table cm-quote cm-quote-${depth}` : "cm-table";
+      return;
+    }
+    frame.className = `cm-table cm-table-framed cm-quote-${depth}`;
+    if (!inner?.callout) frame.classList.add("cm-framed-quote");
+    const layers: string[][] = [];
+    for (const [at, level] of levels.entries()) {
+      const inset = `var(--text-inset) + ${String(at * 1.25)}em`;
+      const left = `calc(${inset})`;
+      const ends = levels.slice(0, at).filter((outer) => outer.bottom).length;
+      const height = `calc(100% - ${String(ends * 0.75)}rem)`;
+      const color = level.callout
+        ? `var(--callout-${level.callout})`
+        : "var(--outline-variant)";
+      layers.push([
+        `linear-gradient(${color}, ${color})`,
+        `${left} 0`,
+        `0.25em ${height}`,
+      ]);
+      if (level.callout) {
+        const tint = `color-mix(in srgb, ${color} 10%, transparent)`;
+        const right = `var(--text-inset) + ${String(at)}em`;
+        layers.push([
+          `linear-gradient(${tint}, ${tint})`,
+          `${left} 0`,
+          `calc(100% - ${inset} - ${right}) ${height}`,
+        ]);
+      }
+    }
+    frame.style.backgroundImage = layers.map(([image]) => image).join(", ");
+    frame.style.backgroundPosition = layers.map(([, at]) => at).join(", ");
+    frame.style.backgroundSize = layers.map(([, , size]) => size).join(", ");
+    const ends = levels.filter((level) => level.bottom).length;
+    frame.style.paddingBottom = `${String(ends * 0.75)}rem`;
   }
   /** Draws a cell's text, aligned as its column. */
   fill(cell: HTMLTableCellElement, row: number, column: number): void {
@@ -1096,7 +1130,7 @@ class Table extends WidgetType {
         }
       }
     });
-    dom.className = this.frameClass();
+    this.frame(dom);
     drawing.set(dom, this);
     return true;
   }
@@ -1175,6 +1209,8 @@ const tables = StateField.define<DecorationSet>({
     return transaction.docChanged ||
       transaction.selection ||
       state.field(hasFocus) !== startState.field(hasFocus, false) ||
+      state.facet(inVault) !== startState.facet(inVault) ||
+      foldedRanges(state) !== foldedRanges(startState) ||
       searchPanelOpen(state) !== searchPanelOpen(startState) ||
       syntaxTree(state) !== syntaxTree(startState)
       ? drawnTables(state, drawn)
@@ -1191,7 +1227,7 @@ function drawnTables(
   state: EditorState,
   before: DecorationSet = Decoration.none,
 ): DecorationSet {
-  const kept = new Map<string, WidgetType>();
+  const kept = new Map<string, Table>();
   const drawn = before.iter();
   while (drawn.value) {
     const { widget } = drawn.value.spec as { widget?: unknown };
@@ -1214,11 +1250,13 @@ function drawnTables(
       if (writing.some((line) => from <= line.to && to >= line.from)) {
         return false;
       }
-      const depth = quoteDepth(state, node.node);
-      if (depth === null) return false;
+      const levels = quoteLevels(state, node.node);
+      if (levels === null) return false;
+      const before = kept.get(state.sliceDoc(node.from, to));
       const widget =
-        kept.get(state.sliceDoc(node.from, to)) ??
-        table(state, node.node, depth);
+        before && sameLevels(before, { levels })
+          ? before
+          : table(state, node.node, levels);
       ranges.push(Decoration.replace({ widget, block: true }).range(from, to));
       return false;
     },
@@ -1227,23 +1265,36 @@ function drawnTables(
 }
 
 /**
- * How many quotes a table is in, or none where it stays as written: deeper
- * than the bars Visual draws, or with a line that lacks its quotes' marks,
- * a lazy line, at which GFM ends the table, as the viewer reads it, but
- * Lezer does not.
+ * The quotes a table is in, outermost first, or none where it stays as
+ * written: deeper than the bars Visual draws, or with a line that lacks its
+ * quotes' marks, a lazy line, at which GFM ends the table, as the viewer
+ * reads it, but Lezer does not.
  */
-function quoteDepth(state: EditorState, table: SyntaxNode): number | null {
-  let depth = 0;
-  let around = table.parent;
-  while (around?.name === "Blockquote") {
-    depth++;
+function quoteLevels(state: EditorState, table: SyntaxNode): Level[] | null {
+  const quotes: SyntaxNode[] = [];
+  for (let around = table.parent; around?.name === "Blockquote";) {
+    quotes.unshift(around);
     around = around.parent;
   }
-  const marks = ">".repeat(depth);
+  const marks = ">".repeat(quotes.length);
   const whole = tableRows(table).every(
     (row) => lineStart(state, row).replace(/[ \t]/g, "") === marks,
   );
-  return depth <= QUOTE_LINES.length && whole ? depth : null;
+  if (quotes.length > QUOTE_LINES.length || !whole) return null;
+  const last = state.doc.lineAt(table.to).from;
+  return quotes.map((quote) => {
+    const callout = calloutOf(state, quote);
+    return {
+      callout: callout?.type ?? null,
+      top: false,
+      bottom: callout !== null && shownLine(state, quote.to) === last,
+      title: false,
+    };
+  });
+}
+
+function sameLevels(one: { levels: Level[] }, other: { levels: Level[] }) {
+  return JSON.stringify(one.levels) === JSON.stringify(other.levels);
 }
 
 /** What comes before a table's line on its line: its quotes' marks, its indent. */
@@ -1251,7 +1302,7 @@ function lineStart(state: EditorState, row: SyntaxNode): string {
   return state.sliceDoc(state.doc.lineAt(row.from).from, row.from);
 }
 
-function table(state: EditorState, node: SyntaxNode, depth: number): Table {
+function table(state: EditorState, node: SyntaxNode, levels: Level[]): Table {
   const [header, delimiter, ...body] = tableRows(node);
   const columns = header ? cellsOf(state, header).length : 0;
   return new Table(
@@ -1266,7 +1317,7 @@ function table(state: EditorState, node: SyntaxNode, depth: number): Table {
           ]
         : [],
     ),
-    depth,
+    levels,
   );
 }
 
@@ -2626,10 +2677,11 @@ const LOOK = EditorView.theme({
   // show or not, its title in its type's color.
   ".cm-line.cm-framed": { position: "relative" },
   ".cm-framed-quote": { color: "var(--on-surface-variant)" },
+  // Under a code block's, and the selection's.
   ".cm-frame": {
     position: "absolute",
     inset: "0",
-    zIndex: "-1",
+    zIndex: "-2",
     pointerEvents: "none",
   },
   ".cm-frame > span": { position: "absolute", top: "0" },
@@ -2708,7 +2760,7 @@ const LOOK = EditorView.theme({
     content: '""',
     position: "absolute",
     inset:
-      "0 calc(var(--text-inset) + var(--quote-depth, 0) * 1em) 0 calc(var(--text-inset) + var(--quote-depth, 0) * 1.25em)",
+      "0 calc(var(--text-inset) + var(--quote-depth, 0) * 1em) var(--boxes-below, 0) calc(var(--text-inset) + var(--quote-depth, 0) * 1.25em)",
     zIndex: "-1",
     background: "var(--surface-container-high)",
   },
@@ -2768,14 +2820,15 @@ const LOOK = EditorView.theme({
     // Its width the note's, however wide its table.
     contain: "inline-size",
   },
-  // In a quote, its bars in the frame's border, which the table scrolls
-  // clear of, as the viewer's table does within its quote.
-  ".cm-table.cm-quote": {
+  // In a quote or a callout, its bars and boxes in the frame's border,
+  // which the table scrolls clear of, as the viewer's table does.
+  ".cm-table.cm-quote, .cm-table.cm-table-framed": {
     borderLeft:
       "calc(var(--text-inset) + var(--quote-depth) * 1.25em) solid transparent",
     paddingLeft: "0",
     paddingRight: "calc(var(--text-inset) + var(--quote-depth) * 1em)",
     backgroundOrigin: "border-box",
+    backgroundRepeat: "no-repeat",
   },
   ".cm-table table": { borderCollapse: "collapse", width: "max-content" },
   ".cm-table :is(th, td)": {
