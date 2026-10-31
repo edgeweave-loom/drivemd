@@ -199,8 +199,11 @@ describe("Editor", () => {
 
   it.each([
     ["Ctrl+B", { key: "b" }, "**tea**"],
+    ["Ctrl+I", { key: "i" }, "*tea*"],
+    // Shift turns the key into its symbol, which the key's code tells.
+    ["Ctrl+Shift+X", { key: "X", keyCode: 88, shiftKey: true }, "~~tea~~"],
+    ["Ctrl+E", { key: "e" }, "`tea`"],
     ["Ctrl+K", { key: "k" }, "[tea]()"],
-    // Shift turns the digit into its symbol, which the key's code tells.
     ["Ctrl+Shift+8", { key: "*", keyCode: 56, shiftKey: true }, "- tea"],
     ["Ctrl+Shift+9", { key: "(", keyCode: 57, shiftKey: true }, "- [ ] tea"],
   ])(
@@ -1433,15 +1436,22 @@ describe("Visual's tables", () => {
       cell.dispatch({ selection: { anchor: 0, head: 5 } });
     });
 
+    // Italic, written with `_`, goes; then comes back, with `*`.
+    for (const after of ["Ada", "*Ada*"]) {
+      act(() => {
+        press(cell, "i", { ctrlKey: true });
+      });
+      expect(cell.state.sliceDoc()).toBe(after);
+    }
     act(() => {
       press(cell, "b", { ctrlKey: true });
     });
-    expect(view.state.sliceDoc()).toBe(NOTE.replace("_Ada_", "**_Ada_**"));
-    expect(cell.state.sliceDoc()).toBe("**_Ada_**");
+    expect(view.state.sliceDoc()).toBe(NOTE.replace("_Ada_", "***Ada***"));
+    expect(cell.state.sliceDoc()).toBe("***Ada***");
     act(() => {
       press(cell, "k", { ctrlKey: true });
     });
-    expect(cell.state.sliceDoc()).toBe("**[_Ada_]()**");
+    expect(cell.state.sliceDoc()).toBe("***[Ada]()***");
 
     const before = view.state.sliceDoc();
     for (const [key, keyCode] of [

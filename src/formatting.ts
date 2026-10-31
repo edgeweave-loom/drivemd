@@ -184,68 +184,118 @@ function trimmed(state: EditorState, { from, to }: SelectionRange) {
   return { from: start, to: Math.max(start, from + text.trimEnd().length) };
 }
 
-/** The bold text, its `**` included, that holds the range, if any. */
-function boldAround(
+/** The inline node of that name, its marks included, holding the range. */
+function inlineAround(
   state: EditorState,
   { from, to }: SelectionRange,
+  name: string,
 ): SyntaxNode | undefined {
   let node: SyntaxNode | null = syntaxTree(state).resolveInner(from, 1);
   for (; node; node = node.parent) {
-    if (node.name === "StrongEmphasis" && to <= node.to) return node;
+    if (node.name === name && to <= node.to) return node;
   }
   return undefined;
 }
 
 /**
- * Removes the bold around each selected range, or makes it bold. An empty
- * range gets `****` with the cursor inside, which a second tap takes away;
- * typed in, a second tap at the end of the bold text steps out of it.
+ * Takes away the formatting of that node around each selected range, its
+ * marks as written, or adds it, the marks from `marks` around the range's
+ * text. An empty range gets both marks with the cursor between them, which
+ * a second tap takes away; typed in, a second tap before the closing mark
+ * steps out of it.
  */
-export const toggleBold: StateCommand = ({ state, dispatch }) => {
-  if (state.readOnly) return false;
-  const edit = state.changeByRange((range) => {
-    const bold = boldAround(state, range);
-    if (bold && range.empty && range.head === bold.to - 2) {
-      return { range: EditorSelection.cursor(bold.to) };
-    }
-    if (bold) {
-      const changes = state.changes([
-        { from: bold.from, to: bold.from + 2 },
-        { from: bold.to - 2, to: bold.to },
-      ]);
+function toggleInline(
+  name: string,
+  marks: (text: string) => readonly [string, string],
+): StateCommand {
+  return ({ state, dispatch }) => {
+    if (state.readOnly) return false;
+    const edit = state.changeByRange((range) => {
+      const node = inlineAround(state, range, name);
+      const open = node?.firstChild;
+      const close = node?.lastChild;
+      if (open && close && open !== close) {
+        if (range.empty && range.head === close.from) {
+          return { range: EditorSelection.cursor(close.to) };
+        }
+        // Inline code's padding, a space inside each backtick, goes too.
+        const inner = state.doc.sliceString(open.to, close.from);
+        const pad = name === "InlineCode" && /^ .*\S.* $/s.test(inner) ? 1 : 0;
+        const changes = state.changes([
+          { from: open.from, to: open.to + pad },
+          { from: close.from - pad, to: close.to },
+        ]);
+        return {
+          changes,
+          range: EditorSelection.range(
+            changes.mapPos(range.anchor),
+            changes.mapPos(range.head),
+          ),
+        };
+      }
+      const at = range.head;
+      const [before, after] = marks("");
+      if (
+        range.empty &&
+        state.doc.sliceString(at - before.length, at + after.length) ===
+          before + after
+      ) {
+        return {
+          changes: { from: at - before.length, to: at + after.length },
+          range: EditorSelection.cursor(at - before.length),
+        };
+      }
+      const { from, to } = trimmed(state, range);
+      const [start, end] = marks(state.doc.sliceString(from, to));
       return {
-        changes,
-        range: EditorSelection.range(
-          changes.mapPos(range.anchor),
-          changes.mapPos(range.head),
-        ),
+        changes: [
+          { from, insert: start },
+          { from: to, insert: end },
+        ],
+        range: EditorSelection.range(from + start.length, to + start.length),
       };
-    }
-    const at = range.head;
-    if (range.empty && state.doc.sliceString(at - 2, at + 2) === "****") {
-      return {
-        changes: { from: at - 2, to: at + 2 },
-        range: EditorSelection.cursor(at - 2),
-      };
-    }
-    const { from, to } = trimmed(state, range);
-    return {
-      changes: [
-        { from, insert: "**" },
-        { from: to, insert: "**" },
-      ],
-      range: EditorSelection.range(from + 2, to + 2),
-    };
-  });
-  dispatch(
-    state.update(edit, {
-      scrollIntoView: true,
-      userEvent: "input.format",
-      annotations: isolateHistory.of("after"),
-    }),
+    });
+    dispatch(
+      state.update(edit, {
+        scrollIntoView: true,
+        userEvent: "input.format",
+        annotations: isolateHistory.of("after"),
+      }),
+    );
+    return true;
+  };
+}
+
+/** Makes each selected range bold, `**`, or takes the bold around it away. */
+export const toggleBold = toggleInline("StrongEmphasis", () => ["**", "**"]);
+
+/**
+ * Makes each selected range italic, `*`, or takes the italic around it
+ * away, written with `*` or `_`.
+ */
+export const toggleItalic = toggleInline("Emphasis", () => ["*", "*"]);
+
+/** Strikes each selected range through, `~~`, or takes the strike away. */
+export const toggleStrikethrough = toggleInline("Strikethrough", () => [
+  "~~",
+  "~~",
+]);
+
+/**
+ * Makes each selected range inline code, or takes the code around it
+ * away: one backtick more than the longest run in the text, and a space
+ * inside each when the text starts or ends with one, as CommonMark reads
+ * them.
+ */
+export const toggleCode = toggleInline("InlineCode", (text) => {
+  const longest = Math.max(
+    0,
+    ...(text.match(/`+/g) ?? []).map((run) => run.length),
   );
-  return true;
-};
+  const fence = "`".repeat(longest + 1);
+  const pad = /^`|`$/.test(text) ? " " : "";
+  return [fence + pad, pad + fence];
+});
 
 /**
  * Makes each selected range a link's text, with the cursor where its
@@ -531,11 +581,16 @@ export const outdentLines: StateCommand = ({ state, dispatch }) =>
   });
 
 /**
- * The keys of the commands that keep a table's row whole, as Google Docs
- * binds them, which a table's cell edited in place takes too.
+ * The keys of the commands that keep a table's row whole, which a table's
+ * cell edited in place takes too: Google Docs' where it has one.
  */
 export const INLINE_KEYS: readonly KeyBinding[] = [
   { key: "Mod-b", run: toggleBold },
+  // In place of CodeMirror's own, which selects the syntax around.
+  { key: "Mod-i", run: toggleItalic },
+  { key: "Mod-Shift-x", run: toggleStrikethrough },
+  // GitHub's, as Docs has no inline code.
+  { key: "Mod-e", run: toggleCode },
   { key: "Mod-k", run: insertLink },
 ];
 

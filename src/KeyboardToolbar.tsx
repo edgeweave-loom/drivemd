@@ -13,6 +13,7 @@ import {
   insertLink,
   outdentLines,
   toggleBold,
+  toggleItalic,
   toggleList,
 } from "./formatting.ts";
 import { editTable, type CellMenu } from "./live-preview.ts";
@@ -56,6 +57,11 @@ const KEYS: Key[] = [
     name: "Bold",
     command: toggleBold,
     icon: "format_bold",
+  },
+  {
+    name: "Italic",
+    command: toggleItalic,
+    icon: "format_italic",
   },
   {
     name: "List",
