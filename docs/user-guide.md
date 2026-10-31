@@ -103,7 +103,7 @@ On a computer or a tablet, pick a mode from the mode menu in the app bar. On a p
 | **Source**                                          | The Markdown as written, lightly styled, beside its preview on a computer or a tablet.                                                                                                                                                                                                                                                                                     |
 | **Viewing** (computer, tablet), **Preview** (phone) | The rendered note alone. Viewing saves the note first.                                                                                                                                                                                                                                                                                                                     |
 
-On a computer, the formatting toolbar over the note formats it.
+On a computer, the formatting toolbar over the note formats it, its buttons' tooltips naming their keys: **Alt+F10** reaches it from the keyboard, the arrow keys move along it, and **Escape** goes back to the text.
 
 The device remembers whether you last chose Visual or Source, and opens the editor in it next time. Switching between them keeps your cursor and your undo history. Images, and Obsidian's own syntax, show in Visual as they do in Source for now.
 
@@ -222,6 +222,7 @@ On a Mac, use Cmd; elsewhere, Ctrl.
 | Cmd/Ctrl+Shift+9                      | Make a task, then tick it, while editing       |
 | Cmd/Ctrl+Z                            | Undo, while editing                            |
 | Cmd+Shift+Z (Mac), Ctrl+Y (elsewhere) | Redo, while editing                            |
+| Alt+F10                               | Reach the formatting toolbar, while editing    |
 | Cmd/Ctrl+]                            | Indent a list item, while editing              |
 | Cmd/Ctrl+[                            | Outdent a list item, while editing             |
 | Right-click, Shift+F10 (not on a Mac) | The table's menu, on a table's cell in Visual  |

@@ -1,10 +1,11 @@
-import { redo, undo } from "@codemirror/commands";
-import type { Command } from "@codemirror/view";
-import { Fragment } from "react";
+import { historyKeymap, redo, undo } from "@codemirror/commands";
+import type { Command, KeyBinding } from "@codemirror/view";
+import { Fragment, type KeyboardEvent } from "react";
 import { findInNote } from "./find.ts";
 import {
   cycleHeading,
   cycleTask,
+  FORMATTING_KEYS,
   indentLines,
   insertLink,
   outdentLines,
@@ -17,7 +18,7 @@ import {
 } from "./formatting.ts";
 import { Icon } from "./Icon.tsx";
 import type { IconName } from "./icons.ts";
-import { keepFocus } from "./keys.ts";
+import { ariaKeys, keepFocus, keyLabel, MAC } from "./keys.ts";
 
 interface Button {
   name: string;
@@ -76,18 +77,58 @@ const GROUPS: Button[][] = [
   ],
 ];
 
+// The keys that run the buttons' commands, Find in note's among them.
+const BINDINGS: readonly KeyBinding[] = [
+  { key: "Mod-f", run: findInNote },
+  ...historyKeymap,
+  ...FORMATTING_KEYS,
+];
+
+function keyOf(command: Command): string | undefined {
+  const binding = BINDINGS.find(({ run }) => run === command);
+  return (MAC ? binding?.mac : undefined) ?? binding?.key;
+}
+
+/**
+ * Moves the focus through the toolbar's buttons, as a toolbar does: the
+ * arrows, Home and End move it, and Escape leaves it for the text.
+ */
+function moveInToolbar(event: KeyboardEvent<HTMLElement>, leave: () => void) {
+  const buttons = [...event.currentTarget.querySelectorAll("button")];
+  const at = buttons.indexOf(event.target as HTMLButtonElement);
+  if (event.key === "Escape") {
+    event.preventDefault();
+    leave();
+    return;
+  }
+  const to = {
+    ArrowRight: (at + 1) % buttons.length,
+    ArrowLeft: (at - 1 + buttons.length) % buttons.length,
+    Home: 0,
+    End: buttons.length - 1,
+  }[event.key];
+  if (to === undefined) return;
+  event.preventDefault();
+  buttons[to]?.focus();
+}
+
 /**
  * The formatting commands as buttons over the note, as Google Docs shows
- * them, where the pointer is a mouse's or a trackpad's, each button's name
- * in its tooltip. A click keeps the focus in the text. In a table's cell,
- * the buttons of lines leave, since their marks would break its row.
+ * them, where the pointer is a mouse's or a trackpad's. Each button's name
+ * and key show in its tooltip. A click keeps the focus in the text; from
+ * the keyboard, Alt+F10 reaches the toolbar, and a button pressed gives the
+ * focus back to the text. In a table's cell, the buttons of lines leave,
+ * since their marks would break its row.
  */
 export function FormattingBar({
   inCell,
   onCommand,
+  onLeave,
 }: {
   inCell: boolean;
   onCommand: (command: Command) => void;
+  /** Gives the focus back to the text. */
+  onLeave: () => void;
 }) {
   const groups = GROUPS.map((group) =>
     inCell ? group.filter(({ lines }) => !lines) : group,
@@ -98,23 +139,36 @@ export function FormattingBar({
       aria-label="Format"
       className="format-bar"
       onMouseDown={keepFocus}
+      onKeyDown={(event) => {
+        moveInToolbar(event, onLeave);
+      }}
     >
       {groups.map((group, index) => (
         <Fragment key={group[0]?.name}>
           {index > 0 && <hr aria-orientation="vertical" />}
-          {group.map(({ name, command, icon }) => (
-            <button
-              key={name}
-              type="button"
-              aria-label={name}
-              title={name}
-              onClick={() => {
-                onCommand(command);
-              }}
-            >
-              <Icon name={icon} />
-            </button>
-          ))}
+          {group.map(({ name, command, icon }, position) => {
+            const key = keyOf(command);
+            return (
+              <button
+                key={name}
+                type="button"
+                aria-label={name}
+                aria-keyshortcuts={key && ariaKeys(key)}
+                title={key ? `${name} (${keyLabel(key)})` : name}
+                // One stop for Tab, the arrows moving between them.
+                tabIndex={index === 0 && position === 0 ? 0 : -1}
+                onClick={(event) => {
+                  const toolbar = event.currentTarget.parentElement;
+                  onCommand(command);
+                  // From the keyboard, back to the text, unless the command
+                  // took the focus elsewhere, as Find in note does.
+                  if (toolbar?.contains(document.activeElement)) onLeave();
+                }}
+              >
+                <Icon name={icon} />
+              </button>
+            );
+          })}
         </Fragment>
       ))}
     </div>
