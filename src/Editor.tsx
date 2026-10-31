@@ -46,12 +46,13 @@ import {
   useState,
   type Ref,
 } from "react";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { mountIn, THEME } from "./codemirror.ts";
 import { keepDoubleSpace } from "./double-space.ts";
 import { countMatches, findInNote, findsInNote, type Matches } from "./find.ts";
 import { FindBar } from "./FindBar.tsx";
 import { FORMATTING_KEYS } from "./formatting.ts";
+import { FormattingBar } from "./FormattingBar.tsx";
 import { withFrontmatter } from "./frontmatter.ts";
 import { KeyboardToolbar, TOOLBAR_HEIGHT } from "./KeyboardToolbar.tsx";
 import { InSlot } from "./InSlot.tsx";
@@ -352,6 +353,7 @@ export function Editor({
   visual = false,
   onChange,
   onFollow,
+  formatSlot,
   ref,
 }: {
   initial: string;
@@ -360,6 +362,8 @@ export function Editor({
   onChange: (text: string) => void;
   /** Follows a link the user Cmd or Ctrl+clicks, or opens from the toolbar. */
   onFollow: (href: string) => void;
+  /** Where the formatting toolbar shows, with a mouse, over the note. */
+  formatSlot?: HTMLElement | null;
   ref?: Ref<EditorHandle>;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -377,6 +381,7 @@ export function Editor({
   const touch = useTouch();
   const phone = useLayout() === "phone";
   const toolbar = touch && focused;
+  const formatting = touch ? null : formatSlot;
   const opening = useEffectEvent(() => ({ initial, visual }));
   const edited = useEffectEvent((update: ViewUpdate) => {
     if (update.docChanged) onChange(update.state.sliceDoc());
@@ -441,11 +446,11 @@ export function Editor({
   // The cursor and the matches stay clear of the bars over the page's top,
   // and of the toolbar.
   const clearance = useEffectEvent(() =>
-    toolbar || searching
+    toolbar || searching || formatting
       ? {
           top: Math.max(
             0,
-            ...[".bar", ".find-bar"].map(
+            ...[".bar", ".format-slot", ".find-bar"].map(
               (bar) =>
                 document.querySelector(bar)?.getBoundingClientRect().bottom ??
                 0,
@@ -489,6 +494,24 @@ export function Editor({
   useEffect(() => {
     editor.current?.dispatch({ effects: MODE.reconfigure(inMode(visual)) });
   }, [visual]);
+
+  // Find in note's bar sticks under the formatting toolbar, as tall as its
+  // buttons' rows.
+  useLayoutEffect(() => {
+    const holder = formatting?.parentElement;
+    if (!formatting || !holder) return;
+    const observer = new ResizeObserver(() => {
+      holder.style.setProperty(
+        "--format-bar-height",
+        `${String(formatting.offsetHeight)}px`,
+      );
+    });
+    observer.observe(formatting);
+    return () => {
+      observer.disconnect();
+      holder.style.removeProperty("--format-bar-height");
+    };
+  }, [formatting]);
 
   useImperativeHandle(
     ref,
@@ -540,6 +563,16 @@ export function Editor({
 
   return (
     <>
+      {formatting &&
+        createPortal(
+          <FormattingBar
+            inCell={cell !== null}
+            onCommand={(command) => {
+              if (editor.current) command(editor.current);
+            }}
+          />,
+          formatting,
+        )}
       {phone ? <InSlot name="find">{bar}</InSlot> : bar}
       <div className="editor" ref={host} />
       <TableMenu id={menuId} editor={editor} ref={menu} />

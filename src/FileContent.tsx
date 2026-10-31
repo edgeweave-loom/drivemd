@@ -708,6 +708,7 @@ function NoteView({
   const { renew } = useDrive();
   const phone = useLayout() === "phone";
   const editor = useRef<EditorHandle>(null);
+  const [formatSlot, setFormatSlot] = useState<HTMLElement | null>(null);
   const follow = useFollow(
     folderOf(file),
     vault.state === "inside" ? vault.vault : undefined,
@@ -965,6 +966,8 @@ function NoteView({
       {/* On a sheet, as Docs shows a page on a wide screen, and in Source
           there, the source and the preview on two, side by side. The note
           shown keeps its place as Source starts and ends. */}
+      {/* Over the note, where the editor shows its formatting toolbar. */}
+      {source && <div ref={setFormatSlot} className="format-slot" />}
       <div className={source && rendered ? "sheets editing" : "sheets"}>
         {source && (
           <Sheet label={rendered && "Markdown"} icon="code">
@@ -977,6 +980,7 @@ function NoteView({
                 visual={mode === "visual"}
                 onChange={onEdit}
                 onFollow={follow}
+                formatSlot={formatSlot}
               />
             </Suspense>
           </Sheet>

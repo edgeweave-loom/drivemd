@@ -109,6 +109,52 @@ test("formats from the keyboard as the keyboard toolbar does, a cell's text but 
   );
 });
 
+test("shows the formatting toolbar under the app bar with a mouse, Find in note under it", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.name !== "desktop-chromium",
+    "A touch screen has the keyboard toolbar",
+  );
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content = Array.from(
+    { length: 80 },
+    (_, line) => `Line ${String(line + 1)}.\n`,
+  ).join("");
+  const note = await editInVisual(page);
+  const toolbar = page.getByRole("toolbar", { name: "Format", exact: true });
+
+  await note.locator(".cm-line").filter({ hasText: "Line 2." }).click();
+  await toolbar.getByRole("button", { name: "Bulleted list" }).click();
+  await page.keyboard.type(" Tea.");
+  await page.evaluate(() => {
+    window.scrollTo(0, document.documentElement.scrollHeight / 2);
+  });
+  await toolbar.getByRole("button", { name: "Find in note" }).click();
+  await expect(page.getByRole("textbox", { name: "Find" })).toBeFocused();
+
+  // Stacked under the app bar as the note scrolls under them.
+  const boxes = await Promise.all(
+    [
+      page.getByRole("banner"),
+      page.locator(".format-slot"),
+      page.getByRole("search", { name: "Find in note" }),
+    ].map((bar) => bar.boundingBox()),
+  );
+  const [appBar, slot, find] = boxes;
+  if (!appBar || !slot || !find) throw new Error("Not shown");
+  expect(slot.y).toBe(appBar.y + appBar.height);
+  expect(find.y).toBe(slot.y + slot.height);
+
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("plan")?.content)).toContain(
+    "Line 1.\n- Line 2. Tea.\nLine 3.\n",
+  );
+});
+
 test("opens a link from the keyboard toolbar on a touch screen", async ({
   page,
 }, info) => {
