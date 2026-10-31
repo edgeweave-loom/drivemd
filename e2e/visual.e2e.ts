@@ -92,6 +92,7 @@ test("formats from the keyboard as the keyboard toolbar does, a cell's text but 
   await page.keyboard.press("ControlOrMeta+Shift+x");
   await page.keyboard.press("ControlOrMeta+e");
   await page.keyboard.press("ControlOrMeta+Shift+8");
+  await page.keyboard.press("ControlOrMeta+Shift+7");
   const cell = note.getByRole("table").getByRole("cell", { name: "Ada" });
   await cell.click();
   await page.keyboard.press("ControlOrMeta+a");
@@ -99,11 +100,12 @@ test("formats from the keyboard as the keyboard toolbar does, a cell's text but 
   await page.keyboard.press("ControlOrMeta+k");
   // A list's marks would break the row.
   await page.keyboard.press("ControlOrMeta+Shift+8");
+  await page.keyboard.press("ControlOrMeta+Shift+7");
 
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("plan")?.content)).toBe(
-    "- Tea at ***~~`noon`~~***.\n\n| Step | Owner |\n| - | - |\n| Boil | **[Ada]()** |\n",
+    "1. Tea at ***~~`noon`~~***.\n\n| Step | Owner |\n| - | - |\n| Boil | **[Ada]()** |\n",
   );
 });
 

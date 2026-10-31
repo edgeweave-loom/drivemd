@@ -8,13 +8,13 @@ import type { IconName } from "./icons.ts";
 import { keepFocus } from "./keys.ts";
 import {
   cycleHeading,
+  cycleList,
   cycleTask,
   indentLines,
   insertLink,
   outdentLines,
   toggleBold,
   toggleItalic,
-  toggleList,
 } from "./formatting.ts";
 import { editTable, type CellMenu } from "./live-preview.ts";
 import { peekScale, rowItems } from "./peek.ts";
@@ -65,7 +65,7 @@ const KEYS: Key[] = [
   },
   {
     name: "List",
-    command: toggleList,
+    command: cycleList,
     icon: "format_list_bulleted",
     lines: true,
   },

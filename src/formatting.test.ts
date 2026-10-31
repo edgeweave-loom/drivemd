@@ -17,6 +17,7 @@ import remarkGfm from "remark-gfm";
 import { describe, expect, it } from "vitest";
 import {
   cycleHeading,
+  cycleList,
   cycleTask,
   indentLines,
   insertLink,
@@ -25,6 +26,7 @@ import {
   toggleCode,
   toggleItalic,
   toggleList,
+  toggleNumbered,
   toggleStrikethrough,
 } from "./formatting.ts";
 
@@ -174,6 +176,36 @@ describe("toggleCode", () => {
     ["a ` | ` b", "a  |  b"],
   ])("turns %j into %j", (before, after) => {
     expect(run(toggleCode, before).text).toBe(after);
+  });
+});
+
+describe("toggleNumbered", () => {
+  it.each([
+    ["te|a", "1. te|a"],
+    ["«a\nb\nc»", "1. «a\n2. b\n3. c»"],
+    ["«- a\n- b»", "«1. a\n2. b»"],
+    ["«1. a\n2. b»", "«a\nb»"],
+    ["«- a\n\n9) b»", "«1. a\n\n2) b»"],
+    ["> - te|a", "> 1. te|a"],
+    ["- [ ] te|a", "1. [ ] te|a"],
+    // What a widened item holds moves with its text, and stays in it.
+    ["«- a\n  - b\n  - c\n- d»", "«1. a\n   1. b\n   2. c\n2. d»"],
+    ["- a|\n  - b\n\n  more", "1. a|\n   - b\n\n   more"],
+    ["- a|\n\tb", "1. a|\n\t b"],
+  ])("turns %j into %j", (before, after) => {
+    expect(run(toggleNumbered, before).text).toBe(after);
+  });
+});
+
+describe("cycleList", () => {
+  it.each([
+    ["te|a", "- te|a"],
+    ["- te|a", "1. te|a"],
+    ["1. te|a", "te|a"],
+    ["- [x] te|a", "1. [x] te|a"],
+    ["«- a\nb»", "«1. a\n2. b»"],
+  ])("turns %j into %j", (before, after) => {
+    expect(run(cycleList, before).text).toBe(after);
   });
 });
 

@@ -187,7 +187,7 @@ While you edit on a touch screen, a row of keys sits above the keyboard. It scro
 | **Heading**                                       | `#`, `##`, `###`, then text again                                                                                                               |
 | **Bold**                                          | Wraps the selection in `**`, or takes it away                                                                                                   |
 | **Italic**                                        | Wraps the selection in `*`, or takes it away                                                                                                    |
-| **List**                                          | Adds or removes a `- ` bullet                                                                                                                   |
+| **List**                                          | A `- ` bullet, then numbers, `1.`, `2.`, `3.`, then text again                                                                                  |
 | **Checkbox**                                      | An open task, a done one, then a plain list item again                                                                                          |
 | **Link**, **Open link**                           | Makes the selection a link; in a link, opens it                                                                                                 |
 | **Indent**, **Outdent**                           | Moves a list item one level in or out, lined up with the item above, with tabs where the list uses tabs                                         |
@@ -215,6 +215,7 @@ On a Mac, use Cmd; elsewhere, Ctrl.
 | Cmd/Ctrl+Shift+X                      | Strikethrough, while editing                   |
 | Cmd/Ctrl+E                            | Inline code, while editing                     |
 | Cmd/Ctrl+K                            | Make a link, while editing                     |
+| Cmd/Ctrl+Shift+7                      | Number a list, or plain text, while editing    |
 | Cmd/Ctrl+Shift+8                      | Make a list, or plain text, while editing      |
 | Cmd/Ctrl+Shift+9                      | Make a task, then tick it, while editing       |
 | Cmd/Ctrl+Z                            | Undo, while editing                            |
