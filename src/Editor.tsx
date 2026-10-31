@@ -61,6 +61,7 @@ import {
   cellEditor,
   cellSetup,
   inCell,
+  inVault,
   livePreview,
   tableMenu,
   tableMenuOf,
@@ -250,10 +251,11 @@ const BLOCKS = [
 // Visual or Source, which the editor switches between as it stays.
 const MODE = new Compartment();
 
-function inMode(visual: boolean): Extension {
+function inMode(visual: boolean, vault: boolean): Extension {
   return visual
     ? [
         livePreview,
+        inVault.of(vault),
         // A table's cell edited in place, in the source's light styling.
         cellSetup.of([
           markdown({ base: markdownLanguage, extensions: { remove: BLOCKS } }),
@@ -268,7 +270,7 @@ function inMode(visual: boolean): Extension {
 
 function extensions(
   lineBreak: LineBreak,
-  visual: boolean,
+  mode: Extension,
   changed: (update: ViewUpdate) => void,
   follow: (href: string) => void,
   clearance: () => { top: number; bottom: number } | null,
@@ -310,7 +312,7 @@ function extensions(
       ...searchKeymap,
     ]),
     EditorView.lineWrapping,
-    MODE.of(inMode(visual)),
+    MODE.of(mode),
     EditorView.updateListener.of(changed),
     followLinks(follow),
     // A right-click on a table's cell in Visual opens its menu.
@@ -351,6 +353,7 @@ export function Editor({
   initial,
   lineBreak,
   visual = false,
+  vault = false,
   onChange,
   onFollow,
   ref,
@@ -358,6 +361,8 @@ export function Editor({
   initial: string;
   lineBreak: LineBreak;
   visual?: boolean;
+  /** Whether the note is in an Obsidian vault, whose syntax Visual draws. */
+  vault?: boolean;
   onChange: (text: string) => void;
   /** Follows a link the user Cmd or Ctrl+clicks, or opens from the toolbar. */
   onFollow: (href: string) => void;
@@ -378,7 +383,10 @@ export function Editor({
   const touch = useTouch();
   const phone = useLayout() === "phone";
   const toolbar = touch && focused;
-  const opening = useEffectEvent(() => ({ initial, visual }));
+  const opening = useEffectEvent(() => ({
+    initial,
+    mode: inMode(visual, vault),
+  }));
   const edited = useEffectEvent((update: ViewUpdate) => {
     if (update.docChanged) onChange(update.state.sliceDoc());
     // A table's cell edited in place has the focus for the note.
@@ -465,12 +473,12 @@ export function Editor({
   useEffect(() => {
     const element = host.current;
     if (!element) return;
-    const { initial, visual } = opening();
+    const { initial, mode } = opening();
     const view = mountIn(
       element,
       EditorState.create({
         doc: initial,
-        extensions: extensions(lineBreak, visual, edited, followed, clearance, {
+        extensions: extensions(lineBreak, mode, edited, followed, clearance, {
           openAt: (x, y) => {
             menu.current?.openAt(x, y);
           },
@@ -488,8 +496,10 @@ export function Editor({
   }, [lineBreak]);
 
   useEffect(() => {
-    editor.current?.dispatch({ effects: MODE.reconfigure(inMode(visual)) });
-  }, [visual]);
+    editor.current?.dispatch({
+      effects: MODE.reconfigure(inMode(visual, vault)),
+    });
+  }, [visual, vault]);
 
   useImperativeHandle(
     ref,

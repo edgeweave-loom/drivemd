@@ -24,7 +24,12 @@ import { Editor, type EditorHandle } from "./Editor.tsx";
 import { linkAt } from "./source-links.ts";
 import type { LineBreak } from "./text.ts";
 
-function open(text: string, lineBreak: LineBreak = "\n", visual = false) {
+function open(
+  text: string,
+  lineBreak: LineBreak = "\n",
+  visual = false,
+  vault = false,
+) {
   const onChange = vi.fn<(text: string) => void>();
   const handle = createRef<EditorHandle>();
   const editor = (inVisual: boolean) => (
@@ -33,6 +38,7 @@ function open(text: string, lineBreak: LineBreak = "\n", visual = false) {
       initial={text}
       lineBreak={lineBreak}
       visual={inVisual}
+      vault={vault}
       onChange={onChange}
       onFollow={() => undefined}
     />
@@ -814,6 +820,66 @@ describe("Visual", () => {
     showIn(false);
     expect(looks(view)[0]).toBe("‹>› Some ‹**›**tea**‹**›");
     expect(depths().every((depth) => depth === 0)).toBe(true);
+  });
+
+  it("draws a vault's callout as the viewer's box, its title's marks quieter", async () => {
+    const { view } = open(
+      "> [!faq]- Why?\n> Because.\nlazy\n\n> [!tldr]\n\n> \\[!note] Not\n\n- > [!tip] Listed\n\n> [!tip] Holds\n> > a quote",
+      "\n",
+      true,
+      true,
+    );
+    await parsed(view);
+    const boxes = () =>
+      [...view.contentDOM.querySelectorAll(".cm-line")].map((line) =>
+        [...line.classList]
+          .filter((name) => name.startsWith("cm-callout-"))
+          .map((name) => name.slice("cm-callout-".length))
+          .join(" "),
+      );
+
+    // An escaped marker, a callout in a list, or one holding a quote,
+    // draws as a quote.
+    expect(boxes()).toEqual([
+      "question first title",
+      "question",
+      "question last",
+      "",
+      "abstract first title last",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+    ]);
+    expect(looks(view).slice(0, 7)).toEqual([
+      "‹[!faq]- ›Why?",
+      "Because.",
+      "lazy",
+      "",
+      "‹[!tldr]›",
+      "",
+      "‹\\[!note] Not›",
+    ]);
+
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 12 } });
+    });
+    await waitFor(() => {
+      expect(looks(view)[0]).toBe("‹> [!faq]- ›Why?");
+    });
+    expect(boxes()[0]).toBe("question first title");
+  });
+
+  it("draws a callout as a quote outside a vault", async () => {
+    const { view } = open("> [!tip] Title\n> Body", "\n", true);
+    await parsed(view);
+
+    expect(view.contentDOM.querySelector(".cm-callout")).toBeNull();
+    expect(looks(view)).toEqual(["‹[›!tip‹] Title›", "‹Body›"]);
   });
 
   it("hides the marks of the quotes drawn alone, with the space or tab after them and the indent before them", async () => {

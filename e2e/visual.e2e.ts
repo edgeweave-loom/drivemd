@@ -1,10 +1,13 @@
 import type { Page } from "@playwright/test";
 import { expect, signIn, test } from "./fake-google.ts";
 
-/** Opens plan.md in Visual: from Edit on a phone, or else from the mode menu. */
-async function editInVisual(page: Page) {
+/**
+ * Opens a note, plan.md unless told, in Visual: from Edit on a phone, or
+ * else from the mode menu.
+ */
+async function editInVisual(page: Page, id = "plan") {
   await signIn(page);
-  await page.goto("/edit?id=plan");
+  await page.goto(`/edit?id=${id}`);
   if (test.info().project.metadata.layout === "phone") {
     // Editing opens in Visual at first.
     await page.getByRole("button", { name: "Edit", exact: true }).click();
@@ -290,6 +293,59 @@ test("draws a quote in Visual, a bar per level, its marks shown where the cursor
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("plan")?.content)).toBe(
     "# The plan\n\nTea.\n\n> Some tea\n> > and cups\n> > milk\n\nCups.\n",
+  );
+});
+
+test("draws a vault's callout in Visual as the viewer's box, its marks shown where the cursor is", async ({
+  page,
+  drive,
+}, info) => {
+  const today = drive.files.get("today");
+  if (!today) throw new Error("No today");
+  today.content = "Tea.\n\n> [!faq]- Why tea?\n> It wakes me up.\n";
+  const lines = (await editInVisual(page, "today")).locator(".cm-line");
+  const title = lines.nth(2);
+  const body = lines.nth(3);
+  await expect(title).toHaveText("[!faq]- Why tea?");
+  await expect(body).toHaveText("It wakes me up.");
+
+  // Its type's color, the box under its lines.
+  const orange = "rgb(236, 117, 0)";
+  await expect(title).toHaveCSS("color", orange);
+  for (const line of [title, body]) {
+    expect(
+      await line.evaluate(
+        (element) => getComputedStyle(element, "::before").borderLeftColor,
+      ),
+    ).toBe(orange);
+  }
+
+  // Its marks where the cursor is, on the same height.
+  const height = async (line: typeof title) =>
+    (await line.boundingBox())?.height;
+  const heights = [await height(title), await height(body)];
+  const tap = (line: typeof title) =>
+    info.project.name === "desktop-chromium" ? line.click() : line.tap();
+  await tap(body);
+  await expect(body).toHaveText("> It wakes me up.");
+  await tap(title);
+  await expect(title).toHaveText("> [!faq]- Why tea?");
+  await expect(body).toHaveText("It wakes me up.");
+  expect([await height(title), await height(body)]).toEqual(heights);
+
+  // Looked at, and written over nowhere: nothing to save.
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(drive.writes).toEqual([]);
+
+  // Return continues the callout, its marks with it.
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Milk?");
+  await expect(lines.nth(3)).toHaveText("> Milk?");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("today")?.content)).toBe(
+    "Tea.\n\n> [!faq]- Why tea?\n> Milk?\n> It wakes me up.\n",
   );
 });
 

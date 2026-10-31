@@ -1739,9 +1739,26 @@ dialog.drawer > .close {
   color: var(--on-surface-variant);
 }
 
-/* Obsidian's callouts, in the colors of its light and dark themes. */
+/* Obsidian's callouts' colors, by type, in its light and dark themes: the
+   viewer's and Visual's, which the editor's shadow root inherits. */
+:root {
+  --callout-note: light-dark(rgb(8 109 221), rgb(2 122 255));
+  --callout-abstract: light-dark(rgb(0 191 188), rgb(83 223 221));
+  --callout-info: var(--callout-note);
+  --callout-todo: var(--callout-note);
+  --callout-tip: var(--callout-abstract);
+  --callout-success: light-dark(rgb(8 185 78), rgb(68 207 110));
+  --callout-question: light-dark(rgb(236 117 0), rgb(233 151 63));
+  --callout-warning: var(--callout-question);
+  --callout-failure: light-dark(rgb(233 49 71), rgb(251 70 76));
+  --callout-danger: var(--callout-failure);
+  --callout-bug: var(--callout-failure);
+  --callout-example: light-dark(rgb(120 82 238), rgb(168 130 255));
+  --callout-quote: rgb(158 158 158);
+}
+
 .markdown .callout {
-  --callout: light-dark(rgb(8 109 221), rgb(2 122 255));
+  --callout: var(--callout-note);
   padding: 0.75rem 1rem;
   border-left: 0.25em solid var(--callout);
   border-radius: 6px;
@@ -1754,15 +1771,15 @@ dialog.drawer > .close {
 }
 
 .markdown .callout:is([data-callout="abstract"], [data-callout="tip"]) {
-  --callout: light-dark(rgb(0 191 188), rgb(83 223 221));
+  --callout: var(--callout-abstract);
 }
 
 .markdown .callout[data-callout="success"] {
-  --callout: light-dark(rgb(8 185 78), rgb(68 207 110));
+  --callout: var(--callout-success);
 }
 
 .markdown .callout:is([data-callout="question"], [data-callout="warning"]) {
-  --callout: light-dark(rgb(236 117 0), rgb(233 151 63));
+  --callout: var(--callout-question);
 }
 
 .markdown
@@ -1771,15 +1788,15 @@ dialog.drawer > .close {
     [data-callout="danger"],
     [data-callout="bug"]
   ) {
-  --callout: light-dark(rgb(233 49 71), rgb(251 70 76));
+  --callout: var(--callout-failure);
 }
 
 .markdown .callout[data-callout="example"] {
-  --callout: light-dark(rgb(120 82 238), rgb(168 130 255));
+  --callout: var(--callout-example);
 }
 
 .markdown .callout[data-callout="quote"] {
-  --callout: rgb(158 158 158);
+  --callout: var(--callout-quote);
 }
 
 .markdown .callout-title {
