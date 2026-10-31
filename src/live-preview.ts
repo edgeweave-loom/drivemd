@@ -2655,7 +2655,9 @@ const LOOK = EditorView.theme({
     backgroundSize: "calc(var(--quote-depth) * 1.25em) 100%",
     backgroundRepeat: "no-repeat",
   },
-  ".cm-line:is(.cm-quote, .cm-framed)": {
+  // Apart, since CodeMirror scopes each selector between commas, within
+  // `:is()` too, which then outweighed a code block's padding.
+  ".cm-line.cm-quote, .cm-line.cm-framed": {
     paddingLeft: "calc(var(--text-inset) + var(--quote-depth) * 1.25em)",
     paddingRight: "calc(var(--text-inset) + var(--quote-depth) * 1em)",
   },
@@ -2766,9 +2768,10 @@ const LOOK = EditorView.theme({
     borderBottomRightRadius: "var(--radius-sm)",
   },
   // The cursor's line marked at its start alone, the block staying whole.
-  "&.cm-focused .cm-activeLine:is(.cm-code-block, .cm-framed)": {
-    backgroundColor: "transparent",
-  },
+  "&.cm-focused .cm-activeLine.cm-code-block, &.cm-focused .cm-activeLine.cm-framed":
+    {
+      backgroundColor: "transparent",
+    },
   // Markdown's code at the code's size, as the viewer's: the light
   // styling's headings would make its lines taller.
   ".cm-code-block span:not(.cm-code-language)": { fontSize: "inherit" },
