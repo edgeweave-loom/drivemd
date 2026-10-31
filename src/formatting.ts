@@ -107,6 +107,19 @@ function formatLines(
   return true;
 }
 
+/** Makes the line a heading of that level, or text at 0. */
+function makeHeading(line: Prefix, level: number): ChangeSpec[] {
+  const hashes = line.at + line.heading;
+  if (line.heading === level) return [];
+  if (line.heading === 0) {
+    return [{ from: line.at, insert: `${"#".repeat(level)} ` }];
+  }
+  if (level === 0) return [{ from: line.at, to: line.at + line.headingLength }];
+  return level > line.heading
+    ? [{ from: hashes, insert: "#".repeat(level - line.heading) }]
+    : [{ from: line.at + level, to: hashes }];
+}
+
 /**
  * Turns the lines into headings one level down from the first line's, up
  * to the third, then back to text: `#`, `##`, `###`, none.
@@ -115,19 +128,20 @@ export const cycleHeading: StateCommand = ({ state, dispatch }) =>
   formatLines(state, dispatch, (lines) => {
     const first = lines[0]?.heading ?? 0;
     const level = first >= 3 ? 0 : first + 1;
-    return lines.flatMap((line): ChangeSpec[] => {
-      const hashes = line.at + line.heading;
-      if (line.heading === level) return [];
-      if (line.heading === 0) {
-        return [{ from: line.at, insert: `${"#".repeat(level)} ` }];
-      }
-      if (level === 0)
-        return [{ from: line.at, to: line.at + line.headingLength }];
-      return level > line.heading
-        ? [{ from: hashes, insert: "#".repeat(level - line.heading) }]
-        : [{ from: line.at + level, to: hashes }];
-    });
+    return lines.flatMap((line) => makeHeading(line, level));
   });
+
+/**
+ * Turns the lines into text, at 0, or headings of each level from 1 to 6,
+ * by index.
+ */
+export const HEADINGS: readonly StateCommand[] = [0, 1, 2, 3, 4, 5, 6].map(
+  (level) =>
+    ({ state, dispatch }) =>
+      formatLines(state, dispatch, (lines) =>
+        lines.flatMap((line) => makeHeading(line, level)),
+      ),
+);
 
 type List = "bullet" | "number";
 
