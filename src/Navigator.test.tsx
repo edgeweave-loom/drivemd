@@ -318,6 +318,48 @@ describe("Navigator", () => {
     fireEvent.click(screen.getByRole("link", { name: "DriveMD" }));
     expect(getPlace().href).toBe("/");
   });
+
+  it("lifts the app bar while the page scrolls under it", () => {
+    let scrolled = 0;
+    const scrollY = vi
+      .spyOn(window, "scrollY", "get")
+      .mockImplementation(() => scrolled);
+    open("/");
+    const bar = screen.getByRole("banner");
+
+    try {
+      expect(bar).not.toHaveClass("lifted");
+      scrolled = 120;
+      fireEvent.scroll(window);
+      expect(bar).toHaveClass("lifted");
+      scrolled = 0;
+      fireEvent.scroll(window);
+      expect(bar).not.toHaveClass("lifted");
+    } finally {
+      scrollY.mockRestore();
+    }
+  });
+
+  it("lifts the app bar while iOS pans the screen away from the page's top", () => {
+    const viewport = Object.assign(new EventTarget(), { pageTop: 0.4 });
+    Object.defineProperty(window, "visualViewport", {
+      value: viewport,
+      configurable: true,
+    });
+
+    try {
+      open("/");
+      const bar = screen.getByRole("banner");
+      expect(bar).not.toHaveClass("lifted");
+      viewport.pageTop = 240;
+      act(() => {
+        viewport.dispatchEvent(new Event("scroll"));
+      });
+      expect(bar).toHaveClass("lifted");
+    } finally {
+      Reflect.deleteProperty(window, "visualViewport");
+    }
+  });
 });
 
 describe("Navigator's note bar", () => {

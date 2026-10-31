@@ -268,7 +268,8 @@ button.new-note > .icon {
 
 /* The app bar: DriveMD's mark and name, which lead Home, the search bar
    and the account. Its background runs under the status bar and to the
-   screen's edges, its content clear of them (docs/DESIGN.md, Layout). */
+   screen's edges, its content clear of them (docs/DESIGN.md, Layout).
+   Flat at the page's top, it lifts once the page scrolls under it. */
 .bar {
   position: sticky;
   top: 0;
@@ -282,6 +283,11 @@ button.new-note > .icon {
     calc(var(--space-4) + env(safe-area-inset-right)) 0
     calc(var(--space-4) + env(safe-area-inset-left));
   background: var(--surface);
+  transition: box-shadow 100ms ease-in-out;
+}
+
+.bar.lifted {
+  box-shadow: var(--elevation-2);
 }
 
 .bar h1 {
