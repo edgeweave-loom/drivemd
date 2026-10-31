@@ -4,7 +4,15 @@ import {
   insertNewline,
   isolateHistory,
 } from "@codemirror/commands";
-import { highlightingFor, syntaxTree } from "@codemirror/language";
+import {
+  codeFolding,
+  foldEffect,
+  foldedRanges,
+  highlightingFor,
+  syntaxTree,
+  syntaxTreeAvailable,
+  unfoldEffect,
+} from "@codemirror/language";
 import { searchPanelOpen } from "@codemirror/search";
 import {
   Annotation,
@@ -33,7 +41,7 @@ import {
 } from "@codemirror/view";
 import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
 import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
-import { calloutIcon } from "./callout-icons.tsx";
+import { calloutFold, calloutIcon } from "./callout-icons.tsx";
 import {
   CALLOUT_TYPES,
   calloutMarker,
@@ -131,6 +139,7 @@ const quoting = ViewPlugin.fromClass(
         update.docChanged ||
         update.viewportChanged ||
         vaultChanged(update) ||
+        foldedRanges(update.startState) !== foldedRanges(update.state) ||
         syntaxTree(update.startState) !== syntaxTree(update.state)
       ) {
         this.decorations = quoteLines(update.view);
@@ -188,6 +197,10 @@ interface Callout {
   marks: Stretch;
   /** Its type titled, which titles it when it has no title. */
   untitled: string | null;
+  /** What folding it hides, its lines after its title's, if it folds. */
+  folds: Stretch | null;
+  /** Whether it starts folded, as its `-` says. */
+  folded: boolean;
 }
 
 // What a callout draws in Visual as a quote still, with its blocks.
@@ -218,27 +231,45 @@ function calloutOf(state: EditorState, quote: SyntaxNode): Callout | null {
     if (QUOTED_ALONG.has(inside.name)) return null;
   }
   const untitled = !state.sliceDoc(first.from + marker.length, line.to).trim();
+  const last = state.doc.lineAt(quote.to);
   return {
     type: marker.type,
     marks: { from: line.from, to: first.from + marker.length },
     untitled: untitled ? titled(marker.name) : null,
+    folds:
+      marker.fold && last.from > line.from
+        ? { from: line.to, to: last.to }
+        : null,
+    folded: marker.fold === "-",
   };
 }
 
 /**
  * A callout's lines, which draw its box, the viewer's padding at its top
  * and bottom, and its title's line in its type's color, its marks quieter
- * where they show.
+ * where they show, with the chevron that folds it, if it folds, at its
+ * title's line's end: folded, that line ends its box. The chevron floats
+ * there from the line's start, so that the line's text ends it: WebKit put
+ * no cursor past a widget ending a line, where a tap past the title went.
  */
 function calloutLines(
   state: EditorState,
   quote: SyntaxNode,
-  { type, marks }: Callout,
+  { type, marks, folds }: Callout,
   { from, to }: Stretch,
 ): Range<Decoration>[] {
   const first = state.doc.lineAt(quote.from);
-  const last = state.doc.lineAt(quote.to);
+  const folded = folds && foldAt(state, folds);
+  const last = folded
+    ? state.doc.lineAt(marks.from)
+    : state.doc.lineAt(quote.to);
   const ranges = [CALLOUT_MARKS.range(marks.from, marks.to)];
+  if (folds) {
+    const chevron = new Chevron(Boolean(folded));
+    ranges.push(
+      Decoration.widget({ widget: chevron, side: -1 }).range(marks.from),
+    );
+  }
   const start = state.doc.lineAt(Math.max(from, first.from));
   const end = state.doc.lineAt(Math.min(to, last.from));
   for (let number = start.number; number <= end.number; number++) {
@@ -256,6 +287,148 @@ function calloutLines(
 }
 
 const CALLOUT_MARKS = Decoration.mark({ class: "cm-callout-marks" });
+
+/** The fold that hides what a callout's folding would, if it is folded. */
+function foldAt(state: EditorState, { from, to }: Stretch): Stretch | null {
+  let found: Stretch | null = null;
+  foldedRanges(state).between(from, from, (start, end) => {
+    if (start === from && end === to) found = { from, to };
+  });
+  return found;
+}
+
+/**
+ * The viewer's chevron, which ends a folding callout's title: down while
+ * open, turned right while folded, as it turns.
+ */
+class Chevron extends WidgetType {
+  readonly folded: boolean;
+  constructor(folded: boolean) {
+    super();
+    this.folded = folded;
+  }
+  override eq(other: Chevron): boolean {
+    return other.folded === this.folded;
+  }
+  toDOM(): HTMLElement {
+    const chevron = document.createElement("span");
+    chevron.className = "cm-callout-fold";
+    chevron.append(calloutFold());
+    this.updateDOM(chevron);
+    return chevron;
+  }
+  override updateDOM(chevron: HTMLElement): boolean {
+    chevron.classList.toggle("cm-callout-folded", this.folded);
+    return true;
+  }
+  // The editor takes its taps, which fold or open the callout.
+  override ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+/** The callout whose title's line `at` is on, if Visual draws it. */
+function calloutAt(state: EditorState, at: number): Callout | null {
+  for (
+    let node: SyntaxNode | null = syntaxTree(state).resolveInner(at, 1);
+    node;
+    node = node.parent
+  ) {
+    if (node.name === "Blockquote" && node.parent?.name === "Document") {
+      const callout = calloutOf(state, node);
+      return callout?.marks.from === state.doc.lineAt(at).from ? callout : null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Folds or opens the callout whose chevron is at `at`, writing nothing: the
+ * file keeps its sign.
+ */
+function toggleFold(view: EditorView, at: number): void {
+  const folds = calloutAt(view.state, at)?.folds;
+  if (!folds) return;
+  const folded = foldAt(view.state, folds);
+  view.dispatch({
+    effects: folded ? unfoldEffect.of(folded) : foldEffect.of(folds),
+  });
+}
+
+/**
+ * Folds each callout that starts folded, once, as the note opens in Visual,
+ * or as the editor learns that it is in a vault, once the note is parsed.
+ */
+const foldingAtOpen = ViewPlugin.fromClass(
+  class {
+    done = false;
+    readonly view: EditorView;
+    constructor(view: EditorView) {
+      this.view = view;
+      this.fold(view.state);
+    }
+    update(update: ViewUpdate) {
+      this.fold(update.state);
+    }
+    fold(state: EditorState) {
+      if (this.done || !state.facet(inVault)) return;
+      if (!syntaxTreeAvailable(state)) return;
+      this.done = true;
+      const effects: StateEffect<Stretch>[] = [];
+      syntaxTree(state).iterate({
+        enter: (node) => {
+          if (node.name !== "Blockquote") return;
+          const callout = calloutOf(state, node.node);
+          if (callout?.folded && callout.folds) {
+            effects.push(foldEffect.of(callout.folds));
+          }
+          return false;
+        },
+      });
+      // Not while the view updates.
+      if (effects.length > 0) {
+        queueMicrotask(() => {
+          this.view.dispatch({ effects });
+        });
+      }
+    }
+  },
+);
+
+/**
+ * A folded callout and the cursor: one at the fold's end, which shows at
+ * its title's end, where a tap past the title puts it, goes there, rather
+ * than to its last line, which what is typed would go to unseen, so that
+ * the arrows step over it. A selection that reaches into it opens it, as
+ * Find in note's match does, where CodeMirror opens it only for the
+ * selection's head.
+ */
+const foldedCursor = EditorState.transactionFilter.of((transaction) => {
+  if (!transaction.selection) return transaction;
+  const { from, to, empty, head } = transaction.newSelection.main;
+  const effects: StateEffect<Stretch>[] = [];
+  const titles: number[] = [];
+  foldedRanges(transaction.startState)
+    .map(transaction.changes)
+    .between(from, to, (start, end) => {
+      if (empty && head === end) titles.push(start);
+      else if (from < end && to > start) {
+        effects.push(unfoldEffect.of({ from: start, to: end }));
+      }
+    });
+  const [title] = titles;
+  if (title !== undefined) {
+    return [transaction, { selection: { anchor: title }, sequential: true }];
+  }
+  return effects.length > 0
+    ? [transaction, { effects, sequential: true }]
+    : transaction;
+});
+
+/** No placeholder where a callout is folded: its chevron says so. */
+const FOLDING = codeFolding({
+  placeholderDOM: () => document.createElement("span"),
+});
 
 /**
  * A callout's type, drawn as the viewer's title starts: its icon, then the
@@ -673,21 +846,33 @@ function isTaskBox(target: EventTarget | null): target is HTMLInputElement {
   );
 }
 
+/** What a press on the target does: tick a task, or fold a callout. */
+function pressing(
+  target: EventTarget | null,
+): ((view: EditorView, at: number) => void) | null {
+  if (isTaskBox(target)) return tick;
+  return target instanceof HTMLElement &&
+    target.classList.contains("cm-callout-fold")
+    ? toggleFold
+    : null;
+}
+
 /**
- * A tap on a task's box ticks the task, as one edit that undo reverts,
- * where the cursor stays: neither the focus nor the selection moves, nor
- * does the box but with the text. A finger's tap ticks it as it lifts,
- * the touch's start kept from the browser, which then neither focuses,
- * scrolls nor sends mouse events: Chrome on Android otherwise brings up the
- * keyboard that Back hid, and does so too if the touch's end is kept from
- * it (seen in the Android emulator, #281). A finger that moves, or stays
- * down as long as a long press, leaves the task as it is.
+ * A tap on a task's box ticks the task, as one edit that undo reverts, and
+ * one on a callout's chevron folds or opens it, writing nothing, where the
+ * cursor stays: neither the focus nor the selection moves, nor does the box
+ * but with the text. A finger's tap acts as it lifts, the touch's start kept
+ * from the browser, which then neither focuses, scrolls nor sends mouse
+ * events: Chrome on Android otherwise brings up the keyboard that Back hid,
+ * and does so too if the touch's end is kept from it (seen in the Android
+ * emulator, #281). A finger that moves, or stays down as long as a long
+ * press, leaves the task or the callout as it is.
  */
 const ticking = EditorView.domEventHandlers({
   touchstart(event) {
     const touch = event.changedTouches[0];
     boxPressed = null;
-    if (!isTaskBox(event.target) || event.touches.length !== 1 || !touch) {
+    if (!pressing(event.target) || event.touches.length !== 1 || !touch) {
       return false;
     }
     event.preventDefault();
@@ -697,19 +882,23 @@ const ticking = EditorView.domEventHandlers({
   touchend(event, view) {
     const press = boxPressed;
     boxPressed = null;
-    if (!isTaskBox(event.target) || !tapped(event, press)) return false;
-    tick(view, view.posAtDOM(event.target));
+    const act = pressing(event.target);
+    if (!act || !tapped(event, press) || !(event.target instanceof Node)) {
+      return false;
+    }
+    act(view, view.posAtDOM(event.target));
     // Handled, which CodeMirror would keep from the browser.
     return false;
   },
   mousedown(event, view) {
-    if (!isTaskBox(event.target)) return false;
+    const act = pressing(event.target);
+    if (!act || !(event.target instanceof Node)) return false;
     event.preventDefault();
-    tick(view, view.posAtDOM(event.target));
+    act(view, view.posAtDOM(event.target));
     return true;
   },
   click(event) {
-    if (!isTaskBox(event.target)) return false;
+    if (!pressing(event.target)) return false;
     event.preventDefault();
     return true;
   },
@@ -2407,6 +2596,25 @@ const LOOK = EditorView.theme({
     marginRight: "0.25rem",
     verticalAlign: "top",
   },
+  // Its chevron at its title's line's end, a tap target of 44 px that
+  // takes no more room than an icon, turning as the viewer's does.
+  ".cm-callout-fold": {
+    float: "right",
+    padding: "0.625rem 0.875rem",
+    margin: "-0.625rem -0.875rem -0.625rem 0.25rem",
+    cursor: "pointer",
+  },
+  ".cm-callout-chevron": {
+    display: "block",
+    width: "1em",
+    height: "1lh",
+    pointerEvents: "none",
+    transition: "transform 100ms ease-in-out",
+  },
+  ".cm-callout-folded .cm-callout-chevron": { transform: "rotate(-90deg)" },
+  "@media (prefers-reduced-motion: reduce)": {
+    ".cm-callout-chevron": { transition: "none" },
+  },
   // The viewer's code block, as far in as its quote's text, its text 1rem
   // further in, drawn under its lines, whose height it keeps: its fences'
   // lines, hidden, are its padding.
@@ -2528,6 +2736,9 @@ const LOOK = EditorView.theme({
  * edit splits.
  */
 export const livePreview: Extension = [
+  FOLDING,
+  foldingAtOpen,
+  foldedCursor,
   hiding,
   scrollingInstead,
   EditorView.atomicRanges.of(
