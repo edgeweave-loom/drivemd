@@ -999,6 +999,30 @@ describe("Visual", () => {
     expect(foldedRanges(view.state).size).toBe(0);
   });
 
+  it("draws a table and a code block in a vault's callout, in its box", async () => {
+    const { view } = open(
+      "> [!note] Tea\n> | A | B |\n>| - | - |\n>  | 1 | 2 |\n>\n> ```js\n> x\n> ```",
+      "\n",
+      true,
+      true,
+    );
+    await parsed(view);
+
+    expect(
+      [...view.contentDOM.querySelectorAll(".cm-table :is(th, td)")].map(
+        (cell) => cell.textContent,
+      ),
+    ).toEqual(["A", "B", "1", "2"]);
+    const frame = view.contentDOM.querySelector<HTMLElement>(".cm-table");
+    expect(frame?.className).toBe("cm-table cm-table-framed cm-quote-1");
+    expect(frame?.style.backgroundImage).toContain("var(--callout-note)");
+    // Its box ends with the code block's closing fence.
+    expect(frames(view)).toEqual(["note^", "note", "note", "note", "note_"]);
+    expect(
+      view.contentDOM.querySelectorAll(".cm-callout-note.cm-code-block"),
+    ).toHaveLength(3);
+  });
+
   it("draws a callout as a quote outside a vault", async () => {
     const { view } = open("> [!tip] Title\n> Body", "\n", true);
     await parsed(view);

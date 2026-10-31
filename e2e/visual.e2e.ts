@@ -443,6 +443,51 @@ test("draws a code block in a quote in Visual after its bar, its text 1rem in", 
   );
 });
 
+test("draws a table in a vault's callout in Visual, in its box, whose cells a tap edits in place", async ({
+  page,
+  drive,
+}, info) => {
+  const today = drive.files.get("today");
+  if (!today) throw new Error("No today");
+  today.content =
+    "> [!tip] Cups\n> | Step | Owner |\n>| --- | --- |\n> | Tea | Ada |\n";
+  const note = await editInVisual(page, "today");
+  const title = note.locator(".cm-line").first();
+  const frame = note.locator(".cm-table");
+  const table = frame.getByRole("table");
+  await expect(title).toHaveText("Cups");
+  await expect(table.getByRole("cell")).toHaveText(["Tea", "Ada"]);
+
+  // In the box, one level in, as a quote's text, the box's padding below.
+  await expect(frame).toHaveCSS("background-image", /rgb\(0, 191, 188\)/);
+  const em = Number.parseFloat(
+    await title.evaluate((element) => getComputedStyle(element).fontSize),
+  );
+  const [lineBox, tableBox] = await Promise.all([
+    title.boundingBox(),
+    table.boundingBox(),
+  ]);
+  const textInset = Number.parseFloat(
+    await note.evaluate((element) =>
+      getComputedStyle(element).getPropertyValue("--text-inset"),
+    ),
+  );
+  expect(tableBox?.x).toBeCloseTo((lineBox?.x ?? 0) + textInset + 1.25 * em, 0);
+  await expect(frame).toHaveCSS("padding-bottom", "12px");
+
+  const cell = table.getByRole("cell", { name: "Ada" });
+  if (info.project.name === "desktop-chromium") await cell.click();
+  else await cell.tap();
+  const editing = note.getByRole("textbox", { name: "Cell" });
+  await expect(editing).toBeFocused();
+  await page.keyboard.type("!");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("today")?.content)).toBe(
+    "> [!tip] Cups\n> | Step | Owner |\n>| --- | --- |\n> | Tea | Ada! |\n",
+  );
+});
+
 test("draws a table in a quote in Visual beside its bars, whose cells a tap edits in place", async ({
   page,
   drive,

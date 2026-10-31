@@ -244,7 +244,9 @@ function framedLine(levels: Level[]): Decoration {
   return Decoration.line({
     class: classes.join(" "),
     attributes: {
-      style: `padding-top: ${inner?.top ? "0.75rem" : "0"}; padding-bottom: calc(${String(ends)} * 0.75rem${gap})`,
+      // The boxes' padding below, which a code block ending with them
+      // stays clear of.
+      style: `--boxes-below: ${String(ends * 0.75)}rem; padding-top: ${inner?.top ? "0.75rem" : "0"}; padding-bottom: calc(var(--boxes-below)${gap})`,
     },
   });
 }
@@ -2755,7 +2757,7 @@ const LOOK = EditorView.theme({
     content: '""',
     position: "absolute",
     inset:
-      "0 calc(var(--text-inset) + var(--quote-depth, 0) * 1em) 0 calc(var(--text-inset) + var(--quote-depth, 0) * 1.25em)",
+      "0 calc(var(--text-inset) + var(--quote-depth, 0) * 1em) var(--boxes-below, 0) calc(var(--text-inset) + var(--quote-depth, 0) * 1.25em)",
     zIndex: "-1",
     background: "var(--surface-container-high)",
   },
@@ -2817,7 +2819,7 @@ const LOOK = EditorView.theme({
   },
   // In a quote or a callout, its bars and boxes in the frame's border,
   // which the table scrolls clear of, as the viewer's table does.
-  ".cm-table:is(.cm-quote, .cm-table-framed)": {
+  ".cm-table.cm-quote, .cm-table.cm-table-framed": {
     borderLeft:
       "calc(var(--text-inset) + var(--quote-depth) * 1.25em) solid transparent",
     paddingLeft: "0",
