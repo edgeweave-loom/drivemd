@@ -1,4 +1,5 @@
 import { syntaxTreeAvailable } from "@codemirror/language";
+import { StateEffect } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import {
   act,
@@ -8,7 +9,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Editor } from "./Editor.tsx";
 import { holdTouch } from "./test/screen.ts";
 
@@ -88,6 +89,32 @@ describe("the formatting toolbar", () => {
     expect(
       within(toolbar()).getByRole("button", { name: "Link" }),
     ).not.toHaveAttribute("aria-pressed");
+  });
+
+  it("leaves a mouse's selections to scroll as CodeMirror scrolls them", () => {
+    const view = open("Some tea.\n\nCups.");
+    const scrolls: number[] = [];
+    view.dispatch({
+      effects: StateEffect.appendConfig.of(
+        EditorView.updateListener.of((update) => {
+          for (const { selection, effects } of update.transactions) {
+            if (selection) scrolls.push(effects.length);
+          }
+        }),
+      ),
+    });
+
+    // Long after any finger, as a drag selects again every 50 ms: a click
+    // never lands under the toolbar.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.now() + 60_000);
+      view.dispatch({ selection: { anchor: 12 }, userEvent: "select.pointer" });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(scrolls).toEqual([0]);
   });
 
   it("shows none on a touch screen, which has the keyboard toolbar", () => {
