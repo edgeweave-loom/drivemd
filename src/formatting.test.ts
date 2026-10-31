@@ -22,7 +22,10 @@ import {
   insertLink,
   outdentLines,
   toggleBold,
+  toggleCode,
+  toggleItalic,
   toggleList,
+  toggleStrikethrough,
 } from "./formatting.ts";
 
 /**
@@ -127,6 +130,50 @@ describe("toggleBold", () => {
 
   it("bolds each selected range", () => {
     expect(run(toggleBold, "«a» b «c»").text).toBe("**«a»** b **«c»**");
+  });
+});
+
+describe("toggleItalic", () => {
+  it.each([
+    ["a «word» b", "a *«word»* b"],
+    ["a |b", "a *|*b"],
+    ["a *|*b", "a |b"],
+    ["a *wo|rd* b", "a wo|rd b"],
+    ["a _wo|rd_ b", "a wo|rd b"],
+    ["a *word|* b", "a *word*| b"],
+    ["a ***wo|rd*** b", "a **wo|rd** b"],
+    ["a **«word»** b", "a ***«word»*** b"],
+  ])("turns %j into %j", (before, after) => {
+    expect(run(toggleItalic, before).text).toBe(after);
+  });
+});
+
+describe("toggleStrikethrough", () => {
+  it.each([
+    ["a «word» b", "a ~~«word»~~ b"],
+    ["a |b", "a ~~|~~b"],
+    ["a ~~|~~b", "a |b"],
+    ["a ~~wo|rd~~ b", "a wo|rd b"],
+    ["a ~~word|~~ b", "a ~~word~~| b"],
+  ])("turns %j into %j", (before, after) => {
+    expect(run(toggleStrikethrough, before).text).toBe(after);
+  });
+});
+
+describe("toggleCode", () => {
+  it.each([
+    ["a «word» b", "a `«word»` b"],
+    ["a |b", "a `|`b"],
+    ["a `|`b", "a |b"],
+    ["a `wo|rd` b", "a wo|rd b"],
+    ["a ``wo|rd`` b", "a wo|rd b"],
+    ["a `word|` b", "a `word`| b"],
+    ["a «x`y» b", "a ``«x`y»`` b"],
+    ["a «`y» b", "a `` «`y» `` b"],
+    ["a `` `y| `` b", "a `y| b"],
+    ["a ` | ` b", "a  |  b"],
+  ])("turns %j into %j", (before, after) => {
+    expect(run(toggleCode, before).text).toBe(after);
   });
 });
 

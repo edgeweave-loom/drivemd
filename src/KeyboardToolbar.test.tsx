@@ -152,6 +152,7 @@ describe("the keyboard toolbar", () => {
   it.each([
     ["Heading", "tea", "# tea"],
     ["Bold", "tea", "****tea"],
+    ["Italic", "tea", "**tea"],
     ["List", "tea", "- tea"],
     ["Checkbox", "tea", "- [ ] tea"],
     ["Link", "tea", "[]()tea"],
@@ -297,6 +298,7 @@ describe("the keyboard toolbar", () => {
       "Align center",
       "Align right",
       "Bold",
+      "Italic",
       "Link",
       "Find in note",
       "Table options",

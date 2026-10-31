@@ -35,6 +35,7 @@ import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
 import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
 import { CALLOUT_TYPES, calloutMarker, type CalloutType } from "./callouts.ts";
 import { findInNote } from "./find.ts";
+import { INLINE_KEYS } from "./formatting.ts";
 import { TOUCH } from "./layout.ts";
 
 interface Stretch {
@@ -1786,9 +1787,11 @@ const editingCells = ViewPlugin.fromClass(
               (this.move(stepping(1), "start") || this.out(1, false)),
           },
           { key: "Escape", run: () => this.leave() },
-          // The note's history and Find in note.
-          ...historyKeymap.flatMap(({ run, ...binding }) =>
-            run ? [{ ...binding, run: () => run(view) }] : [],
+          // The note's history, its formatting that keeps the row whole,
+          // as the keyboard toolbar's in a cell, and Find in note.
+          ...[...historyKeymap, ...INLINE_KEYS].flatMap(
+            ({ run, ...binding }) =>
+              run ? [{ ...binding, run: () => run(view) }] : [],
           ),
           { key: "Mod-f", run: () => findInNote(view) },
           ...defaultKeymap,
