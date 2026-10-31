@@ -225,6 +225,29 @@ describe("Editor", () => {
     );
   });
 
+  it.each([
+    ["Ctrl+B", { key: "b" }, "**tea**"],
+    ["Ctrl+I", { key: "i" }, "*tea*"],
+    // Shift turns the key into its symbol, which the key's code tells.
+    ["Ctrl+Shift+X", { key: "X", keyCode: 88, shiftKey: true }, "~~tea~~"],
+    ["Ctrl+E", { key: "e" }, "`tea`"],
+    ["Ctrl+K", { key: "k" }, "[tea]()"],
+    ["Ctrl+Shift+8", { key: "*", keyCode: 56, shiftKey: true }, "- tea"],
+    ["Ctrl+Shift+9", { key: "(", keyCode: 57, shiftKey: true }, "- [ ] tea"],
+  ])(
+    "formats the selection from %s, as the toolbar's key does",
+    (_name, key, after) => {
+      const { view, onChange } = open("tea");
+      view.dispatch({ selection: { anchor: 0, head: 3 } });
+
+      expect(press(view, key.key, { ...key, ctrlKey: true })).toBe(true);
+
+      expect(onChange).toHaveBeenLastCalledWith(after);
+      press(view, "z", { ctrlKey: true });
+      expect(onChange).toHaveBeenLastCalledWith("tea");
+    },
+  );
+
   it("takes a task tapped in the preview as one edit, if it still holds the text shown", () => {
     const { view, onChange, handle } = open(
       "- [ ] Boil\r\n- [ ] Pour\r\n",
@@ -1593,6 +1616,44 @@ describe("Visual's tables", () => {
     });
     expect(view.state.sliceDoc()).toBe(NOTE.replace("_Ada_", "_Ada_!"));
     expect(cell.state.sliceDoc()).toBe("_Ada_!");
+    expect(cellEditor(view)).toBe(cell);
+  });
+
+  it("formats a cell's text from the keyboard, but not its lines, which would break its row", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "Ada");
+    act(() => {
+      cell.dispatch({ selection: { anchor: 0, head: 5 } });
+    });
+
+    // Italic, written with `_`, goes; then comes back, with `*`.
+    for (const after of ["Ada", "*Ada*"]) {
+      act(() => {
+        press(cell, "i", { ctrlKey: true });
+      });
+      expect(cell.state.sliceDoc()).toBe(after);
+    }
+    act(() => {
+      press(cell, "b", { ctrlKey: true });
+    });
+    expect(view.state.sliceDoc()).toBe(NOTE.replace("_Ada_", "***Ada***"));
+    expect(cell.state.sliceDoc()).toBe("***Ada***");
+    act(() => {
+      press(cell, "k", { ctrlKey: true });
+    });
+    expect(cell.state.sliceDoc()).toBe("***[Ada]()***");
+
+    const before = view.state.sliceDoc();
+    for (const [key, keyCode] of [
+      ["*", 56],
+      ["(", 57],
+    ] as const) {
+      act(() => {
+        press(cell, key, { keyCode, shiftKey: true, ctrlKey: true });
+      });
+    }
+    expect(view.state.sliceDoc()).toBe(before);
     expect(cellEditor(view)).toBe(cell);
   });
 

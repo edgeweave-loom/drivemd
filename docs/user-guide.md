@@ -186,6 +186,7 @@ While you edit on a touch screen, a row of keys sits above the keyboard. It scro
 | **Undo**, **Redo**                                | Take back or redo one change                                                                                                                    |
 | **Heading**                                       | `#`, `##`, `###`, then text again                                                                                                               |
 | **Bold**                                          | Wraps the selection in `**`, or takes it away                                                                                                   |
+| **Italic**                                        | Wraps the selection in `*`, or takes it away                                                                                                    |
 | **List**                                          | Adds or removes a `- ` bullet                                                                                                                   |
 | **Checkbox**                                      | An open task, a done one, then a plain list item again                                                                                          |
 | **Link**, **Open link**                           | Makes the selection a link; in a link, opens it                                                                                                 |
@@ -209,6 +210,13 @@ On a Mac, use Cmd; elsewhere, Ctrl.
 | Cmd/Ctrl+S                            | Save the note                                  |
 | Cmd/Ctrl+F                            | Find in note, while editing                    |
 | Cmd/Ctrl+click                        | Open the link under the pointer, while editing |
+| Cmd/Ctrl+B                            | Bold, while editing                            |
+| Cmd/Ctrl+I                            | Italic, while editing                          |
+| Cmd/Ctrl+Shift+X                      | Strikethrough, while editing                   |
+| Cmd/Ctrl+E                            | Inline code, while editing                     |
+| Cmd/Ctrl+K                            | Make a link, while editing                     |
+| Cmd/Ctrl+Shift+8                      | Make a list, or plain text, while editing      |
+| Cmd/Ctrl+Shift+9                      | Make a task, then tick it, while editing       |
 | Cmd/Ctrl+Z                            | Undo, while editing                            |
 | Cmd+Shift+Z (Mac), Ctrl+Y (elsewhere) | Redo, while editing                            |
 | Cmd/Ctrl+]                            | Indent a list item, while editing              |
