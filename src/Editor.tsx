@@ -285,6 +285,7 @@ function extensions(
   changed: (update: ViewUpdate) => void,
   follow: (href: string) => void,
   clearance: () => { top: number; bottom: number } | null,
+  covered: () => boolean,
   menu: TableMenuControl,
 ): Extension[] {
   return [
@@ -330,13 +331,14 @@ function extensions(
     // The cursor stays clear of the keyboard toolbar and the app bar when
     // the editor scrolls to it.
     EditorView.scrollMargins.of(clearance),
-    // A tap places the cursor without scrolling to it, where the toolbar
-    // may cover it.
+    // A tap places the cursor without scrolling to it, where the keyboard
+    // toolbar or Find in note's bar may cover it; a click never lands under
+    // the formatting toolbar, which a mouse's drag would scroll past.
     EditorState.transactionExtender.of((transaction) =>
       transaction.selection &&
       transaction.isUserEvent("select") &&
       !transaction.scrollIntoView &&
-      clearance()
+      covered()
         ? { effects: EditorView.scrollIntoView(transaction.newSelection.main) }
         : null,
     ),
@@ -476,6 +478,7 @@ export function Editor({
         }
       : null,
   );
+  const covered = useEffectEvent(() => toolbar || searching);
   const followed = useEffectEvent((href: string) => {
     onFollow(href);
   });
@@ -490,14 +493,22 @@ export function Editor({
       element,
       EditorState.create({
         doc: initial,
-        extensions: extensions(lineBreak, visual, edited, followed, clearance, {
-          openAt: (x, y) => {
-            menu.current?.openAt(x, y);
+        extensions: extensions(
+          lineBreak,
+          visual,
+          edited,
+          followed,
+          clearance,
+          covered,
+          {
+            openAt: (x, y) => {
+              menu.current?.openAt(x, y);
+            },
+            close: () => {
+              menu.current?.close();
+            },
           },
-          close: () => {
-            menu.current?.close();
-          },
-        }),
+        ),
       }),
     );
     editor.current = view;
