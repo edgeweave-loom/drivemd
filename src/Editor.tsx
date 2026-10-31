@@ -60,6 +60,8 @@ import { commandKey } from "./keys.ts";
 import { useLayout, useTouch } from "./layout.ts";
 import {
   cellEditor,
+  holdCell,
+  releaseCell,
   cellSetup,
   inCell,
   livePreview,
@@ -585,13 +587,24 @@ export function Editor({
       {formatting &&
         createPortal(
           <FormattingBar
-            inCell={cell !== null}
+            cell={cell}
+            tableMenu={menuId}
             formats={formats}
             onCommand={(command) => {
               if (editor.current) command(editor.current);
             }}
             onLeave={() => {
               text()?.focus();
+            }}
+            onHold={(held, back) => {
+              const note = editor.current;
+              if (!note) return;
+              if (held) holdCell(note);
+              // Once the focus is where it goes, as back to the cell.
+              else
+                queueMicrotask(() => {
+                  releaseCell(note, back);
+                });
             }}
           />,
           formatting,

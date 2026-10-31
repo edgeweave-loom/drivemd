@@ -713,6 +713,20 @@ button.account {
   }
 }
 
+/* Below the formatting toolbar's Table button. */
+.table-menu.below {
+  inset: calc(var(--app-bar-bottom) + 48px) auto auto var(--space-4);
+}
+
+@supports (anchor-name: --table-button) {
+  .table-menu.below {
+    position-anchor: --table-button;
+    inset: anchor(bottom) auto auto anchor(left);
+    margin: var(--space-1) 0 0;
+    position-try-fallbacks: flip-inline;
+  }
+}
+
 @media (pointer: fine) {
   .table-menu > button {
     min-height: 32px;
@@ -2447,17 +2461,32 @@ body:has(> .keyboard-toolbar) .editor {
   color: var(--on-secondary-container);
 }
 
-/* The cursor's line's style, which opens its menu. */
-.format-bar > button.style {
+/* The cursor's line's style, and a table's menu, which open their menus. */
+.format-bar > button:is(.style, .table) {
   display: flex;
   gap: var(--space-1);
   justify-content: space-between;
-  width: 120px;
+  width: auto;
   padding: 0 var(--space-1) 0 var(--space-2);
   color: var(--on-surface);
   font: inherit;
   font-size: 14px;
+}
+
+.format-bar > button.style {
+  width: 120px;
   anchor-name: --style;
+}
+
+.format-bar > button.table {
+  anchor-name: --table-button;
+}
+
+/* A table's edit that does not apply to the cell. */
+.format-bar > button[aria-disabled="true"] {
+  background-image: none;
+  color: color-mix(in srgb, var(--on-surface) 38%, transparent);
+  cursor: default;
 }
 
 .style-menu {
