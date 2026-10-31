@@ -1890,11 +1890,7 @@ describe("Visual's tables", () => {
     });
   });
 
-  it.each([
-    ["a click", fireEvent.mouseDown, false],
-    // Its menu left to the browser.
-    ["a right-click", fireEvent.contextMenu, true],
-  ])(
+  it.each([["a click", fireEvent.mouseDown, false]])(
     "shows a missing cell's table as written from %s, the cursor at its row's end",
     async (_, click, browsers) => {
       const { view } = open(NOTE, "\n", true);
@@ -2228,6 +2224,19 @@ describe("Visual's tables", () => {
     expect(view.state.sliceDoc()).toBe(NOTE);
   });
 
+  it("leaves a right-click on a table's cell, drawn or edited, to the browser", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+
+    expect(
+      fireEvent.contextMenu(
+        within(view.contentDOM).getByRole("cell", { name: "Ada" }),
+      ),
+    ).toBe(true);
+    expect(fireEvent.contextMenu(editCell(view, "Ada").contentDOM)).toBe(true);
+    expect(screen.queryByRole("menu", { name: "Table" })).toBeNull();
+  });
+
   it("writes a line break from the table's menu in place of the cell's selection, as Shift+Enter, one edit for undo", async () => {
     const { view } = open(NOTE, "\n", true);
     await parsed(view);
@@ -2304,95 +2313,6 @@ describe("Visual's tables", () => {
     },
   );
 
-  it("opens the table's menu once a press that asks for it ends, which would close it", async () => {
-    const { view } = open(NOTE, "\n", true);
-    await parsed(view);
-    const ada = within(view.contentDOM).getByRole("cell", { name: "Ada" });
-
-    // As a Mac asks for it, and WebKit then closes it as the press ends.
-    expect(fireEvent.contextMenu(ada, { buttons: 2 })).toBe(false);
-    expect(screen.queryByRole("menu", { name: "Table" })).toBeNull();
-    expect(cellEditor(view)?.state.sliceDoc()).toBe("_Ada_");
-    fireEvent.pointerUp(window);
-    expect(screen.queryByRole("menu", { name: "Table" })).toBeNull();
-
-    expect(await screen.findByRole("menu", { name: "Table" })).toBeVisible();
-  });
-
-  it("keeps the cell a press asks the menu for edited, as the menu open closes before it ends", async () => {
-    const { view } = open(NOTE, "\n", true);
-    await parsed(view);
-    const menu = menuOn(view, "Ada");
-    const boil = within(view.contentDOM).getByRole("cell", {
-      name: "Boil | pour",
-    });
-
-    // As a Mac asks for it: the menu open closes, and the browser tells of
-    // it a moment later, before the press ends.
-    expect(fireEvent.contextMenu(boil, { buttons: 2 })).toBe(false);
-    act(() => {
-      menu.dispatchEvent(
-        Object.assign(new Event("toggle"), { newState: "closed" }),
-      );
-    });
-    fireEvent.pointerUp(window);
-    await waitFor(() => {
-      expect(menu).toBeVisible();
-    });
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(cellEditor(view)?.state.sliceDoc()).toBe("Boil \\| pour");
-  });
-
-  it("opens no menu for a press whose cell closed before it ended", async () => {
-    const { view } = open(NOTE, "\n", true);
-    await parsed(view);
-    const ada = within(view.contentDOM).getByRole("cell", { name: "Ada" });
-    fireEvent.contextMenu(ada, { buttons: 2 });
-    act(() => {
-      view.focus();
-      view.dispatch({ selection: { anchor: 0 } });
-    });
-    await waitFor(() => {
-      expect(cellEditor(view)).toBeNull();
-    });
-    // Even edited again before the press ends.
-    editCell(view, "Ada");
-
-    fireEvent.pointerUp(window);
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-
-    expect(screen.queryByRole("menu", { name: "Table" })).toBeNull();
-    // Nor does it hold the cell edited next once the focus leaves it.
-    editCell(view, "Step");
-    act(() => {
-      view.focus();
-      view.dispatch({ selection: { anchor: 0 } });
-    });
-    await waitFor(() => {
-      expect(cellEditor(view)).toBeNull();
-    });
-  });
-
-  it("opens no menu for a press the system takes over", async () => {
-    const { view } = open(NOTE, "\n", true);
-    await parsed(view);
-    const ada = within(view.contentDOM).getByRole("cell", { name: "Ada" });
-
-    fireEvent.contextMenu(ada, { buttons: 2 });
-    fireEvent.pointerCancel(window);
-    fireEvent.pointerUp(window);
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-
-    expect(screen.queryByRole("menu", { name: "Table" })).toBeNull();
-    expect(cellEditor(view)?.state.sliceDoc()).toBe("_Ada_");
-  });
-
   it("closes the table's menu with its cell, as Source shows the note", async () => {
     const { view, showIn } = open(NOTE, "\n", true);
     await parsed(view);
@@ -2432,25 +2352,6 @@ describe("Visual's tables", () => {
     });
 
     expect(cellEditor(view)).toBeNull();
-  });
-
-  it("leaves a finger's long press on a cell to the system", async () => {
-    const { view } = open(NOTE, "\n", true);
-    await parsed(view);
-    const pressed = (target: Element) => {
-      const event = new MouseEvent("contextmenu", {
-        bubbles: true,
-        cancelable: true,
-      });
-      Object.defineProperty(event, "pointerType", { value: "touch" });
-      return target.dispatchEvent(event);
-    };
-
-    expect(
-      pressed(within(view.contentDOM).getByRole("cell", { name: "Ada" })),
-    ).toBe(true);
-    expect(pressed(editCell(view, "Ada").contentDOM)).toBe(true);
-    expect(screen.queryByRole("menu", { name: "Table" })).toBeNull();
   });
 
   const TABLE = "| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |";

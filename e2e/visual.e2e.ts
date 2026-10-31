@@ -764,17 +764,14 @@ test("edits a table's rows and columns from a toolbar's buttons or its Table men
     await expect(options).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(editing).toBeFocused();
-  } else if (info.project.name === "ipad-webkit") {
-    // A trackpad's right-click, which WebKit asks the menu for as the press
-    // starts, and would close it as it ends, with all the items.
-    await table.getByRole("cell", { name: "Grace" }).click({ button: "right" });
-    await expect(menu).toBeVisible();
-    await expect(menu.getByRole("menuitem")).toHaveCount(11);
-    await expect(editing).toHaveText("Grace");
-    await page.keyboard.press("Escape");
+    // A right-click is the browser's.
+    await editing.click({ button: "right" });
     await expect(menu).toBeHidden();
-    await expect(editing).toBeFocused();
-    // Then above the key again.
+  } else if (info.project.name === "ipad-webkit") {
+    // A trackpad's right-click is the browser's too.
+    await editing.click({ button: "right" });
+    await expect(menu).toBeHidden();
+    await expect(editing).toHaveText("2");
     await fromKey(() => options.click());
     await page.keyboard.press("Escape");
   } else {

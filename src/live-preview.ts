@@ -1434,9 +1434,8 @@ export function cellEditor(view: EditorView): EditorView | null {
   return view.plugin(editingCells)?.editing?.cell ?? null;
 }
 
-/** The table's menu: opened at a point, for the cell edited in place. */
+/** The table's menu, which closes with the cell it edits. */
 export interface TableMenuControl {
-  openAt: (x: number, y: number) => void;
   close: () => void;
 }
 
@@ -1491,11 +1490,6 @@ export function holdCell(view: EditorView): void {
  */
 export function releaseCell(view: EditorView, back: boolean): void {
   view.plugin(editingCells)?.released(back);
-}
-
-/** Whether a finger's long press asks for the menu, which is the system's. */
-function pressedLong(event: MouseEvent): boolean {
-  return (event as Partial<PointerEvent>).pointerType === "touch";
 }
 
 /**
@@ -1571,8 +1565,6 @@ const editingCells = ViewPlugin.fromClass(
     // Whether the table's menu or the formatting toolbar has the focus,
     // the cell edited staying so.
     holding = false;
-    // The press whose end the table's menu waits for.
-    pressing: AbortController | null = null;
     readonly view: EditorView;
     constructor(view: EditorView) {
       this.view = view;
@@ -1733,13 +1725,6 @@ const editingCells = ViewPlugin.fromClass(
                 this.close();
             });
           },
-          contextmenu: (event) => {
-            const host = this.editing?.host;
-            if (!host || pressedLong(event)) return false;
-            const shown = this.menuAt(host, event);
-            if (shown) event.preventDefault();
-            return shown;
-          },
         }),
         // The note's, clear of the keyboard toolbar and the app bar.
         EditorView.scrollMargins.of(() => margins(view)),
@@ -1834,8 +1819,7 @@ const editingCells = ViewPlugin.fromClass(
       const place = placeOf(host);
       if (frame && place)
         drawing.get(frame)?.fill(host, place.row, place.column);
-      // Its menu, which would edit another cell, shown or waited for.
-      this.pressing?.abort();
+      // Its menu, which would edit another cell.
       view.state.facet(tableMenu)?.close();
       // Never within an update of the note's, nor once another cell is
       // edited, as from Tab.
@@ -2002,56 +1986,6 @@ const editingCells = ViewPlugin.fromClass(
       this.reveal();
     }
     /**
-     * Opens the table's menu on a cell, edited first, where `event` asks
-     * for it within the cell: whether it does. A cell its row lacks, or one
-     * clicked while Find in note is open, shows its table as written
-     * instead. From the keyboard, the point the browser gives may be
-     * outside the cell. A press that asks for the menu as it starts, as on
-     * a Mac, would close it as it ends, in WebKit: the menu waits for its
-     * end.
-     */
-    menuAt(host: HTMLTableCellElement, event: MouseEvent): boolean {
-      const menu = this.view.state.facet(tableMenu);
-      if (!menu) return false;
-      this.pressing?.abort();
-      this.open(host);
-      if (this.editing?.host !== host) return false;
-      const { clientX: x, clientY: y } = event;
-      const { left, right, top, bottom } = host.getBoundingClientRect();
-      const within = x >= left && x <= right && y >= top && y <= bottom;
-      // Unless the cell was left meanwhile.
-      const shown = () => {
-        if (this.editing?.host !== host) return;
-        this.holding = true;
-        menu.openAt(within ? x : left, within ? y : bottom);
-      };
-      if (event.buttons === 0) {
-        shown();
-        return true;
-      }
-      // Once the press ends, after the browser's own reaction to its end,
-      // unless the system takes it over.
-      const pressing = new AbortController();
-      this.pressing = pressing;
-      const options = { capture: true, signal: pressing.signal };
-      addEventListener(
-        "pointerup",
-        () => {
-          pressing.abort();
-          setTimeout(shown);
-        },
-        options,
-      );
-      addEventListener(
-        "pointercancel",
-        () => {
-          pressing.abort();
-        },
-        options,
-      );
-      return true;
-    }
-    /**
      * Makes `edit` from the table's menu to the cell edited, then edits the
      * cell it leaves edited, or gives the cell the focus back should it
      * change nothing: whether it applies. A line break is Shift+Enter's, in
@@ -2120,8 +2054,8 @@ function margins(view: EditorView): Partial<Rect> {
 let cellPressed: Press | null = null;
 
 /**
- * A click on a table's cell, or a finger's tap, edits that cell, and a
- * right-click opens its menu too. A finger's tap does so as it lifts, its
+ * A click on a table's cell, or a finger's tap, edits that cell; a
+ * right-click is the browser's. A finger's tap does so as it lifts, its
  * end kept from the browser, which would place the cursor itself: in
  * WebKit, at the note's start. A finger that moves scrolls the table or
  * the page, and one that stays down as long as a long press is left to the
@@ -2136,13 +2070,6 @@ const editingTables = EditorView.domEventHandlers({
     event.preventDefault();
     view.plugin(editingCells)?.open(cell);
     return true;
-  },
-  contextmenu(event, view) {
-    const cell = tableCell(event.target);
-    if (!cell || pressedLong(event)) return false;
-    const shown = view.plugin(editingCells)?.menuAt(cell, event) ?? false;
-    if (shown) event.preventDefault();
-    return shown;
   },
   touchstart(event) {
     const touch = event.changedTouches[0];

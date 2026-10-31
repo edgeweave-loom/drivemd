@@ -677,17 +677,17 @@ button.account {
   }
 }
 
-/* A table's menu (docs/DESIGN.md, Table menu): at a right-click, or above
-   the keyboard toolbar's Table options key, scrolling where its room is
-   short, and dense under a mouse, since it is long. */
+/* A table's menu (docs/DESIGN.md, Table menu): above the keyboard
+   toolbar's Table options key, or below the formatting toolbar's Table
+   button, scrolling where its room is short, and dense under a mouse. */
 .table-menu {
   inset: auto;
   margin: 0;
   overflow-y: auto;
 }
 
-/* An item's shortcut at its end, from a right-click, which the item's
-   name leaves out: its aria-keyshortcuts tells it. */
+/* An item's shortcut at its end, with a mouse, which the item's name
+   leaves out: its aria-keyshortcuts tells it. */
 .table-menu > button[aria-keyshortcuts]::after {
   content: attr(aria-keyshortcuts) / "";
   margin-inline-start: auto;
@@ -731,11 +731,6 @@ button.account {
   .table-menu > button {
     min-height: 32px;
   }
-}
-
-.table-menu > [aria-checked="true"] {
-  background: var(--secondary-container);
-  color: var(--on-secondary-container);
 }
 
 .table-menu > [aria-disabled="true"] {
