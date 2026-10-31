@@ -27,6 +27,7 @@ import {
   toggleItalic,
   toggleList,
   toggleNumbered,
+  toggleQuote,
   toggleStrikethrough,
 } from "./formatting.ts";
 
@@ -206,6 +207,22 @@ describe("cycleList", () => {
     ["«- a\nb»", "«1. a\n2. b»"],
   ])("turns %j into %j", (before, after) => {
     expect(run(cycleList, before).text).toBe(after);
+  });
+});
+
+describe("toggleQuote", () => {
+  it.each([
+    ["te|a", "> te|a"],
+    ["> te|a", "te|a"],
+    [">te|a", "te|a"],
+    ["> > te|a", "> te|a"],
+    ["  > te|a", "  te|a"],
+    ["- te|a", "> - te|a"],
+    ["«a\n\nb»", "> «a\n>\n> b»"],
+    ["«> a\nb»", "«> a\n> b»"],
+    ["«> a\n>\n> b»", "«a\n\nb»"],
+  ])("turns %j into %j", (before, after) => {
+    expect(run(toggleQuote, before).text).toBe(after);
   });
 });
 

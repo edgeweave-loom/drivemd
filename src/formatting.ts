@@ -62,7 +62,7 @@ type Prefix = ReturnType<typeof prefix>;
  * left out of a selection that holds others: formatting them would only add
  * stray symbols.
  */
-function selectedLines(state: EditorState): Prefix[] {
+function selectedLines(state: EditorState, inner = false): Prefix[] {
   const lines: Prefix[] = [];
   let last = 0;
   for (const range of state.selection.ranges) {
@@ -76,7 +76,12 @@ function selectedLines(state: EditorState): Prefix[] {
     }
   }
   const filled = lines.filter((line) => !line.blank);
-  return filled.length > 0 ? filled : lines;
+  if (filled.length === 0) return lines;
+  // Or, when `inner`, those between the first and the last filled ones too.
+  const filledAt = (line: Prefix) => !line.blank;
+  return inner
+    ? lines.slice(lines.findIndex(filledAt), lines.findLastIndex(filledAt) + 1)
+    : filled;
 }
 
 /** Applies the changes `format` makes to the selected lines. */
@@ -84,9 +89,10 @@ function formatLines(
   state: EditorState,
   dispatch: (transaction: Transaction) => void,
   format: (lines: Prefix[]) => ChangeSpec[],
+  lines = selectedLines(state),
 ): boolean {
   if (state.readOnly) return false;
-  const changes = state.changes(format(selectedLines(state)));
+  const changes = state.changes(format(lines));
   dispatch(
     state.update({
       changes,
@@ -256,6 +262,37 @@ export const cycleList: StateCommand = ({ state, dispatch }) =>
           : undefined;
     return makeList(state, lines, to);
   });
+
+/**
+ * Makes the lines a quote, `> `, blank lines between them included, or,
+ * when all of them are quoted, takes their outer quote marker away.
+ */
+export const toggleQuote: StateCommand = ({ state, dispatch }) =>
+  formatLines(
+    state,
+    dispatch,
+    (lines) =>
+      lines.every((line) => line.quotes.includes(">"))
+        ? lines.map((line) => {
+            const start = line.at - line.indent.length - line.quotes.length;
+            const mark = start + line.quotes.indexOf(">");
+            const space = /[ \t]/.test(
+              state.doc.sliceString(mark + 1, mark + 2),
+            );
+            return { from: mark, to: mark + (space ? 2 : 1) };
+          })
+        : lines.flatMap((line) =>
+            line.quotes === ""
+              ? [
+                  {
+                    from: state.doc.lineAt(line.at).from,
+                    insert: line.blank ? ">" : "> ",
+                  },
+                ]
+              : [],
+          ),
+    selectedLines(state, true),
+  );
 
 type Task = "text" | "item" | "open" | "done";
 type Target = Exclude<Task, "text">;

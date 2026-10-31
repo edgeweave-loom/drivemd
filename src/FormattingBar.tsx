@@ -14,6 +14,7 @@ import {
   toggleItalic,
   toggleList,
   toggleNumbered,
+  toggleQuote,
   toggleStrikethrough,
 } from "./formatting.ts";
 import { Icon } from "./Icon.tsx";
@@ -60,6 +61,7 @@ const GROUPS: Button[][] = [
       lines: true,
     },
     { name: "Checkbox", command: cycleTask, icon: "check_box", lines: true },
+    { name: "Quote", command: toggleQuote, icon: "format_quote", lines: true },
   ],
   [
     {
