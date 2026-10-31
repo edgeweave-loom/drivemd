@@ -85,6 +85,27 @@ function looks(view: EditorView) {
   });
 }
 
+/**
+ * Each line's quotes as Visual draws them under a callout's line, outermost
+ * first: a quote's bar, `|`, or a callout's box, by its type, `^` where it
+ * starts and `_` where it ends.
+ */
+function frames(view: EditorView) {
+  return [...view.contentDOM.querySelectorAll(".cm-line")].map((line) =>
+    [...line.querySelectorAll<HTMLElement>(".cm-frame > span")]
+      .map((drawn) => {
+        if (drawn.classList.contains("cm-frame-bar")) return "|";
+        const type = /--callout-(\w+)/.exec(
+          drawn.style.getPropertyValue("--callout"),
+        )?.[1];
+        const top = drawn.classList.contains("cm-frame-top") ? "^" : "";
+        const bottom = drawn.classList.contains("cm-frame-bottom") ? "_" : "";
+        return `${type ?? ""}${top}${bottom}`;
+      })
+      .join(" "),
+  );
+}
+
 /** Waits for the editor's parse, which may end in the background. */
 async function parsed(view: EditorView) {
   await waitFor(() => {
@@ -832,13 +853,6 @@ describe("Visual", () => {
     );
     await parsed(view);
     const lines = () => [...view.contentDOM.querySelectorAll(".cm-line")];
-    const boxes = () =>
-      lines().map((line) =>
-        [...line.classList]
-          .filter((name) => name.startsWith("cm-callout-"))
-          .map((name) => name.slice("cm-callout-".length))
-          .join(" "),
-      );
     const icons = () =>
       lines().map(
         (line) =>
@@ -846,21 +860,21 @@ describe("Visual", () => {
           null,
       );
 
-    // An escaped marker, a callout in a list, or one holding a quote,
-    // draws as a quote.
-    expect(boxes()).toEqual([
-      "question first title",
+    // An escaped marker, or a callout in a list, draws as a quote, and a
+    // quote in a callout as a bar in its box.
+    expect(frames(view)).toEqual([
+      "question^",
       "question",
-      "question last",
+      "question_",
       "",
-      "abstract first title last",
-      "",
-      "",
+      "abstract^_",
       "",
       "",
       "",
       "",
       "",
+      "tip^",
+      "tip_ |",
     ]);
     expect(icons().slice(0, 5)).toEqual([
       "lucide-circle-question-mark",
@@ -888,7 +902,42 @@ describe("Visual", () => {
       expect(looks(view)[0]).toBe("‹> [!faq]+ ›Why?");
     });
     expect(icons()[0]).toBeNull();
-    expect(boxes()[0]).toBe("question first title");
+    expect(frames(view)[0]).toBe("question^");
+  });
+
+  it("draws callouts in quotes and callouts, six levels deep at most, as the viewer does", async () => {
+    const { view } = open(
+      "> Quoted\n> > [!tip] Inner\n> > text\n\n> [!note] Outer\n> > [!warning] In\n> > deep\n\n> > > > > > [!tip] Six\n\n> > > > > > > [!tip] Seven",
+      "\n",
+      true,
+      true,
+    );
+    await parsed(view);
+
+    expect(frames(view)).toEqual([
+      "",
+      "| tip^",
+      "| tip_",
+      "",
+      "note^",
+      "note warning^",
+      "note_ warning_",
+      "",
+      "| | | | | tip^_",
+      "",
+      "",
+    ]);
+    expect(looks(view).slice(0, 9)).toEqual([
+      "‹Quoted›",
+      "Inner",
+      "text",
+      "",
+      "Outer",
+      "In",
+      "deep",
+      "",
+      "Six",
+    ]);
   });
 
   it("folds a vault's callout as its `-` says, and a tap on its chevron folds or opens it, writing nothing", async () => {
@@ -913,9 +962,7 @@ describe("Visual", () => {
       expect(chevrons()).toEqual([true, false]);
     });
     expect(shown()).toEqual(["Why?", "", "Open", "Shown.", "", "Alone"]);
-    expect(
-      view.contentDOM.querySelector(".cm-callout-title")?.classList,
-    ).toContain("cm-callout-last");
+    expect(frames(view)[0]).toBe("question^_");
 
     view.dispatch({ selection: { anchor: 0 } });
     const [folded, unfolded] =
