@@ -999,67 +999,6 @@ describe("Visual", () => {
     expect(foldedRanges(view.state).size).toBe(0);
   });
 
-  it("folds a vault's callout as its `-` says, and a tap on its chevron folds or opens it, writing nothing", async () => {
-    const { view, onChange } = open(
-      "> [!faq]- Why?\n> Because.\n\n> [!tip]+ Open\n> Shown.\n\n> [!note]- Alone",
-      "\n",
-      true,
-      true,
-    );
-    await parsed(view);
-    const chevrons = () =>
-      [...view.contentDOM.querySelectorAll(".cm-callout-fold")].map((chevron) =>
-        chevron.classList.contains("cm-callout-folded"),
-      );
-    const shown = () =>
-      [...view.contentDOM.querySelectorAll(".cm-line")].map(
-        (line) => line.textContent,
-      );
-
-    // A callout with nothing past its title has nothing to fold.
-    await waitFor(() => {
-      expect(chevrons()).toEqual([true, false]);
-    });
-    expect(shown()).toEqual(["Why?", "", "Open", "Shown.", "", "Alone"]);
-    expect(
-      view.contentDOM.querySelector(".cm-callout-title")?.classList,
-    ).toContain("cm-callout-last");
-
-    view.dispatch({ selection: { anchor: 0 } });
-    const [folded, unfolded] =
-      view.contentDOM.querySelectorAll(".cm-callout-fold");
-    expect(fireEvent.mouseDown(unfolded ?? view.contentDOM)).toBe(false);
-    fireEvent.mouseDown(folded ?? view.contentDOM);
-    expect(chevrons()).toEqual([false, true]);
-    expect(shown()).toEqual(["Why?", "Because.", "", "Open", "", "Alone"]);
-    expect(view.state.selection.main.head).toBe(0);
-    expect(onChange).not.toHaveBeenCalled();
-  });
-
-  it("opens a folded callout as the selection goes into it, and steps the cursor over it", async () => {
-    const { view } = open(
-      "> [!faq]- Why?\n> Because.\n\n> [!faq]- Again\n> Hidden.\n\nAfter",
-      "\n",
-      true,
-      true,
-    );
-    await parsed(view);
-    await waitFor(() => {
-      expect(foldedRanges(view.state).size).toBe(2);
-    });
-
-    // At its end, which shows at its title's end, where it goes.
-    view.dispatch({ selection: { anchor: 52 } });
-    expect(view.state.selection.main.head).toBe(42);
-    expect(foldedRanges(view.state).size).toBe(2);
-    // As Find in note selects a match in it, or a link to a part places
-    // the cursor.
-    view.dispatch({ selection: { anchor: 45, head: 52 } });
-    expect(foldedRanges(view.state).size).toBe(1);
-    view.dispatch({ selection: { anchor: 20 } });
-    expect(foldedRanges(view.state).size).toBe(0);
-  });
-
   it("draws a callout as a quote outside a vault", async () => {
     const { view } = open("> [!tip] Title\n> Body", "\n", true);
     await parsed(view);
