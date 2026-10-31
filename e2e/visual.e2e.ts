@@ -422,6 +422,27 @@ test("draws a callout in a callout in Visual, a box in the box, its marks shown 
   expect(drive.writes).toEqual([]);
 });
 
+test("draws a code block in a quote in Visual after its bar, its text 1rem in", async ({
+  page,
+  drive,
+}) => {
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content = "> Tea:\n> ```js\n> const tea = 1;\n> ```\n";
+  const lines = (await editInVisual(page)).locator(".cm-line");
+  const inset = (line: ReturnType<typeof lines.nth>) =>
+    line.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).paddingLeft),
+    );
+  const rem = await page.evaluate(() =>
+    Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+  );
+  expect(await inset(lines.nth(2))).toBeCloseTo(
+    (await inset(lines.nth(0))) + rem,
+    0,
+  );
+});
+
 test("draws a table in a quote in Visual beside its bars, whose cells a tap edits in place", async ({
   page,
   drive,
