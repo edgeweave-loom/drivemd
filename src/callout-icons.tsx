@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Children, isValidElement, type ReactNode } from "react";
 import type { CalloutType } from "./callouts.ts";
 
 // Lucide's icons, as lucide-static 1.26.0 draws them, which are the ones
@@ -7,8 +7,9 @@ import type { CalloutType } from "./callouts.ts";
 // lucide- as Obsidian does. Copyright Lucide Icons and Contributors, under
 // the ISC License; check, chevron-down, circle-question-mark, info,
 // triangle-alert and x come from Feather, copyright Cole Bemis, under the MIT
-// License (LICENSES/Lucide.txt): lucide.dev.
-const ICONS: Record<CalloutType, [name: string, drawing: ReactNode]> = {
+// License (LICENSES/Lucide.txt): lucide.dev. Each drawing's shapes take
+// their SVG attributes as props, which the editor writes as they are.
+export const ICONS: Record<CalloutType, [name: string, drawing: ReactNode]> = {
   note: [
     "pencil",
     <>
@@ -119,54 +120,39 @@ const ICONS: Record<CalloutType, [name: string, drawing: ReactNode]> = {
   ],
 };
 
+const SVG = "http://www.w3.org/2000/svg";
+
 /**
- * The icon of a callout's type, drawn in the text's color; its meaning is
- * the title's.
+ * The icon of a callout's type as the viewer's `CalloutIcon` draws it, for
+ * the editor, which draws its widgets without React.
  */
-export function CalloutIcon({ type }: { type: CalloutType }) {
+export function calloutIcon(type: CalloutType): SVGSVGElement {
   const [name, drawing] = ICONS[type];
-  return (
-    <Lucide name={name} className="callout-icon">
-      {drawing}
-    </Lucide>
-  );
-}
-
-/**
- * The chevron that ends a folding callout's title, which the stylesheet
- * turns while the callout is folded.
- */
-export function CalloutFold() {
-  return (
-    <Lucide name="chevron-down" className="callout-fold">
-      <path d="m6 9 6 6 6-6" />
-    </Lucide>
-  );
-}
-
-/** A Lucide icon, drawn in the text's color; its meaning is the text's. */
-function Lucide({
-  name,
-  className,
-  children,
-}: {
-  name: string;
-  className: string;
-  children: ReactNode;
-}) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      data-icon={`lucide-${name}`}
-    >
-      {children}
-    </svg>
-  );
+  const icon = document.createElementNS(SVG, "svg");
+  for (const [attribute, value] of Object.entries({
+    class: "cm-callout-icon",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-width": "2",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    "aria-hidden": "true",
+    "data-icon": `lucide-${name}`,
+  })) {
+    icon.setAttribute(attribute, value);
+  }
+  const shapes = isValidElement<{ children: ReactNode }>(drawing)
+    ? drawing.props.children
+    : null;
+  Children.forEach(shapes, (shape) => {
+    if (!isValidElement<Record<string, string>>(shape)) return;
+    if (typeof shape.type !== "string") return;
+    const drawn = document.createElementNS(SVG, shape.type);
+    for (const [attribute, value] of Object.entries(shape.props)) {
+      drawn.setAttribute(attribute, value);
+    }
+    icon.append(drawn);
+  });
+  return icon;
 }
