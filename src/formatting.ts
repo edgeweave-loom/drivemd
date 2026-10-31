@@ -11,6 +11,7 @@ import {
   type StateCommand,
   type Transaction,
 } from "@codemirror/state";
+import type { KeyBinding } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 
 /*
@@ -528,3 +529,24 @@ export const outdentLines: StateCommand = ({ state, dispatch }) =>
       line === first ? reindent(line, indent) : unindent(line, width),
     );
   });
+
+/**
+ * The keys of the commands that keep a table's row whole, as Google Docs
+ * binds them, which a table's cell edited in place takes too.
+ */
+export const INLINE_KEYS: readonly KeyBinding[] = [
+  { key: "Mod-b", run: toggleBold },
+  { key: "Mod-k", run: insertLink },
+];
+
+/**
+ * The formatting commands' keys: the lists' as Google Docs binds them, and
+ * the indent's as Obsidian does.
+ */
+export const FORMATTING_KEYS: readonly KeyBinding[] = [
+  ...INLINE_KEYS,
+  { key: "Mod-Shift-8", run: toggleList },
+  { key: "Mod-Shift-9", run: cycleTask },
+  { key: "Mod-]", run: indentLines },
+  { key: "Mod-[", run: outdentLines },
+];

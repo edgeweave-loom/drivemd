@@ -64,6 +64,46 @@ test("shows a link's text in Visual, which Cmd or Ctrl+click follows", async ({
   ).toBeVisible();
 });
 
+test("formats from the keyboard as the keyboard toolbar does, a cell's text but not its lines", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.name !== "desktop-chromium",
+    "Keyboard shortcuts are for desktops",
+  );
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content =
+    "Tea at noon.\n\n| Step | Owner |\n| - | - |\n| Boil | Ada |\n";
+  const note = await editInVisual(page);
+
+  await note.locator(".cm-line").filter({ hasText: "Tea at noon." }).click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("ArrowLeft");
+  // "noon", from the keyboard.
+  await page.keyboard.down("Shift");
+  for (let left = "noon".length; left > 0; left--) {
+    await page.keyboard.press("ArrowLeft");
+  }
+  await page.keyboard.up("Shift");
+  await page.keyboard.press("ControlOrMeta+b");
+  await page.keyboard.press("ControlOrMeta+Shift+8");
+  const cell = note.getByRole("table").getByRole("cell", { name: "Ada" });
+  await cell.click();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.press("ControlOrMeta+b");
+  await page.keyboard.press("ControlOrMeta+k");
+  // A list's marks would break the row.
+  await page.keyboard.press("ControlOrMeta+Shift+8");
+
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("plan")?.content)).toBe(
+    "- Tea at **noon**.\n\n| Step | Owner |\n| - | - |\n| Boil | **[Ada]()** |\n",
+  );
+});
+
 test("opens a link from the keyboard toolbar on a touch screen", async ({
   page,
 }, info) => {

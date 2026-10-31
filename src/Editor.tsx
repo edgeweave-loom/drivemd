@@ -51,7 +51,7 @@ import { mountIn, THEME } from "./codemirror.ts";
 import { keepDoubleSpace } from "./double-space.ts";
 import { countMatches, findInNote, findsInNote, type Matches } from "./find.ts";
 import { FindBar } from "./FindBar.tsx";
-import { indentLines, outdentLines } from "./formatting.ts";
+import { FORMATTING_KEYS } from "./formatting.ts";
 import { withFrontmatter } from "./frontmatter.ts";
 import { KeyboardToolbar, TOOLBAR_HEIGHT } from "./KeyboardToolbar.tsx";
 import { InSlot } from "./InSlot.tsx";
@@ -300,9 +300,8 @@ function extensions(
     }),
     highlightSelectionMatches(),
     keymap.of([
-      // A list item nests from the keyboard as from the toolbar's keys.
-      { key: "Mod-]", run: indentLines },
-      { key: "Mod-[", run: outdentLines },
+      // The keyboard toolbar's formatting, from the keyboard.
+      ...FORMATTING_KEYS,
       ...defaultKeymap,
       ...historyKeymap,
       // Its field is the page's, where CodeMirror's own Mod-f misses it.

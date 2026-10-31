@@ -209,6 +209,10 @@ On a Mac, use Cmd; elsewhere, Ctrl.
 | Cmd/Ctrl+S                            | Save the note                                  |
 | Cmd/Ctrl+F                            | Find in note, while editing                    |
 | Cmd/Ctrl+click                        | Open the link under the pointer, while editing |
+| Cmd/Ctrl+B                            | Bold, while editing                            |
+| Cmd/Ctrl+K                            | Make a link, while editing                     |
+| Cmd/Ctrl+Shift+8                      | Make a list, or plain text, while editing      |
+| Cmd/Ctrl+Shift+9                      | Make a task, then tick it, while editing       |
 | Cmd/Ctrl+Z                            | Undo, while editing                            |
 | Cmd+Shift+Z (Mac), Ctrl+Y (elsewhere) | Redo, while editing                            |
 | Cmd/Ctrl+]                            | Indent a list item, while editing              |
