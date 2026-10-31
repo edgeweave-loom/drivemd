@@ -975,6 +975,7 @@ function NoteView({
                 initial={text}
                 lineBreak={note.lineBreak}
                 visual={mode === "visual"}
+                vault={vault.state === "inside"}
                 onChange={onEdit}
                 onFollow={follow}
               />

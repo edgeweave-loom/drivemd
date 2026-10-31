@@ -33,6 +33,7 @@ import {
 } from "@codemirror/view";
 import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
 import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
+import { CALLOUT_TYPES, calloutMarker, type CalloutType } from "./callouts.ts";
 import { findInNote } from "./find.ts";
 import { TOUCH } from "./layout.ts";
 
@@ -99,10 +100,19 @@ const QUOTE_LINES = [1, 2, 3, 4, 5, 6].map((depth) =>
   Decoration.line({ class: `cm-quote cm-quote-${String(depth)}` }),
 );
 
+/** Whether the note is in a vault, whose callouts Visual draws as such. */
+export const inVault = Facet.define<boolean, boolean>({
+  combine: (values) => values.some(Boolean),
+});
+
+function vaultChanged(update: ViewUpdate): boolean {
+  return update.startState.facet(inVault) !== update.state.facet(inVault);
+}
+
 /**
  * Visual's quotes, their lines barred as the viewer's, a bar per level,
  * whether or not their marks show: a lazy line, which continues a quote
- * without its `>`, is in it.
+ * without its `>`, is in it. A callout's lines draw its box instead.
  */
 const quoting = ViewPlugin.fromClass(
   class {
@@ -114,6 +124,7 @@ const quoting = ViewPlugin.fromClass(
       if (
         update.docChanged ||
         update.viewportChanged ||
+        vaultChanged(update) ||
         syntaxTree(update.startState) !== syntaxTree(update.state)
       ) {
         this.decorations = quoteLines(update.view);
@@ -128,11 +139,17 @@ function quoteLines(view: EditorView): DecorationSet {
   const { from, to } = view.viewport;
   // Each line's start, with how many quotes drawn it is in.
   const depths = new Map<number, number>();
+  const ranges: Range<Decoration>[] = [];
   syntaxTree(state).iterate({
     from,
     to,
     enter: (node) => {
       if (node.name !== "Blockquote" || !drawnQuote(node.node)) return;
+      const callout = calloutOf(state, node.node);
+      if (callout) {
+        ranges.push(...calloutLines(state, node.node, callout, view.viewport));
+        return;
+      }
       const last = Math.min(to, node.to);
       for (let at = Math.max(from, node.from); at <= last;) {
         const line = state.doc.lineAt(at);
@@ -141,7 +158,6 @@ function quoteLines(view: EditorView): DecorationSet {
       }
     },
   });
-  const ranges: Range<Decoration>[] = [];
   for (const [at, depth] of depths) {
     const line = QUOTE_LINES[Math.min(depth, QUOTE_LINES.length) - 1];
     if (line) ranges.push(line.range(at));
@@ -158,6 +174,77 @@ function drawnQuote(quote: SyntaxNode): boolean {
   while (around?.name === "Blockquote") around = around.parent;
   return around?.name === "Document";
 }
+
+/** A callout that Visual draws as the viewer does. */
+interface Callout {
+  type: CalloutType;
+  /** Its title's line's marks: its `>`, `[!type]` and fold sign. */
+  marks: Stretch;
+}
+
+// What a callout draws in Visual as a quote still, with its blocks.
+const QUOTED_ALONG = new Set([
+  "Blockquote",
+  "Table",
+  "FencedCode",
+  "CodeBlock",
+]);
+
+/**
+ * The callout a quote drawn is, as the viewer reads it in a vault's note:
+ * one at the note's top, without a quote, a table or a code block in it,
+ * which leave it drawn as a quote.
+ */
+function calloutOf(state: EditorState, quote: SyntaxNode): Callout | null {
+  if (!state.facet(inVault) || quote.parent?.name !== "Document") return null;
+  let first = quote.firstChild;
+  while (first?.name === "QuoteMark") first = first.nextSibling;
+  if (first?.name !== "Paragraph") return null;
+  const line = state.doc.lineAt(first.from);
+  const marker = calloutMarker(state.sliceDoc(first.from, line.to));
+  if (!marker) return null;
+  for (
+    const inside = quote.cursor();
+    inside.next() && inside.from < quote.to;
+  ) {
+    if (QUOTED_ALONG.has(inside.name)) return null;
+  }
+  return {
+    type: marker.type,
+    marks: { from: line.from, to: first.from + marker.length },
+  };
+}
+
+/**
+ * A callout's lines, which draw its box, the viewer's padding at its top
+ * and bottom, and its title's line in its type's color, its marks quieter.
+ */
+function calloutLines(
+  state: EditorState,
+  quote: SyntaxNode,
+  { type, marks }: Callout,
+  { from, to }: Stretch,
+): Range<Decoration>[] {
+  const first = state.doc.lineAt(quote.from);
+  const last = state.doc.lineAt(quote.to);
+  const ranges = [CALLOUT_MARKS.range(marks.from, marks.to)];
+  const start = state.doc.lineAt(Math.max(from, first.from));
+  const end = state.doc.lineAt(Math.min(to, last.from));
+  for (let number = start.number; number <= end.number; number++) {
+    const line = state.doc.line(number);
+    const classes = [
+      "cm-callout",
+      `cm-callout-${type}`,
+      ...(line.from === first.from ? ["cm-callout-first"] : []),
+      ...(line.from === marks.from ? ["cm-callout-title"] : []),
+      ...(line.from === last.from ? ["cm-callout-last"] : []),
+    ];
+    ranges.push(Decoration.line({ class: classes.join(" ") }).range(line.from));
+  }
+  return ranges;
+}
+
+const CALLOUT_MARKS = Decoration.mark({ class: "cm-callout-marks" });
 
 /** A code block's language, at its first line's end, as Obsidian shows it. */
 class Language extends WidgetType {
@@ -2228,6 +2315,48 @@ const LOOK = EditorView.theme({
       { "--quote-depth": String(at + 1) },
     ]),
   ),
+  // The viewer's callout, its box drawn under its lines, whose height stays
+  // whether its marks show or not, its title in its type's color.
+  ".cm-line.cm-callout": {
+    position: "relative",
+    paddingLeft: "calc(var(--text-inset) + 0.25em + 1rem)",
+    paddingRight: "calc(var(--text-inset) + 1rem)",
+  },
+  ".cm-callout::before": {
+    content: '""',
+    position: "absolute",
+    inset: "0 var(--text-inset)",
+    zIndex: "-1",
+    borderLeft: "0.25em solid var(--callout)",
+    background: "color-mix(in srgb, var(--callout) 10%, transparent)",
+  },
+  ...Object.fromEntries(
+    CALLOUT_TYPES.map((type) => [
+      `.cm-callout-${type}`,
+      { "--callout": `var(--callout-${type})` },
+    ]),
+  ),
+  ".cm-line.cm-callout-first": { paddingTop: "0.75rem" },
+  ".cm-callout-first::before": {
+    borderTopLeftRadius: "6px",
+    borderTopRightRadius: "6px",
+  },
+  ".cm-line.cm-callout-title": {
+    paddingBottom: "0.5rem",
+    color: "var(--callout)",
+    fontWeight: "600",
+  },
+  ".cm-line.cm-callout-last": { paddingBottom: "0.75rem" },
+  ".cm-callout-last::before": {
+    borderBottomLeftRadius: "6px",
+    borderBottomRightRadius: "6px",
+  },
+  // Its marks quieter, `[!type]` too, which Markdown reads as a link.
+  ".cm-callout-marks": {
+    color: "var(--on-surface-variant)",
+    fontWeight: "normal",
+  },
+  ".cm-callout-marks span": { color: "inherit" },
   // The viewer's code block, as far in as its quote's text, its text 1rem
   // further in, drawn under its lines, whose height it keeps: its fences'
   // lines, hidden, are its padding.
@@ -2255,7 +2384,7 @@ const LOOK = EditorView.theme({
     borderBottomRightRadius: "var(--radius-sm)",
   },
   // The cursor's line marked at its start alone, the block staying whole.
-  "&.cm-focused .cm-activeLine.cm-code-block": {
+  "&.cm-focused .cm-activeLine:is(.cm-code-block, .cm-callout)": {
     backgroundColor: "transparent",
   },
   // Markdown's code at the code's size, as the viewer's: the light

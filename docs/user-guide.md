@@ -103,7 +103,7 @@ On a computer or a tablet, pick a mode from the mode menu in the app bar. On a p
 | **Source**                                          | The Markdown as written, lightly styled, beside its preview on a computer or a tablet.                                                                                                                                                                                                                                                                                     |
 | **Viewing** (computer, tablet), **Preview** (phone) | The rendered note alone. Viewing saves the note first.                                                                                                                                                                                                                                                                                                                     |
 
-The device remembers whether you last chose Visual or Source, and opens the editor in it next time. Switching between them keeps your cursor and your undo history. Images, and Obsidian's own syntax, show in Visual as they do in Source for now.
+The device remembers whether you last chose Visual or Source, and opens the editor in it next time. Switching between them keeps your cursor and your undo history. In a note of an Obsidian vault, Visual draws callouts in their box, as Viewing does, their `>` showing on the line you are writing; for now, their `[!type]` shows where Viewing shows its icon, a folded callout shows open, and a callout in a quote, or holding a quote, a table or code, shows as a quote. Images, and the rest of Obsidian's syntax, show in Visual as they do in Source for now.
 
 While editing:
 
