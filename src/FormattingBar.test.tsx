@@ -61,7 +61,7 @@ describe("the formatting toolbar", () => {
       "Find in note",
       "Undo",
       "Redo",
-      "Heading",
+      "Style",
       "Bold",
       "Italic",
       "Strikethrough",
@@ -83,6 +83,11 @@ describe("the formatting toolbar", () => {
     expect(
       within(toolbar()).getByRole("button", { name: "Quote" }),
     ).toHaveAttribute("title", "Quote");
+    // Pressed or not, as the formatting where the cursor is.
+    expect(bold).toHaveAttribute("aria-pressed", "false");
+    expect(
+      within(toolbar()).getByRole("button", { name: "Link" }),
+    ).not.toHaveAttribute("aria-pressed");
   });
 
   it("shows none on a touch screen, which has the keyboard toolbar", () => {
@@ -150,6 +155,51 @@ describe("the formatting toolbar", () => {
 
     expect(view.state.sliceDoc()).toBe("**tea**");
     expect(view.hasFocus).toBe(true);
+  });
+
+  it("shows the line's style, and sets another from its menu, with its key", () => {
+    const view = open("## tea");
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 6 } });
+    });
+    const style = within(toolbar()).getByRole("button", { name: "Style" });
+    expect(style).toHaveTextContent("Heading 2");
+
+    fireEvent.click(style);
+    const menu = screen.getByRole("menu", { name: "Style" });
+    const checked = within(menu).getByRole("menuitemradio", {
+      checked: true,
+    });
+    expect(checked).toHaveTextContent("Heading 2");
+    expect(checked).toHaveFocus();
+    const text = within(menu).getByRole("menuitemradio", {
+      name: "Normal text",
+    });
+    expect(text).toHaveAttribute("aria-keyshortcuts", "Control+Alt+0");
+    expect(text).toHaveTextContent("Ctrl+Alt+0");
+    fireEvent.click(text);
+
+    expect(view.state.sliceDoc()).toBe("tea");
+    expect(style).toHaveTextContent("Normal text");
+    expect(view.hasFocus).toBe(true);
+  });
+
+  it("presses the buttons of the formatting around the cursor", () => {
+    const view = open("- **tea** and _cups_");
+    const pressed = () =>
+      within(toolbar())
+        .getAllByRole("button", { pressed: true })
+        .map((button) => button.getAttribute("aria-label"));
+    act(() => {
+      view.dispatch({ selection: { anchor: 5 } });
+    });
+    expect(pressed()).toEqual(["Bold", "Bulleted list"]);
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 17 } });
+    });
+    expect(pressed()).toEqual(["Italic", "Bulleted list"]);
   });
 
   it("leaves out the buttons of lines in a table's cell, whose text it formats", async () => {

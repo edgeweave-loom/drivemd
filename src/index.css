@@ -2424,7 +2424,7 @@ body:has(> .keyboard-toolbar) .editor {
   background: var(--surface-container);
 }
 
-.format-bar button {
+.format-bar > button {
   display: grid;
   place-items: center;
   width: 32px;
@@ -2436,9 +2436,56 @@ body:has(> .keyboard-toolbar) .editor {
   color: var(--on-surface-variant);
 }
 
-.format-bar .icon {
+.format-bar > button > .icon {
   width: 20px;
   height: 20px;
+}
+
+/* The formatting around the cursor. */
+.format-bar > button[aria-pressed="true"] {
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+/* The cursor's line's style, which opens its menu. */
+.format-bar > button.style {
+  display: flex;
+  gap: var(--space-1);
+  justify-content: space-between;
+  width: 120px;
+  padding: 0 var(--space-1) 0 var(--space-2);
+  color: var(--on-surface);
+  font: inherit;
+  font-size: 14px;
+  anchor-name: --style;
+}
+
+.style-menu {
+  inset: calc(var(--app-bar-bottom) + 48px) auto auto var(--space-4);
+}
+
+@supports (anchor-name: --style) {
+  .style-menu {
+    position-anchor: --style;
+    inset: anchor(bottom) auto auto anchor(left);
+    margin: var(--space-1) 0 0;
+  }
+}
+
+/* Dense under a mouse, which alone shows it. */
+.style-menu > button {
+  min-height: 32px;
+}
+
+.style-menu > [aria-checked="true"] {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+.style-menu .key {
+  margin-inline-start: auto;
+  color: var(--on-surface-variant);
+  font-weight: 400;
 }
 
 .format-bar hr {
