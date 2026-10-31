@@ -756,7 +756,6 @@ export const INLINE_KEYS: readonly KeyBinding[] = [
 export const FORMATTING_KEYS: readonly KeyBinding[] = [
   ...INLINE_KEYS,
   { key: "Mod-Shift-7", run: toggleNumbered },
-  { key: "Mod-Shift-7", run: toggleNumbered },
   { key: "Mod-Shift-8", run: toggleList },
   { key: "Mod-Shift-9", run: cycleTask },
   { key: "Mod-]", run: indentLines },
