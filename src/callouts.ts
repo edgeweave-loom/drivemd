@@ -137,6 +137,6 @@ function paragraph(children: PhrasingContent[]): Paragraph {
 }
 
 /** A type as Obsidian titles it: `WARNING` gives "Warning". */
-function titled(name: string): string {
+export function titled(name: string): string {
   return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
 }

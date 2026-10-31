@@ -33,7 +33,13 @@ import {
 } from "@codemirror/view";
 import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
 import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
-import { CALLOUT_TYPES, calloutMarker, type CalloutType } from "./callouts.ts";
+import { calloutIcon } from "./callout-icons.tsx";
+import {
+  CALLOUT_TYPES,
+  calloutMarker,
+  titled,
+  type CalloutType,
+} from "./callouts.ts";
 import { findInNote } from "./find.ts";
 import { TOUCH } from "./layout.ts";
 
@@ -180,6 +186,8 @@ interface Callout {
   type: CalloutType;
   /** Its title's line's marks: its `>`, `[!type]` and fold sign. */
   marks: Stretch;
+  /** Its type titled, which titles it when it has no title. */
+  untitled: string | null;
 }
 
 // What a callout draws in Visual as a quote still, with its blocks.
@@ -209,15 +217,18 @@ function calloutOf(state: EditorState, quote: SyntaxNode): Callout | null {
   ) {
     if (QUOTED_ALONG.has(inside.name)) return null;
   }
+  const untitled = !state.sliceDoc(first.from + marker.length, line.to).trim();
   return {
     type: marker.type,
     marks: { from: line.from, to: first.from + marker.length },
+    untitled: untitled ? titled(marker.name) : null,
   };
 }
 
 /**
  * A callout's lines, which draw its box, the viewer's padding at its top
- * and bottom, and its title's line in its type's color, its marks quieter.
+ * and bottom, and its title's line in its type's color, its marks quieter
+ * where they show.
  */
 function calloutLines(
   state: EditorState,
@@ -245,6 +256,29 @@ function calloutLines(
 }
 
 const CALLOUT_MARKS = Decoration.mark({ class: "cm-callout-marks" });
+
+/**
+ * A callout's type, drawn as the viewer's title starts: its icon, then the
+ * type titled if the callout has no title of its own.
+ */
+class CalloutTitle extends WidgetType {
+  readonly type: CalloutType;
+  readonly untitled: string | null;
+  constructor({ type, untitled }: Callout) {
+    super();
+    this.type = type;
+    this.untitled = untitled;
+  }
+  override eq(other: CalloutTitle): boolean {
+    return other.type === this.type && other.untitled === this.untitled;
+  }
+  toDOM(): HTMLElement {
+    const title = document.createElement("span");
+    title.className = "cm-callout-type";
+    title.append(calloutIcon(this.type), this.untitled ?? "");
+    return title;
+  }
+}
 
 /** A code block's language, at its first line's end, as Obsidian shows it. */
 class Language extends WidgetType {
@@ -498,6 +532,7 @@ const hiding = ViewPlugin.fromClass(
         update.viewportChanged ||
         moved ||
         lift ||
+        vaultChanged(update) ||
         syntaxTree(update.startState) !== syntaxTree(update.state)
       ) {
         this.decorations = hidden(update.view, this.writing);
@@ -2357,6 +2392,21 @@ const LOOK = EditorView.theme({
     fontWeight: "normal",
   },
   ".cm-callout-marks span": { color: "inherit" },
+  // Its title wrapping beside its icon, as the viewer's does.
+  ".cm-line.cm-callout-title:has(.cm-callout-type)": {
+    paddingLeft: "calc(var(--text-inset) + 0.25em + 1.25rem + 1em)",
+  },
+  ".cm-line .cm-callout-type": {
+    marginLeft: "calc(-1em - 0.25rem)",
+    color: "var(--callout)",
+    fontWeight: "600",
+  },
+  ".cm-callout-icon": {
+    width: "1em",
+    height: "1lh",
+    marginRight: "0.25rem",
+    verticalAlign: "top",
+  },
   // The viewer's code block, as far in as its quote's text, its text 1rem
   // further in, drawn under its lines, whose height it keeps: its fences'
   // lines, hidden, are its padding.
@@ -2578,7 +2628,8 @@ function blockAround(state: EditorState, at: number): SyntaxNode | null {
  * Visual's symbols, hidden or drawn: emphasis' `*` and `_`,
  * strikethrough's `~~`, inline code's backticks, a code block's fences, a
  * heading's `#`, a link's brackets and address, a list item's marker, a
- * thematic break, and a quote's `>`.
+ * thematic break, a quote's `>`, and a callout's title's marks, drawn as
+ * its type.
  */
 function symbols(state: EditorState, node: SyntaxNodeRef): Range<Decoration>[] {
   switch (node.name) {
@@ -2594,7 +2645,7 @@ function symbols(state: EditorState, node: SyntaxNodeRef): Range<Decoration>[] {
     case "ListMark":
       return listMark(state, node);
     case "QuoteMark":
-      return quoteMark(state, node).map(hide);
+      return calloutTitle(state, node) ?? quoteMark(state, node).map(hide);
     case "HorizontalRule":
       return [
         RULE_LINE.range(state.doc.lineAt(node.from).from),
@@ -2628,6 +2679,24 @@ function quoteMark(state: EditorState, node: SyntaxNodeRef): Stretch[] {
       from: before.trim() ? node.from : line.from,
       to: space ? node.to + 1 : node.to,
     },
+  ];
+}
+
+/** The marks of a callout's title's line, if `node` is its `>`. */
+function calloutTitle(
+  state: EditorState,
+  node: SyntaxNodeRef,
+): Range<Decoration>[] | null {
+  const quote = node.node.parent;
+  const callout = quote?.name === "Blockquote" && calloutOf(state, quote);
+  if (!callout || state.doc.lineAt(node.from).from !== callout.marks.from) {
+    return null;
+  }
+  return [
+    Decoration.replace({ widget: new CalloutTitle(callout) }).range(
+      callout.marks.from,
+      callout.marks.to,
+    ),
   ];
 }
 

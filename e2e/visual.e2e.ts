@@ -296,7 +296,7 @@ test("draws a quote in Visual, a bar per level, its marks shown where the cursor
   );
 });
 
-test("draws a vault's callout in Visual as the viewer's box, its marks shown where the cursor is", async ({
+test("draws a vault's callout in Visual as the viewer does, its marks shown where the cursor is", async ({
   page,
   drive,
 }, info) => {
@@ -306,10 +306,14 @@ test("draws a vault's callout in Visual as the viewer's box, its marks shown whe
   const lines = (await editInVisual(page, "today")).locator(".cm-line");
   const title = lines.nth(2);
   const body = lines.nth(3);
-  await expect(title).toHaveText("[!faq]- Why tea?");
+  await expect(title).toHaveText("Why tea?");
   await expect(body).toHaveText("It wakes me up.");
 
-  // Its type's color, the box under its lines.
+  // Its type's icon and color, the box under its lines.
+  await expect(title.locator("[data-icon]")).toHaveAttribute(
+    "data-icon",
+    "lucide-circle-question-mark",
+  );
   const orange = "rgb(236, 117, 0)";
   await expect(title).toHaveCSS("color", orange);
   for (const line of [title, body]) {
@@ -330,6 +334,7 @@ test("draws a vault's callout in Visual as the viewer's box, its marks shown whe
   await expect(body).toHaveText("> It wakes me up.");
   await tap(title);
   await expect(title).toHaveText("> [!faq]- Why tea?");
+  await expect(title.locator("[data-icon]")).toHaveCount(0);
   await expect(body).toHaveText("It wakes me up.");
   expect([await height(title), await height(body)]).toEqual(heights);
 

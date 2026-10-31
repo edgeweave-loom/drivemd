@@ -822,7 +822,7 @@ describe("Visual", () => {
     expect(depths().every((depth) => depth === 0)).toBe(true);
   });
 
-  it("draws a vault's callout as the viewer's box, its title's marks quieter", async () => {
+  it("draws a vault's callout as the viewer does, its type's icon over its marks but on the line being written", async () => {
     const { view } = open(
       "> [!faq]- Why?\n> Because.\nlazy\n\n> [!tldr]\n\n> \\[!note] Not\n\n- > [!tip] Listed\n\n> [!tip] Holds\n> > a quote",
       "\n",
@@ -830,12 +830,19 @@ describe("Visual", () => {
       true,
     );
     await parsed(view);
+    const lines = () => [...view.contentDOM.querySelectorAll(".cm-line")];
     const boxes = () =>
-      [...view.contentDOM.querySelectorAll(".cm-line")].map((line) =>
+      lines().map((line) =>
         [...line.classList]
           .filter((name) => name.startsWith("cm-callout-"))
           .map((name) => name.slice("cm-callout-".length))
           .join(" "),
+      );
+    const icons = () =>
+      lines().map(
+        (line) =>
+          line.querySelector(".cm-callout-icon")?.getAttribute("data-icon") ??
+          null,
       );
 
     // An escaped marker, a callout in a list, or one holding a quote,
@@ -854,12 +861,20 @@ describe("Visual", () => {
       "",
       "",
     ]);
+    expect(icons().slice(0, 5)).toEqual([
+      "lucide-circle-question-mark",
+      null,
+      null,
+      null,
+      "lucide-clipboard-list",
+    ]);
+    // Untitled, it is titled by its type.
     expect(looks(view).slice(0, 7)).toEqual([
-      "‹[!faq]- ›Why?",
+      "Why?",
       "Because.",
       "lazy",
       "",
-      "‹[!tldr]›",
+      "Tldr",
       "",
       "‹\\[!note] Not›",
     ]);
@@ -871,6 +886,7 @@ describe("Visual", () => {
     await waitFor(() => {
       expect(looks(view)[0]).toBe("‹> [!faq]- ›Why?");
     });
+    expect(icons()[0]).toBeNull();
     expect(boxes()[0]).toBe("question first title");
   });
 
