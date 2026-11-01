@@ -4,7 +4,15 @@ import {
   insertNewline,
   isolateHistory,
 } from "@codemirror/commands";
-import { highlightingFor, syntaxTree } from "@codemirror/language";
+import {
+  codeFolding,
+  foldEffect,
+  foldedRanges,
+  highlightingFor,
+  syntaxTree,
+  syntaxTreeAvailable,
+  unfoldEffect,
+} from "@codemirror/language";
 import { searchPanelOpen } from "@codemirror/search";
 import {
   Annotation,
@@ -33,6 +41,13 @@ import {
 } from "@codemirror/view";
 import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
 import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
+import { calloutFold, calloutIcon } from "./callout-icons.tsx";
+import {
+  CALLOUT_TYPES,
+  calloutMarker,
+  titled,
+  type CalloutType,
+} from "./callouts.ts";
 import { findInNote } from "./find.ts";
 import { INLINE_KEYS } from "./formatting.ts";
 import { TOUCH } from "./layout.ts";
@@ -100,10 +115,19 @@ const QUOTE_LINES = [1, 2, 3, 4, 5, 6].map((depth) =>
   Decoration.line({ class: `cm-quote cm-quote-${String(depth)}` }),
 );
 
+/** Whether the note is in a vault, whose callouts Visual draws as such. */
+export const inVault = Facet.define<boolean, boolean>({
+  combine: (values) => values.some(Boolean),
+});
+
+function vaultChanged(update: ViewUpdate): boolean {
+  return update.startState.facet(inVault) !== update.state.facet(inVault);
+}
+
 /**
  * Visual's quotes, their lines barred as the viewer's, a bar per level,
  * whether or not their marks show: a lazy line, which continues a quote
- * without its `>`, is in it.
+ * without its `>`, is in it. A callout's lines draw its box instead.
  */
 const quoting = ViewPlugin.fromClass(
   class {
@@ -115,6 +139,8 @@ const quoting = ViewPlugin.fromClass(
       if (
         update.docChanged ||
         update.viewportChanged ||
+        vaultChanged(update) ||
+        foldedRanges(update.startState) !== foldedRanges(update.state) ||
         syntaxTree(update.startState) !== syntaxTree(update.state)
       ) {
         this.decorations = quoteLines(update.view);
@@ -127,27 +153,59 @@ const quoting = ViewPlugin.fromClass(
 function quoteLines(view: EditorView): DecorationSet {
   const { state } = view;
   const { from, to } = view.viewport;
-  // Each line's start, with how many quotes drawn it is in.
-  const depths = new Map<number, number>();
+  // Each line's start, with the quotes drawn around it, outermost first.
+  const lines = new Map<number, Level[]>();
+  const ranges: Range<Decoration>[] = [];
   syntaxTree(state).iterate({
     from,
     to,
     enter: (node) => {
       if (node.name !== "Blockquote" || !drawnQuote(node.node)) return;
-      const last = Math.min(to, node.to);
-      for (let at = Math.max(from, node.from); at <= last;) {
+      const callout = calloutOf(state, node.node);
+      const first = state.doc.lineAt(node.from).from;
+      const last = shownLine(state, node.to);
+      if (callout) ranges.push(...calloutTitleLine(state, callout));
+      const end = Math.min(to, node.to);
+      for (let at = Math.max(from, node.from); at <= end;) {
         const line = state.doc.lineAt(at);
-        depths.set(line.from, (depths.get(line.from) ?? 0) + 1);
+        const levels = lines.get(line.from) ?? [];
+        levels.push({
+          callout: callout?.type ?? null,
+          top: callout !== null && line.from === first,
+          bottom: callout !== null && line.from === last,
+          title: line.from === callout?.marks.from,
+        });
+        lines.set(line.from, levels);
         at = line.to + 1;
       }
     },
   });
-  const ranges: Range<Decoration>[] = [];
-  for (const [at, depth] of depths) {
-    const line = QUOTE_LINES[Math.min(depth, QUOTE_LINES.length) - 1];
-    if (line) ranges.push(line.range(at));
+  for (const [at, levels] of lines) {
+    const drawn = levels.slice(0, QUOTE_LINES.length);
+    const quoted = QUOTE_LINES[drawn.length - 1];
+    if (!drawn.some((level) => level.callout)) {
+      if (quoted) ranges.push(quoted.range(at));
+      continue;
+    }
+    ranges.push(
+      framedLine(drawn).range(at),
+      Decoration.widget({ widget: new Frame(drawn), side: -1 }).range(at),
+    );
   }
   return Decoration.set(ranges, true);
+}
+
+/**
+ * The line a position shows on: a folded callout's title's, for one it
+ * hides.
+ */
+function shownLine(state: EditorState, at: number): number {
+  let shown = state.doc.lineAt(at).from;
+  foldedRanges(state).between(at, at, (from, to) => {
+    if (from < at && at <= to)
+      shown = Math.min(shown, state.doc.lineAt(from).from);
+  });
+  return shown;
 }
 
 /**
@@ -158,6 +216,311 @@ function drawnQuote(quote: SyntaxNode): boolean {
   let around: SyntaxNode | null = quote;
   while (around?.name === "Blockquote") around = around.parent;
   return around?.name === "Document";
+}
+
+/** A quote drawn around a line: a bar, or a callout's box. */
+interface Level {
+  callout: CalloutType | null;
+  /** Whether its box starts on the line, or ends there. */
+  top: boolean;
+  bottom: boolean;
+  /** Whether the line is its title's. */
+  title: boolean;
+}
+
+/**
+ * A line in a callout, as far in as its quotes, with the viewer's padding
+ * at the top of a box starting on it, and at the bottom of each ending on
+ * it, its text the innermost one's: a callout's, or a quote's, quieter.
+ */
+function framedLine(levels: Level[]): Decoration {
+  const inner = levels[levels.length - 1];
+  const classes = ["cm-framed", `cm-quote-${String(levels.length)}`];
+  if (inner?.callout) {
+    classes.push(`cm-callout-${inner.callout}`);
+    if (inner.title) classes.push("cm-callout-title");
+  } else classes.push("cm-framed-quote");
+  const ends = levels.filter((level) => level.bottom).length;
+  const gap = inner?.title && !inner.bottom ? " + 0.5rem" : "";
+  return Decoration.line({
+    class: classes.join(" "),
+    attributes: {
+      // The boxes' padding below, which a code block ending with them
+      // stays clear of.
+      style: `--boxes-below: ${String(ends * 0.75)}rem; padding-top: ${inner?.top ? "0.75rem" : "0"}; padding-bottom: calc(var(--boxes-below)${gap})`,
+    },
+  });
+}
+
+/**
+ * The quotes around a line in a callout, drawn under its text from its
+ * start: a quote's bar, a callout's box, its corners round where it starts
+ * or ends, inside the padding of the boxes around it ending there, as the
+ * viewer's.
+ */
+class Frame extends WidgetType {
+  readonly levels: Level[];
+  constructor(levels: Level[]) {
+    super();
+    this.levels = levels;
+  }
+  override eq(other: Frame): boolean {
+    return sameLevels(other, this);
+  }
+  toDOM(): HTMLElement {
+    const frame = document.createElement("span");
+    frame.className = "cm-frame";
+    frame.setAttribute("aria-hidden", "true");
+    for (const [at, level] of this.levels.entries()) {
+      const drawn = document.createElement("span");
+      const around = this.levels.slice(0, at).filter((outer) => outer.bottom);
+      drawn.style.left = `calc(var(--text-inset) + ${String(at * 1.25)}em)`;
+      drawn.style.bottom = `${String(around.length * 0.75)}rem`;
+      if (level.callout) {
+        drawn.className = "cm-frame-box";
+        drawn.style.right = `calc(var(--text-inset) + ${String(at)}em)`;
+        drawn.style.setProperty("--callout", `var(--callout-${level.callout})`);
+        drawn.classList.toggle("cm-frame-top", level.top);
+        drawn.classList.toggle("cm-frame-bottom", level.bottom);
+      } else drawn.className = "cm-frame-bar";
+      frame.append(drawn);
+    }
+    return frame;
+  }
+}
+
+/** A callout that Visual draws as the viewer does. */
+interface Callout {
+  type: CalloutType;
+  /** Its title's line's marks: its `>`, `[!type]` and fold sign. */
+  marks: Stretch;
+  /** Its type titled, which titles it when it has no title. */
+  untitled: string | null;
+  /** What folding it hides, its lines after its title's, if it folds. */
+  folds: Stretch | null;
+  /** Whether it starts folded, as its `-` says. */
+  folded: boolean;
+}
+
+/**
+ * The callout a quote is, as the viewer reads it in a vault's note, if
+ * Visual draws it: within the bars it draws.
+ */
+function calloutOf(state: EditorState, quote: SyntaxNode): Callout | null {
+  if (!state.facet(inVault) || !drawnQuote(quote)) return null;
+  let depth = 0;
+  for (let around: SyntaxNode | null = quote; around; around = around.parent) {
+    if (around.name === "Blockquote") depth++;
+  }
+  if (depth > QUOTE_LINES.length) return null;
+  let first = quote.firstChild;
+  while (first?.name === "QuoteMark") first = first.nextSibling;
+  if (first?.name !== "Paragraph") return null;
+  const line = state.doc.lineAt(first.from);
+  const marker = calloutMarker(state.sliceDoc(first.from, line.to));
+  if (!marker) return null;
+  const untitled = !state.sliceDoc(first.from + marker.length, line.to).trim();
+  const last = state.doc.lineAt(quote.to);
+  return {
+    type: marker.type,
+    marks: { from: line.from, to: first.from + marker.length },
+    untitled: untitled ? titled(marker.name) : null,
+    folds:
+      marker.fold && last.from > line.from
+        ? { from: line.to, to: last.to }
+        : null,
+    folded: marker.fold === "-",
+  };
+}
+
+/**
+ * A callout's title's line: its marks quieter where they show, and the
+ * chevron that folds it, if it folds, at the line's end. The chevron floats
+ * there from the line's start, so that the line's text ends it: WebKit put
+ * no cursor past a widget ending a line, where a tap past the title went.
+ */
+function calloutTitleLine(
+  state: EditorState,
+  { marks, folds }: Callout,
+): Range<Decoration>[] {
+  const ranges = [CALLOUT_MARKS.range(marks.from, marks.to)];
+  if (folds) {
+    const chevron = new Chevron(Boolean(foldAt(state, folds)));
+    ranges.push(
+      Decoration.widget({ widget: chevron, side: -1 }).range(marks.from),
+    );
+  }
+  return ranges;
+}
+
+const CALLOUT_MARKS = Decoration.mark({ class: "cm-callout-marks" });
+
+/** The fold that hides what a callout's folding would, if it is folded. */
+function foldAt(state: EditorState, { from, to }: Stretch): Stretch | null {
+  let found: Stretch | null = null;
+  foldedRanges(state).between(from, from, (start, end) => {
+    if (start === from && end === to) found = { from, to };
+  });
+  return found;
+}
+
+/**
+ * The viewer's chevron, which ends a folding callout's title: down while
+ * open, turned right while folded, as it turns.
+ */
+class Chevron extends WidgetType {
+  readonly folded: boolean;
+  constructor(folded: boolean) {
+    super();
+    this.folded = folded;
+  }
+  override eq(other: Chevron): boolean {
+    return other.folded === this.folded;
+  }
+  toDOM(): HTMLElement {
+    const chevron = document.createElement("span");
+    chevron.className = "cm-callout-fold";
+    chevron.append(calloutFold());
+    this.updateDOM(chevron);
+    return chevron;
+  }
+  override updateDOM(chevron: HTMLElement): boolean {
+    chevron.classList.toggle("cm-callout-folded", this.folded);
+    return true;
+  }
+  // The editor takes its taps, which fold or open the callout.
+  override ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+/**
+ * The callout whose title's line `at` is on, if Visual draws it: the
+ * innermost quote at the line's end, in which the title ends.
+ */
+function calloutAt(state: EditorState, at: number): Callout | null {
+  const line = state.doc.lineAt(at);
+  for (
+    let node: SyntaxNode | null = syntaxTree(state).resolveInner(line.to, -1);
+    node;
+    node = node.parent
+  ) {
+    if (node.name === "Blockquote") {
+      const callout = calloutOf(state, node);
+      return callout?.marks.from === line.from ? callout : null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Folds or opens the callout whose chevron is at `at`, writing nothing: the
+ * file keeps its sign.
+ */
+function toggleFold(view: EditorView, at: number): void {
+  const folds = calloutAt(view.state, at)?.folds;
+  if (!folds) return;
+  const folded = foldAt(view.state, folds);
+  view.dispatch({
+    effects: folded ? unfoldEffect.of(folded) : foldEffect.of(folds),
+  });
+}
+
+/**
+ * Folds each callout that starts folded, once, as the note opens in Visual,
+ * or as the editor learns that it is in a vault, once the note is parsed.
+ */
+const foldingAtOpen = ViewPlugin.fromClass(
+  class {
+    done = false;
+    readonly view: EditorView;
+    constructor(view: EditorView) {
+      this.view = view;
+      this.fold(view.state);
+    }
+    update(update: ViewUpdate) {
+      this.fold(update.state);
+    }
+    fold(state: EditorState) {
+      if (this.done || !state.facet(inVault)) return;
+      if (!syntaxTreeAvailable(state)) return;
+      this.done = true;
+      const effects: StateEffect<Stretch>[] = [];
+      syntaxTree(state).iterate({
+        enter: (node) => {
+          if (node.name !== "Blockquote") return;
+          const callout = calloutOf(state, node.node);
+          if (callout?.folded && callout.folds) {
+            effects.push(foldEffect.of(callout.folds));
+          }
+        },
+      });
+      // Not while the view updates.
+      if (effects.length > 0) {
+        queueMicrotask(() => {
+          this.view.dispatch({ effects });
+        });
+      }
+    }
+  },
+);
+
+/**
+ * A folded callout and the cursor: one at the fold's end, which shows at
+ * its title's end, where a tap past the title puts it, goes there, rather
+ * than to its last line, which what is typed would go to unseen, so that
+ * the arrows step over it. A selection that reaches into it opens it, as
+ * Find in note's match does, where CodeMirror opens it only for the
+ * selection's head.
+ */
+const foldedCursor = EditorState.transactionFilter.of((transaction) => {
+  if (!transaction.selection) return transaction;
+  const { from, to, empty, head } = transaction.newSelection.main;
+  const effects: StateEffect<Stretch>[] = [];
+  const titles: number[] = [];
+  foldedRanges(transaction.startState)
+    .map(transaction.changes)
+    .between(from, to, (start, end) => {
+      if (empty && head === end) titles.push(start);
+      else if (from < end && to > start) {
+        effects.push(unfoldEffect.of({ from: start, to: end }));
+      }
+    });
+  const [title] = titles;
+  if (title !== undefined) {
+    return [transaction, { selection: { anchor: title }, sequential: true }];
+  }
+  return effects.length > 0
+    ? [transaction, { effects, sequential: true }]
+    : transaction;
+});
+
+/** No placeholder where a callout is folded: its chevron says so. */
+const FOLDING = codeFolding({
+  placeholderDOM: () => document.createElement("span"),
+});
+
+/**
+ * A callout's type, drawn as the viewer's title starts: its icon, then the
+ * type titled if the callout has no title of its own.
+ */
+class CalloutTitle extends WidgetType {
+  readonly type: CalloutType;
+  readonly untitled: string | null;
+  constructor({ type, untitled }: Callout) {
+    super();
+    this.type = type;
+    this.untitled = untitled;
+  }
+  override eq(other: CalloutTitle): boolean {
+    return other.type === this.type && other.untitled === this.untitled;
+  }
+  toDOM(): HTMLElement {
+    const title = document.createElement("span");
+    title.className = "cm-callout-type";
+    title.append(calloutIcon(this.type), this.untitled ?? "");
+    return title;
+  }
 }
 
 /** A code block's language, at its first line's end, as Obsidian shows it. */
@@ -412,6 +775,7 @@ const hiding = ViewPlugin.fromClass(
         update.viewportChanged ||
         moved ||
         lift ||
+        vaultChanged(update) ||
         syntaxTree(update.startState) !== syntaxTree(update.state)
       ) {
         this.decorations = hidden(update.view, this.writing);
@@ -552,21 +916,33 @@ function isTaskBox(target: EventTarget | null): target is HTMLInputElement {
   );
 }
 
+/** What a press on the target does: tick a task, or fold a callout. */
+function pressing(
+  target: EventTarget | null,
+): ((view: EditorView, at: number) => void) | null {
+  if (isTaskBox(target)) return tick;
+  return target instanceof HTMLElement &&
+    target.classList.contains("cm-callout-fold")
+    ? toggleFold
+    : null;
+}
+
 /**
- * A tap on a task's box ticks the task, as one edit that undo reverts,
- * where the cursor stays: neither the focus nor the selection moves, nor
- * does the box but with the text. A finger's tap ticks it as it lifts,
- * the touch's start kept from the browser, which then neither focuses,
- * scrolls nor sends mouse events: Chrome on Android otherwise brings up the
- * keyboard that Back hid, and does so too if the touch's end is kept from
- * it (seen in the Android emulator, #281). A finger that moves, or stays
- * down as long as a long press, leaves the task as it is.
+ * A tap on a task's box ticks the task, as one edit that undo reverts, and
+ * one on a callout's chevron folds or opens it, writing nothing, where the
+ * cursor stays: neither the focus nor the selection moves, nor does the box
+ * but with the text. A finger's tap acts as it lifts, the touch's start kept
+ * from the browser, which then neither focuses, scrolls nor sends mouse
+ * events: Chrome on Android otherwise brings up the keyboard that Back hid,
+ * and does so too if the touch's end is kept from it (seen in the Android
+ * emulator, #281). A finger that moves, or stays down as long as a long
+ * press, leaves the task or the callout as it is.
  */
 const ticking = EditorView.domEventHandlers({
   touchstart(event) {
     const touch = event.changedTouches[0];
     boxPressed = null;
-    if (!isTaskBox(event.target) || event.touches.length !== 1 || !touch) {
+    if (!pressing(event.target) || event.touches.length !== 1 || !touch) {
       return false;
     }
     event.preventDefault();
@@ -576,19 +952,23 @@ const ticking = EditorView.domEventHandlers({
   touchend(event, view) {
     const press = boxPressed;
     boxPressed = null;
-    if (!isTaskBox(event.target) || !tapped(event, press)) return false;
-    tick(view, view.posAtDOM(event.target));
+    const act = pressing(event.target);
+    if (!act || !tapped(event, press) || !(event.target instanceof Node)) {
+      return false;
+    }
+    act(view, view.posAtDOM(event.target));
     // Handled, which CodeMirror would keep from the browser.
     return false;
   },
   mousedown(event, view) {
-    if (!isTaskBox(event.target)) return false;
+    const act = pressing(event.target);
+    if (!act || !(event.target instanceof Node)) return false;
     event.preventDefault();
-    tick(view, view.posAtDOM(event.target));
+    act(view, view.posAtDOM(event.target));
     return true;
   },
   click(event) {
-    if (!isTaskBox(event.target)) return false;
+    if (!pressing(event.target)) return false;
     event.preventDefault();
     return true;
   },
@@ -615,29 +995,29 @@ class Table extends WidgetType {
   readonly alignments: Alignment[];
   // The head's row, then the body's, each cell's text in parts.
   readonly rows: Part[][][];
-  // How many quotes it is in, which its source tells: its lines after the
-  // first hold their marks.
-  readonly depth: number;
+  // The quotes it is in, outermost first, which its source tells: its
+  // lines after the first hold their marks.
+  readonly levels: Level[];
   constructor(
     source: string,
     alignments: Alignment[],
     rows: Part[][][],
-    depth: number,
+    levels: Level[],
   ) {
     super();
     this.source = source;
     this.alignments = alignments;
     this.rows = rows;
-    this.depth = depth;
+    this.levels = levels;
   }
   override eq(other: Table): boolean {
-    return other.source === this.source;
+    return other.source === this.source && sameLevels(other, this);
   }
   toDOM(): HTMLElement {
     // A table wider than the note scrolls sideways within this frame, which
     // draws its quotes' bars, as their lines do.
     const frame = document.createElement("div");
-    frame.className = this.frameClass();
+    this.frame(frame);
     const table = document.createElement("table");
     const head = table.createTHead();
     const body = table.createTBody();
@@ -654,11 +1034,53 @@ class Table extends WidgetType {
     drawing.set(frame, this);
     return frame;
   }
-  /** Its frame's classes, which draw its quotes' bars. */
-  frameClass(): string {
-    return this.depth > 0
-      ? `cm-table cm-quote cm-quote-${String(this.depth)}`
-      : "cm-table";
+  /**
+   * Its frame, which draws its quotes' bars, or in a callout, its quotes'
+   * bars and boxes, as its lines do, in its background, which stays as the
+   * table scrolls, the boxes' corners square: a box ending with it has
+   * the viewer's padding below it.
+   */
+  frame(frame: HTMLElement): void {
+    const { levels } = this;
+    const depth = String(levels.length);
+    const inner = levels[levels.length - 1];
+    frame.removeAttribute("style");
+    if (!levels.some((level) => level.callout)) {
+      frame.className =
+        levels.length > 0 ? `cm-table cm-quote cm-quote-${depth}` : "cm-table";
+      return;
+    }
+    frame.className = `cm-table cm-table-framed cm-quote-${depth}`;
+    if (!inner?.callout) frame.classList.add("cm-framed-quote");
+    const layers: string[][] = [];
+    for (const [at, level] of levels.entries()) {
+      const inset = `var(--text-inset) + ${String(at * 1.25)}em`;
+      const left = `calc(${inset})`;
+      const ends = levels.slice(0, at).filter((outer) => outer.bottom).length;
+      const height = `calc(100% - ${String(ends * 0.75)}rem)`;
+      const color = level.callout
+        ? `var(--callout-${level.callout})`
+        : "var(--outline-variant)";
+      layers.push([
+        `linear-gradient(${color}, ${color})`,
+        `${left} 0`,
+        `0.25em ${height}`,
+      ]);
+      if (level.callout) {
+        const tint = `color-mix(in srgb, ${color} 10%, transparent)`;
+        const right = `var(--text-inset) + ${String(at)}em`;
+        layers.push([
+          `linear-gradient(${tint}, ${tint})`,
+          `${left} 0`,
+          `calc(100% - ${inset} - ${right}) ${height}`,
+        ]);
+      }
+    }
+    frame.style.backgroundImage = layers.map(([image]) => image).join(", ");
+    frame.style.backgroundPosition = layers.map(([, at]) => at).join(", ");
+    frame.style.backgroundSize = layers.map(([, , size]) => size).join(", ");
+    const ends = levels.filter((level) => level.bottom).length;
+    frame.style.paddingBottom = `${String(ends * 0.75)}rem`;
   }
   /** Draws a cell's text, aligned as its column. */
   fill(cell: HTMLTableCellElement, row: number, column: number): void {
@@ -708,7 +1130,7 @@ class Table extends WidgetType {
         }
       }
     });
-    dom.className = this.frameClass();
+    this.frame(dom);
     drawing.set(dom, this);
     return true;
   }
@@ -787,6 +1209,8 @@ const tables = StateField.define<DecorationSet>({
     return transaction.docChanged ||
       transaction.selection ||
       state.field(hasFocus) !== startState.field(hasFocus, false) ||
+      state.facet(inVault) !== startState.facet(inVault) ||
+      foldedRanges(state) !== foldedRanges(startState) ||
       searchPanelOpen(state) !== searchPanelOpen(startState) ||
       syntaxTree(state) !== syntaxTree(startState)
       ? drawnTables(state, drawn)
@@ -803,7 +1227,7 @@ function drawnTables(
   state: EditorState,
   before: DecorationSet = Decoration.none,
 ): DecorationSet {
-  const kept = new Map<string, WidgetType>();
+  const kept = new Map<string, Table>();
   const drawn = before.iter();
   while (drawn.value) {
     const { widget } = drawn.value.spec as { widget?: unknown };
@@ -826,11 +1250,13 @@ function drawnTables(
       if (writing.some((line) => from <= line.to && to >= line.from)) {
         return false;
       }
-      const depth = quoteDepth(state, node.node);
-      if (depth === null) return false;
+      const levels = quoteLevels(state, node.node);
+      if (levels === null) return false;
+      const before = kept.get(state.sliceDoc(node.from, to));
       const widget =
-        kept.get(state.sliceDoc(node.from, to)) ??
-        table(state, node.node, depth);
+        before && sameLevels(before, { levels })
+          ? before
+          : table(state, node.node, levels);
       ranges.push(Decoration.replace({ widget, block: true }).range(from, to));
       return false;
     },
@@ -839,23 +1265,36 @@ function drawnTables(
 }
 
 /**
- * How many quotes a table is in, or none where it stays as written: deeper
- * than the bars Visual draws, or with a line that lacks its quotes' marks,
- * a lazy line, at which GFM ends the table, as the viewer reads it, but
- * Lezer does not.
+ * The quotes a table is in, outermost first, or none where it stays as
+ * written: deeper than the bars Visual draws, or with a line that lacks its
+ * quotes' marks, a lazy line, at which GFM ends the table, as the viewer
+ * reads it, but Lezer does not.
  */
-function quoteDepth(state: EditorState, table: SyntaxNode): number | null {
-  let depth = 0;
-  let around = table.parent;
-  while (around?.name === "Blockquote") {
-    depth++;
+function quoteLevels(state: EditorState, table: SyntaxNode): Level[] | null {
+  const quotes: SyntaxNode[] = [];
+  for (let around = table.parent; around?.name === "Blockquote";) {
+    quotes.unshift(around);
     around = around.parent;
   }
-  const marks = ">".repeat(depth);
+  const marks = ">".repeat(quotes.length);
   const whole = tableRows(table).every(
     (row) => lineStart(state, row).replace(/[ \t]/g, "") === marks,
   );
-  return depth <= QUOTE_LINES.length && whole ? depth : null;
+  if (quotes.length > QUOTE_LINES.length || !whole) return null;
+  const last = state.doc.lineAt(table.to).from;
+  return quotes.map((quote) => {
+    const callout = calloutOf(state, quote);
+    return {
+      callout: callout?.type ?? null,
+      top: false,
+      bottom: callout !== null && shownLine(state, quote.to) === last,
+      title: false,
+    };
+  });
+}
+
+function sameLevels(one: { levels: Level[] }, other: { levels: Level[] }) {
+  return JSON.stringify(one.levels) === JSON.stringify(other.levels);
 }
 
 /** What comes before a table's line on its line: its quotes' marks, its indent. */
@@ -863,7 +1302,7 @@ function lineStart(state: EditorState, row: SyntaxNode): string {
   return state.sliceDoc(state.doc.lineAt(row.from).from, row.from);
 }
 
-function table(state: EditorState, node: SyntaxNode, depth: number): Table {
+function table(state: EditorState, node: SyntaxNode, levels: Level[]): Table {
   const [header, delimiter, ...body] = tableRows(node);
   const columns = header ? cellsOf(state, header).length : 0;
   return new Table(
@@ -878,7 +1317,7 @@ function table(state: EditorState, node: SyntaxNode, depth: number): Table {
           ]
         : [],
     ),
-    depth,
+    levels,
   );
 }
 
@@ -2221,7 +2660,9 @@ const LOOK = EditorView.theme({
     backgroundSize: "calc(var(--quote-depth) * 1.25em) 100%",
     backgroundRepeat: "no-repeat",
   },
-  ".cm-line.cm-quote": {
+  // Apart, since CodeMirror scopes each selector between commas, within
+  // `:is()` too, which then outweighed a code block's padding.
+  ".cm-line.cm-quote, .cm-line.cm-framed": {
     paddingLeft: "calc(var(--text-inset) + var(--quote-depth) * 1.25em)",
     paddingRight: "calc(var(--text-inset) + var(--quote-depth) * 1em)",
   },
@@ -2231,6 +2672,80 @@ const LOOK = EditorView.theme({
       { "--quote-depth": String(at + 1) },
     ]),
   ),
+  // A line in a callout, as far in as a quote's, its quotes and boxes
+  // drawn under it, as the viewer's, whose height stays whether its marks
+  // show or not, its title in its type's color.
+  ".cm-line.cm-framed": { position: "relative" },
+  ".cm-framed-quote": { color: "var(--on-surface-variant)" },
+  // Under a code block's, and the selection's.
+  ".cm-frame": {
+    position: "absolute",
+    inset: "0",
+    zIndex: "-2",
+    pointerEvents: "none",
+  },
+  ".cm-frame > span": { position: "absolute", top: "0" },
+  ".cm-frame-bar": { width: "0.25em", background: "var(--outline-variant)" },
+  ".cm-frame-box": {
+    borderLeft: "0.25em solid var(--callout)",
+    background: "color-mix(in srgb, var(--callout) 10%, transparent)",
+  },
+  ".cm-frame-top": {
+    borderTopLeftRadius: "6px",
+    borderTopRightRadius: "6px",
+  },
+  ".cm-frame-bottom": {
+    borderBottomLeftRadius: "6px",
+    borderBottomRightRadius: "6px",
+  },
+  ...Object.fromEntries(
+    CALLOUT_TYPES.map((type) => [
+      `.cm-callout-${type}`,
+      { "--callout": `var(--callout-${type})` },
+    ]),
+  ),
+  ".cm-line.cm-callout-title": { color: "var(--callout)", fontWeight: "600" },
+  // Its marks quieter, `[!type]` too, which Markdown reads as a link.
+  ".cm-callout-marks": {
+    color: "var(--on-surface-variant)",
+    fontWeight: "normal",
+  },
+  ".cm-callout-marks span": { color: "inherit" },
+  // Its title wrapping beside its icon, as the viewer's does.
+  ".cm-line.cm-callout-title:has(.cm-callout-type)": {
+    paddingLeft:
+      "calc(var(--text-inset) + var(--quote-depth) * 1.25em + 1em + 0.25rem)",
+  },
+  ".cm-line .cm-callout-type": {
+    marginLeft: "calc(-1em - 0.25rem)",
+    color: "var(--callout)",
+    fontWeight: "600",
+  },
+  ".cm-callout-icon": {
+    width: "1em",
+    height: "1lh",
+    marginRight: "0.25rem",
+    verticalAlign: "top",
+  },
+  // Its chevron at its title's line's end, a tap target of 44 px that
+  // takes no more room than an icon, turning as the viewer's does.
+  ".cm-callout-fold": {
+    float: "right",
+    padding: "0.625rem 0.875rem",
+    margin: "-0.625rem -0.875rem -0.625rem 0.25rem",
+    cursor: "pointer",
+  },
+  ".cm-callout-chevron": {
+    display: "block",
+    width: "1em",
+    height: "1lh",
+    pointerEvents: "none",
+    transition: "transform 100ms ease-in-out",
+  },
+  ".cm-callout-folded .cm-callout-chevron": { transform: "rotate(-90deg)" },
+  "@media (prefers-reduced-motion: reduce)": {
+    ".cm-callout-chevron": { transition: "none" },
+  },
   // The viewer's code block, as far in as its quote's text, its text 1rem
   // further in, drawn under its lines, whose height it keeps: its fences'
   // lines, hidden, are its padding.
@@ -2245,7 +2760,7 @@ const LOOK = EditorView.theme({
     content: '""',
     position: "absolute",
     inset:
-      "0 calc(var(--text-inset) + var(--quote-depth, 0) * 1em) 0 calc(var(--text-inset) + var(--quote-depth, 0) * 1.25em)",
+      "0 calc(var(--text-inset) + var(--quote-depth, 0) * 1em) var(--boxes-below, 0) calc(var(--text-inset) + var(--quote-depth, 0) * 1.25em)",
     zIndex: "-1",
     background: "var(--surface-container-high)",
   },
@@ -2258,9 +2773,10 @@ const LOOK = EditorView.theme({
     borderBottomRightRadius: "var(--radius-sm)",
   },
   // The cursor's line marked at its start alone, the block staying whole.
-  "&.cm-focused .cm-activeLine.cm-code-block": {
-    backgroundColor: "transparent",
-  },
+  "&.cm-focused .cm-activeLine.cm-code-block, &.cm-focused .cm-activeLine.cm-framed":
+    {
+      backgroundColor: "transparent",
+    },
   // Markdown's code at the code's size, as the viewer's: the light
   // styling's headings would make its lines taller.
   ".cm-code-block span:not(.cm-code-language)": { fontSize: "inherit" },
@@ -2304,14 +2820,15 @@ const LOOK = EditorView.theme({
     // Its width the note's, however wide its table.
     contain: "inline-size",
   },
-  // In a quote, its bars in the frame's border, which the table scrolls
-  // clear of, as the viewer's table does within its quote.
-  ".cm-table.cm-quote": {
+  // In a quote or a callout, its bars and boxes in the frame's border,
+  // which the table scrolls clear of, as the viewer's table does.
+  ".cm-table.cm-quote, .cm-table.cm-table-framed": {
     borderLeft:
       "calc(var(--text-inset) + var(--quote-depth) * 1.25em) solid transparent",
     paddingLeft: "0",
     paddingRight: "calc(var(--text-inset) + var(--quote-depth) * 1em)",
     backgroundOrigin: "border-box",
+    backgroundRepeat: "no-repeat",
   },
   ".cm-table table": { borderCollapse: "collapse", width: "max-content" },
   ".cm-table :is(th, td)": {
@@ -2352,6 +2869,9 @@ const LOOK = EditorView.theme({
  * edit splits.
  */
 export const livePreview: Extension = [
+  FOLDING,
+  foldingAtOpen,
+  foldedCursor,
   hiding,
   scrollingInstead,
   EditorView.atomicRanges.of(
@@ -2452,7 +2972,8 @@ function blockAround(state: EditorState, at: number): SyntaxNode | null {
  * Visual's symbols, hidden or drawn: emphasis' `*` and `_`,
  * strikethrough's `~~`, inline code's backticks, a code block's fences, a
  * heading's `#`, a link's brackets and address, a list item's marker, a
- * thematic break, and a quote's `>`.
+ * thematic break, a quote's `>`, and a callout's title's marks, drawn as
+ * its type.
  */
 function symbols(state: EditorState, node: SyntaxNodeRef): Range<Decoration>[] {
   switch (node.name) {
@@ -2468,7 +2989,7 @@ function symbols(state: EditorState, node: SyntaxNodeRef): Range<Decoration>[] {
     case "ListMark":
       return listMark(state, node);
     case "QuoteMark":
-      return quoteMark(state, node).map(hide);
+      return calloutTitle(state, node) ?? quoteMark(state, node).map(hide);
     case "HorizontalRule":
       return [
         RULE_LINE.range(state.doc.lineAt(node.from).from),
@@ -2502,6 +3023,28 @@ function quoteMark(state: EditorState, node: SyntaxNodeRef): Stretch[] {
       from: before.trim() ? node.from : line.from,
       to: space ? node.to + 1 : node.to,
     },
+  ];
+}
+
+/**
+ * The marks of a callout's title's line, its quotes' and its own, from its
+ * first `>`, if `node` is a `>` on it.
+ */
+function calloutTitle(
+  state: EditorState,
+  node: SyntaxNodeRef,
+): Range<Decoration>[] | null {
+  // Most quotes' lines start no callout, which this tells at once.
+  const line = state.doc.lineAt(node.from);
+  if (!/^[\s>]*\[!/.test(line.text)) return null;
+  const callout = calloutAt(state, node.from);
+  if (!callout) return null;
+  if (state.sliceDoc(callout.marks.from, node.from).includes(">")) return [];
+  return [
+    Decoration.replace({ widget: new CalloutTitle(callout) }).range(
+      callout.marks.from,
+      callout.marks.to,
+    ),
   ];
 }
 
