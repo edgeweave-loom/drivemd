@@ -2413,12 +2413,70 @@ body:has(> .keyboard-toolbar) .editor {
   anchor-name: --table-options;
 }
 
+/* The formatting toolbar (docs/DESIGN.md, Formatting toolbar): over the
+   note, under the app bar, where it stays as the note scrolls under it. */
+.format-slot {
+  position: sticky;
+  top: var(--app-bar-bottom);
+  z-index: 2;
+  padding-bottom: var(--space-2);
+  background: var(--surface);
+}
+
+.format-slot:empty {
+  display: none;
+}
+
+/* On the app's background, where the note shows on a sheet. */
+@media (width >= 768px) and (not ((pointer: coarse) and (height < 500px))) {
+  .format-slot {
+    background: var(--app-background);
+  }
+}
+
+.format-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  border-radius: 20px;
+  background: var(--surface-container);
+}
+
+.format-bar button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--on-surface-variant);
+}
+
+.format-bar .icon {
+  width: 20px;
+  height: 20px;
+}
+
+.format-bar hr {
+  flex: none;
+  width: 1px;
+  height: 20px;
+  margin: 0 var(--space-1);
+  border: none;
+  background: var(--outline-variant);
+}
+
 /* Find in note (docs/DESIGN.md, Find in note): over the source's top, under
    the app bar, from edge to edge of its sheet; on a phone, in the app bar's
    place. */
 .find-bar {
   position: sticky;
-  top: var(--app-bar-bottom);
+  /* Under the formatting toolbar, where it shows. */
+  top: calc(var(--app-bar-bottom) + var(--format-bar-height, 0px));
   z-index: 1;
   display: grid;
   gap: var(--space-2);

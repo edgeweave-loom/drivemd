@@ -72,6 +72,18 @@ if ("window" in globalThis) {
       return undefined;
     }
   } as unknown as typeof IntersectionObserver;
+  // Nor does it size elements, which therefore never resize.
+  window.ResizeObserver = class {
+    observe() {
+      return undefined;
+    }
+    unobserve() {
+      return undefined;
+    }
+    disconnect() {
+      return undefined;
+    }
+  };
   // Nor does it make object URLs.
   let objects = 0;
   URL.createObjectURL = () => {
