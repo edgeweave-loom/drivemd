@@ -1915,10 +1915,20 @@ export function editTable(view: EditorView, edit: TableEdit): boolean {
 }
 
 /**
- * Once the table's menu has closed, gives the focus `back` to the cell
- * edited, which stays edited, or else closes it.
+ * Keeps the cell edited in place edited while the focus is away from it,
+ * in the formatting toolbar or the table's menu, until `releaseCell`.
  */
-export function tableMenuClosed(view: EditorView, back: boolean): void {
+export function holdCell(view: EditorView): void {
+  const cells = view.plugin(editingCells);
+  if (cells?.editing) cells.holding = true;
+}
+
+/**
+ * Once the table's menu has closed, or the focus has left the formatting
+ * toolbar, gives the focus `back` to the cell edited, which stays edited,
+ * or else closes it, unless it has the focus already.
+ */
+export function releaseCell(view: EditorView, back: boolean): void {
   view.plugin(editingCells)?.released(back);
 }
 
@@ -1997,7 +2007,8 @@ function atEdge(cell: EditorView, by: 1 | -1): boolean {
 const editingCells = ViewPlugin.fromClass(
   class {
     editing: Editing | null = null;
-    // Whether the table's menu has the focus, the cell edited staying so.
+    // Whether the table's menu or the formatting toolbar has the focus,
+    // the cell edited staying so.
     holding = false;
     // The press whose end the table's menu waits for.
     pressing: AbortController | null = null;

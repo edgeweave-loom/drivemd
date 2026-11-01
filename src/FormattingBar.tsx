@@ -25,6 +25,8 @@ import {
   type Formats,
 } from "./formatting.ts";
 import { Icon } from "./Icon.tsx";
+import { editTable, type CellMenu } from "./live-preview.ts";
+import { ALIGNS, TABLE_EDITS } from "./table-edits.ts";
 import type { IconName } from "./icons.ts";
 import { ariaKeys, keepFocus, keyLabel, MAC } from "./keys.ts";
 import { moveInMenu } from "./menu.ts";
@@ -145,6 +147,12 @@ function moveInToolbar(event: KeyboardEvent<HTMLElement>, leave: () => void) {
   buttons[to]?.focus();
 }
 
+// The table's edits with an icon, in their groups, as the keyboard
+// toolbar's keys in a cell.
+const TABLE_BUTTONS = TABLE_EDITS.map((group) =>
+  group.flatMap(({ edit, name, icon }) => (icon ? [{ edit, name, icon }] : [])),
+).filter((group) => group.length > 0);
+
 const STYLES = [
   "Normal text",
   "Heading 1",
@@ -253,21 +261,40 @@ function StyleMenu({
  * its row.
  */
 export function FormattingBar({
-  inCell,
+  cell,
+  tableMenu,
   formats,
   onCommand,
   onLeave,
+  onHold,
 }: {
-  inCell: boolean;
+  /**
+   * The table's cell edited in place that the cursor is in, if any: the
+   * edits that apply, and its column's alignment.
+   */
+  cell: CellMenu | null;
+  /** The table's menu's id, which the Table button opens in a cell. */
+  tableMenu: string;
   /** The formatting where the cursor is, which its buttons show pressed. */
   formats: Formats;
   onCommand: (command: Command) => void;
   /** Gives the focus back to the text. */
   onLeave: () => void;
+  /**
+   * Keeps a table's cell edited while the focus is in the toolbar, or lets
+   * it go once the focus leaves, `back` to it where the focus went nowhere.
+   */
+  onHold: (held: boolean, back: boolean) => void;
 }) {
+  const inCell = cell !== null;
   const groups = GROUPS.map((group) =>
     inCell ? group.filter(({ lines }) => !lines) : group,
   ).filter((group) => group.length > 0);
+  // From the keyboard, back to the text, unless the command took the focus
+  // elsewhere, as Find in note does.
+  const left = (toolbar: Element | null) => {
+    if (toolbar?.contains(document.activeElement)) onLeave();
+  };
   return (
     <div
       role="toolbar"
@@ -276,6 +303,15 @@ export function FormattingBar({
       onMouseDown={keepFocus}
       onKeyDown={(event) => {
         moveInToolbar(event, onLeave);
+      }}
+      onFocus={() => {
+        onHold(true, false);
+      }}
+      onBlur={(event) => {
+        const to = event.relatedTarget;
+        // Within it, or into the table's menu, which holds the cell too.
+        if (to?.closest(`.format-bar, [id="${tableMenu}"]`)) return;
+        onHold(false, to === null);
       }}
     >
       {groups.map((group, index) => (
@@ -306,9 +342,7 @@ export function FormattingBar({
                 onClick={(event) => {
                   const toolbar = event.currentTarget.parentElement;
                   onCommand(command);
-                  // From the keyboard, back to the text, unless the command
-                  // took the focus elsewhere, as Find in note does.
-                  if (toolbar?.contains(document.activeElement)) onLeave();
+                  left(toolbar);
                 }}
               >
                 <Icon name={icon} />
@@ -317,6 +351,53 @@ export function FormattingBar({
           })}
         </Fragment>
       ))}
+      {cell &&
+        TABLE_BUTTONS.map((group) => (
+          <Fragment key={group[0]?.edit}>
+            <hr aria-orientation="vertical" />
+            {group.map(({ edit, name, icon }) => {
+              const aligning = ALIGNS[edit];
+              return (
+                <button
+                  key={edit}
+                  type="button"
+                  aria-label={name}
+                  title={name}
+                  tabIndex={-1}
+                  // Off where its edit does not apply, as the keyboard
+                  // toolbar's keys are, a click leaving it undone.
+                  aria-disabled={!cell.edits.has(edit) || undefined}
+                  aria-pressed={
+                    aligning ? cell.alignment === aligning : undefined
+                  }
+                  onClick={(event) => {
+                    const toolbar = event.currentTarget.parentElement;
+                    onCommand((view) => editTable(view, edit));
+                    left(toolbar);
+                  }}
+                >
+                  <Icon name={icon} />
+                </button>
+              );
+            })}
+          </Fragment>
+        ))}
+      {cell && (
+        <>
+          <hr aria-orientation="vertical" />
+          <button
+            type="button"
+            className="table"
+            aria-haspopup="menu"
+            popoverTarget={tableMenu}
+            tabIndex={-1}
+            title="Table"
+          >
+            Table
+            <Icon name="arrow_drop_down" />
+          </button>
+        </>
+      )}
     </div>
   );
 }

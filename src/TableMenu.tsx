@@ -12,7 +12,7 @@ import { flushSync } from "react-dom";
 import { keepFocus } from "./keys.ts";
 import {
   editTable,
-  tableMenuClosed,
+  releaseCell,
   tableMenuOf,
   type CellMenu,
   type TableMenuControl,
@@ -66,14 +66,29 @@ function placeAbove(menu: HTMLElement, key: DOMRect) {
 }
 
 /**
+ * Places the menu below the formatting toolbar's Table button, at the
+ * button by its CSS anchor, down to the screen's bottom, where it scrolls
+ * if taller.
+ */
+function placeBelow(menu: HTMLElement, button: DOMRect) {
+  menu.style.left = "";
+  menu.style.top = "";
+  menu.style.translate = "";
+  menu.style.maxHeight = `${String(room().bottom - button.bottom - MARGIN)}px`;
+}
+
+/**
  * The menu of a table's cell edited in place, as Obsidian's: a line break
  * in the cell, its row and its column added, moved or deleted, and its
  * column's alignment, the edits that do not apply off. A right-click opens
  * it at the pointer, its first item focused, with the line break's
  * shortcut; on a touch screen, the keyboard toolbar's Table options key
  * opens it above the key, with the items the toolbar lacks, which never
- * take the focus, so that the keyboard stays up. Closed without an edit,
- * it gives the cell back the focus, unless something else took it.
+ * take the focus, so that the keyboard stays up; with a mouse, the
+ * formatting toolbar's Table button opens it below the button, with the
+ * same items and the line break's shortcut, its first item focused when
+ * the button was pressed from the keyboard. Closed without an edit, it
+ * gives the cell back the focus, unless something else took it.
  */
 export function TableMenu({
   id,
@@ -87,9 +102,15 @@ export function TableMenu({
   const menu = useRef<HTMLDivElement>(null);
   // Its cell's edits and alignment, and whether all its items show, as
   // from a right-click, or those the toolbar lacks.
-  const [shown, setShown] = useState<{ cell: CellMenu; all: boolean } | null>(
-    null,
-  );
+  const [shown, setShown] = useState<{
+    cell: CellMenu;
+    all: boolean;
+    below: boolean;
+  } | null>(null);
+  // Whether it opens from the keyboard, below the Table button.
+  const keyed = useRef(false);
+  // Whether one of its edits closes it.
+  const picked = useRef(false);
   // Where a right-click opens it, rather than above the Table options key.
   const point = useRef<{ x: number; y: number } | null>(null);
   useImperativeHandle(
@@ -122,28 +143,44 @@ export function TableMenu({
           event.preventDefault();
           return;
         }
+        const button = document.querySelector(`[popovertarget="${id}"]`);
+        const below = button?.closest(".format-bar") != null;
+        keyed.current = below && document.activeElement === button;
         flushSync(() => {
-          setShown({ cell: now, all: at !== null });
+          setShown({ cell: now, all: at !== null, below });
         });
         if (at) {
           place(element, at.x, at.y);
           return;
         }
-        const key = document
-          .querySelector(`[popovertarget="${id}"]`)
-          ?.getBoundingClientRect();
-        if (key) placeAbove(element, key);
+        const box = button?.getBoundingClientRect();
+        if (!box) return;
+        if (below) placeBelow(element, box);
+        else placeAbove(element, box);
       };
       const closed = (event: Event) => {
         const note = editor.current;
+        if ((event as ToggleEvent).newState === "open" && keyed.current) {
+          element.querySelector<HTMLElement>('[role^="menuitem"]')?.focus();
+        }
         if ((event as ToggleEvent).newState !== "closed" || !note) return;
         const { activeElement } = document;
-        tableMenuClosed(
-          note,
+        const back =
           !activeElement ||
-            activeElement === document.body ||
-            element.contains(activeElement),
+          activeElement === document.body ||
+          element.contains(activeElement);
+        const button = document.querySelector<HTMLElement>(
+          `[popovertarget="${id}"]`,
         );
+        const edited = picked.current;
+        picked.current = false;
+        // Back at its button, as Firefox gives it, the formatting toolbar
+        // holds the cell.
+        if (activeElement?.closest(".format-bar")) return;
+        // Left from the keyboard without an edit, the focus goes back to
+        // the button, which WebKit left nowhere.
+        if (back && keyed.current && !edited && button) button.focus();
+        else releaseCell(note, back);
       };
       element.addEventListener("beforetoggle", opening);
       element.addEventListener("toggle", closed);
@@ -156,7 +193,7 @@ export function TableMenu({
     [id, editor],
   );
   const all = shown?.all ?? true;
-  const { cell } = shown ?? {};
+  const { cell, below = false } = shown ?? {};
   const groups = TABLE_EDITS.map((group) =>
     group.filter(({ icon }) => all || !icon),
   ).filter((group) => group.length > 0);
@@ -167,7 +204,7 @@ export function TableMenu({
       popover="auto"
       role="menu"
       aria-label="Table"
-      className={`menu table-menu${all ? "" : " options"}`}
+      className={`menu table-menu${all ? "" : below ? " below" : " options"}`}
       onKeyDown={moveInMenu}
     >
       {groups.map((group, at) => (
@@ -185,13 +222,15 @@ export function TableMenu({
                   aligning ? cell?.alignment === aligning : undefined
                 }
                 aria-disabled={off || undefined}
-                aria-keyshortcuts={all ? keys : undefined}
+                aria-keyshortcuts={all || below ? keys : undefined}
                 onMouseDown={keepFocus}
                 onClick={() => {
                   const note = editor.current;
                   // An item that is off leaves the menu open.
-                  if (note && editTable(note, edit))
+                  if (note && editTable(note, edit)) {
+                    picked.current = true;
                     menu.current?.hidePopover();
+                  }
                 }}
               >
                 {name}

@@ -9,7 +9,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Editor } from "./Editor.tsx";
 import { holdTouch } from "./test/screen.ts";
 
@@ -42,7 +42,7 @@ function toolbar() {
 function names() {
   return within(toolbar())
     .getAllByRole("button")
-    .map((button) => button.getAttribute("aria-label"));
+    .map((button) => button.getAttribute("aria-label") ?? button.textContent);
 }
 
 describe("the formatting toolbar", () => {
@@ -53,6 +53,16 @@ describe("the formatting toolbar", () => {
       value: () => false,
       configurable: true,
     });
+    // Nor does it measure text, which CodeMirror does in the frame after
+    // a table's edit.
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      value: () => document.createElement("span").getClientRects(),
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(Range.prototype, "getClientRects");
   });
 
   it("shows over the note with a mouse, each button named with its key", () => {
@@ -229,13 +239,13 @@ describe("the formatting toolbar", () => {
     expect(pressed()).toEqual(["Italic", "Bulleted list"]);
   });
 
-  it("leaves out the buttons of lines in a table's cell, whose text it formats", async () => {
-    const view = open("| Tea | Cups |\n| - | - |", true);
+  /** Edits the table cell drawn as `name`, from a click. */
+  async function editCell(view: EditorView, name: string) {
     await waitFor(() => {
       expect(syntaxTreeAvailable(view.state)).toBe(true);
     });
-    const drawn = [...view.contentDOM.querySelectorAll("th")].find(
-      (cell) => cell.textContent === "Tea",
+    const drawn = [...view.contentDOM.querySelectorAll("th, td")].find(
+      (cell) => cell.textContent === name,
     );
     fireEvent.mouseDown(drawn ?? document.body);
     const cell = EditorView.findFromDOM(
@@ -243,6 +253,12 @@ describe("the formatting toolbar", () => {
         document.body,
     );
     if (!cell) throw new Error("No cell's editor");
+    return cell;
+  }
+
+  it("trades the buttons of lines for the table's in a cell, whose text it formats", async () => {
+    const view = open("| Tea | Cups |\n| - | - |", true);
+    const cell = await editCell(view, "Tea");
     act(() => {
       cell.dispatch({ selection: { anchor: 0, head: 3 } });
     });
@@ -257,11 +273,98 @@ describe("the formatting toolbar", () => {
         "Strikethrough",
         "Code",
         "Link",
+        "Add row below",
+        "Delete row",
+        "Add column to the right",
+        "Delete column",
+        "Align left",
+        "Align center",
+        "Align right",
+        "Table",
       ]);
     });
+    // The head's row is never deleted.
+    expect(
+      within(toolbar()).getByRole("button", { name: "Delete row" }),
+    ).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(within(toolbar()).getByRole("button", { name: "Bold" }));
-
     expect(view.state.sliceDoc()).toBe("| **Tea** | Cups |\n| - | - |");
+    expect(cell.hasFocus).toBe(true);
+
+    const center = within(toolbar()).getByRole("button", {
+      name: "Align center",
+    });
+    expect(fireEvent.mouseDown(center)).toBe(false);
+    fireEvent.click(center);
+    expect(view.state.sliceDoc()).toBe("| **Tea** | Cups |\n| :-: | - |");
+    await waitFor(() => {
+      expect(center).toHaveAttribute("aria-pressed", "true");
+    });
+  });
+
+  it("opens the table's menu below its Table button, with the edits it lacks", async () => {
+    const view = open("| Tea | Cups |\n| - | - |\n| 1 | 2 |", true);
+    const cell = await editCell(view, "1");
+
+    fireEvent.click(
+      await within(toolbar()).findByRole("button", { name: "Table" }),
+    );
+    const menu = screen.getByRole("menu", { name: "Table" });
+    expect(menu).toHaveClass("below");
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual([
+      "Insert line break",
+      "Add row above",
+      "Move row up",
+      "Move row down",
+      "Add column to the left",
+      "Move column left",
+      "Move column right",
+    ]);
+    const lineBreak = within(menu).getByRole("menuitem", {
+      name: "Insert line break",
+    });
+    expect(lineBreak).toHaveAttribute("aria-keyshortcuts", "Shift+Enter");
+    fireEvent.click(
+      within(menu).getByRole("menuitem", { name: "Add row above" }),
+    );
+
+    expect(view.state.sliceDoc()).toBe(
+      "| Tea | Cups |\n| - | - |\n|  |  |\n| 1 | 2 |",
+    );
+    // The row added edited, its cell focused.
+    const edited = EditorView.findFromDOM(
+      view.contentDOM.querySelector<HTMLElement>(".cm-table .cm-editor") ??
+        document.body,
+    );
+    expect(edited).not.toBe(cell);
+    expect(edited?.hasFocus).toBe(true);
+  });
+
+  it("keeps a cell edited while the keyboard is in the toolbar, then gives it the focus back", async () => {
+    const view = open("| Tea | Cups |\n| - | - |\n| 1 | 2 |", true);
+    const cell = await editCell(view, "1");
+    act(() => {
+      cell.focus();
+    });
+
+    fireEvent.keyDown(cell.contentDOM, { key: "F10", altKey: true });
+    const find = within(toolbar()).getByRole("button", {
+      name: "Find in note",
+    });
+    expect(find).toHaveFocus();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // Still edited, its table buttons still there.
+    expect(
+      within(toolbar()).getByRole("button", { name: "Table" }),
+    ).toBeVisible();
+    fireEvent.keyDown(find, { key: "Escape" });
+
     expect(cell.hasFocus).toBe(true);
   });
 });
