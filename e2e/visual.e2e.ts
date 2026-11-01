@@ -130,7 +130,7 @@ test("shows the formatting toolbar under the app bar with a mouse, Find in note 
   const toolbar = page.getByRole("toolbar", { name: "Format", exact: true });
 
   await note.locator(".cm-line").filter({ hasText: "Line 2." }).click();
-  await toolbar.getByRole("button", { name: "Bulleted list" }).click();
+  await toolbar.getByRole("button", { name: "Quote" }).click();
   await page.keyboard.type(" Tea.");
   await page.evaluate(() => {
     window.scrollTo(0, document.documentElement.scrollHeight / 2);
@@ -154,7 +154,7 @@ test("shows the formatting toolbar under the app bar with a mouse, Find in note 
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("plan")?.content)).toContain(
-    "Line 1.\n- Line 2. Tea.\nLine 3.\n",
+    "Line 1.\n> Line 2. Tea.\nLine 3.\n",
   );
 });
 

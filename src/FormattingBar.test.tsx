@@ -71,6 +71,7 @@ describe("the formatting toolbar", () => {
       "Bulleted list",
       "Numbered list",
       "Checkbox",
+      "Quote",
       "Outdent",
       "Indent",
     ]);
@@ -81,8 +82,8 @@ describe("the formatting toolbar", () => {
       within(toolbar()).getByRole("button", { name: "Numbered list" }),
     ).toHaveAttribute("title", "Numbered list (Ctrl+Shift+7)");
     expect(
-      within(toolbar()).getByRole("button", { name: "Heading" }),
-    ).toHaveAttribute("title", "Heading");
+      within(toolbar()).getByRole("button", { name: "Quote" }),
+    ).toHaveAttribute("title", "Quote");
   });
 
   it("leaves a mouse's selections to scroll as CodeMirror scrolls them", () => {
@@ -124,15 +125,13 @@ describe("the formatting toolbar", () => {
       view.focus();
       view.dispatch({ selection: { anchor: 0, head: 3 } });
     });
-    const list = within(toolbar()).getByRole("button", {
-      name: "Bulleted list",
-    });
+    const quote = within(toolbar()).getByRole("button", { name: "Quote" });
 
     // The press keeps the focus where it is.
-    expect(fireEvent.mouseDown(list)).toBe(false);
-    fireEvent.click(list);
+    expect(fireEvent.mouseDown(quote)).toBe(false);
+    fireEvent.click(quote);
 
-    expect(view.state.sliceDoc()).toBe("- tea");
+    expect(view.state.sliceDoc()).toBe("> tea");
     expect(view.hasFocus).toBe(true);
   });
 
