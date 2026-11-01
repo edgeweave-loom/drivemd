@@ -18,7 +18,12 @@ import {
   type TableMenuControl,
 } from "./live-preview.ts";
 import { moveInMenu } from "./menu.ts";
-import { ALIGNS, TABLE_EDITS } from "./table-edits.ts";
+import { TABLE_EDITS } from "./table-edits.ts";
+
+// The table's edits that the toolbars lack, those without an icon.
+const GROUPS = TABLE_EDITS.map((group) =>
+  group.filter(({ icon }) => !icon),
+).filter((group) => group.length > 0);
 
 // Between the menu and the edges of the room it has.
 const MARGIN = 8;
@@ -35,21 +40,6 @@ function room(): { top: number; bottom: number } {
       (document.querySelector(".keyboard-toolbar")?.getBoundingClientRect()
         .top ?? innerHeight) - MARGIN,
   };
-}
-
-/**
- * Places the menu at a point, upward or downward, where the room is
- * taller, and leftward from the screen's right half: within the room, the
- * point kept in it, where it scrolls if taller.
- */
-function place(menu: HTMLElement, x: number, y: number) {
-  const { top, bottom } = room();
-  const at = Math.min(bottom, Math.max(top, y));
-  const up = at - top > bottom - at;
-  menu.style.left = `${String(x)}px`;
-  menu.style.top = `${String(at)}px`;
-  menu.style.translate = `${x > innerWidth / 2 ? "-100%" : "0"} ${up ? "-100%" : "0"}`;
-  menu.style.maxHeight = `${String(up ? at - top : bottom - at)}px`;
 }
 
 /**
@@ -78,17 +68,15 @@ function placeBelow(menu: HTMLElement, button: DOMRect) {
 }
 
 /**
- * The menu of a table's cell edited in place, as Obsidian's: a line break
- * in the cell, its row and its column added, moved or deleted, and its
- * column's alignment, the edits that do not apply off. A right-click opens
- * it at the pointer, its first item focused, with the line break's
- * shortcut; on a touch screen, the keyboard toolbar's Table options key
- * opens it above the key, with the items the toolbar lacks, which never
- * take the focus, so that the keyboard stays up; with a mouse, the
- * formatting toolbar's Table button opens it below the button, with the
- * same items and the line break's shortcut, its first item focused when
- * the button was pressed from the keyboard. Closed without an edit, it
- * gives the cell back the focus, unless something else took it.
+ * The menu of a table's cell edited in place, with the edits of
+ * Obsidian's that the toolbars lack: a line break in the cell, a row added
+ * above, a column to the left, and the moves, those that do not apply off.
+ * On a touch screen, the keyboard toolbar's Table options key opens it
+ * above the key, its items never taking the focus, so that the keyboard
+ * stays up; with a mouse, the formatting toolbar's Table button opens it
+ * below the button, with the line break's shortcut, its first item focused
+ * when the button was pressed from the keyboard. Closed without an edit,
+ * it gives the cell back the focus, unless something else took it.
  */
 export function TableMenu({
   id,
@@ -100,29 +88,19 @@ export function TableMenu({
   ref?: Ref<TableMenuControl>;
 }) {
   const menu = useRef<HTMLDivElement>(null);
-  // Its cell's edits and alignment, and whether all its items show, as
-  // from a right-click, or those the toolbar lacks.
+  // Its cell's edits and alignment, and whether it shows below the
+  // formatting toolbar's Table button, or above the keyboard toolbar's key.
   const [shown, setShown] = useState<{
     cell: CellMenu;
-    all: boolean;
     below: boolean;
   } | null>(null);
   // Whether it opens from the keyboard, below the Table button.
   const keyed = useRef(false);
   // Whether one of its edits closes it.
   const picked = useRef(false);
-  // Where a right-click opens it, rather than above the Table options key.
-  const point = useRef<{ x: number; y: number } | null>(null);
   useImperativeHandle(
     ref,
     () => ({
-      openAt(x, y) {
-        const element = menu.current;
-        if (!element) return;
-        point.current = { x, y };
-        element.showPopover();
-        element.querySelector<HTMLElement>('[role^="menuitem"]')?.focus();
-      },
       close() {
         menu.current?.hidePopover();
       },
@@ -137,8 +115,6 @@ export function TableMenu({
         if ((event as ToggleEvent).newState !== "open") return;
         const note = editor.current;
         const now = note && tableMenuOf(note);
-        const at = point.current;
-        point.current = null;
         if (!now) {
           event.preventDefault();
           return;
@@ -147,12 +123,8 @@ export function TableMenu({
         const below = button?.closest(".format-bar") != null;
         keyed.current = below && document.activeElement === button;
         flushSync(() => {
-          setShown({ cell: now, all: at !== null, below });
+          setShown({ cell: now, below });
         });
-        if (at) {
-          place(element, at.x, at.y);
-          return;
-        }
         const box = button?.getBoundingClientRect();
         if (!box) return;
         if (below) placeBelow(element, box);
@@ -192,11 +164,7 @@ export function TableMenu({
     },
     [id, editor],
   );
-  const all = shown?.all ?? true;
   const { cell, below = false } = shown ?? {};
-  const groups = TABLE_EDITS.map((group) =>
-    group.filter(({ icon }) => all || !icon),
-  ).filter((group) => group.length > 0);
   return (
     <div
       ref={holding}
@@ -204,25 +172,21 @@ export function TableMenu({
       popover="auto"
       role="menu"
       aria-label="Table"
-      className={`menu table-menu${all ? "" : below ? " below" : " options"}`}
+      className={`menu table-menu ${below ? "below" : "options"}`}
       onKeyDown={moveInMenu}
     >
-      {groups.map((group, at) => (
+      {GROUPS.map((group, at) => (
         <Fragment key={group[0]?.edit}>
           {at > 0 && <hr />}
           {group.map(({ edit, name, keys }) => {
-            const aligning = ALIGNS[edit];
             const off = !cell?.edits.has(edit);
             return (
               <button
                 key={edit}
                 type="button"
-                role={aligning ? "menuitemradio" : "menuitem"}
-                aria-checked={
-                  aligning ? cell?.alignment === aligning : undefined
-                }
+                role="menuitem"
                 aria-disabled={off || undefined}
-                aria-keyshortcuts={all || below ? keys : undefined}
+                aria-keyshortcuts={below ? keys : undefined}
                 onMouseDown={keepFocus}
                 onClick={() => {
                   const note = editor.current;

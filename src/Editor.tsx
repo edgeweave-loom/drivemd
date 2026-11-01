@@ -509,9 +509,6 @@ export function Editor({
           clearance,
           covered,
           {
-            openAt: (x, y) => {
-              menu.current?.openAt(x, y);
-            },
             close: () => {
               menu.current?.close();
             },

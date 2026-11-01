@@ -443,16 +443,6 @@ describe("the keyboard toolbar", () => {
     expect(menu).not.toBeVisible();
     expect(edited()?.hasFocus).toBe(true);
 
-    // A right-click's holds them all.
-    const drawn = [...view.contentDOM.querySelectorAll("td")].find(
-      (cell) => cell.textContent === "2",
-    );
-    expect(fireEvent.contextMenu(drawn ?? document.body)).toBe(false);
-    expect(menu.querySelectorAll('[role^="menuitem"]')).toHaveLength(14);
-    act(() => {
-      menu.hidePopover();
-    });
-
     // Its cell left, it closes, its items being that cell's.
     tap("Table options");
     expect(menu).toBeVisible();
