@@ -11,7 +11,7 @@ import {
   type StateCommand,
   type Transaction,
 } from "@codemirror/state";
-import type { KeyBinding } from "@codemirror/view";
+import type { Command, KeyBinding } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 
 /*
@@ -107,6 +107,19 @@ function formatLines(
   return true;
 }
 
+/** Makes the line a heading of that level, or text at 0. */
+function makeHeading(line: Prefix, level: number): ChangeSpec[] {
+  const hashes = line.at + line.heading;
+  if (line.heading === level) return [];
+  if (line.heading === 0) {
+    return [{ from: line.at, insert: `${"#".repeat(level)} ` }];
+  }
+  if (level === 0) return [{ from: line.at, to: line.at + line.headingLength }];
+  return level > line.heading
+    ? [{ from: hashes, insert: "#".repeat(level - line.heading) }]
+    : [{ from: line.at + level, to: hashes }];
+}
+
 /**
  * Turns the lines into headings one level down from the first line's, up
  * to the third, then back to text: `#`, `##`, `###`, none.
@@ -115,19 +128,20 @@ export const cycleHeading: StateCommand = ({ state, dispatch }) =>
   formatLines(state, dispatch, (lines) => {
     const first = lines[0]?.heading ?? 0;
     const level = first >= 3 ? 0 : first + 1;
-    return lines.flatMap((line): ChangeSpec[] => {
-      const hashes = line.at + line.heading;
-      if (line.heading === level) return [];
-      if (line.heading === 0) {
-        return [{ from: line.at, insert: `${"#".repeat(level)} ` }];
-      }
-      if (level === 0)
-        return [{ from: line.at, to: line.at + line.headingLength }];
-      return level > line.heading
-        ? [{ from: hashes, insert: "#".repeat(level - line.heading) }]
-        : [{ from: line.at + level, to: hashes }];
-    });
+    return lines.flatMap((line) => makeHeading(line, level));
   });
+
+/**
+ * Turns the lines into text, at 0, or headings of each level from 1 to 6,
+ * by index.
+ */
+export const HEADINGS: readonly StateCommand[] = [0, 1, 2, 3, 4, 5, 6].map(
+  (level) =>
+    ({ state, dispatch }) =>
+      formatLines(state, dispatch, (lines) =>
+        lines.flatMap((line) => makeHeading(line, level)),
+      ),
+);
 
 type List = "bullet" | "number";
 
@@ -750,14 +764,44 @@ export const INLINE_KEYS: readonly KeyBinding[] = [
 ];
 
 /**
- * The formatting commands' keys: the lists' as Google Docs binds them, and
- * the indent's as Obsidian does.
+ * The formatting commands' keys: the headings' and the lists' as Google
+ * Docs binds them, and the indent's as Obsidian does.
  */
 export const FORMATTING_KEYS: readonly KeyBinding[] = [
   ...INLINE_KEYS,
+  ...HEADINGS.map((run, level) => ({ key: `Mod-Alt-${String(level)}`, run })),
   { key: "Mod-Shift-7", run: toggleNumbered },
   { key: "Mod-Shift-8", run: toggleList },
   { key: "Mod-Shift-9", run: cycleTask },
   { key: "Mod-]", run: indentLines },
   { key: "Mod-[", run: outdentLines },
 ];
+
+/**
+ * The formatting the main selection is in: its line's heading level, and
+ * the commands whose formatting holds it, which they would take away.
+ */
+export interface Formats {
+  heading: number;
+  on: ReadonlySet<StateCommand | Command>;
+}
+
+export function formatsAt(state: EditorState): Formats {
+  const range = state.selection.main;
+  const line = prefix(state.doc.lineAt(range.head));
+  const on = new Set<StateCommand | Command>();
+  const inline: [string, StateCommand][] = [
+    ["StrongEmphasis", toggleBold],
+    ["Emphasis", toggleItalic],
+    ["Strikethrough", toggleStrikethrough],
+    ["InlineCode", toggleCode],
+  ];
+  for (const [name, command] of inline) {
+    if (inlineAround(state, range, name)) on.add(command);
+  }
+  if (list(line) === "bullet") on.add(toggleList);
+  if (list(line) === "number") on.add(toggleNumbered);
+  if (line.box !== undefined) on.add(cycleTask);
+  if (line.quotes.includes(">")) on.add(toggleQuote);
+  return { heading: line.heading, on };
+}

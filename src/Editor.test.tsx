@@ -232,6 +232,7 @@ describe("Editor", () => {
     ["Ctrl+Shift+X", { key: "X", keyCode: 88, shiftKey: true }, "~~tea~~"],
     ["Ctrl+E", { key: "e" }, "`tea`"],
     ["Ctrl+K", { key: "k" }, "[tea]()"],
+    ["Ctrl+Alt+2", { key: "2", altKey: true }, "## tea"],
     ["Ctrl+Shift+7", { key: "&", keyCode: 55, shiftKey: true }, "1. tea"],
     ["Ctrl+Shift+8", { key: "*", keyCode: 56, shiftKey: true }, "- tea"],
     ["Ctrl+Shift+9", { key: "(", keyCode: 57, shiftKey: true }, "- [ ] tea"],

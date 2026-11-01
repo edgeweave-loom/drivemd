@@ -217,6 +217,7 @@ On a Mac, use Cmd; elsewhere, Ctrl.
 | Cmd/Ctrl+Shift+X                      | Strikethrough, while editing                   |
 | Cmd/Ctrl+E                            | Inline code, while editing                     |
 | Cmd/Ctrl+K                            | Make a link, while editing                     |
+| Cmd/Ctrl+Alt+0 to 6                   | Heading 1 to 6, or text (0), while editing     |
 | Cmd/Ctrl+Shift+7                      | Number a list, or plain text, while editing    |
 | Cmd/Ctrl+Shift+8                      | Make a list, or plain text, while editing      |
 | Cmd/Ctrl+Shift+9                      | Make a task, then tick it, while editing       |

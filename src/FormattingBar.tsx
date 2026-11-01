@@ -1,11 +1,17 @@
 import { historyKeymap, redo, undo } from "@codemirror/commands";
 import type { Command, KeyBinding } from "@codemirror/view";
-import { Fragment, type KeyboardEvent } from "react";
+import {
+  Fragment,
+  useCallback,
+  useId,
+  useRef,
+  type KeyboardEvent,
+} from "react";
 import { findInNote } from "./find.ts";
 import {
-  cycleHeading,
   cycleTask,
   FORMATTING_KEYS,
+  HEADINGS,
   indentLines,
   insertLink,
   outdentLines,
@@ -16,10 +22,12 @@ import {
   toggleNumbered,
   toggleQuote,
   toggleStrikethrough,
+  type Formats,
 } from "./formatting.ts";
 import { Icon } from "./Icon.tsx";
 import type { IconName } from "./icons.ts";
 import { ariaKeys, keepFocus, keyLabel, MAC } from "./keys.ts";
+import { moveInMenu } from "./menu.ts";
 
 interface Button {
   name: string;
@@ -27,6 +35,8 @@ interface Button {
   icon: IconName;
   /** Whether it changes the lines the cursor is on, which a cell lacks. */
   lines?: true;
+  /** Whether it takes its formatting away where the cursor is in it. */
+  toggle?: true;
 }
 
 const GROUPS: Button[][] = [
@@ -35,16 +45,21 @@ const GROUPS: Button[][] = [
     { name: "Undo", command: undo, icon: "undo" },
     { name: "Redo", command: redo, icon: "redo" },
   ],
-  [{ name: "Heading", command: cycleHeading, icon: "title", lines: true }],
   [
-    { name: "Bold", command: toggleBold, icon: "format_bold" },
-    { name: "Italic", command: toggleItalic, icon: "format_italic" },
+    { name: "Bold", command: toggleBold, icon: "format_bold", toggle: true },
+    {
+      name: "Italic",
+      command: toggleItalic,
+      icon: "format_italic",
+      toggle: true,
+    },
     {
       name: "Strikethrough",
       command: toggleStrikethrough,
       icon: "strikethrough_s",
+      toggle: true,
     },
-    { name: "Code", command: toggleCode, icon: "code" },
+    { name: "Code", command: toggleCode, icon: "code", toggle: true },
     { name: "Link", command: insertLink, icon: "link" },
   ],
   [
@@ -53,15 +68,29 @@ const GROUPS: Button[][] = [
       command: toggleList,
       icon: "format_list_bulleted",
       lines: true,
+      toggle: true,
     },
     {
       name: "Numbered list",
       command: toggleNumbered,
       icon: "format_list_numbered",
       lines: true,
+      toggle: true,
     },
-    { name: "Checkbox", command: cycleTask, icon: "check_box", lines: true },
-    { name: "Quote", command: toggleQuote, icon: "format_quote", lines: true },
+    {
+      name: "Checkbox",
+      command: cycleTask,
+      icon: "check_box",
+      lines: true,
+      toggle: true,
+    },
+    {
+      name: "Quote",
+      command: toggleQuote,
+      icon: "format_quote",
+      lines: true,
+      toggle: true,
+    },
   ],
   [
     {
@@ -96,8 +125,10 @@ function keyOf(command: Command): string | undefined {
  * arrows, Home and End move it, and Escape leaves it for the text.
  */
 function moveInToolbar(event: KeyboardEvent<HTMLElement>, leave: () => void) {
-  const buttons = [...event.currentTarget.querySelectorAll("button")];
-  const at = buttons.indexOf(event.target as HTMLButtonElement);
+  const buttons = [
+    ...event.currentTarget.querySelectorAll<HTMLElement>(":scope > button"),
+  ];
+  const at = buttons.indexOf(event.target as HTMLElement);
   if (event.key === "Escape") {
     event.preventDefault();
     leave();
@@ -114,20 +145,122 @@ function moveInToolbar(event: KeyboardEvent<HTMLElement>, leave: () => void) {
   buttons[to]?.focus();
 }
 
+const STYLES = [
+  "Normal text",
+  "Heading 1",
+  "Heading 2",
+  "Heading 3",
+  "Heading 4",
+  "Heading 5",
+  "Heading 6",
+];
+
+/**
+ * The cursor's line's style, as Docs's toolbar gives it: a button naming
+ * it, and a menu of text and the six headings, each with its key, the one
+ * shown checked. The focus starts at it, and goes back to the text once a
+ * style is picked.
+ */
+function StyleMenu({
+  heading,
+  onCommand,
+  onLeave,
+}: {
+  heading: number;
+  onCommand: (command: Command) => void;
+  onLeave: () => void;
+}) {
+  const id = useId();
+  const menu = useRef<HTMLDivElement>(null);
+  const holding = useCallback((element: HTMLDivElement | null) => {
+    menu.current = element;
+    if (!element) return;
+    const opened = (event: Event) => {
+      if ((event as ToggleEvent).newState !== "open") return;
+      element.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+    };
+    element.addEventListener("toggle", opened);
+    return () => {
+      element.removeEventListener("toggle", opened);
+      menu.current = null;
+    };
+  }, []);
+  return (
+    <>
+      <button
+        type="button"
+        className="style"
+        aria-label="Style"
+        aria-haspopup="menu"
+        popoverTarget={id}
+        tabIndex={-1}
+        title="Style"
+      >
+        {STYLES[heading]}
+        <Icon name="arrow_drop_down" />
+      </button>
+      <div
+        ref={holding}
+        id={id}
+        popover="auto"
+        role="menu"
+        aria-label="Style"
+        className="menu style-menu"
+        // Its keys stay its own, rather than moving along the toolbar.
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          moveInMenu(event);
+        }}
+      >
+        {HEADINGS.map((command, level) => {
+          const key = keyOf(command);
+          return (
+            <button
+              key={STYLES[level]}
+              type="button"
+              role="menuitemradio"
+              aria-checked={level === heading}
+              aria-keyshortcuts={key && ariaKeys(key)}
+              onClick={() => {
+                menu.current?.hidePopover();
+                onCommand(command);
+                onLeave();
+              }}
+            >
+              {STYLES[level]}
+              {/* Its aria-keyshortcuts tells it. */}
+              {key && (
+                <span className="key" aria-hidden="true">
+                  {keyLabel(key)}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
 /**
  * The formatting commands as buttons over the note, as Google Docs shows
  * them, where the pointer is a mouse's or a trackpad's. Each button's name
  * and key show in its tooltip. A click keeps the focus in the text; from
  * the keyboard, Alt+F10 reaches the toolbar, and a button pressed gives the
- * focus back to the text. In a table's cell, the buttons of lines leave,
- * since their marks would break its row.
+ * focus back to the text. The cursor's line's style shows in its menu, and
+ * the formatting around the cursor as buttons pressed. In a table's cell,
+ * the style and the buttons of lines leave, since their marks would break
+ * its row.
  */
 export function FormattingBar({
   inCell,
+  formats,
   onCommand,
   onLeave,
 }: {
   inCell: boolean;
+  /** The formatting where the cursor is, which its buttons show pressed. */
+  formats: Formats;
   onCommand: (command: Command) => void;
   /** Gives the focus back to the text. */
   onLeave: () => void;
@@ -148,7 +281,17 @@ export function FormattingBar({
       {groups.map((group, index) => (
         <Fragment key={group[0]?.name}>
           {index > 0 && <hr aria-orientation="vertical" />}
-          {group.map(({ name, command, icon }, position) => {
+          {index === 1 && !inCell && (
+            <>
+              <StyleMenu
+                heading={formats.heading}
+                onCommand={onCommand}
+                onLeave={onLeave}
+              />
+              <hr aria-orientation="vertical" />
+            </>
+          )}
+          {group.map(({ name, command, icon, toggle }, position) => {
             const key = keyOf(command);
             return (
               <button
@@ -156,6 +299,7 @@ export function FormattingBar({
                 type="button"
                 aria-label={name}
                 aria-keyshortcuts={key && ariaKeys(key)}
+                aria-pressed={toggle ? formats.on.has(command) : undefined}
                 title={key ? `${name} (${keyLabel(key)})` : name}
                 // One stop for Tab, the arrows moving between them.
                 tabIndex={index === 0 && position === 0 ? 0 : -1}

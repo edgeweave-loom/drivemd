@@ -51,7 +51,7 @@ import { mountIn, THEME } from "./codemirror.ts";
 import { keepDoubleSpace } from "./double-space.ts";
 import { countMatches, findInNote, findsInNote, type Matches } from "./find.ts";
 import { FindBar } from "./FindBar.tsx";
-import { FORMATTING_KEYS } from "./formatting.ts";
+import { FORMATTING_KEYS, formatsAt, type Formats } from "./formatting.ts";
 import { FormattingBar } from "./FormattingBar.tsx";
 import { withFrontmatter } from "./frontmatter.ts";
 import { KeyboardToolbar, TOOLBAR_HEIGHT } from "./KeyboardToolbar.tsx";
@@ -234,6 +234,16 @@ function followLinks(follow: (href: string) => void): Extension {
   });
 }
 
+const NO_FORMATS: Formats = { heading: 0, on: new Set() };
+
+function sameFormats(one: Formats, other: Formats): boolean {
+  return (
+    one.heading === other.heading &&
+    one.on.size === other.on.size &&
+    [...one.on].every((command) => other.on.has(command))
+  );
+}
+
 // Markdown's blocks, which a table's cell cannot hold: its text is inline.
 const BLOCKS = [
   "ATXHeading",
@@ -382,6 +392,8 @@ export function Editor({
   const [cell, setCell] = useState<CellMenu | null>(null);
   // The address of the link the cursor is in, which the toolbar follows.
   const [link, setLink] = useState<string>();
+  // The formatting where the cursor is, which the formatting toolbar shows.
+  const [formats, setFormats] = useState<Formats>(NO_FORMATS);
   // Find in note's query and matches, while it is open.
   const [found, setFound] = useState<Found | null>(null);
   const searching = found !== null;
@@ -407,6 +419,8 @@ export function Editor({
     }
     if (update.docChanged || update.selectionSet) {
       setLink(linkAt(update.state, update.state.selection.main.head));
+      const now = formatsAt(update.state);
+      setFormats((was) => (sameFormats(was, now) ? was : now));
     }
     if (!searchPanelOpen(update.state)) {
       if (searchPanelOpen(update.startState)) setFound(null);
@@ -593,6 +607,7 @@ export function Editor({
         createPortal(
           <FormattingBar
             inCell={cell !== null}
+            formats={formats}
             onCommand={(command) => {
               if (editor.current) command(editor.current);
             }}
