@@ -829,7 +829,7 @@ test("moves through a table's cells with the arrows, and adds rows past its end"
   );
 });
 
-test("edits a table's rows and columns from its menu or the keyboard toolbar's keys", async ({
+test("edits a table's rows and columns from a toolbar's buttons or its Table menu", async ({
   page,
   drive,
 }, info) => {
@@ -841,9 +841,15 @@ test("edits a table's rows and columns from its menu or the keyboard toolbar's k
   const table = note.getByRole("table");
   const editing = note.getByRole("textbox", { name: "Cell" });
   const menu = page.getByRole("menu", { name: "Table" });
-  const toolbar = page.getByRole("toolbar", { name: "Formatting" });
-  const options = toolbar.getByRole("button", { name: "Table options" });
   const mouse = info.project.name === "desktop-chromium";
+  // The formatting toolbar with a mouse, the keyboard toolbar on a touch
+  // screen.
+  const toolbar = mouse
+    ? page.getByRole("toolbar", { name: "Format", exact: true })
+    : page.getByRole("toolbar", { name: "Formatting" });
+  const options = toolbar.getByRole("button", {
+    name: mouse ? "Table" : "Table options",
+  });
   const ada = table.getByRole("cell", { name: "Ada" });
   /**
    * Opens the menu from the Table options key, which shows above it, its
@@ -871,12 +877,18 @@ test("edits a table's rows and columns from its menu or the keyboard toolbar's k
   };
 
   if (mouse) {
-    await ada.click({ button: "right" });
-    await expect(menu).toBeVisible();
+    await ada.click();
     await expect(editing).toHaveText("Ada");
-    await expect(
-      menu.getByRole("menuitem", { name: "Insert line break" }),
-    ).toBeFocused();
+    // Below the Table button, the cell keeping the focus.
+    await options.click();
+    await expect(menu).toBeVisible();
+    const [shown, button] = await Promise.all([
+      menu.boundingBox(),
+      options.boundingBox(),
+    ]);
+    if (!shown || !button) throw new Error("Not laid out");
+    expect(shown.y).toBeGreaterThanOrEqual(button.y + button.height);
+    await expect(editing).toBeFocused();
   } else {
     await ada.tap();
     await expect(editing).toBeFocused();
@@ -910,19 +922,12 @@ test("edits a table's rows and columns from its menu or the keyboard toolbar's k
     await fromKey(() => options.click());
   }
   const pick = async (name: string) => {
-    const key = toolbar.getByRole("button", { name });
-    if (!mouse && (await key.count()) > 0) {
+    const key = toolbar.getByRole("button", { name, exact: true });
+    if ((await key.count()) > 0) {
       await key.click();
     } else {
-      if (!(await menu.isVisible())) {
-        if (mouse) await editing.click({ button: "right" });
-        else await options.click();
-      }
-      await menu
-        .getByRole(name.startsWith("Align") ? "menuitemradio" : "menuitem", {
-          name,
-        })
-        .click();
+      if (!(await menu.isVisible())) await options.click();
+      await menu.getByRole("menuitem", { name }).click();
       await expect(menu).toBeHidden();
     }
     await expect(editing).toBeFocused();
@@ -937,19 +942,22 @@ test("edits a table's rows and columns from its menu or the keyboard toolbar's k
     "text-align",
     "center",
   );
-  if (!mouse) {
-    await expect(
-      toolbar.getByRole("button", { name: "Align center" }),
-    ).toHaveAttribute("aria-pressed", "true");
-  }
+  await expect(
+    toolbar.getByRole("button", { name: "Align center" }),
+  ).toHaveAttribute("aria-pressed", "true");
   await pick("Move row down");
   await expect(editing).toHaveText("2");
   if (mouse) {
-    // From the keyboard too, and Escape gives the cell the focus back.
-    await page.keyboard.press("Shift+F10");
-    await expect(menu).toBeVisible();
+    // From the keyboard too, Alt+F10 to the toolbar, the cell staying
+    // edited: Escape goes back to the button, then to the cell.
+    await page.keyboard.press("Alt+F10");
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    await expect(menu.getByRole("menuitem").first()).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
+    await expect(options).toBeFocused();
+    await page.keyboard.press("Escape");
     await expect(editing).toBeFocused();
   } else if (info.project.name === "ipad-webkit") {
     // A trackpad's right-click, which WebKit asks the menu for as the press
@@ -994,8 +1002,10 @@ test("writes a line break in a table's cell from its menu, which a phone's keybo
   const editing = note.getByRole("textbox", { name: "Cell" });
   const menu = page.getByRole("menu", { name: "Table" });
   const item = menu.getByRole("menuitem", { name: "Insert line break" });
-  const toolbar = page.getByRole("toolbar", { name: "Formatting" });
   const mouse = info.project.name === "desktop-chromium";
+  const toolbar = mouse
+    ? page.getByRole("toolbar", { name: "Format", exact: true })
+    : page.getByRole("toolbar", { name: "Formatting" });
   const shortcut = () =>
     item.evaluate((one) => getComputedStyle(one, "::after").content);
   const ada = table.getByRole("cell", { name: "Ada" });
@@ -1004,14 +1014,9 @@ test("writes a line break in a table's cell from its menu, which a phone's keybo
   await page.keyboard.type("!");
 
   if (mouse) {
-    // Past the text's end, where the cursor stays.
-    const box = await editing.boundingBox();
-    if (!box) throw new Error("Not laid out");
-    await editing.click({
-      button: "right",
-      position: { x: box.width - 1, y: box.height / 2 },
-    });
-    await expect(item).toBeFocused();
+    await toolbar.getByRole("button", { name: "Table" }).click();
+    await expect(menu).toBeVisible();
+    await expect(editing).toBeFocused();
     // Its shortcut shows at its end, out of its name.
     await expect(item).toHaveAccessibleName("Insert line break");
     expect(await shortcut()).toContain("Shift+Enter");
@@ -1026,11 +1031,7 @@ test("writes a line break in a table's cell from its menu, which a phone's keybo
   await expect(editing).toHaveText("Ada!<br>");
   // Undo takes it back alone.
   const undo = (name: "Undo" | "Redo") =>
-    mouse
-      ? page.keyboard.press(
-          name === "Undo" ? "ControlOrMeta+z" : "ControlOrMeta+y",
-        )
-      : toolbar.getByRole("button", { name }).click();
+    toolbar.getByRole("button", { name }).click();
   await undo("Undo");
   await expect(editing).toHaveText("Ada!");
   await undo("Redo");

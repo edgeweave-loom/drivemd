@@ -23,6 +23,7 @@ import { createRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Editor, type EditorHandle } from "./Editor.tsx";
 import { linkAt } from "./source-links.ts";
+import { TABLE_EDITS } from "./table-edits.ts";
 import type { LineBreak } from "./text.ts";
 
 function open(
@@ -33,6 +34,9 @@ function open(
 ) {
   const onChange = vi.fn<(text: string) => void>();
   const handle = createRef<EditorHandle>();
+  // Where the formatting toolbar shows, as a computer has it.
+  const slot = document.createElement("div");
+  document.body.append(slot);
   const editor = (inVisual: boolean) => (
     <Editor
       ref={handle}
@@ -42,6 +46,7 @@ function open(
       vault={vault}
       onChange={onChange}
       onFollow={() => undefined}
+      formatSlot={slot}
     />
   );
   const { container, rerender } = render(editor(visual));
@@ -2375,12 +2380,13 @@ describe("Visual's tables", () => {
     );
   });
 
-  /** The table's menu, opened from a right-click on the cell `name`. */
+  /**
+   * The table's menu, opened from the formatting toolbar's Table button on
+   * the cell `name`, edited.
+   */
   function menuOn(view: EditorView, name: string) {
-    const drawn = [...view.contentDOM.querySelectorAll("th, td")].find(
-      (cell) => cell.textContent === name,
-    );
-    expect(fireEvent.contextMenu(drawn ?? document.body)).toBe(false);
+    editCell(view, name);
+    fireEvent.click(screen.getByRole("button", { name: "Table" }));
     return screen.getByRole("menu", { name: "Table" });
   }
 
@@ -2389,73 +2395,52 @@ describe("Visual's tables", () => {
   }
 
   /**
-   * Picks `item` from the table's menu on the cell `name`, then tells of
-   * the note, and of the cell edited after.
+   * Picks `item` on the cell `name`, from the formatting toolbar's buttons
+   * or its table's menu, then tells of the note, and of the cell edited
+   * after.
    */
   function picked(view: EditorView, name: string, item: string) {
-    const menu = menuOn(view, name);
-    const chosen = items(menu).find((one) => one.textContent === item);
-    if (!chosen) throw new Error(`No item ${item}`);
-    fireEvent.click(chosen);
-    expect(menu).not.toBeVisible();
+    editCell(view, name);
+    const button = screen.queryByRole("button", { name: item });
+    if (button) fireEvent.click(button);
+    else {
+      const menu = menuOn(view, name);
+      const chosen = items(menu).find((one) => one.textContent === item);
+      if (!chosen) throw new Error(`No item ${item}`);
+      fireEvent.click(chosen);
+      expect(menu).not.toBeVisible();
+    }
     const cell = cellEditor(view);
     return [view.state.sliceDoc(), cell?.state.sliceDoc(), cell?.hasFocus];
   }
 
-  it("opens the table's menu from a right-click on a cell, drawn or edited, which it edits", async () => {
+  it("opens the table's menu from the formatting toolbar's Table button in a cell, which it edits", async () => {
     const { view } = open(NOTE, "\n", true);
     await parsed(view);
 
     const menu = menuOn(view, "Ada");
 
-    expect(cellEditor(view)?.state.sliceDoc()).toBe("_Ada_");
+    const cell = cellEditor(view);
+    expect(cell?.state.sliceDoc()).toBe("_Ada_");
     expect(items(menu).map((item) => item.textContent)).toEqual([
       "Insert line break",
       "Add row above",
-      "Add row below",
       "Move row up",
       "Move row down",
-      "Delete row",
       "Add column to the left",
-      "Add column to the right",
       "Move column left",
       "Move column right",
-      "Delete column",
-      "Align left",
-      "Align center",
-      "Align right",
     ]);
-    expect(
-      within(menu).getByRole("menuitem", { name: "Insert line break" }),
-    ).toHaveFocus();
-    // The cell stays edited while the menu has the focus.
-    await act(async () => {
-      await Promise.resolve();
-    });
-    const cell = cellEditor(view);
-    expect(cell?.state.sliceDoc()).toBe("_Ada_");
+    // From a click, the focus stays in the cell.
+    expect(cell?.hasFocus).toBe(true);
 
-    // Closed without a pick, as by Escape: the cell takes the focus back.
+    // Closed without a pick, as by Escape: the cell keeps the focus.
     act(() => {
       menu.hidePopover();
     });
     expect(cell?.hasFocus).toBe(true);
-    expect(fireEvent.contextMenu(cell?.contentDOM ?? document.body)).toBe(
-      false,
-    );
-    expect(menu).toBeVisible();
     expect(cellEditor(view)).toBe(cell);
     expect(view.state.sliceDoc()).toBe(NOTE);
-
-    // Once the menu has closed, leaving the cell closes it, as ever.
-    act(() => {
-      menu.hidePopover();
-      view.focus();
-      view.dispatch({ selection: { anchor: 0 } });
-    });
-    await waitFor(() => {
-      expect(cellEditor(view)).toBeNull();
-    });
   });
 
   it("writes a line break from the table's menu in place of the cell's selection, as Shift+Enter, one edit for undo", async () => {
@@ -2464,7 +2449,7 @@ describe("Visual's tables", () => {
     const cell = editCell(view, "Ada");
     type(cell, "x");
     const menuOnCell = () => {
-      expect(fireEvent.contextMenu(cell.contentDOM)).toBe(false);
+      fireEvent.click(screen.getByRole("button", { name: "Table" }));
       return screen.getByRole("menu", { name: "Table" });
     };
     const menu = menuOnCell();
@@ -2521,7 +2506,7 @@ describe("Visual's tables", () => {
         if (from === "Shift+Enter") {
           pressed(view, "Enter", { shiftKey: true });
         } else {
-          expect(fireEvent.contextMenu(cell.contentDOM)).toBe(false);
+          fireEvent.click(screen.getByRole("button", { name: "Table" }));
           fireEvent.click(
             screen.getByRole("menuitem", { name: "Insert line break" }),
           );
@@ -2636,7 +2621,16 @@ describe("Visual's tables", () => {
   it("closes the cell edited once the focus leaves the table's menu for the note", async () => {
     const { view } = open(NOTE, "\n", true);
     await parsed(view);
-    const menu = menuOn(view, "Ada");
+    editCell(view, "Ada");
+    // From the keyboard, as Alt+F10 and the arrows reach the Table button:
+    // the menu takes the focus.
+    const button = screen.getByRole("button", { name: "Table" });
+    act(() => {
+      button.focus();
+    });
+    fireEvent.click(button);
+    const menu = screen.getByRole("menu", { name: "Table" });
+    expect(items(menu)[0]).toHaveFocus();
 
     // Outside the table, which stays drawn, before the menu closes, as a
     // browser closes it once the click's press is over.
@@ -2835,21 +2829,29 @@ describe("Visual's tables", () => {
     expect(picked(view, "", "Delete row")[0]).toBe(text);
   });
 
-  it("offers only the table's edits that apply to the cell, its column's alignment checked", async () => {
+  it("offers only the table's edits that apply to the cell, its column's alignment pressed", async () => {
     const text = "| A | B |\n| - | -: |\n| 1 | 2 |\n| 3 | 4 |";
     const { view } = open(text, "\n", true);
     await parsed(view);
+    // The toolbar's buttons and the menu's items, in Obsidian's order.
+    const order = TABLE_EDITS.flat().map(({ name }) => name);
     const offered = (name: string) => {
       const menu = menuOn(view, name);
-      const all = items(menu);
+      const all = [
+        ...items(menu),
+        ...within(screen.getByRole("toolbar", { name: "Format" })).getAllByRole(
+          "button",
+        ),
+      ];
       act(() => {
         menu.hidePopover();
       });
       const marked = (attribute: string) =>
         all
           .filter((item) => item.getAttribute(attribute) === "true")
-          .map((item) => item.textContent);
-      return [marked("aria-disabled"), marked("aria-checked")];
+          .map((item) => item.getAttribute("aria-label") ?? item.textContent)
+          .sort((one, other) => order.indexOf(one) - order.indexOf(other));
+      return [marked("aria-disabled"), marked("aria-pressed")];
     };
 
     // Nothing moves the head, nor comes above it, as GFM's table starts
@@ -2888,10 +2890,9 @@ describe("Visual's tables", () => {
     const { view } = open("| A |\n| - |", "\n", true);
     await parsed(view);
 
+    editCell(view, "A");
     expect(
-      within(menuOn(view, "A")).getByRole("menuitem", {
-        name: "Delete column",
-      }),
+      screen.getByRole("button", { name: "Delete column" }),
     ).toHaveAttribute("aria-disabled", "true");
   });
 
