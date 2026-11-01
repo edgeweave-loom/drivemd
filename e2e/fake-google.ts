@@ -715,6 +715,23 @@ export async function startEditing(page: Page): Promise<void> {
 }
 
 /**
+ * Returns to reading, saving first: by Done on a phone, or else Viewing in
+ * the mode menu.
+ */
+export async function stopEditing(page: Page): Promise<void> {
+  const bar = page.getByRole("banner");
+  if (test.info().project.metadata.layout === "phone") {
+    await bar.getByRole("button", { name: "Done" }).click();
+    return;
+  }
+  await bar.getByRole("button", { name: /^(Visual|Source)$/ }).click();
+  await page
+    .getByRole("menu", { name: "Mode" })
+    .getByRole("menuitemradio", { name: "Viewing" })
+    .click();
+}
+
+/**
  * Ticks the note's first task while editing, which leaves the change to
  * save, as one ticked while viewing does not: in the preview, which a phone
  * shows in turn with the source.
