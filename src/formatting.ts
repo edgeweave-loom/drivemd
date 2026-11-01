@@ -123,20 +123,138 @@ export const cycleHeading: StateCommand = ({ state, dispatch }) =>
     });
   });
 
+type List = "bullet" | "number";
+
+function list(line: Prefix): List | undefined {
+  if (line.marker === undefined) return undefined;
+  return /^\d/.test(line.marker) ? "number" : "bullet";
+}
+
+/**
+ * The other lines of the list item that starts the line that its text's
+ * column holds, past a lazy line, which needs no indent to stay in it.
+ */
+function itemLines(state: EditorState, line: Prefix): Line[] {
+  const tree = ensureSyntaxTree(state, line.at + 1, 100) ?? syntaxTree(state);
+  let node: SyntaxNode | null = tree.resolveInner(line.at, 1);
+  while (node && !(node.name === "ListItem" && node.from === line.at)) {
+    node = node.parent;
+  }
+  if (!node) return [];
+  const first = state.doc.lineAt(line.at);
+  const text = countColumn(first.text.slice(0, line.boxAt - first.from), TAB);
+  const lines: Line[] = [];
+  const last = state.doc.lineAt(node.to).number;
+  for (let number = first.number + 1; number <= last; number++) {
+    const next = state.doc.line(number);
+    const held = prefix(next);
+    if (!held.blank && column(held) >= text) lines.push(next);
+  }
+  return lines;
+}
+
+/**
+ * Makes the lines list items of that kind, or text when `to` is undefined.
+ * Numbers count from 1 at each level, keeping a numbered item's `.` or `)`.
+ * A marker that widens moves the item's other lines as far, so that what it
+ * holds stays in it.
+ */
+function makeList(
+  state: EditorState,
+  lines: Prefix[],
+  to: List | undefined,
+): ChangeSpec[] {
+  const counts = new Map<number, number>();
+  // Spaces that each line's text moves by, from the markers above it.
+  const moves = new Map<number, number>();
+  const marked = lines.map((line) => {
+    if (to === undefined) {
+      return line.marker === undefined
+        ? undefined
+        : { line, to: line.at + line.itemLength, insert: "" };
+    }
+    let marker = "-";
+    if (to === "number") {
+      const level = column(line);
+      for (const deeper of counts.keys()) {
+        if (deeper > level) counts.delete(deeper);
+      }
+      const count = (counts.get(level) ?? 0) + 1;
+      counts.set(level, count);
+      marker = `${String(count)}${line.marker?.match(/[.)]$/)?.[0] ?? "."}`;
+    } else if (list(line) === "bullet") return undefined;
+    if (line.marker === undefined) {
+      return { line, to: line.at, insert: `${marker} ` };
+    }
+    const wider = marker.length - line.marker.length;
+    if (wider > 0) {
+      for (const inner of itemLines(state, line)) {
+        moves.set(inner.from, (moves.get(inner.from) ?? 0) + wider);
+      }
+    }
+    return { line, to: line.at + line.marker.length, insert: marker };
+  });
+  const changes: ChangeSpec[] = [];
+  const edited = new Set<number>();
+  for (const change of marked) {
+    if (!change) continue;
+    const from = change.line.at;
+    const move = " ".repeat(moves.get(state.doc.lineAt(from).from) ?? 0);
+    edited.add(state.doc.lineAt(from).from);
+    if (move + change.insert !== state.doc.sliceString(from, change.to)) {
+      changes.push({ from, to: change.to, insert: move + change.insert });
+    }
+  }
+  for (const [from, spaces] of moves) {
+    if (edited.has(from)) continue;
+    changes.push({
+      from: prefix(state.doc.lineAt(from)).at,
+      insert: " ".repeat(spaces),
+    });
+  }
+  return changes;
+}
+
 /**
  * Makes the lines a bulleted list, or, when all of them are list items with
  * a bullet, plain text again. A numbered item takes a bullet instead.
  */
 export const toggleList: StateCommand = ({ state, dispatch }) =>
+  formatLines(state, dispatch, (lines) =>
+    makeList(
+      state,
+      lines,
+      lines.every((line) => list(line) === "bullet") ? undefined : "bullet",
+    ),
+  );
+
+/**
+ * Makes the lines a numbered list, `1.`, `2.`, `3.`, or, when all of them
+ * are numbered list items, plain text again.
+ */
+export const toggleNumbered: StateCommand = ({ state, dispatch }) =>
+  formatLines(state, dispatch, (lines) =>
+    makeList(
+      state,
+      lines,
+      lines.every((line) => list(line) === "number") ? undefined : "number",
+    ),
+  );
+
+/**
+ * Moves the lines on from the first line's list: text becomes a bulleted
+ * list, a bulleted list a numbered one, and a numbered list text again.
+ */
+export const cycleList: StateCommand = ({ state, dispatch }) =>
   formatLines(state, dispatch, (lines) => {
-    const bulleted = (line: Prefix) => /^[-+*]$/.test(line.marker ?? "");
-    const unlist = lines.every(bulleted);
-    return lines.flatMap((line): ChangeSpec[] => {
-      if (unlist) return [{ from: line.at, to: line.at + line.itemLength }];
-      if (bulleted(line)) return [];
-      if (line.marker === undefined) return [{ from: line.at, insert: "- " }];
-      return [{ from: line.at, to: line.at + line.marker.length, insert: "-" }];
-    });
+    const first = lines[0] && list(lines[0]);
+    const to =
+      first === undefined
+        ? "bullet"
+        : first === "bullet"
+          ? "number"
+          : undefined;
+    return makeList(state, lines, to);
   });
 
 type Task = "text" | "item" | "open" | "done";
@@ -600,6 +718,7 @@ export const INLINE_KEYS: readonly KeyBinding[] = [
  */
 export const FORMATTING_KEYS: readonly KeyBinding[] = [
   ...INLINE_KEYS,
+  { key: "Mod-Shift-7", run: toggleNumbered },
   { key: "Mod-Shift-8", run: toggleList },
   { key: "Mod-Shift-9", run: cycleTask },
   { key: "Mod-]", run: indentLines },
