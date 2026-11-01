@@ -53,11 +53,11 @@ export function remarkCallouts() {
       if (first?.type !== "paragraph") return;
       const [lead, ...after] = first.children;
       if (lead?.type !== "text") return;
-      const marker = MARKER.exec(lead.value);
-      if (!marker || !writtenAt(lead, 0, marker[0].length)) return;
-      const [found, name = "", fold] = marker;
+      const marker = calloutMarker(lead.value);
+      if (!marker || !writtenAt(lead, 0, marker.length)) return;
+      const { type, name, fold } = marker;
       const [title, body] = firstLine([
-        sliceText(lead, found.length),
+        sliceText(lead, marker.length),
         ...after,
       ]);
       const blocks = [...(written(body) ? [paragraph(body)] : []), ...rest];
@@ -67,7 +67,6 @@ export function remarkCallouts() {
         data: { hName: "div", hProperties: { className: ["callout-content"] } },
       };
       contents.add(content);
-      const type = TYPES.get(name.toLowerCase()) ?? "note";
       quote.data = {
         hName: fold ? "details" : "div",
         hProperties: {
@@ -115,6 +114,19 @@ function firstLine(
   return [content, []];
 }
 
+/**
+ * The marker that opens a callout's first line, if the text starts with
+ * one: its type as it shows, an unknown one as a note, its name as written,
+ * its fold sign, and its length, with the spaces after it.
+ */
+export function calloutMarker(text: string) {
+  const marker = MARKER.exec(text);
+  if (!marker) return null;
+  const [found, name = "", fold] = marker;
+  const type = TYPES.get(name.toLowerCase()) ?? "note";
+  return { type, name, fold, length: found.length };
+}
+
 /** Whether the content shows anything. */
 function written(content: PhrasingContent[]): boolean {
   return content.some((node) => node.type !== "text" || node.value !== "");
@@ -125,6 +137,6 @@ function paragraph(children: PhrasingContent[]): Paragraph {
 }
 
 /** A type as Obsidian titles it: `WARNING` gives "Warning". */
-function titled(name: string): string {
+export function titled(name: string): string {
   return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
 }

@@ -61,7 +61,7 @@ Read the version that staging serves with `curl -s https://md-staging.corp.edgew
 
 ### Notes for the checks
 
-Make four made-up notes in the test account's My Drive, from the app on the iPhone, after check A1: on **My Drive**, tap **New note**, name it, then **Edit**, paste the text, and tap **Done**. When they exist from a previous run, paste their text again, so that each run starts from the same notes.
+Make five made-up notes in the test account's My Drive, from the app on the iPhone, after check A1: on **My Drive**, tap **New note**, name it, then **Edit**, paste the text, and tap **Done**. When they exist from a previous run, paste their text again, so that each run starts from the same notes.
 
 - `device-check-long.md`, enough lines to scroll past two screens:
 
@@ -134,7 +134,28 @@ Make four made-up notes in the test account's My Drive, from the app on the iPho
   [ref]: https://example.com
   ````
 
-**Android:** the same four notes, made from the app on the phone after check A1. For the long note, run its command without `| xcrun simctl pbcopy …`, and give its output to `mobile_clipboard`.
+- `device-check-callouts.md`, in a vault: a folder `device-check-vault` in My Drive holding an empty `.obsidian` folder, which the developer makes once on drive.google.com, since the app makes no folder. Make the note in the vault's folder, as the others:
+
+  ```markdown
+  # Callouts
+
+  > [!faq]- Why keep notes in Markdown, with a title long enough to wrap on a phone?
+  > Because any editor reads them.
+
+  > [!tldr]
+  > Short notes.
+
+  > [!note] Plan
+  >
+  > > [!warning] Dates
+  > > Friday.
+  >
+  > | Day    | Tea   |
+  > | ------ | ----- |
+  > | Friday | Green |
+  ```
+
+**Android:** the same five notes, made from the app on the phone after check A1. For the long note, run its command without `| xcrun simctl pbcopy …`, and give its output to `mobile_clipboard`.
 
 ## Order
 
@@ -149,7 +170,7 @@ Run the sections in this order, so that each context is set up once:
 5. Both devices, both themes: F and H2.
 6. I, only if staging deploys a new version during the run.
 
-Run every check in the light theme unless it says otherwise: E3, section F, H2 and K17 also run the dark one. Once such a check ends, set the device back to light (`xcrun simctl ui <device> appearance light`) before the next one.
+Run every check in the light theme unless it says otherwise: E3, section F, H2, K17 and K27 also run the dark one. Once such a check ends, set the device back to light (`xcrun simctl ui <device> appearance light`) before the next one.
 
 ### Android
 
@@ -332,6 +353,8 @@ On `device-check-visual.md`, which **Edit** opens in Visual, the editor's defaul
 - **K25. Table rows and columns.** Tap "Tea" in the table: the keyboard toolbar shows **Undo** and **Redo**, then the table's keys in groups between rules: **Add row below** and **Delete row**, **Add column to the right** and **Delete column**, then **Align left**, **Align center** and **Align right**, with **Delete row** off and **Align left** highlighted; **Table options** (⋮) sits at the row's right end, after a rule, and the last key in view before it is cut in the middle of its icon, under a shade; the two delete keys show a cross where the add keys show a plus. Tap **Align center**: "Tea" moves to the middle of its column, above "Green | hot", and **Align center** is highlighted; tap **Undo**: "Tea" moves back, and **Align left** is highlighted again; tap **Redo**, then **Undo**: "Tea" centers, then moves back. Scroll the toolbar to its end: **Table options** stays where it is. Tap it: a menu shows right above the key, its right edge 8 px in from the screen's, under the app bar and within the screen, with **Insert line break**, then **Add row above**, **Move row up**, **Move row down**, **Add column to the left**, **Move column left** and **Move column right**, with **Add row above**, **Move row up**, **Move row down** and **Move column left** off; tap the note's heading to close it. Tap "2" in the table, then **Add column to the right**: an empty column comes after **Cups**, the cursor in its cell on the row of "2", the keyboard staying up; type `3`. Tap **Align center**: **Align center** is highlighted, `3` staying put, alone in its column, which is no wider. Tap **Table options**, then **Move column left**: the new column comes before **Cups**, the cursor still in `3`. Tap **Table options**, then **Insert line break**: the cell shows `3<br>`, the cursor after it, the keyboard staying up; tap **Undo**: the cell shows `3`; tap **Redo**, then type `4`. Tap **Add row below**, then **Delete row**: a row comes under the table's last and goes again, the keyboard staying up. Tap a line outside the table: the new column shows 3 above 4, and Source shows the table as `| Tea |  | Cups | A column wide enough to scroll on a phone |`, `| :-- | :-: | ---: | ----------------------------------------- |` and `| Green \| hot | 3<br>4 | **2** | Some words to make it wider than the screen |`, with no other line changed. Touch and hold "Tea": iOS shows its loupe or selects a word, and no table menu shows. Then tap **Undo** until **Save** reads **Saved**. Hold the iPhone sideways, tap "Tea", then **Table options**: the menu shows above the key and under the app bar, scrolling if it is taller than the room between them. A real iPhone must repeat this one.
   - **Android:** Gboard staying up as the iPhone's keyboard does. A long press on "Tea" selects a word or shows Chrome's own menu, never the table's menu: Chrome asks for the context menu with a long press.
 - **K26. A table in a quote.** The keyboard down, the table under "A quote holding a table" shows as Preview shows it, "Sugar" aligned right, no `>` showing, two bars on its left running on from the line above it, its text starting where that line's does, as quiet. A finger sliding along the table scrolls it, if wider than the screen, its cells passing under neither bar. Tap "Oat": that cell alone shows its text, the cursor after it, the table drawn around it and no `>` showing, and the keyboard toolbar shows the table's keys. Type ` milk`, then tap the keyboard's Return: a row comes under the table's last, the cursor in its **Milk** cell, the keyboard staying up; type `Soy`. Tap **Table options**, then **Move row up**: "Soy" comes above "Oat milk", the cursor still in it. Tap a line outside the table: Source shows `> A quote holding a table`, `> > | Milk | Sugar |`, `> > | --- | ---: |`, `>> | Soy |  |` and `>> | Oat milk | 1 |`, each line's `>` as written, with no other line changed. Then tap **Undo** until **Save** reads **Saved**. A real iPhone must repeat this one.
+  - **Android:** Gboard's Return as the iPhone's.
+- **K27. Callouts.** Open `device-check-callouts.md`, which **Edit** opens in Visual. The keyboard down, each callout shows as Preview shows it, the first one folded: a box in its type's color, orange then teal, with its edge on the left, no `>` or `[!…]` showing, its title after its type's icon in the box's color, the long one wrapping beside its icon, and the second titled "Tldr"; the first one's chevron, at its title's right end, points right. Tap the chevron: the callout opens, its chevron turning down, without the keyboard coming up. Tap "any editor": the line shows `> ` before its text, in the box, at the line's height, and the title's line still shows its icon. Tap the long title: its line shows `> [!faq]- ` before it, quieter, the title still in orange and the icon gone. Change `faq` to `tip`: the box turns teal once the cursor leaves the line. Tap the end of "Short notes." and the keyboard's Return, and type `milk`: the new line starts with `> `, in the box. Select from "editor" to "Short" and tap delete: the callouts lose what was selected and nothing else, as Source then shows; **Undo** brings it back. Tap the chevron again: the callout folds. The third callout shows an orange box in its blue one, one level in. Tap "Friday.": its line shows `> > ` before it, inside the orange box, at the line's height. The table under it shows in the blue box, as far in as its text. Tap "Green" and type ` tea`: that cell alone shows its text, in the box, and Source then shows `> | Friday | Green tea |`, its `>` as written. Tap past the title's end: the cursor goes to the title's end, and the callout stays folded. Then tap **Undo** until **Save** reads **Saved**, and the check: no save is asked for. Run it in light and dark. A real iPhone must repeat this one.
   - **Android:** Gboard's Return as the iPhone's.
 
 **Android:** then tap Undo until Save reads **Saved**, so that K21 to K24, which come after K16's save, leave no unsaved changes for the next context.

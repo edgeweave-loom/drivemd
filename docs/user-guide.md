@@ -105,7 +105,7 @@ On a computer or a tablet, pick a mode from the mode menu in the app bar. On a p
 
 On a computer, the formatting toolbar over the note formats it, its buttons' tooltips naming their keys: **Alt+F10** reaches it from the keyboard, the arrow keys move along it, and **Escape** goes back to the text.
 
-The device remembers whether you last chose Visual or Source, and opens the editor in it next time. Switching between them keeps your cursor and your undo history. Images, and Obsidian's own syntax, show in Visual as they do in Source for now.
+The device remembers whether you last chose Visual or Source, and opens the editor in it next time. Switching between them keeps your cursor and your undo history. In a note of an Obsidian vault, Visual draws callouts as Viewing does, their `>` and `[!type]` showing on the line you are writing, where you change the type. Tap a callout's chevron to fold or open it, which changes nothing in the file: a callout written `-` opens folded, as in Viewing. Callouts and quotes nest as in Viewing, with their tables and code blocks. Images, and the rest of Obsidian's syntax, show in Visual as they do in Source for now.
 
 While editing:
 
