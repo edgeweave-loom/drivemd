@@ -582,6 +582,11 @@ export function Editor({
     />
   );
 
+  // The text that had the focus: a table's cell edited in place, or the note.
+  const text = () => {
+    const note = editor.current;
+    return note && (cellEditor(note) ?? note);
+  };
   return (
     <>
       {formatting &&
@@ -591,11 +596,23 @@ export function Editor({
             onCommand={(command) => {
               if (editor.current) command(editor.current);
             }}
+            onLeave={() => {
+              text()?.focus();
+            }}
           />,
           formatting,
         )}
       {phone ? <InSlot name="find">{bar}</InSlot> : bar}
-      <div className="editor" ref={host} />
+      <div
+        className="editor"
+        ref={host}
+        // Alt+F10 reaches the formatting toolbar, as in web editors.
+        onKeyDown={(event) => {
+          if (!formatting || !event.altKey || event.key !== "F10") return;
+          event.preventDefault();
+          formatting.querySelector<HTMLElement>('[tabindex="0"]')?.focus();
+        }}
+      />
       <TableMenu id={menuId} editor={editor} ref={menu} />
       {toolbar && (
         <KeyboardToolbar
