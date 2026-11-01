@@ -89,7 +89,7 @@ const GROUPS: Button[][] = [
     {
       name: "Quote",
       command: toggleQuote,
-      icon: "format_quote",
+      icon: "blockquote",
       lines: true,
       toggle: true,
     },
