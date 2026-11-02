@@ -371,6 +371,7 @@ export function Editor({
   onChange,
   onFollow,
   formatSlot,
+  focus = false,
   ref,
 }: {
   initial: string;
@@ -383,6 +384,8 @@ export function Editor({
   onFollow: (href: string) => void;
   /** Where the formatting toolbar shows, with a mouse, over the note. */
   formatSlot?: HTMLElement | null;
+  /** Whether the note takes the focus as the editor first shows. */
+  focus?: boolean;
   ref?: Ref<EditorHandle>;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -406,6 +409,7 @@ export function Editor({
   const opening = useEffectEvent(() => ({
     initial,
     mode: inMode(visual, vault),
+    focus,
   }));
   const edited = useEffectEvent((update: ViewUpdate) => {
     if (update.docChanged) onChange(update.state.sliceDoc());
@@ -496,7 +500,7 @@ export function Editor({
   useEffect(() => {
     const element = host.current;
     if (!element) return;
-    const { initial, mode } = opening();
+    const { initial, mode, focus } = opening();
     const view = mountIn(
       element,
       EditorState.create({
@@ -517,6 +521,7 @@ export function Editor({
       }),
     );
     editor.current = view;
+    if (focus) view.focus();
     return () => {
       view.destroy();
       editor.current = null;

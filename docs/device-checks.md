@@ -61,7 +61,7 @@ Read the version that staging serves with `curl -s https://md-staging.corp.edgew
 
 ### Notes for the checks
 
-Make five made-up notes in the test account's My Drive, from the app on the iPhone, after check A1: on **My Drive**, tap **New note**, name it, then **Edit**, paste the text, and tap **Done**. When they exist from a previous run, paste their text again, so that each run starts from the same notes.
+Make five made-up notes in the test account's My Drive, from the app on the iPhone, after check A1: on **My Drive**, tap **New note** and name it, which opens the note in the editor, then tap the note, paste the text, and tap **Done**. When they exist from a previous run, tap **Edit** and paste their text again, so that each run starts from the same notes.
 
 - `device-check-long.md`, enough lines to scroll past two screens:
 
@@ -309,7 +309,7 @@ To make a conflict, open `device-check-other.md` in two Safari tabs (the second 
 
 ### K. Visual, Source and Viewing (v2)
 
-On `device-check-visual.md`, which **Edit** opens in Visual, the editor's default mode, on a device that never chose another. The spec's v2 section says what Visual hides and draws. Stage 1 is done once typing, selecting and deleting across formatted text work on a real iPhone: the report says which of these checks a real iPhone must repeat, K4 to K10, K14, K19, K20, K25 and K26 at least, since the Simulator's text input is not the device's.
+On `device-check-visual.md`, which **Edit** opens in Visual, the editor's default mode, on a device that never chose another. The spec's v2 section says what Visual hides and draws. Stage 1 is done once typing, selecting and deleting across formatted text work on a real iPhone: the report says which of these checks a real iPhone must repeat, K4 to K10, K14, K19, K20, K25, K26 and K28 at least, since the Simulator's text input is not the device's.
 
 **Android:** typing on Gboard's keys. Gboard sends what it types through composition: it holds the word being typed as marked text, which it may rewrite as it goes, where iOS does that only for Japanese or Chinese. Visual changes a line's text as the cursor enters it, so these checks watch for letters or symbols lost, doubled or moved. The emulator runs Gboard itself, so it stands for a phone here, as it did for milestone 8: the report says which checks a real phone must repeat, if any, and why.
 
@@ -356,6 +356,7 @@ On `device-check-visual.md`, which **Edit** opens in Visual, the editor's defaul
   - **Android:** Gboard's Return as the iPhone's.
 - **K27. Callouts.** Open `device-check-callouts.md`, which **Edit** opens in Visual. The keyboard down, each callout shows as Preview shows it, the first one folded: a box in its type's color, orange then teal, with its edge on the left, no `>` or `[!…]` showing, its title after its type's icon in the box's color, the long one wrapping beside its icon, and the second titled "Tldr"; the first one's chevron, at its title's right end, points right. Tap the chevron: the callout opens, its chevron turning down, without the keyboard coming up. Tap "any editor": the line shows `> ` before its text, in the box, at the line's height, and the title's line still shows its icon. Tap the long title: its line shows `> [!faq]- ` before it, quieter, the title still in orange and the icon gone. Change `faq` to `tip`: the box turns teal once the cursor leaves the line. Tap the end of "Short notes." and the keyboard's Return, and type `milk`: the new line starts with `> `, in the box. Select from "editor" to "Short" and tap delete: the callouts lose what was selected and nothing else, as Source then shows; **Undo** brings it back. Tap the chevron again: the callout folds. The third callout shows an orange box in its blue one, one level in. Tap "Friday.": its line shows `> > ` before it, inside the orange box, at the line's height. The table under it shows in the blue box, as far in as its text. Tap "Green" and type ` tea`: that cell alone shows its text, in the box, and Source then shows `> | Friday | Green tea |`, its `>` as written. Tap past the title's end: the cursor goes to the title's end, and the callout stays folded. Then tap **Undo** until **Save** reads **Saved**, and the check: no save is asked for. Run it in light and dark. A real iPhone must repeat this one.
   - **Android:** Gboard's Return as the iPhone's.
+- **K28. A new note.** On **My Drive**, tap **New note**, name it `device-check-new`, and tap **Create**: once Drive answers, the note opens in the editor, in the mode chosen last, empty, with the keyboard down and no toolbar over it; on the iPhone, the check shows where Back was, and **Visual**, **Source** and **Preview** over the note, and on the iPad, the mode menu reads **Visual** or **Source**. Tap the note: the keyboard comes up with the toolbar, the cursor in the note. Type `Tea` and tap the check (iPhone) or pick Viewing (iPad): the note saves. Go Back to My Drive, then forward: the note opens in reading, with **Edit** on the iPhone and **Viewing** on the iPad; reload it: the same. Move it to the trash. A real iPhone must repeat this one.
 
 **Android:** then tap Undo until Save reads **Saved**, so that K21 to K24, which come after K16's save, leave no unsaved changes for the next context.
 
@@ -384,6 +385,6 @@ In Samsung Internet, a tab that an intent opened, such as `mobile_open_url`'s, h
 1. The run: date, staging's version, Xcode, the iOS runtime, the devices, and what could not be set up; on Android, the versions that Version names.
 2. A table of every check, by device and context: the check, its verdict, and the screenshots.
 3. For each FAIL: the steps, what was expected, what showed, and the screenshots; for each BLOCKED, why, and what a real device should check.
-4. The checks a real iPhone or iPad must repeat, and why: section K's, K4 to K10, K14, K19, K20, K25 and K26 at least, and any other whose result rests on the Simulator's text input.
+4. The checks a real iPhone or iPad must repeat, and why: section K's, K4 to K10, K14, K19, K20, K25, K26 and K28 at least, and any other whose result rests on the Simulator's text input.
 5. The mockups: a verdict for each, and its differences.
 6. Draft issues for the FAILs, one per defect, each with a title in the repository's style (a sentence saying what the app should do), the steps and the device, and no screenshot that shows the account's email.

@@ -7,6 +7,7 @@ import {
   noteAction,
   renameNote,
   signIn,
+  stopEditing,
   test,
   vault,
 } from "./fake-google.ts";
@@ -153,8 +154,63 @@ test("creates a file where Drive's New asks, then opens it in its place", async 
     page.getByRole("heading", { level: 1, name: "ideas.md" }),
   ).toBeVisible();
   await expect(page).toHaveURL(/\/edit\?id=created-1$/);
+  // In the editor, as New note opens it; a phone's Done takes Back's place.
+  await expect(page.getByRole("textbox", { name: "Note" })).toBeVisible();
+  await stopEditing(page);
   await expect(await folderLink(page, "Work")).toBeVisible();
   expect(drive.writes).toEqual(["create ideas.md"]);
+});
+
+test("opens a note just created in the editor, and in reading after", async ({
+  page,
+  drive,
+}, info) => {
+  const phone = info.project.metadata.layout === "phone";
+  const bar = page.getByRole("banner");
+  const reading = phone
+    ? page.getByRole("button", { name: "Edit", exact: true })
+    : bar.getByRole("button", { name: "Viewing" });
+  await openWork(page);
+
+  await page.getByRole("button", { name: "New note" }).click();
+  const create = page.getByRole("dialog", { name: "New Markdown file" });
+  await create.getByRole("textbox", { name: "Name" }).fill("ideas");
+  await create.getByRole("button", { name: "Create" }).click();
+  // In Visual, the mode the device starts with, as Docs opens a new document.
+  const note = page.getByRole("textbox", { name: "Note" });
+  await expect(note).toBeVisible();
+  await expect(
+    phone
+      ? page.getByRole("button", { name: "Visual", exact: true })
+      : bar.getByRole("button", { name: "Visual" }),
+  ).toBeVisible();
+  // The cursor is in it with a mouse; a touch screen's keyboard comes from
+  // a tap on the note.
+  if (info.project.name === "desktop-chromium") {
+    await expect(note).toBeFocused();
+  } else {
+    await expect(note).not.toBeFocused();
+    await note.click();
+  }
+  await page.keyboard.type("Tea");
+  await expect(note).toHaveText("Tea");
+  await bar.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(bar.getByRole("button", { name: "Saved" })).toBeVisible();
+
+  // Once only: Back to it, or a reload, opens it as any note.
+  await page.goBack();
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Work" }),
+  ).toBeVisible();
+  await page.goForward();
+  await expect(reading).toBeVisible();
+  await page.reload();
+  await expect(reading).toBeVisible();
+  expect(drive.writes).toEqual([
+    "create ideas.md",
+    "keep created-1 revision-1",
+    "save created-1",
+  ]);
 });
 
 test("keeps a broken shortcut's badge after its name, however long", async ({
@@ -338,6 +394,9 @@ test("creates, renames, moves and trashes a file", async ({
   await expect(
     page.getByRole("heading", { level: 1, name: "ideas.md" }),
   ).toBeVisible();
+  // It opens in the editor; reading shows once the vault check, which
+  // renaming waits for, has answered.
+  await stopEditing(page);
 
   await renameNote(page, "ideas.md", "roadmap");
   await expect(

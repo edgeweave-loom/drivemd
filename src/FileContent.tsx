@@ -33,8 +33,9 @@ import { Icon } from "./Icon.tsx";
 import type { IconName } from "./icons.ts";
 import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
+import { forgetCreated, justCreated } from "./created.ts";
 import { openedFromDrive } from "./drive-tab.ts";
-import { PHONE, useLayout } from "./layout.ts";
+import { PHONE, TOUCH, useLayout } from "./layout.ts";
 import { WHEN } from "./listing.ts";
 import { Loaded } from "./Loaded.tsx";
 import { Missing } from "./Missing.tsx";
@@ -302,6 +303,8 @@ function Content({ file }: { file: FileMetadata }) {
   const [editing, setEditing] = useState(false);
   const [mode, setMode] = useState(lastEditMode);
   const [previewing, setPreviewing] = useState(false);
+  // Whether the editor takes the focus as it opens.
+  const [cursor, setCursor] = useState(false);
   function edit(open: boolean) {
     // The editor holds to the revision it opens with, and opens in its mode
     // rather than in the preview, which is only a look.
@@ -310,17 +313,29 @@ function Content({ file }: { file: FileMetadata }) {
       setPreviewing(false);
     }
     setEditing(open);
+    setCursor(false);
   }
   function choose(next: EditMode) {
     rememberEditMode(next);
     setMode(next);
   }
-  // A tab opened from Drive opens the note in the editor on a wide screen, as
-  // Docs opens a document on a computer, and in reading on a phone: once,
-  // as the note first shows, if the user may edit it.
-  const [opening, setOpening] = useState(
-    () => openedFromDrive() && !window.matchMedia(PHONE).matches,
+  // A note just created opens in the editor, as Docs opens a new document,
+  // with the cursor in it where the pointer is fine: a touch screen raises
+  // its keyboard only from a tap. A tab opened from Drive opens the note in
+  // the editor on a wide screen, as Docs opens a document on a computer, and
+  // in reading on a phone. Either once, as the note first shows, if the user
+  // may edit it.
+  const [opening, setOpening] = useState<{ cursor: boolean } | undefined>(
+    () => {
+      if (justCreated(file)) {
+        return { cursor: !window.matchMedia(TOUCH).matches };
+      }
+      return openedFromDrive() && !window.matchMedia(PHONE).matches
+        ? { cursor: false }
+        : undefined;
+    },
   );
+  useEffect(forgetCreated, []);
   // The revisions saved from this page, which the next save need not keep:
   // the one from before the first edit is kept, as is one someone else made.
   const [written, setWritten] = useState<ReadonlySet<string>>(new Set());
@@ -393,8 +408,11 @@ function Content({ file }: { file: FileMetadata }) {
     if (keptAsIs !== undefined) void forgetKept(keptAsIs);
   }, [keptAsIs]);
   if (opening && content.data) {
-    setOpening(false);
-    if (readOnly(file, content.data) === undefined) edit(true);
+    setOpening(undefined);
+    if (readOnly(file, content.data) === undefined) {
+      edit(true);
+      setCursor(opening.cursor);
+    }
   }
   // Out of the editor, the page shows Drive's latest again once it holds no
   // edits, or once it heard of the revision just saved; in the editor, Drive
@@ -517,6 +535,7 @@ function Content({ file }: { file: FileMetadata }) {
             waiting={offered(kept.data, held, note)}
             session={shown.session}
             editing={editing}
+            cursor={cursor}
             onEditing={edit}
             mode={mode}
             onMode={choose}
@@ -663,6 +682,7 @@ function NoteView({
   waiting,
   session,
   editing,
+  cursor,
   onEditing,
   mode,
   onMode,
@@ -685,6 +705,8 @@ function NoteView({
   /** Changes when the editor must start again from the note's text. */
   session: number;
   editing: boolean;
+  /** Whether the editor takes the focus as it opens. */
+  cursor: boolean;
   onEditing: (editing: boolean) => void;
   mode: EditMode;
   onMode: (mode: EditMode) => void;
@@ -982,6 +1004,7 @@ function NoteView({
                 onChange={onEdit}
                 onFollow={follow}
                 formatSlot={formatSlot}
+                focus={cursor}
               />
             </Suspense>
           </Sheet>

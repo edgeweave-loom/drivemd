@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Breadcrumbs } from "./Breadcrumbs.tsx";
+import { openCreated } from "./created.ts";
 import { NameDialog } from "./Dialog.tsx";
 import { useDrive } from "./drive-context.ts";
 import { FOLDER, type FileRef } from "./drive.ts";
@@ -83,7 +84,10 @@ function NewFile({
   );
 }
 
-/** Asks for a Markdown file's name, creates it in the folder, then opens it. */
+/**
+ * Asks for a Markdown file's name, creates it in the folder, then opens it in
+ * the editor.
+ */
 export function CreateFile({
   folder,
   path,
@@ -122,6 +126,7 @@ export function CreateFile({
           onSuccess: (file) => {
             const href = hrefOf({ name: "file", file });
             const trail = path && [...path, { name: file.name, href }];
+            openCreated(file);
             navigate(href, trail, { replace });
           },
         });
