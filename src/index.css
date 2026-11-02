@@ -2110,6 +2110,44 @@ dialog.drawer > .close {
   margin-inline: calc(-1 * var(--text-inset));
 }
 
+/* The editor fills its sheet, down to the sheet's bottom, and its text with
+   it (Editor.tsx): a tap under the note's last line, as under an empty
+   note's placeholder, reaches the text, and on a touch screen brings the
+   keyboard up. */
+.sheet:has(> .editor) {
+  display: flex;
+  flex-direction: column;
+}
+
+.sheet > .editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+/* On a phone, the page of a note being edited fills the screen, down to
+   its bottom, which the sheet reaches whatever sits above it, as on a wider
+   screen. */
+@media (width < 768px), (pointer: coarse) and (height < 500px) {
+  .page:has(> .split .editor) {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100dvh - var(--app-bar-bottom));
+  }
+
+  .page > .split:has(.editor),
+  .split > .main:has(.editor) {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .main > .sheets:has(.editor) {
+    display: grid;
+    flex: 1;
+  }
+}
+
 .sheet > .label {
   display: flex;
   gap: var(--space-2);

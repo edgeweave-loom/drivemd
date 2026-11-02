@@ -185,12 +185,20 @@ test("opens a note just created in the editor, and in reading after", async ({
       : bar.getByRole("button", { name: "Visual" }),
   ).toBeVisible();
   // The cursor is in it with a mouse; a touch screen's keyboard comes from
-  // a tap on the note.
+  // a tap on the note, which it asks for, anywhere down to the screen's or
+  // the sheet's bottom.
   if (info.project.name === "desktop-chromium") {
     await expect(note).toBeFocused();
+    await expect(note).toHaveText("");
   } else {
     await expect(note).not.toBeFocused();
-    await note.click();
+    await expect(note).toHaveText("Tap to start writing");
+    const box = await note.boundingBox();
+    const screen = page.viewportSize();
+    if (!box || !screen) throw new Error("No note shown");
+    expect(box.y + box.height).toBeGreaterThan(screen.height - 100);
+    await note.click({ position: { x: 20, y: box.height - 20 } });
+    await expect(note).toBeFocused();
   }
   await page.keyboard.type("Tea");
   await expect(note).toHaveText("Tea");

@@ -29,6 +29,7 @@ import {
   EditorView,
   highlightActiveLine,
   keymap,
+  placeholder,
   runScopeHandlers,
   ViewPlugin,
   type Command,
@@ -129,11 +130,14 @@ const LIGHT_YAML = HighlightStyle.define(
  */
 const ON_SHEET = EditorView.theme({
   // The editor's layers stack among themselves, all under the app bar and
-  // Find in note's bar.
-  "&": { isolation: "isolate" },
+  // Find in note's bar. Where the editor fills what holds it, its text does
+  // too, down to the bottom, since a tap reaches only the text (index.css,
+  // .sheet > .editor).
+  "&": { isolation: "isolate", flexGrow: "1" },
   "&.cm-focused": { outline: "none" },
   // 26 px lines at 16 px, as the note's own.
-  ".cm-scroller": { lineHeight: "1.625" },
+  ".cm-scroller": { lineHeight: "1.625", flexGrow: "1" },
+  ".cm-content": { alignSelf: "stretch" },
   ".cm-line": { padding: "0 var(--text-inset)" },
   ".cm-activeLine": { backgroundColor: "transparent" },
   "&.cm-focused .cm-activeLine": {
@@ -143,6 +147,7 @@ const ON_SHEET = EditorView.theme({
   // Find in note's bar is the page's own (FindBar.tsx): CodeMirror's panel
   // only holds that the search is open, which shows its matches.
   ".cm-panels": { display: "none" },
+  ".cm-placeholder": { color: "var(--on-surface-variant)" },
 });
 
 const CODE_LINE = Decoration.line({ class: "cm-code-line" });
@@ -410,6 +415,7 @@ export function Editor({
     initial,
     mode: inMode(visual, vault),
     focus,
+    touch,
   }));
   const edited = useEffectEvent((update: ViewUpdate) => {
     if (update.docChanged) onChange(update.state.sliceDoc());
@@ -500,24 +506,21 @@ export function Editor({
   useEffect(() => {
     const element = host.current;
     if (!element) return;
-    const { initial, mode, focus } = opening();
+    const { initial, mode, focus, touch } = opening();
     const view = mountIn(
       element,
       EditorState.create({
         doc: initial,
-        extensions: extensions(
-          lineBreak,
-          mode,
-          edited,
-          followed,
-          clearance,
-          covered,
-          {
+        extensions: [
+          extensions(lineBreak, mode, edited, followed, clearance, covered, {
             close: () => {
               menu.current?.close();
             },
-          },
-        ),
+          }),
+          // A touch screen raises its keyboard only from a tap, which an
+          // empty note asks for; with a mouse, the cursor is already in it.
+          touch ? placeholder("Tap to start writing") : [],
+        ],
       }),
     );
     editor.current = view;

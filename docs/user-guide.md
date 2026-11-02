@@ -133,7 +133,7 @@ Offline, a save fails at once and says to check the connection, as does any othe
 
 ## Creating, renaming, moving and trashing
 
-- **New note**, in a folder where you may add files, asks for a name, then creates the note there and opens it in the editor, in the mode you chose last, as Docs opens a new document. On a computer, the cursor is in the note: start typing. On a phone or a tablet, tap the note to bring the keyboard up. Coming back to the note later, or reloading it, opens it for reading, as any note. On a phone, **New note** is the floating button.
+- **New note**, in a folder where you may add files, asks for a name, then creates the note there and opens it in the editor, in the mode you chose last, as Docs opens a new document. On a computer, the cursor is in the note: start typing. On a phone or a tablet, where the empty note says **Tap to start writing**, tap anywhere on it to bring the keyboard up. Coming back to the note later, or reloading it, opens it for reading, as any note. On a phone, **New note** is the floating button.
 - **Rename** a note by clicking its name in the app bar. Its `.md` ending stays out of the field; **Enter** or leaving the field renames it, and **Escape** cancels.
 - **Move**, beside the note's name (in **More actions** on a phone), opens a folder picker at the note's folder.
 - **Move to trash**, in **More actions**, asks you to confirm. The note stays in Drive's trash, from which Drive restores it.

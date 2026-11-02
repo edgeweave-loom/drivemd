@@ -24,6 +24,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Editor, type EditorHandle } from "./Editor.tsx";
 import { linkAt } from "./source-links.ts";
 import { TABLE_EDITS } from "./table-edits.ts";
+import { holdTouch } from "./test/screen.ts";
 import type { LineBreak } from "./text.ts";
 
 function open(
@@ -3108,5 +3109,25 @@ describe("Find in note", () => {
       view.state.facet(EditorView.scrollMargins).map((of) => of(view)),
     ).toContainEqual({ top: 112, bottom: 0 });
     appBar.remove();
+  });
+});
+
+describe("An empty note", () => {
+  const placeholder = (view: EditorView) =>
+    view.contentDOM.querySelector(".cm-placeholder")?.textContent;
+
+  it("asks for a tap on a touch screen, which alone brings the keyboard up", () => {
+    holdTouch(true);
+    const { view } = open("");
+
+    expect(placeholder(view)).toBe("Tap to start writing");
+    view.dispatch({ changes: { from: 0, insert: "Tea" } });
+    expect(placeholder(view)).toBeUndefined();
+  });
+
+  it("asks nothing with a mouse, where the cursor is already in it", () => {
+    const { view } = open("");
+
+    expect(placeholder(view)).toBeUndefined();
   });
 });
