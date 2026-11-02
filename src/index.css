@@ -268,7 +268,8 @@ button.new-note > .icon {
 
 /* The app bar: DriveMD's mark and name, which lead Home, the search bar
    and the account. Its background runs under the status bar and to the
-   screen's edges, its content clear of them (docs/DESIGN.md, Layout). */
+   screen's edges, its content clear of them (docs/DESIGN.md, Layout).
+   Flat at the page's top, it lifts once the page scrolls under it. */
 .bar {
   position: sticky;
   top: 0;
@@ -282,6 +283,11 @@ button.new-note > .icon {
     calc(var(--space-4) + env(safe-area-inset-right)) 0
     calc(var(--space-4) + env(safe-area-inset-left));
   background: var(--surface);
+  transition: box-shadow 100ms ease-in-out;
+}
+
+.bar.lifted {
+  box-shadow: var(--elevation-2);
 }
 
 .bar h1 {
@@ -669,6 +675,67 @@ button.account {
       color-mix(in srgb, currentColor 8%, transparent) 0 0
     );
   }
+}
+
+/* A table's menu (docs/DESIGN.md, Table menu): above the keyboard
+   toolbar's Table options key, or below the formatting toolbar's Table
+   button, scrolling where its room is short, and dense under a mouse. */
+.table-menu {
+  inset: auto;
+  margin: 0;
+  overflow-y: auto;
+}
+
+/* An item's shortcut at its end, with a mouse, which the item's name
+   leaves out: its aria-keyshortcuts tells it. */
+.table-menu > button[aria-keyshortcuts]::after {
+  content: attr(aria-keyshortcuts) / "";
+  margin-inline-start: auto;
+  color: var(--on-surface-variant);
+  font-weight: 400;
+}
+
+/* Above the toolbar's end, where the key is anchors aside. */
+.table-menu.options {
+  inset: auto calc(var(--space-2) + env(safe-area-inset-right))
+    calc(var(--keyboard-toolbar-height) + var(--space-1)) auto;
+}
+
+/* Right above the key, which the toolbar holds at its right end, by the
+   key's anchor: with the keyboard up on an iPhone, a menu placed at the
+   key's box from script showed hundreds of pixels above it. */
+@supports (anchor-name: --table-options) {
+  .table-menu.options {
+    position-anchor: --table-options;
+    inset: auto calc(var(--space-2) + env(safe-area-inset-right)) anchor(top)
+      auto;
+    margin: 0 0 var(--space-1);
+  }
+}
+
+/* Below the formatting toolbar's Table button. */
+.table-menu.below {
+  inset: calc(var(--app-bar-bottom) + 48px) auto auto var(--space-4);
+}
+
+@supports (anchor-name: --table-button) {
+  .table-menu.below {
+    position-anchor: --table-button;
+    inset: anchor(bottom) auto auto anchor(left);
+    margin: var(--space-1) 0 0;
+    position-try-fallbacks: flip-inline;
+  }
+}
+
+@media (pointer: fine) {
+  .table-menu > button {
+    min-height: 32px;
+  }
+}
+
+.table-menu > [aria-disabled="true"] {
+  color: color-mix(in srgb, var(--on-surface) 38%, transparent);
+  cursor: default;
 }
 
 .account-menu,
@@ -1681,9 +1748,26 @@ dialog.drawer > .close {
   color: var(--on-surface-variant);
 }
 
-/* Obsidian's callouts, in the colors of its light and dark themes. */
+/* Obsidian's callouts' colors, by type, in its light and dark themes: the
+   viewer's and Visual's, which the editor's shadow root inherits. */
+:root {
+  --callout-note: light-dark(rgb(8 109 221), rgb(2 122 255));
+  --callout-abstract: light-dark(rgb(0 191 188), rgb(83 223 221));
+  --callout-info: var(--callout-note);
+  --callout-todo: var(--callout-note);
+  --callout-tip: var(--callout-abstract);
+  --callout-success: light-dark(rgb(8 185 78), rgb(68 207 110));
+  --callout-question: light-dark(rgb(236 117 0), rgb(233 151 63));
+  --callout-warning: var(--callout-question);
+  --callout-failure: light-dark(rgb(233 49 71), rgb(251 70 76));
+  --callout-danger: var(--callout-failure);
+  --callout-bug: var(--callout-failure);
+  --callout-example: light-dark(rgb(120 82 238), rgb(168 130 255));
+  --callout-quote: rgb(158 158 158);
+}
+
 .markdown .callout {
-  --callout: light-dark(rgb(8 109 221), rgb(2 122 255));
+  --callout: var(--callout-note);
   padding: 0.75rem 1rem;
   border-left: 0.25em solid var(--callout);
   border-radius: 6px;
@@ -1696,15 +1780,15 @@ dialog.drawer > .close {
 }
 
 .markdown .callout:is([data-callout="abstract"], [data-callout="tip"]) {
-  --callout: light-dark(rgb(0 191 188), rgb(83 223 221));
+  --callout: var(--callout-abstract);
 }
 
 .markdown .callout[data-callout="success"] {
-  --callout: light-dark(rgb(8 185 78), rgb(68 207 110));
+  --callout: var(--callout-success);
 }
 
 .markdown .callout:is([data-callout="question"], [data-callout="warning"]) {
-  --callout: light-dark(rgb(236 117 0), rgb(233 151 63));
+  --callout: var(--callout-question);
 }
 
 .markdown
@@ -1713,15 +1797,15 @@ dialog.drawer > .close {
     [data-callout="danger"],
     [data-callout="bug"]
   ) {
-  --callout: light-dark(rgb(233 49 71), rgb(251 70 76));
+  --callout: var(--callout-failure);
 }
 
 .markdown .callout[data-callout="example"] {
-  --callout: light-dark(rgb(120 82 238), rgb(168 130 255));
+  --callout: var(--callout-example);
 }
 
 .markdown .callout[data-callout="quote"] {
-  --callout: rgb(158 158 158);
+  --callout: var(--callout-quote);
 }
 
 .markdown .callout-title {
@@ -1760,8 +1844,11 @@ dialog.drawer > .close {
   display: none;
 }
 
-/* Down while the callout is open, right while it is folded, as in Obsidian. */
+/* Down while the callout is open, right while it is folded, as in Obsidian,
+   at the title's right end, as in Visual, where Obsidian has it after the
+   title's text. */
 .markdown .callout-fold {
+  margin-left: auto;
   transition: transform 100ms ease-in-out;
 }
 
@@ -2023,6 +2110,44 @@ dialog.drawer > .close {
   margin-inline: calc(-1 * var(--text-inset));
 }
 
+/* The editor fills its sheet, down to the sheet's bottom, and its text with
+   it (Editor.tsx): a tap under the note's last line, as under an empty
+   note's placeholder, reaches the text, and on a touch screen brings the
+   keyboard up. */
+.sheet:has(> .editor) {
+  display: flex;
+  flex-direction: column;
+}
+
+.sheet > .editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+/* On a phone, the page of a note being edited fills the screen, down to
+   its bottom, which the sheet reaches whatever sits above it, as on a wider
+   screen. */
+@media (width < 768px), (pointer: coarse) and (height < 500px) {
+  .page:has(> .split .editor) {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100dvh - var(--app-bar-bottom));
+  }
+
+  .page > .split:has(.editor),
+  .split > .main:has(.editor) {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .main > .sheets:has(.editor) {
+    display: grid;
+    flex: 1;
+  }
+}
+
 .sheet > .label {
   display: flex;
   gap: var(--space-2);
@@ -2192,9 +2317,10 @@ dialog.drawer > .close {
 }
 
 /* Pinned above a touch screen's keyboard, at the height the editor keeps
-   clear of the cursor (TOOLBAR_HEIGHT); it scrolls sideways on phones. Its
-   keys stay clear of the notch. A phone shows it over the keyboard only,
-   which covers the home bar, so it adds no inset under them. */
+   clear of the cursor (TOOLBAR_HEIGHT); its keys scroll sideways on
+   phones, but Table options, held at its right end. Its keys stay clear of
+   the notch. A phone shows it over the keyboard only, which covers the
+   home bar, so it adds no inset under them. */
 .keyboard-toolbar {
   position: fixed;
   right: 0;
@@ -2205,7 +2331,6 @@ dialog.drawer > .close {
   align-items: center;
   height: var(--keyboard-toolbar-height);
   padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
-  overflow-x: auto;
   border-top: 1px solid var(--outline-variant);
   background: var(--surface-container);
   /* Its background runs on below it, down past the screen's bottom: in
@@ -2213,7 +2338,65 @@ dialog.drawer > .close {
      float between it and the keyboard, where taps go to Safari. A shadow
      neither scrolls with the row's keys nor takes taps. */
   box-shadow: 0 50lvh 0 50lvh var(--surface-container);
+}
+
+/* The keys that scroll, widened by --key-scale (src/peek.ts) so that the
+   last one in view is cut in the middle of its icon: cut in its margin, or
+   between two keys, the row looked whole. */
+.keyboard-toolbar .keys {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  align-self: stretch;
+  min-width: 0;
+  overflow-x: auto;
   scrollbar-width: none;
+}
+
+/* A shade over each end that hides keys, which goes as the row scrolls to
+   it, where scroll-driven animations run (Chrome 115, Safari 26). */
+.keyboard-toolbar .keys::before,
+.keyboard-toolbar .keys::after {
+  position: sticky;
+  z-index: 1;
+  flex: none;
+  align-self: stretch;
+  width: 32px;
+  opacity: 0;
+  pointer-events: none;
+  content: "";
+}
+
+.keyboard-toolbar .keys::before {
+  left: 0;
+  margin-right: -32px;
+  background: linear-gradient(to right, var(--surface-container), transparent);
+}
+
+.keyboard-toolbar .keys::after {
+  right: 0;
+  margin-left: -32px;
+  background: linear-gradient(to left, var(--surface-container), transparent);
+}
+
+@supports (animation-timeline: scroll()) {
+  .keyboard-toolbar .keys::before {
+    animation: shade linear both;
+    animation-timeline: scroll(nearest inline);
+    animation-range: 0 32px;
+  }
+
+  .keyboard-toolbar .keys::after {
+    animation: shade linear both reverse;
+    animation-timeline: scroll(nearest inline);
+    animation-range: calc(100% - 32px) 100%;
+  }
+}
+
+@keyframes shade {
+  to {
+    opacity: 1;
+  }
 }
 
 /* The note's end scrolls clear of it; the page already keeps clear of the
@@ -2230,7 +2413,7 @@ body:has(> .keyboard-toolbar) .editor {
 
 .keyboard-toolbar button {
   flex: none;
-  width: 44px;
+  width: calc(44px * var(--key-scale, 1));
   height: 44px;
   padding: 0;
   border: none;
@@ -2243,12 +2426,166 @@ body:has(> .keyboard-toolbar) .editor {
   content: none;
 }
 
+/* A key off in a table's cell, as a disabled button, which would take the
+   focus from the cell. */
+.keyboard-toolbar button[aria-disabled="true"] {
+  background-image: none;
+  color: color-mix(in srgb, var(--on-surface) 38%, transparent);
+  cursor: default;
+}
+
+/* A table's column's own alignment. */
+.keyboard-toolbar button[aria-pressed="true"] {
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+/* In a table's cell, the keys before a rule, Undo, Redo and the table's,
+   narrower, so that more of them show. */
+.keyboard-toolbar .keys > button:has(~ hr) {
+  width: calc(40px * var(--key-scale, 1));
+}
+
+/* Between a table's groups of keys, and before Table options. */
+.keyboard-toolbar hr {
+  flex: none;
+  width: 1px;
+  height: 24px;
+  margin: 0 2px;
+  border: none;
+  background: var(--outline-variant);
+}
+
+.keyboard-toolbar .table-options {
+  anchor-name: --table-options;
+}
+
+/* The formatting toolbar (docs/DESIGN.md, Formatting toolbar): over the
+   note, under the app bar, where it stays as the note scrolls under it. */
+.format-slot {
+  position: sticky;
+  top: var(--app-bar-bottom);
+  z-index: 2;
+  padding-bottom: var(--space-2);
+  background: var(--surface);
+}
+
+.format-slot:empty {
+  display: none;
+}
+
+/* On the app's background, where the note shows on a sheet. */
+@media (width >= 768px) and (not ((pointer: coarse) and (height < 500px))) {
+  .format-slot {
+    background: var(--app-background);
+  }
+}
+
+.format-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  border-radius: 20px;
+  background: var(--surface-container);
+}
+
+.format-bar > button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--on-surface-variant);
+}
+
+.format-bar > button > .icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* The formatting around the cursor. */
+.format-bar > button[aria-pressed="true"] {
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+/* The cursor's line's style, and a table's menu, which open their menus. */
+.format-bar > button:is(.style, .table) {
+  display: flex;
+  gap: var(--space-1);
+  justify-content: space-between;
+  width: auto;
+  padding: 0 var(--space-1) 0 var(--space-2);
+  color: var(--on-surface);
+  font: inherit;
+  font-size: 14px;
+}
+
+.format-bar > button.style {
+  width: 120px;
+  anchor-name: --style;
+}
+
+.format-bar > button.table {
+  anchor-name: --table-button;
+}
+
+/* A table's edit that does not apply to the cell. */
+.format-bar > button[aria-disabled="true"] {
+  background-image: none;
+  color: color-mix(in srgb, var(--on-surface) 38%, transparent);
+  cursor: default;
+}
+
+.style-menu {
+  inset: calc(var(--app-bar-bottom) + 48px) auto auto var(--space-4);
+}
+
+@supports (anchor-name: --style) {
+  .style-menu {
+    position-anchor: --style;
+    inset: anchor(bottom) auto auto anchor(left);
+    margin: var(--space-1) 0 0;
+  }
+}
+
+/* Dense under a mouse, which alone shows it. */
+.style-menu > button {
+  min-height: 32px;
+}
+
+.style-menu > [aria-checked="true"] {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+.style-menu .key {
+  margin-inline-start: auto;
+  color: var(--on-surface-variant);
+  font-weight: 400;
+}
+
+.format-bar hr {
+  flex: none;
+  width: 1px;
+  height: 20px;
+  margin: 0 var(--space-1);
+  border: none;
+  background: var(--outline-variant);
+}
+
 /* Find in note (docs/DESIGN.md, Find in note): over the source's top, under
    the app bar, from edge to edge of its sheet; on a phone, in the app bar's
    place. */
 .find-bar {
   position: sticky;
-  top: var(--app-bar-bottom);
+  /* Under the formatting toolbar, where it shows. */
+  top: calc(var(--app-bar-bottom) + var(--format-bar-height, 0px));
   z-index: 1;
   display: grid;
   gap: var(--space-2);

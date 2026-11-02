@@ -13,9 +13,9 @@ import {
 import { configDir, liveSession } from "./grant.ts";
 
 // The deployed app on the real Drive, as the test account (see "Live Drive
-// checks" in the README). The session is handed to the page as a sign-in
-// would leave it, so Google's window never opens. The checks make what they
-// need in a folder of their own and trash it at the end.
+// checks" in docs/development.md). The session is handed to the page as a
+// sign-in would leave it, so Google's window never opens. The checks make what
+// they need in a folder of their own and trash it at the end.
 
 /** Starts the name of everything the run makes. */
 const RUN = `dmui${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
@@ -72,7 +72,10 @@ const test = base.extend<{ run: Run }, { liveRun: Run | undefined }>({
     { scope: "worker", timeout: 60_000 },
   ],
   run: async ({ liveRun }, use, testInfo) => {
-    testInfo.skip(!liveRun, "needs the test account's grant: see the README");
+    testInfo.skip(
+      !liveRun,
+      "needs the test account's grant: see docs/development.md",
+    );
     if (liveRun) await use(liveRun);
   },
   page: async ({ page, run, baseURL }, use) => {

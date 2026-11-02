@@ -29,6 +29,7 @@ import {
   EditorView,
   highlightActiveLine,
   keymap,
+  placeholder,
   runScopeHandlers,
   ViewPlugin,
   type Command,
@@ -39,26 +40,41 @@ import { tags } from "@lezer/highlight";
 import {
   useEffect,
   useEffectEvent,
+  useId,
   useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
   type Ref,
 } from "react";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { mountIn, THEME } from "./codemirror.ts";
 import { keepDoubleSpace } from "./double-space.ts";
 import { countMatches, findInNote, findsInNote, type Matches } from "./find.ts";
 import { FindBar } from "./FindBar.tsx";
-import { indentLines, outdentLines } from "./formatting.ts";
+import { FORMATTING_KEYS, formatsAt, type Formats } from "./formatting.ts";
+import { FormattingBar } from "./FormattingBar.tsx";
 import { withFrontmatter } from "./frontmatter.ts";
 import { KeyboardToolbar, TOOLBAR_HEIGHT } from "./KeyboardToolbar.tsx";
 import { InSlot } from "./InSlot.tsx";
 import { commandKey } from "./keys.ts";
 import { useLayout, useTouch } from "./layout.ts";
-import { livePreview } from "./live-preview.ts";
+import {
+  cellEditor,
+  holdCell,
+  releaseCell,
+  cellSetup,
+  inCell,
+  inVault,
+  livePreview,
+  tableMenu,
+  tableMenuOf,
+  type CellMenu,
+  type TableMenuControl,
+} from "./live-preview.ts";
 import { oneEditPerKey } from "./one-edit-per-key.ts";
 import { linkAt } from "./source-links.ts";
+import { TableMenu } from "./TableMenu.tsx";
 import type { LineBreak } from "./text.ts";
 import { keepVisible } from "./visual-viewport.ts";
 
@@ -114,11 +130,14 @@ const LIGHT_YAML = HighlightStyle.define(
  */
 const ON_SHEET = EditorView.theme({
   // The editor's layers stack among themselves, all under the app bar and
-  // Find in note's bar.
-  "&": { isolation: "isolate" },
+  // Find in note's bar. Where the editor fills what holds it, its text does
+  // too, down to the bottom, since a tap reaches only the text (index.css,
+  // .sheet > .editor).
+  "&": { isolation: "isolate", flexGrow: "1" },
   "&.cm-focused": { outline: "none" },
   // 26 px lines at 16 px, as the note's own.
-  ".cm-scroller": { lineHeight: "1.625" },
+  ".cm-scroller": { lineHeight: "1.625", flexGrow: "1" },
+  ".cm-content": { alignSelf: "stretch" },
   ".cm-line": { padding: "0 var(--text-inset)" },
   ".cm-activeLine": { backgroundColor: "transparent" },
   "&.cm-focused .cm-activeLine": {
@@ -128,6 +147,7 @@ const ON_SHEET = EditorView.theme({
   // Find in note's bar is the page's own (FindBar.tsx): CodeMirror's panel
   // only holds that the search is open, which shows its matches.
   ".cm-panels": { display: "none" },
+  ".cm-placeholder": { color: "var(--on-surface-variant)" },
 });
 
 const CODE_LINE = Decoration.line({ class: "cm-code-line" });
@@ -221,21 +241,59 @@ function followLinks(follow: (href: string) => void): Extension {
   });
 }
 
+const NO_FORMATS: Formats = { heading: 0, on: new Set() };
+
+function sameFormats(one: Formats, other: Formats): boolean {
+  return (
+    one.heading === other.heading &&
+    one.on.size === other.on.size &&
+    [...one.on].every((command) => other.on.has(command))
+  );
+}
+
+// Markdown's blocks, which a table's cell cannot hold: its text is inline.
+const BLOCKS = [
+  "ATXHeading",
+  "Blockquote",
+  "BulletList",
+  "FencedCode",
+  "HTMLBlock",
+  "HorizontalRule",
+  "IndentedCode",
+  "LinkReference",
+  "OrderedList",
+  "SetextHeading",
+  "Table",
+];
+
 // Visual or Source, which the editor switches between as it stays.
 const MODE = new Compartment();
 
-function inMode(visual: boolean): Extension {
+function inMode(visual: boolean, vault: boolean): Extension {
   return visual
-    ? [livePreview, EditorView.contentAttributes.of({ "aria-label": "Note" })]
+    ? [
+        livePreview,
+        inVault.of(vault),
+        // A table's cell edited in place, in the source's light styling.
+        cellSetup.of([
+          markdown({ base: markdownLanguage, extensions: { remove: BLOCKS } }),
+          syntaxHighlighting(LIGHT),
+          syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+          oneEditPerKey,
+        ]),
+        EditorView.contentAttributes.of({ "aria-label": "Note" }),
+      ]
     : EditorView.contentAttributes.of({ "aria-label": "Markdown source" });
 }
 
 function extensions(
   lineBreak: LineBreak,
-  visual: boolean,
+  mode: Extension,
   changed: (update: ViewUpdate) => void,
   follow: (href: string) => void,
   clearance: () => { top: number; bottom: number } | null,
+  covered: () => boolean,
+  menu: TableMenuControl,
 ): Extension[] {
   return [
     // Lines join with the file's own break, whatever the browser sends.
@@ -263,9 +321,8 @@ function extensions(
     }),
     highlightSelectionMatches(),
     keymap.of([
-      // A list item nests from the keyboard as from the toolbar's keys.
-      { key: "Mod-]", run: indentLines },
-      { key: "Mod-[", run: outdentLines },
+      // The keyboard toolbar's formatting, from the keyboard.
+      ...FORMATTING_KEYS,
       ...defaultKeymap,
       ...historyKeymap,
       // Its field is the page's, where CodeMirror's own Mod-f misses it.
@@ -273,19 +330,22 @@ function extensions(
       ...searchKeymap,
     ]),
     EditorView.lineWrapping,
-    MODE.of(inMode(visual)),
+    MODE.of(mode),
     EditorView.updateListener.of(changed),
     followLinks(follow),
+    // A right-click on a table's cell in Visual opens its menu.
+    tableMenu.of(menu),
     // The cursor stays clear of the keyboard toolbar and the app bar when
     // the editor scrolls to it.
     EditorView.scrollMargins.of(clearance),
-    // A tap places the cursor without scrolling to it, where the toolbar
-    // may cover it.
+    // A tap places the cursor without scrolling to it, where the keyboard
+    // toolbar or Find in note's bar may cover it; a click never lands under
+    // the formatting toolbar, which a mouse's drag would scroll past.
     EditorState.transactionExtender.of((transaction) =>
       transaction.selection &&
       transaction.isUserEvent("select") &&
       !transaction.scrollIntoView &&
-      clearance()
+      covered()
         ? { effects: EditorView.scrollIntoView(transaction.newSelection.main) }
         : null,
     ),
@@ -312,36 +372,67 @@ export function Editor({
   initial,
   lineBreak,
   visual = false,
+  vault = false,
   onChange,
   onFollow,
+  formatSlot,
+  focus = false,
   ref,
 }: {
   initial: string;
   lineBreak: LineBreak;
   visual?: boolean;
+  /** Whether the note is in an Obsidian vault, whose syntax Visual draws. */
+  vault?: boolean;
   onChange: (text: string) => void;
   /** Follows a link the user Cmd or Ctrl+clicks, or opens from the toolbar. */
   onFollow: (href: string) => void;
+  /** Where the formatting toolbar shows, with a mouse, over the note. */
+  formatSlot?: HTMLElement | null;
+  /** Whether the note takes the focus as the editor first shows. */
+  focus?: boolean;
   ref?: Ref<EditorHandle>;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
   const field = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
+  // The table's cell edited in place that has the focus, if any: the edits
+  // that apply to it, and its column's alignment, which the toolbar shows.
+  const [cell, setCell] = useState<CellMenu | null>(null);
   // The address of the link the cursor is in, which the toolbar follows.
   const [link, setLink] = useState<string>();
+  // The formatting where the cursor is, which the formatting toolbar shows.
+  const [formats, setFormats] = useState<Formats>(NO_FORMATS);
   // Find in note's query and matches, while it is open.
   const [found, setFound] = useState<Found | null>(null);
   const searching = found !== null;
   const touch = useTouch();
   const phone = useLayout() === "phone";
   const toolbar = touch && focused;
-  const opening = useEffectEvent(() => ({ initial, visual }));
+  const formatting = touch ? null : formatSlot;
+  const opening = useEffectEvent(() => ({
+    initial,
+    mode: inMode(visual, vault),
+    focus,
+    touch,
+  }));
   const edited = useEffectEvent((update: ViewUpdate) => {
     if (update.docChanged) onChange(update.state.sliceDoc());
-    if (update.focusChanged) setFocused(update.view.hasFocus);
+    // A table's cell edited in place has the focus for the note.
+    const celled = inCell(update.state);
+    if (update.focusChanged || celled !== inCell(update.startState)) {
+      setFocused(update.view.hasFocus || celled);
+    }
+    // Anew as the cell, its table or its column's alignment change.
+    if (celled || inCell(update.startState)) {
+      const now = tableMenuOf(update.view);
+      setCell((was) => (cellKey(was) === cellKey(now) ? was : now));
+    }
     if (update.docChanged || update.selectionSet) {
       setLink(linkAt(update.state, update.state.selection.main.head));
+      const now = formatsAt(update.state);
+      setFormats((was) => (sameFormats(was, now) ? was : now));
     }
     if (!searchPanelOpen(update.state)) {
       if (searchPanelOpen(update.startState)) setFound(null);
@@ -391,11 +482,11 @@ export function Editor({
   // The cursor and the matches stay clear of the bars over the page's top,
   // and of the toolbar.
   const clearance = useEffectEvent(() =>
-    toolbar || searching
+    toolbar || searching || formatting
       ? {
           top: Math.max(
             0,
-            ...[".bar", ".find-bar"].map(
+            ...[".bar", ".format-slot", ".find-bar"].map(
               (bar) =>
                 document.querySelector(bar)?.getBoundingClientRect().bottom ??
                 0,
@@ -405,22 +496,35 @@ export function Editor({
         }
       : null,
   );
+  const covered = useEffectEvent(() => toolbar || searching);
   const followed = useEffectEvent((href: string) => {
     onFollow(href);
   });
+  const menuId = useId();
+  const menu = useRef<TableMenuControl>(null);
 
   useEffect(() => {
     const element = host.current;
     if (!element) return;
-    const { initial, visual } = opening();
+    const { initial, mode, focus, touch } = opening();
     const view = mountIn(
       element,
       EditorState.create({
         doc: initial,
-        extensions: extensions(lineBreak, visual, edited, followed, clearance),
+        extensions: [
+          extensions(lineBreak, mode, edited, followed, clearance, covered, {
+            close: () => {
+              menu.current?.close();
+            },
+          }),
+          // A touch screen raises its keyboard only from a tap, which an
+          // empty note asks for; with a mouse, the cursor is already in it.
+          touch ? placeholder("Tap to start writing") : [],
+        ],
       }),
     );
     editor.current = view;
+    if (focus) view.focus();
     return () => {
       view.destroy();
       editor.current = null;
@@ -428,8 +532,28 @@ export function Editor({
   }, [lineBreak]);
 
   useEffect(() => {
-    editor.current?.dispatch({ effects: MODE.reconfigure(inMode(visual)) });
-  }, [visual]);
+    editor.current?.dispatch({
+      effects: MODE.reconfigure(inMode(visual, vault)),
+    });
+  }, [visual, vault]);
+
+  // Find in note's bar sticks under the formatting toolbar, as tall as its
+  // buttons' rows.
+  useLayoutEffect(() => {
+    const holder = formatting?.parentElement;
+    if (!formatting || !holder) return;
+    const observer = new ResizeObserver(() => {
+      holder.style.setProperty(
+        "--format-bar-height",
+        `${String(formatting.offsetHeight)}px`,
+      );
+    });
+    observer.observe(formatting);
+    return () => {
+      observer.disconnect();
+      holder.style.removeProperty("--format-bar-height");
+    };
+  }, [formatting]);
 
   useImperativeHandle(
     ref,
@@ -479,13 +603,56 @@ export function Editor({
     />
   );
 
+  // The text that had the focus: a table's cell edited in place, or the note.
+  const text = () => {
+    const note = editor.current;
+    return note && (cellEditor(note) ?? note);
+  };
   return (
     <>
+      {formatting &&
+        createPortal(
+          <FormattingBar
+            cell={cell}
+            tableMenu={menuId}
+            formats={formats}
+            onCommand={(command) => {
+              if (editor.current) command(editor.current);
+            }}
+            onLeave={() => {
+              text()?.focus();
+            }}
+            onHold={(held, back) => {
+              const note = editor.current;
+              if (!note) return;
+              if (held) holdCell(note);
+              // Once the focus is where it goes, as back to the cell.
+              else
+                queueMicrotask(() => {
+                  releaseCell(note, back);
+                });
+            }}
+          />,
+          formatting,
+        )}
       {phone ? <InSlot name="find">{bar}</InSlot> : bar}
-      <div className="editor" ref={host} />
+      <div
+        className="editor"
+        ref={host}
+        // Alt+F10 reaches the formatting toolbar, as in web editors.
+        onKeyDown={(event) => {
+          if (!formatting || !event.altKey || event.key !== "F10") return;
+          event.preventDefault();
+          formatting.querySelector<HTMLElement>('[tabindex="0"]')?.focus();
+        }}
+      />
+      <TableMenu id={menuId} editor={editor} ref={menu} />
       {toolbar && (
         <KeyboardToolbar
           link={link}
+          cell={cell}
+          tableMenu={menuId}
+          // A cell edited in place follows what the keys do to its text.
           onCommand={(command) => {
             if (editor.current) command(editor.current);
           }}
@@ -495,7 +662,9 @@ export function Editor({
           // close, placed the cursor before it showed, where iOS scrolls it
           // above the keyboard only, under the toolbar.
           onSettle={(before) => {
-            const view = editor.current;
+            const note = editor.current;
+            // In a table's cell edited in place, the cell's own cursor.
+            const view = note && (cellEditor(note) ?? note);
             if (view && onScreen(view, before)) {
               view.dispatch({
                 effects: EditorView.scrollIntoView(view.state.selection.main),
@@ -506,6 +675,11 @@ export function Editor({
       )}
     </>
   );
+}
+
+/** A cell's edits and alignment, to compare. */
+function cellKey(cell: CellMenu | null): string {
+  return cell ? [cell.alignment, ...cell.edits].join() : "";
 }
 
 interface Found {

@@ -19,9 +19,9 @@ import {
 import { configDir, liveSession } from "./grant.ts";
 
 // The Drive client against the real Drive, as the test account (see "Live
-// Drive checks" in the README). The checks make what they need in a folder of
-// their own and trash it at the end. Every assertion is about one ID, so that
-// no failure prints anything else from the account.
+// Drive checks" in docs/development.md). The checks make what they need in a
+// folder of their own and trash it at the end. Every assertion is about one
+// ID, so that no failure prints anything else from the account.
 
 /** Made up for the checks, and shared with the test account as a viewer. */
 const VIEW_ONLY = "drivemd-live-view-only.md";
@@ -33,7 +33,8 @@ const INDEX = { timeout: INDEX_TIMEOUT_MS, interval: INDEX_INTERVAL_MS };
 
 const session = await liveSession(configDir());
 if (session === undefined) {
-  it.skip("needs the test account's grant: see the README", () => undefined);
+  it.skip("needs the test account's grant: see docs/development.md", () =>
+    undefined);
 } else {
   defineChecks(session.auth);
 }

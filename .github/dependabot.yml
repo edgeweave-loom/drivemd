@@ -9,7 +9,8 @@ updates:
       default-days: 7
     groups:
       # A Playwright update also needs the e2e job's image updated by hand
-      # (see the README), so it comes on its own rather than holding up others.
+      # (see docs/development.md), so it comes on its own rather than holding
+      # up others.
       playwright:
         patterns: ["@playwright/test"]
       npm-minor-and-patch:

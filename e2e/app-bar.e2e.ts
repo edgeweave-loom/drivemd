@@ -106,6 +106,37 @@ test("signs out from the account's menu", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("lifts the bar once the page scrolls under it", async ({
+  page,
+  drive,
+}) => {
+  drive.files.set("long", {
+    id: "long",
+    name: "long.md",
+    mimeType: "text/markdown",
+    parents: ["work"],
+    content: Array.from(
+      { length: 80 },
+      (_, index) => `Line ${String(index)}.`,
+    ).join("\n\n"),
+  });
+  await signIn(page);
+  await page.goto("/edit?id=long");
+  await expect(page.getByText("Line 79.")).toBeAttached();
+  const bar = page.getByRole("banner");
+  await expect(bar).toHaveCSS("box-shadow", "none");
+
+  await page.evaluate(() => {
+    window.scrollTo(0, 600);
+  });
+  await expect(bar).not.toHaveCSS("box-shadow", "none");
+  expect((await bar.boundingBox())?.y).toBe(0);
+  await page.evaluate(() => {
+    window.scrollTo(0, 0);
+  });
+  await expect(bar).toHaveCSS("box-shadow", "none");
+});
+
 test("searches from a pill, which rises while it has the focus", async ({
   page,
 }, info) => {

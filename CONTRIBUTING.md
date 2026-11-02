@@ -18,10 +18,10 @@ The same goes for the repository: tests, fixtures and examples use made-up data,
 ## Making a change
 
 1. Fork the repository and branch from `dev`. `main` holds what is released: `dev` reaches it through release pull requests.
-2. Set up as the README's [Development](README.md#development) and [End-to-end tests](README.md#end-to-end-tests) sections say. The unit and end-to-end tests replace Google with made-up answers, so they need no Google account or OAuth client.
+2. Set up as [`docs/development.md`](docs/development.md#setup) says, its [End-to-end tests](docs/development.md#end-to-end-tests) included. The unit and end-to-end tests replace Google with made-up answers, so they need no Google account or OAuth client.
 3. Write the failing test first, then the code that makes it pass. Browser behavior is tested with `pnpm run e2e`, in Chromium and WebKit, under the security policy that Hosting sends.
-4. Before pushing, run the checks that CI runs on the code: `pnpm run check` (lint, format, coverage and build) and `pnpm run e2e`. The Git hooks that the README's Development section turns on run `pnpm run check` before each push, and check the format and the lint of each commit. CI also audits the dependencies and the workflows.
-5. Update the spec in the same pull request when a decision changes, and the README when commands, environment variables or behavior do.
+4. Before pushing, run the checks that CI runs on the code: `pnpm run check` (lint, format, coverage and build) and `pnpm run e2e`. The Git hooks that its Setup turns on run `pnpm run check` before each push, and check the format and the lint of each commit. CI also audits the dependencies and the workflows.
+5. Update the spec in the same pull request when a decision changes, and the README or the guides in `docs/` when commands, environment variables or behavior do.
 6. Open the pull request against `dev`.
 
 The live Drive checks, `pnpm run live-check` and `pnpm run live-check:ui`, run as a test account of Edgeweave's organization, which only the maintainers use.

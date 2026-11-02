@@ -4,7 +4,7 @@ saying why the change exists. Delete these comments. -->
 
 <!-- Before asking for a review:
 - the failing test came first, and lint, format, coverage, build and e2e pass;
-- the spec says what changed, if a decision did, and the README, if commands,
-  environment variables or behavior did;
+- the spec says what changed, if a decision did, and the README or the guides
+  in docs/, if commands, environment variables or behavior did;
 - the change stays under about 400 lines;
 - tests and examples hold made-up data only. -->

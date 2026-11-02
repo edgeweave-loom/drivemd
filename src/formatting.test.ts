@@ -17,12 +17,18 @@ import remarkGfm from "remark-gfm";
 import { describe, expect, it } from "vitest";
 import {
   cycleHeading,
+  cycleList,
   cycleTask,
   indentLines,
   insertLink,
   outdentLines,
   toggleBold,
+  toggleCode,
+  toggleItalic,
   toggleList,
+  toggleNumbered,
+  toggleQuote,
+  toggleStrikethrough,
 } from "./formatting.ts";
 
 /**
@@ -127,6 +133,96 @@ describe("toggleBold", () => {
 
   it("bolds each selected range", () => {
     expect(run(toggleBold, "«a» b «c»").text).toBe("**«a»** b **«c»**");
+  });
+});
+
+describe("toggleItalic", () => {
+  it.each([
+    ["a «word» b", "a *«word»* b"],
+    ["a |b", "a *|*b"],
+    ["a *|*b", "a |b"],
+    ["a *wo|rd* b", "a wo|rd b"],
+    ["a _wo|rd_ b", "a wo|rd b"],
+    ["a *word|* b", "a *word*| b"],
+    ["a ***wo|rd*** b", "a **wo|rd** b"],
+    ["a **«word»** b", "a ***«word»*** b"],
+  ])("turns %j into %j", (before, after) => {
+    expect(run(toggleItalic, before).text).toBe(after);
+  });
+});
+
+describe("toggleStrikethrough", () => {
+  it.each([
+    ["a «word» b", "a ~~«word»~~ b"],
+    ["a |b", "a ~~|~~b"],
+    ["a ~~|~~b", "a |b"],
+    ["a ~~wo|rd~~ b", "a wo|rd b"],
+    ["a ~~word|~~ b", "a ~~word~~| b"],
+  ])("turns %j into %j", (before, after) => {
+    expect(run(toggleStrikethrough, before).text).toBe(after);
+  });
+});
+
+describe("toggleCode", () => {
+  it.each([
+    ["a «word» b", "a `«word»` b"],
+    ["a |b", "a `|`b"],
+    ["a `|`b", "a |b"],
+    ["a `wo|rd` b", "a wo|rd b"],
+    ["a ``wo|rd`` b", "a wo|rd b"],
+    ["a `word|` b", "a `word`| b"],
+    ["a «x`y» b", "a ``«x`y»`` b"],
+    ["a «`y» b", "a `` «`y» `` b"],
+    ["a `` `y| `` b", "a `y| b"],
+    ["a ` | ` b", "a  |  b"],
+  ])("turns %j into %j", (before, after) => {
+    expect(run(toggleCode, before).text).toBe(after);
+  });
+});
+
+describe("toggleNumbered", () => {
+  it.each([
+    ["te|a", "1. te|a"],
+    ["«a\nb\nc»", "1. «a\n2. b\n3. c»"],
+    ["«- a\n- b»", "«1. a\n2. b»"],
+    ["«1. a\n2. b»", "«a\nb»"],
+    ["«- a\n\n9) b»", "«1. a\n\n2) b»"],
+    ["> - te|a", "> 1. te|a"],
+    ["- [ ] te|a", "1. [ ] te|a"],
+    // What a widened item holds moves with its text, and stays in it.
+    ["«- a\n  - b\n  - c\n- d»", "«1. a\n   1. b\n   2. c\n2. d»"],
+    ["- a|\n  - b\n\n  more", "1. a|\n   - b\n\n   more"],
+    ["- a|\n\tb", "1. a|\n\t b"],
+  ])("turns %j into %j", (before, after) => {
+    expect(run(toggleNumbered, before).text).toBe(after);
+  });
+});
+
+describe("cycleList", () => {
+  it.each([
+    ["te|a", "- te|a"],
+    ["- te|a", "1. te|a"],
+    ["1. te|a", "te|a"],
+    ["- [x] te|a", "1. [x] te|a"],
+    ["«- a\nb»", "«1. a\n2. b»"],
+  ])("turns %j into %j", (before, after) => {
+    expect(run(cycleList, before).text).toBe(after);
+  });
+});
+
+describe("toggleQuote", () => {
+  it.each([
+    ["te|a", "> te|a"],
+    ["> te|a", "te|a"],
+    [">te|a", "te|a"],
+    ["> > te|a", "> te|a"],
+    ["  > te|a", "  te|a"],
+    ["- te|a", "> - te|a"],
+    ["«a\n\nb»", "> «a\n>\n> b»"],
+    ["«> a\nb»", "«> a\n> b»"],
+    ["«> a\n>\n> b»", "«a\n\nb»"],
+  ])("turns %j into %j", (before, after) => {
+    expect(run(toggleQuote, before).text).toBe(after);
   });
 });
 

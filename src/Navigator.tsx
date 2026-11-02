@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -135,6 +136,33 @@ function AppBar({
   return <BrowsingBar email={email} onSignOut={onSignOut} />;
 }
 
+function watchScroll(onChange: () => void): () => void {
+  const viewport = window.visualViewport;
+  window.addEventListener("scroll", onChange, { passive: true });
+  viewport?.addEventListener("scroll", onChange);
+  viewport?.addEventListener("resize", onChange);
+  return () => {
+    window.removeEventListener("scroll", onChange);
+    viewport?.removeEventListener("scroll", onChange);
+    viewport?.removeEventListener("resize", onChange);
+  };
+}
+
+/**
+ * Whether the page has scrolled under the app bar, which then lifts
+ * (docs/DESIGN.md, Space, shape and depth). The visual viewport's top
+ * counts too: with the keyboard up, iOS pans it away from the page's top
+ * without scrolling the page, and the bar follows it there
+ * (src/visual-viewport.ts). Under a pixel is the top still, where a
+ * viewport's place may be fractional.
+ */
+function useLifted(): boolean {
+  return useSyncExternalStore(
+    watchScroll,
+    () => Math.max(window.scrollY, window.visualViewport?.pageTop ?? 0) >= 1,
+  );
+}
+
 /**
  * A note's app bar: DriveMD's mark, or a phone's way up to the note's
  * folder, then the places the note's page fills, and the account where
@@ -156,13 +184,14 @@ function NoteBar({
   const phone = useLayout() === "phone";
   const alone = openedFromDrive();
   const account = useNoteAccount();
+  const lifted = useLifted();
   const mark = (
     <span className="mark">
       <img src="/icon.svg" alt="DriveMD" />
     </span>
   );
   return (
-    <header className="bar note">
+    <header className={lifted ? "bar note lifted" : "bar note"}>
       {phone ? (
         <>
           {/* Where a phone's Done takes the place of Back, or of the mark,
@@ -214,9 +243,12 @@ function BrowsingBar({
       : undefined;
   const titled = phone && (route.name === "folder" || root !== undefined);
   const looks = route.name === "search" ? "searching" : titled && "titled";
+  const lifted = useLifted();
   useSearchBars(phone && route.name === "search");
   return (
-    <header className={looks ? `bar ${looks}` : "bar"}>
+    <header
+      className={["bar", looks, lifted && "lifted"].filter(Boolean).join(" ")}
+    >
       {route.name === "folder" && titled ? (
         <FolderTitle folder={route.folder} trail={trail} />
       ) : root ? (

@@ -1,7 +1,7 @@
 import { defineConfig } from "vitest/config";
 
 // `pnpm run live-check`: the Drive client against the real Drive, as the test
-// account (see "Live Drive checks" in the README).
+// account (see "Live Drive checks" in docs/development.md).
 export default defineConfig({
   test: {
     environment: "node",

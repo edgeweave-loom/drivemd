@@ -11,6 +11,7 @@ import {
   type StateCommand,
   type Transaction,
 } from "@codemirror/state";
+import type { Command, KeyBinding } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 
 /*
@@ -61,7 +62,7 @@ type Prefix = ReturnType<typeof prefix>;
  * left out of a selection that holds others: formatting them would only add
  * stray symbols.
  */
-function selectedLines(state: EditorState): Prefix[] {
+function selectedLines(state: EditorState, inner = false): Prefix[] {
   const lines: Prefix[] = [];
   let last = 0;
   for (const range of state.selection.ranges) {
@@ -75,7 +76,12 @@ function selectedLines(state: EditorState): Prefix[] {
     }
   }
   const filled = lines.filter((line) => !line.blank);
-  return filled.length > 0 ? filled : lines;
+  if (filled.length === 0) return lines;
+  // Or, when `inner`, those between the first and the last filled ones too.
+  const filledAt = (line: Prefix) => !line.blank;
+  return inner
+    ? lines.slice(lines.findIndex(filledAt), lines.findLastIndex(filledAt) + 1)
+    : filled;
 }
 
 /** Applies the changes `format` makes to the selected lines. */
@@ -83,9 +89,10 @@ function formatLines(
   state: EditorState,
   dispatch: (transaction: Transaction) => void,
   format: (lines: Prefix[]) => ChangeSpec[],
+  lines = selectedLines(state),
 ): boolean {
   if (state.readOnly) return false;
-  const changes = state.changes(format(selectedLines(state)));
+  const changes = state.changes(format(lines));
   dispatch(
     state.update({
       changes,
@@ -100,6 +107,19 @@ function formatLines(
   return true;
 }
 
+/** Makes the line a heading of that level, or text at 0. */
+function makeHeading(line: Prefix, level: number): ChangeSpec[] {
+  const hashes = line.at + line.heading;
+  if (line.heading === level) return [];
+  if (line.heading === 0) {
+    return [{ from: line.at, insert: `${"#".repeat(level)} ` }];
+  }
+  if (level === 0) return [{ from: line.at, to: line.at + line.headingLength }];
+  return level > line.heading
+    ? [{ from: hashes, insert: "#".repeat(level - line.heading) }]
+    : [{ from: line.at + level, to: hashes }];
+}
+
 /**
  * Turns the lines into headings one level down from the first line's, up
  * to the third, then back to text: `#`, `##`, `###`, none.
@@ -108,35 +128,185 @@ export const cycleHeading: StateCommand = ({ state, dispatch }) =>
   formatLines(state, dispatch, (lines) => {
     const first = lines[0]?.heading ?? 0;
     const level = first >= 3 ? 0 : first + 1;
-    return lines.flatMap((line): ChangeSpec[] => {
-      const hashes = line.at + line.heading;
-      if (line.heading === level) return [];
-      if (line.heading === 0) {
-        return [{ from: line.at, insert: `${"#".repeat(level)} ` }];
-      }
-      if (level === 0)
-        return [{ from: line.at, to: line.at + line.headingLength }];
-      return level > line.heading
-        ? [{ from: hashes, insert: "#".repeat(level - line.heading) }]
-        : [{ from: line.at + level, to: hashes }];
-    });
+    return lines.flatMap((line) => makeHeading(line, level));
   });
+
+/**
+ * Turns the lines into text, at 0, or headings of each level from 1 to 6,
+ * by index.
+ */
+export const HEADINGS: readonly StateCommand[] = [0, 1, 2, 3, 4, 5, 6].map(
+  (level) =>
+    ({ state, dispatch }) =>
+      formatLines(state, dispatch, (lines) =>
+        lines.flatMap((line) => makeHeading(line, level)),
+      ),
+);
+
+type List = "bullet" | "number";
+
+function list(line: Prefix): List | undefined {
+  if (line.marker === undefined) return undefined;
+  return /^\d/.test(line.marker) ? "number" : "bullet";
+}
+
+/**
+ * The other lines of the list item that starts the line that its text's
+ * column holds, past a lazy line, which needs no indent to stay in it.
+ */
+function itemLines(state: EditorState, line: Prefix): Line[] {
+  const tree = ensureSyntaxTree(state, line.at + 1, 100) ?? syntaxTree(state);
+  let node: SyntaxNode | null = tree.resolveInner(line.at, 1);
+  while (node && !(node.name === "ListItem" && node.from === line.at)) {
+    node = node.parent;
+  }
+  if (!node) return [];
+  const first = state.doc.lineAt(line.at);
+  const text = countColumn(first.text.slice(0, line.boxAt - first.from), TAB);
+  const lines: Line[] = [];
+  const last = state.doc.lineAt(node.to).number;
+  for (let number = first.number + 1; number <= last; number++) {
+    const next = state.doc.line(number);
+    const held = prefix(next);
+    if (!held.blank && column(held) >= text) lines.push(next);
+  }
+  return lines;
+}
+
+/**
+ * Makes the lines list items of that kind, or text when `to` is undefined.
+ * Numbers count from 1 at each level, keeping a numbered item's `.` or `)`.
+ * A marker that widens moves the item's other lines as far, so that what it
+ * holds stays in it.
+ */
+function makeList(
+  state: EditorState,
+  lines: Prefix[],
+  to: List | undefined,
+): ChangeSpec[] {
+  const counts = new Map<number, number>();
+  // Spaces that each line's text moves by, from the markers above it.
+  const moves = new Map<number, number>();
+  const marked = lines.map((line) => {
+    if (to === undefined) {
+      return line.marker === undefined
+        ? undefined
+        : { line, to: line.at + line.itemLength, insert: "" };
+    }
+    let marker = "-";
+    if (to === "number") {
+      const level = column(line);
+      for (const deeper of counts.keys()) {
+        if (deeper > level) counts.delete(deeper);
+      }
+      const count = (counts.get(level) ?? 0) + 1;
+      counts.set(level, count);
+      marker = `${String(count)}${line.marker?.match(/[.)]$/)?.[0] ?? "."}`;
+    } else if (list(line) === "bullet") return undefined;
+    if (line.marker === undefined) {
+      return { line, to: line.at, insert: `${marker} ` };
+    }
+    const wider = marker.length - line.marker.length;
+    if (wider > 0) {
+      for (const inner of itemLines(state, line)) {
+        moves.set(inner.from, (moves.get(inner.from) ?? 0) + wider);
+      }
+    }
+    return { line, to: line.at + line.marker.length, insert: marker };
+  });
+  const changes: ChangeSpec[] = [];
+  const edited = new Set<number>();
+  for (const change of marked) {
+    if (!change) continue;
+    const from = change.line.at;
+    const move = " ".repeat(moves.get(state.doc.lineAt(from).from) ?? 0);
+    edited.add(state.doc.lineAt(from).from);
+    if (move + change.insert !== state.doc.sliceString(from, change.to)) {
+      changes.push({ from, to: change.to, insert: move + change.insert });
+    }
+  }
+  for (const [from, spaces] of moves) {
+    if (edited.has(from)) continue;
+    changes.push({
+      from: prefix(state.doc.lineAt(from)).at,
+      insert: " ".repeat(spaces),
+    });
+  }
+  return changes;
+}
 
 /**
  * Makes the lines a bulleted list, or, when all of them are list items with
  * a bullet, plain text again. A numbered item takes a bullet instead.
  */
 export const toggleList: StateCommand = ({ state, dispatch }) =>
+  formatLines(state, dispatch, (lines) =>
+    makeList(
+      state,
+      lines,
+      lines.every((line) => list(line) === "bullet") ? undefined : "bullet",
+    ),
+  );
+
+/**
+ * Makes the lines a numbered list, `1.`, `2.`, `3.`, or, when all of them
+ * are numbered list items, plain text again.
+ */
+export const toggleNumbered: StateCommand = ({ state, dispatch }) =>
+  formatLines(state, dispatch, (lines) =>
+    makeList(
+      state,
+      lines,
+      lines.every((line) => list(line) === "number") ? undefined : "number",
+    ),
+  );
+
+/**
+ * Moves the lines on from the first line's list: text becomes a bulleted
+ * list, a bulleted list a numbered one, and a numbered list text again.
+ */
+export const cycleList: StateCommand = ({ state, dispatch }) =>
   formatLines(state, dispatch, (lines) => {
-    const bulleted = (line: Prefix) => /^[-+*]$/.test(line.marker ?? "");
-    const unlist = lines.every(bulleted);
-    return lines.flatMap((line): ChangeSpec[] => {
-      if (unlist) return [{ from: line.at, to: line.at + line.itemLength }];
-      if (bulleted(line)) return [];
-      if (line.marker === undefined) return [{ from: line.at, insert: "- " }];
-      return [{ from: line.at, to: line.at + line.marker.length, insert: "-" }];
-    });
+    const first = lines[0] && list(lines[0]);
+    const to =
+      first === undefined
+        ? "bullet"
+        : first === "bullet"
+          ? "number"
+          : undefined;
+    return makeList(state, lines, to);
   });
+
+/**
+ * Makes the lines a quote, `> `, blank lines between them included, or,
+ * when all of them are quoted, takes their outer quote marker away.
+ */
+export const toggleQuote: StateCommand = ({ state, dispatch }) =>
+  formatLines(
+    state,
+    dispatch,
+    (lines) =>
+      lines.every((line) => line.quotes.includes(">"))
+        ? lines.map((line) => {
+            const start = line.at - line.indent.length - line.quotes.length;
+            const mark = start + line.quotes.indexOf(">");
+            const space = /[ \t]/.test(
+              state.doc.sliceString(mark + 1, mark + 2),
+            );
+            return { from: mark, to: mark + (space ? 2 : 1) };
+          })
+        : lines.flatMap((line) =>
+            line.quotes === ""
+              ? [
+                  {
+                    from: state.doc.lineAt(line.at).from,
+                    insert: line.blank ? ">" : "> ",
+                  },
+                ]
+              : [],
+          ),
+    selectedLines(state, true),
+  );
 
 type Task = "text" | "item" | "open" | "done";
 type Target = Exclude<Task, "text">;
@@ -183,68 +353,118 @@ function trimmed(state: EditorState, { from, to }: SelectionRange) {
   return { from: start, to: Math.max(start, from + text.trimEnd().length) };
 }
 
-/** The bold text, its `**` included, that holds the range, if any. */
-function boldAround(
+/** The inline node of that name, its marks included, holding the range. */
+function inlineAround(
   state: EditorState,
   { from, to }: SelectionRange,
+  name: string,
 ): SyntaxNode | undefined {
   let node: SyntaxNode | null = syntaxTree(state).resolveInner(from, 1);
   for (; node; node = node.parent) {
-    if (node.name === "StrongEmphasis" && to <= node.to) return node;
+    if (node.name === name && to <= node.to) return node;
   }
   return undefined;
 }
 
 /**
- * Removes the bold around each selected range, or makes it bold. An empty
- * range gets `****` with the cursor inside, which a second tap takes away;
- * typed in, a second tap at the end of the bold text steps out of it.
+ * Takes away the formatting of that node around each selected range, its
+ * marks as written, or adds it, the marks from `marks` around the range's
+ * text. An empty range gets both marks with the cursor between them, which
+ * a second tap takes away; typed in, a second tap before the closing mark
+ * steps out of it.
  */
-export const toggleBold: StateCommand = ({ state, dispatch }) => {
-  if (state.readOnly) return false;
-  const edit = state.changeByRange((range) => {
-    const bold = boldAround(state, range);
-    if (bold && range.empty && range.head === bold.to - 2) {
-      return { range: EditorSelection.cursor(bold.to) };
-    }
-    if (bold) {
-      const changes = state.changes([
-        { from: bold.from, to: bold.from + 2 },
-        { from: bold.to - 2, to: bold.to },
-      ]);
+function toggleInline(
+  name: string,
+  marks: (text: string) => readonly [string, string],
+): StateCommand {
+  return ({ state, dispatch }) => {
+    if (state.readOnly) return false;
+    const edit = state.changeByRange((range) => {
+      const node = inlineAround(state, range, name);
+      const open = node?.firstChild;
+      const close = node?.lastChild;
+      if (open && close && open !== close) {
+        if (range.empty && range.head === close.from) {
+          return { range: EditorSelection.cursor(close.to) };
+        }
+        // Inline code's padding, a space inside each backtick, goes too.
+        const inner = state.doc.sliceString(open.to, close.from);
+        const pad = name === "InlineCode" && /^ .*\S.* $/s.test(inner) ? 1 : 0;
+        const changes = state.changes([
+          { from: open.from, to: open.to + pad },
+          { from: close.from - pad, to: close.to },
+        ]);
+        return {
+          changes,
+          range: EditorSelection.range(
+            changes.mapPos(range.anchor),
+            changes.mapPos(range.head),
+          ),
+        };
+      }
+      const at = range.head;
+      const [before, after] = marks("");
+      if (
+        range.empty &&
+        state.doc.sliceString(at - before.length, at + after.length) ===
+          before + after
+      ) {
+        return {
+          changes: { from: at - before.length, to: at + after.length },
+          range: EditorSelection.cursor(at - before.length),
+        };
+      }
+      const { from, to } = trimmed(state, range);
+      const [start, end] = marks(state.doc.sliceString(from, to));
       return {
-        changes,
-        range: EditorSelection.range(
-          changes.mapPos(range.anchor),
-          changes.mapPos(range.head),
-        ),
+        changes: [
+          { from, insert: start },
+          { from: to, insert: end },
+        ],
+        range: EditorSelection.range(from + start.length, to + start.length),
       };
-    }
-    const at = range.head;
-    if (range.empty && state.doc.sliceString(at - 2, at + 2) === "****") {
-      return {
-        changes: { from: at - 2, to: at + 2 },
-        range: EditorSelection.cursor(at - 2),
-      };
-    }
-    const { from, to } = trimmed(state, range);
-    return {
-      changes: [
-        { from, insert: "**" },
-        { from: to, insert: "**" },
-      ],
-      range: EditorSelection.range(from + 2, to + 2),
-    };
-  });
-  dispatch(
-    state.update(edit, {
-      scrollIntoView: true,
-      userEvent: "input.format",
-      annotations: isolateHistory.of("after"),
-    }),
+    });
+    dispatch(
+      state.update(edit, {
+        scrollIntoView: true,
+        userEvent: "input.format",
+        annotations: isolateHistory.of("after"),
+      }),
+    );
+    return true;
+  };
+}
+
+/** Makes each selected range bold, `**`, or takes the bold around it away. */
+export const toggleBold = toggleInline("StrongEmphasis", () => ["**", "**"]);
+
+/**
+ * Makes each selected range italic, `*`, or takes the italic around it
+ * away, written with `*` or `_`.
+ */
+export const toggleItalic = toggleInline("Emphasis", () => ["*", "*"]);
+
+/** Strikes each selected range through, `~~`, or takes the strike away. */
+export const toggleStrikethrough = toggleInline("Strikethrough", () => [
+  "~~",
+  "~~",
+]);
+
+/**
+ * Makes each selected range inline code, or takes the code around it
+ * away: one backtick more than the longest run in the text, and a space
+ * inside each when the text starts or ends with one, as CommonMark reads
+ * them.
+ */
+export const toggleCode = toggleInline("InlineCode", (text) => {
+  const longest = Math.max(
+    0,
+    ...(text.match(/`+/g) ?? []).map((run) => run.length),
   );
-  return true;
-};
+  const fence = "`".repeat(longest + 1);
+  const pad = /^`|`$/.test(text) ? " " : "";
+  return [fence + pad, pad + fence];
+});
 
 /**
  * Makes each selected range a link's text, with the cursor where its
@@ -528,3 +748,60 @@ export const outdentLines: StateCommand = ({ state, dispatch }) =>
       line === first ? reindent(line, indent) : unindent(line, width),
     );
   });
+
+/**
+ * The keys of the commands that keep a table's row whole, which a table's
+ * cell edited in place takes too: Google Docs' where it has one.
+ */
+export const INLINE_KEYS: readonly KeyBinding[] = [
+  { key: "Mod-b", run: toggleBold },
+  // In place of CodeMirror's own, which selects the syntax around.
+  { key: "Mod-i", run: toggleItalic },
+  { key: "Mod-Shift-x", run: toggleStrikethrough },
+  // GitHub's, as Docs has no inline code.
+  { key: "Mod-e", run: toggleCode },
+  { key: "Mod-k", run: insertLink },
+];
+
+/**
+ * The formatting commands' keys: the headings' and the lists' as Google
+ * Docs binds them, and the indent's as Obsidian does.
+ */
+export const FORMATTING_KEYS: readonly KeyBinding[] = [
+  ...INLINE_KEYS,
+  ...HEADINGS.map((run, level) => ({ key: `Mod-Alt-${String(level)}`, run })),
+  { key: "Mod-Shift-7", run: toggleNumbered },
+  { key: "Mod-Shift-8", run: toggleList },
+  { key: "Mod-Shift-9", run: cycleTask },
+  { key: "Mod-]", run: indentLines },
+  { key: "Mod-[", run: outdentLines },
+];
+
+/**
+ * The formatting the main selection is in: its line's heading level, and
+ * the commands whose formatting holds it, which they would take away.
+ */
+export interface Formats {
+  heading: number;
+  on: ReadonlySet<StateCommand | Command>;
+}
+
+export function formatsAt(state: EditorState): Formats {
+  const range = state.selection.main;
+  const line = prefix(state.doc.lineAt(range.head));
+  const on = new Set<StateCommand | Command>();
+  const inline: [string, StateCommand][] = [
+    ["StrongEmphasis", toggleBold],
+    ["Emphasis", toggleItalic],
+    ["Strikethrough", toggleStrikethrough],
+    ["InlineCode", toggleCode],
+  ];
+  for (const [name, command] of inline) {
+    if (inlineAround(state, range, name)) on.add(command);
+  }
+  if (list(line) === "bullet") on.add(toggleList);
+  if (list(line) === "number") on.add(toggleNumbered);
+  if (line.box !== undefined) on.add(cycleTask);
+  if (line.quotes.includes(">")) on.add(toggleQuote);
+  return { heading: line.heading, on };
+}

@@ -19,15 +19,25 @@ if ("window" in globalThis) {
     this.dispatchEvent(new Event("close"));
   };
   // Nor does it open popovers, which it hides: the button that names one
-  // shows it, or hides it again.
+  // shows it, or hides it again, telling of it before and after as a
+  // browser does.
   HTMLElement.prototype.showPopover = function (this: HTMLElement) {
+    const opening = Object.assign(
+      new Event("beforetoggle", { cancelable: true }),
+      { newState: "open" },
+    );
+    if (!this.dispatchEvent(opening)) return;
     this.style.display = "block";
     this.dispatchEvent(
       Object.assign(new Event("toggle"), { newState: "open" }),
     );
   };
   HTMLElement.prototype.hidePopover = function (this: HTMLElement) {
+    if (this.style.display !== "block") return;
     this.style.removeProperty("display");
+    this.dispatchEvent(
+      Object.assign(new Event("toggle"), { newState: "closed" }),
+    );
   };
   document.addEventListener("click", (event) => {
     const invoker =
@@ -62,6 +72,18 @@ if ("window" in globalThis) {
       return undefined;
     }
   } as unknown as typeof IntersectionObserver;
+  // Nor does it size elements, which therefore never resize.
+  window.ResizeObserver = class {
+    observe() {
+      return undefined;
+    }
+    unobserve() {
+      return undefined;
+    }
+    disconnect() {
+      return undefined;
+    }
+  };
   // Nor does it make object URLs.
   let objects = 0;
   URL.createObjectURL = () => {

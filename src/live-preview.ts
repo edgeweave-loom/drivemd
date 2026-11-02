@@ -1,20 +1,56 @@
-import { isolateHistory } from "@codemirror/commands";
-import { syntaxTree } from "@codemirror/language";
 import {
+  defaultKeymap,
+  historyKeymap,
+  insertNewline,
+  isolateHistory,
+} from "@codemirror/commands";
+import {
+  codeFolding,
+  foldEffect,
+  foldedRanges,
+  highlightingFor,
+  syntaxTree,
+  syntaxTreeAvailable,
+  unfoldEffect,
+} from "@codemirror/language";
+import { searchPanelOpen } from "@codemirror/search";
+import {
+  Annotation,
+  EditorSelection,
   EditorState,
+  Facet,
+  Prec,
   StateEffect,
+  StateField,
+  Transaction,
+  type ChangeSpec,
+  type StateEffectType,
   type Extension,
   type Range,
 } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
+  keymap,
   ViewPlugin,
   WidgetType,
+  type Command,
   type DecorationSet,
+  type Rect,
   type ViewUpdate,
 } from "@codemirror/view";
-import type { SyntaxNodeRef } from "@lezer/common";
+import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
+import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
+import { calloutFold, calloutIcon } from "./callout-icons.tsx";
+import {
+  CALLOUT_TYPES,
+  calloutMarker,
+  titled,
+  type CalloutType,
+} from "./callouts.ts";
+import { findInNote } from "./find.ts";
+import { INLINE_KEYS } from "./formatting.ts";
+import { TOUCH } from "./layout.ts";
 
 interface Stretch {
   from: number;
@@ -60,6 +96,585 @@ class TaskBox extends WidgetType {
 
 const OPEN_TASK = Decoration.replace({ widget: new TaskBox(false) });
 const DONE_TASK = Decoration.replace({ widget: new TaskBox(true) });
+
+/**
+ * A thematic break, drawn as the viewer's rule: its marks stay as text,
+ * unseen, one unit that a finger's tap places the cursor at, on its line:
+ * Playwright's WebKit took a tap on a widget filling the line to the note's
+ * start. A screen reader reads it as a separator.
+ */
+const RULE = Decoration.mark({
+  class: "cm-rule",
+  attributes: { role: "separator" },
+});
+const RULE_LINE = Decoration.line({ class: "cm-rule-line" });
+
+// A quote's lines, by how many quotes drawn they are in: deeper ones draw
+// as many bars as the last.
+const QUOTE_LINES = [1, 2, 3, 4, 5, 6].map((depth) =>
+  Decoration.line({ class: `cm-quote cm-quote-${String(depth)}` }),
+);
+
+/** Whether the note is in a vault, whose callouts Visual draws as such. */
+export const inVault = Facet.define<boolean, boolean>({
+  combine: (values) => values.some(Boolean),
+});
+
+function vaultChanged(update: ViewUpdate): boolean {
+  return update.startState.facet(inVault) !== update.state.facet(inVault);
+}
+
+/**
+ * Visual's quotes, their lines barred as the viewer's, a bar per level,
+ * whether or not their marks show: a lazy line, which continues a quote
+ * without its `>`, is in it. A callout's lines draw its box instead.
+ */
+const quoting = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = quoteLines(view);
+    }
+    update(update: ViewUpdate) {
+      if (
+        update.docChanged ||
+        update.viewportChanged ||
+        vaultChanged(update) ||
+        foldedRanges(update.startState) !== foldedRanges(update.state) ||
+        syntaxTree(update.startState) !== syntaxTree(update.state)
+      ) {
+        this.decorations = quoteLines(update.view);
+      }
+    }
+  },
+  { decorations: (plugin) => plugin.decorations },
+);
+
+function quoteLines(view: EditorView): DecorationSet {
+  const { state } = view;
+  const { from, to } = view.viewport;
+  // Each line's start, with the quotes drawn around it, outermost first.
+  const lines = new Map<number, Level[]>();
+  const ranges: Range<Decoration>[] = [];
+  syntaxTree(state).iterate({
+    from,
+    to,
+    enter: (node) => {
+      if (node.name !== "Blockquote" || !drawnQuote(node.node)) return;
+      const callout = calloutOf(state, node.node);
+      const first = state.doc.lineAt(node.from).from;
+      const last = shownLine(state, node.to);
+      if (callout) ranges.push(...calloutTitleLine(state, callout));
+      const end = Math.min(to, node.to);
+      for (let at = Math.max(from, node.from); at <= end;) {
+        const line = state.doc.lineAt(at);
+        const levels = lines.get(line.from) ?? [];
+        levels.push({
+          callout: callout?.type ?? null,
+          top: callout !== null && line.from === first,
+          bottom: callout !== null && line.from === last,
+          title: line.from === callout?.marks.from,
+        });
+        lines.set(line.from, levels);
+        at = line.to + 1;
+      }
+    },
+  });
+  for (const [at, levels] of lines) {
+    const drawn = levels.slice(0, QUOTE_LINES.length);
+    const quoted = QUOTE_LINES[drawn.length - 1];
+    if (!drawn.some((level) => level.callout)) {
+      if (quoted) ranges.push(quoted.range(at));
+      continue;
+    }
+    ranges.push(
+      framedLine(drawn).range(at),
+      Decoration.widget({ widget: new Frame(drawn), side: -1 }).range(at),
+    );
+  }
+  return Decoration.set(ranges, true);
+}
+
+/**
+ * The line a position shows on: a folded callout's title's, for one it
+ * hides.
+ */
+function shownLine(state: EditorState, at: number): number {
+  let shown = state.doc.lineAt(at).from;
+  foldedRanges(state).between(at, at, (from, to) => {
+    if (from < at && at <= to)
+      shown = Math.min(shown, state.doc.lineAt(from).from);
+  });
+  return shown;
+}
+
+/**
+ * Whether Visual draws a quote: at the note's top, or in quotes drawn, but
+ * not in a list, whose lines start with its marks.
+ */
+function drawnQuote(quote: SyntaxNode): boolean {
+  let around: SyntaxNode | null = quote;
+  while (around?.name === "Blockquote") around = around.parent;
+  return around?.name === "Document";
+}
+
+/** A quote drawn around a line: a bar, or a callout's box. */
+interface Level {
+  callout: CalloutType | null;
+  /** Whether its box starts on the line, or ends there. */
+  top: boolean;
+  bottom: boolean;
+  /** Whether the line is its title's. */
+  title: boolean;
+}
+
+/**
+ * A line in a callout, as far in as its quotes, with the viewer's padding
+ * at the top of a box starting on it, and at the bottom of each ending on
+ * it, its text the innermost one's: a callout's, or a quote's, quieter.
+ */
+function framedLine(levels: Level[]): Decoration {
+  const inner = levels[levels.length - 1];
+  const classes = ["cm-framed", `cm-quote-${String(levels.length)}`];
+  if (inner?.callout) {
+    classes.push(`cm-callout-${inner.callout}`);
+    if (inner.title) classes.push("cm-callout-title");
+  } else classes.push("cm-framed-quote");
+  const ends = levels.filter((level) => level.bottom).length;
+  const gap = inner?.title && !inner.bottom ? " + 0.5rem" : "";
+  return Decoration.line({
+    class: classes.join(" "),
+    attributes: {
+      // The boxes' padding below, which a code block ending with them
+      // stays clear of.
+      style: `--boxes-below: ${String(ends * 0.75)}rem; padding-top: ${inner?.top ? "0.75rem" : "0"}; padding-bottom: calc(var(--boxes-below)${gap})`,
+    },
+  });
+}
+
+/**
+ * The quotes around a line in a callout, drawn under its text from its
+ * start: a quote's bar, a callout's box, its corners round where it starts
+ * or ends, inside the padding of the boxes around it ending there, as the
+ * viewer's.
+ */
+class Frame extends WidgetType {
+  readonly levels: Level[];
+  constructor(levels: Level[]) {
+    super();
+    this.levels = levels;
+  }
+  override eq(other: Frame): boolean {
+    return sameLevels(other, this);
+  }
+  toDOM(): HTMLElement {
+    const frame = document.createElement("span");
+    frame.className = "cm-frame";
+    frame.setAttribute("aria-hidden", "true");
+    for (const [at, level] of this.levels.entries()) {
+      const drawn = document.createElement("span");
+      const around = this.levels.slice(0, at).filter((outer) => outer.bottom);
+      drawn.style.left = `calc(var(--text-inset) + ${String(at * 1.25)}em)`;
+      drawn.style.bottom = `${String(around.length * 0.75)}rem`;
+      if (level.callout) {
+        drawn.className = "cm-frame-box";
+        drawn.style.right = `calc(var(--text-inset) + ${String(at)}em)`;
+        drawn.style.setProperty("--callout", `var(--callout-${level.callout})`);
+        drawn.classList.toggle("cm-frame-top", level.top);
+        drawn.classList.toggle("cm-frame-bottom", level.bottom);
+      } else drawn.className = "cm-frame-bar";
+      frame.append(drawn);
+    }
+    return frame;
+  }
+}
+
+/** A callout that Visual draws as the viewer does. */
+interface Callout {
+  type: CalloutType;
+  /** Its title's line's marks: its `>`, `[!type]` and fold sign. */
+  marks: Stretch;
+  /** Its type titled, which titles it when it has no title. */
+  untitled: string | null;
+  /** What folding it hides, its lines after its title's, if it folds. */
+  folds: Stretch | null;
+  /** Whether it starts folded, as its `-` says. */
+  folded: boolean;
+}
+
+/**
+ * The callout a quote is, as the viewer reads it in a vault's note, if
+ * Visual draws it: within the bars it draws.
+ */
+function calloutOf(state: EditorState, quote: SyntaxNode): Callout | null {
+  if (!state.facet(inVault) || !drawnQuote(quote)) return null;
+  let depth = 0;
+  for (let around: SyntaxNode | null = quote; around; around = around.parent) {
+    if (around.name === "Blockquote") depth++;
+  }
+  if (depth > QUOTE_LINES.length) return null;
+  let first = quote.firstChild;
+  while (first?.name === "QuoteMark") first = first.nextSibling;
+  if (first?.name !== "Paragraph") return null;
+  const line = state.doc.lineAt(first.from);
+  const marker = calloutMarker(state.sliceDoc(first.from, line.to));
+  if (!marker) return null;
+  const untitled = !state.sliceDoc(first.from + marker.length, line.to).trim();
+  const last = state.doc.lineAt(quote.to);
+  return {
+    type: marker.type,
+    marks: { from: line.from, to: first.from + marker.length },
+    untitled: untitled ? titled(marker.name) : null,
+    folds:
+      marker.fold && last.from > line.from
+        ? { from: line.to, to: last.to }
+        : null,
+    folded: marker.fold === "-",
+  };
+}
+
+/**
+ * A callout's title's line: its marks quieter where they show, and the
+ * chevron that folds it, if it folds, at the line's end. The chevron floats
+ * there from the line's start, so that the line's text ends it: WebKit put
+ * no cursor past a widget ending a line, where a tap past the title went.
+ */
+function calloutTitleLine(
+  state: EditorState,
+  { marks, folds }: Callout,
+): Range<Decoration>[] {
+  const ranges = [CALLOUT_MARKS.range(marks.from, marks.to)];
+  if (folds) {
+    const chevron = new Chevron(Boolean(foldAt(state, folds)));
+    ranges.push(
+      Decoration.widget({ widget: chevron, side: -1 }).range(marks.from),
+    );
+  }
+  return ranges;
+}
+
+const CALLOUT_MARKS = Decoration.mark({ class: "cm-callout-marks" });
+
+/** The fold that hides what a callout's folding would, if it is folded. */
+function foldAt(state: EditorState, { from, to }: Stretch): Stretch | null {
+  let found: Stretch | null = null;
+  foldedRanges(state).between(from, from, (start, end) => {
+    if (start === from && end === to) found = { from, to };
+  });
+  return found;
+}
+
+/**
+ * The viewer's chevron, which ends a folding callout's title: down while
+ * open, turned right while folded, as it turns.
+ */
+class Chevron extends WidgetType {
+  readonly folded: boolean;
+  constructor(folded: boolean) {
+    super();
+    this.folded = folded;
+  }
+  override eq(other: Chevron): boolean {
+    return other.folded === this.folded;
+  }
+  toDOM(): HTMLElement {
+    const chevron = document.createElement("span");
+    chevron.className = "cm-callout-fold";
+    chevron.append(calloutFold());
+    this.updateDOM(chevron);
+    return chevron;
+  }
+  override updateDOM(chevron: HTMLElement): boolean {
+    chevron.classList.toggle("cm-callout-folded", this.folded);
+    return true;
+  }
+  // The editor takes its taps, which fold or open the callout.
+  override ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+/**
+ * The callout whose title's line `at` is on, if Visual draws it: the
+ * innermost quote at the line's end, in which the title ends.
+ */
+function calloutAt(state: EditorState, at: number): Callout | null {
+  const line = state.doc.lineAt(at);
+  for (
+    let node: SyntaxNode | null = syntaxTree(state).resolveInner(line.to, -1);
+    node;
+    node = node.parent
+  ) {
+    if (node.name === "Blockquote") {
+      const callout = calloutOf(state, node);
+      return callout?.marks.from === line.from ? callout : null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Folds or opens the callout whose chevron is at `at`, writing nothing: the
+ * file keeps its sign.
+ */
+function toggleFold(view: EditorView, at: number): void {
+  const folds = calloutAt(view.state, at)?.folds;
+  if (!folds) return;
+  const folded = foldAt(view.state, folds);
+  view.dispatch({
+    effects: folded ? unfoldEffect.of(folded) : foldEffect.of(folds),
+  });
+}
+
+/**
+ * Folds each callout that starts folded, once, as the note opens in Visual,
+ * or as the editor learns that it is in a vault, once the note is parsed.
+ */
+const foldingAtOpen = ViewPlugin.fromClass(
+  class {
+    done = false;
+    readonly view: EditorView;
+    constructor(view: EditorView) {
+      this.view = view;
+      this.fold(view.state);
+    }
+    update(update: ViewUpdate) {
+      this.fold(update.state);
+    }
+    fold(state: EditorState) {
+      if (this.done || !state.facet(inVault)) return;
+      if (!syntaxTreeAvailable(state)) return;
+      this.done = true;
+      const effects: StateEffect<Stretch>[] = [];
+      syntaxTree(state).iterate({
+        enter: (node) => {
+          if (node.name !== "Blockquote") return;
+          const callout = calloutOf(state, node.node);
+          if (callout?.folded && callout.folds) {
+            effects.push(foldEffect.of(callout.folds));
+          }
+        },
+      });
+      // Not while the view updates.
+      if (effects.length > 0) {
+        queueMicrotask(() => {
+          this.view.dispatch({ effects });
+        });
+      }
+    }
+  },
+);
+
+/**
+ * A folded callout and the cursor: one at the fold's end, which shows at
+ * its title's end, where a tap past the title puts it, goes there, rather
+ * than to its last line, which what is typed would go to unseen, so that
+ * the arrows step over it. A selection that reaches into it opens it, as
+ * Find in note's match does, where CodeMirror opens it only for the
+ * selection's head.
+ */
+const foldedCursor = EditorState.transactionFilter.of((transaction) => {
+  if (!transaction.selection) return transaction;
+  const { from, to, empty, head } = transaction.newSelection.main;
+  const effects: StateEffect<Stretch>[] = [];
+  const titles: number[] = [];
+  foldedRanges(transaction.startState)
+    .map(transaction.changes)
+    .between(from, to, (start, end) => {
+      if (empty && head === end) titles.push(start);
+      else if (from < end && to > start) {
+        effects.push(unfoldEffect.of({ from: start, to: end }));
+      }
+    });
+  const [title] = titles;
+  if (title !== undefined) {
+    return [transaction, { selection: { anchor: title }, sequential: true }];
+  }
+  return effects.length > 0
+    ? [transaction, { effects, sequential: true }]
+    : transaction;
+});
+
+/** No placeholder where a callout is folded: its chevron says so. */
+const FOLDING = codeFolding({
+  placeholderDOM: () => document.createElement("span"),
+});
+
+/**
+ * A callout's type, drawn as the viewer's title starts: its icon, then the
+ * type titled if the callout has no title of its own.
+ */
+class CalloutTitle extends WidgetType {
+  readonly type: CalloutType;
+  readonly untitled: string | null;
+  constructor({ type, untitled }: Callout) {
+    super();
+    this.type = type;
+    this.untitled = untitled;
+  }
+  override eq(other: CalloutTitle): boolean {
+    return other.type === this.type && other.untitled === this.untitled;
+  }
+  toDOM(): HTMLElement {
+    const title = document.createElement("span");
+    title.className = "cm-callout-type";
+    title.append(calloutIcon(this.type), this.untitled ?? "");
+    return title;
+  }
+}
+
+/** A code block's language, at its first line's end, as Obsidian shows it. */
+class Language extends WidgetType {
+  readonly name: string;
+  constructor(name: string) {
+    super();
+    this.name = name;
+  }
+  override eq(other: Language): boolean {
+    return other.name === this.name;
+  }
+  toDOM(): HTMLElement {
+    const label = document.createElement("span");
+    label.className = "cm-code-language";
+    label.textContent = this.name;
+    return label;
+  }
+}
+
+const LANGUAGE_LINE = Decoration.line({ class: "cm-code-language-line" });
+
+// Inline code, its backticks on its chip while they show.
+const CHIP = "cm-inline-code";
+const INLINE_CODE = Decoration.mark({ class: CHIP });
+
+// A code block's lines, its first and last rounding its corners.
+const CODE_LINES = {
+  middle: Decoration.line({ class: "cm-code-block" }),
+  first: Decoration.line({ class: "cm-code-block cm-code-first" }),
+  last: Decoration.line({ class: "cm-code-block cm-code-last" }),
+  only: Decoration.line({ class: "cm-code-block cm-code-first cm-code-last" }),
+};
+
+/** Code's tokens in the viewer's roles (docs/DESIGN.md, Color). */
+const CODE_COLORS = tagHighlighter([
+  { tag: tags.comment, class: "cm-code-comment" },
+  { tag: tags.meta, class: "cm-code-meta" },
+  {
+    tag: [tags.keyword, tags.typeName, tags.standard(tags.name), tags.url],
+    class: "cm-code-keyword",
+  },
+  {
+    tag: [tags.literal, tags.atom, tags.character, tags.regexp],
+    class: "cm-code-literal",
+  },
+  {
+    tag: [
+      tags.attributeName,
+      tags.propertyName,
+      tags.variableName,
+      tags.tagName,
+    ],
+    class: "cm-code-name",
+  },
+  {
+    tag: [
+      tags.function(tags.variableName),
+      tags.function(tags.propertyName),
+      tags.className,
+      tags.heading,
+      tags.strong,
+    ],
+    class: "cm-code-title",
+  },
+  { tag: tags.emphasis, class: "cm-code-emphasis" },
+  { tag: tags.inserted, class: "cm-code-inserted" },
+  { tag: tags.deleted, class: "cm-code-deleted" },
+]);
+
+/**
+ * Visual's code, as the viewer's: inline code on its chip, and code blocks
+ * drawn on their lines, their code colored.
+ */
+const coding = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = codeDecorations(view);
+    }
+    update(update: ViewUpdate) {
+      if (
+        update.docChanged ||
+        update.viewportChanged ||
+        syntaxTree(update.startState) !== syntaxTree(update.state)
+      ) {
+        this.decorations = codeDecorations(update.view);
+      }
+    }
+  },
+  { decorations: (plugin) => plugin.decorations },
+);
+
+function codeDecorations(view: EditorView): DecorationSet {
+  const { state } = view;
+  const { from, to } = view.viewport;
+  const ranges: Range<Decoration>[] = [];
+  syntaxTree(state).iterate({
+    from,
+    to,
+    enter: (node) => {
+      if (node.name === "InlineCode") {
+        ranges.push(INLINE_CODE.range(node.from, node.to));
+        return false;
+      }
+      if (node.name !== "FencedCode" && node.name !== "CodeBlock") return;
+      if (!drawnCode(node.node)) return false;
+      const first = state.doc.lineAt(node.from);
+      const last = state.doc.lineAt(node.to);
+      for (let at = Math.max(from, first.from); at <= Math.min(to, last.to);) {
+        const line = state.doc.lineAt(at);
+        const edge =
+          line.from === first.from
+            ? line.from === last.from
+              ? "only"
+              : "first"
+            : line.from === last.from
+              ? "last"
+              : "middle";
+        ranges.push(CODE_LINES[edge].range(line.from));
+        at = line.to + 1;
+      }
+      const code = node.node.getChild("CodeText");
+      if (code) {
+        highlightTree(
+          syntaxTree(state),
+          CODE_COLORS,
+          (start, end, style) => {
+            ranges.push(Decoration.mark({ class: style }).range(start, end));
+          },
+          Math.max(from, code.from),
+          Math.min(to, code.to),
+        );
+      }
+      return false;
+    },
+  });
+  return Decoration.set(ranges, true);
+}
+
+/**
+ * Whether Visual draws a code block: at the note's top, or in quotes
+ * drawn, as deep as their bars go, but not in a list, whose indent it
+ * would cover.
+ */
+function drawnCode(code: SyntaxNode): boolean {
+  let depth = 0;
+  let around = code.parent;
+  while (around?.name === "Blockquote") {
+    depth++;
+    around = around.parent;
+  }
+  return around?.name === "Document" && depth <= QUOTE_LINES.length;
+}
 
 // The last finger has lifted from the text.
 const lifted = StateEffect.define();
@@ -160,6 +775,7 @@ const hiding = ViewPlugin.fromClass(
         update.viewportChanged ||
         moved ||
         lift ||
+        vaultChanged(update) ||
         syntaxTree(update.startState) !== syntaxTree(update.state)
       ) {
         this.decorations = hidden(update.view, this.writing);
@@ -176,8 +792,9 @@ const hiding = ViewPlugin.fromClass(
       const touch = event.changedTouches[0];
       const at =
         touch && this.view.posAtCoords({ x: touch.clientX, y: touch.clientY });
+      // A table keeps the row tapped under the finger itself.
       this.anchor =
-        at === null || at === undefined
+        at === null || at === undefined || tableCell(event.target)
           ? null
           : { at, top: pageTop(this.view, at) };
     }
@@ -270,15 +887,28 @@ function sameLines(one: Stretch[], other: Stretch[]): boolean {
 // touch slop.
 const TAP_SLOP_PX = 8;
 
-/** Where and when a finger pressed a task's box. */
-interface BoxPress {
+/** Where and when a finger pressed. */
+interface Press {
   x: number;
   y: number;
   at: number;
 }
 
+/**
+ * Whether the last finger lifting ends a tap, from where and when it
+ * pressed: not after moving, nor after staying down as long as a long press.
+ */
+function tapped(event: TouchEvent, press: Press | null): boolean {
+  const touch = event.changedTouches[0];
+  if (!press || !touch || event.touches.length > 0) return false;
+  if (Date.now() - press.at >= LONG_PRESS_MS) return false;
+  return (
+    Math.hypot(touch.clientX - press.x, touch.clientY - press.y) <= TAP_SLOP_PX
+  );
+}
+
 // Until the finger lifts: one box at a time, in any editor.
-let boxPressed: BoxPress | null = null;
+let boxPressed: Press | null = null;
 
 function isTaskBox(target: EventTarget | null): target is HTMLInputElement {
   return (
@@ -286,21 +916,33 @@ function isTaskBox(target: EventTarget | null): target is HTMLInputElement {
   );
 }
 
+/** What a press on the target does: tick a task, or fold a callout. */
+function pressing(
+  target: EventTarget | null,
+): ((view: EditorView, at: number) => void) | null {
+  if (isTaskBox(target)) return tick;
+  return target instanceof HTMLElement &&
+    target.classList.contains("cm-callout-fold")
+    ? toggleFold
+    : null;
+}
+
 /**
- * A tap on a task's box ticks the task, as one edit that undo reverts,
- * where the cursor stays: neither the focus nor the selection moves, nor
- * does the box but with the text. A finger's tap ticks it as it lifts,
- * the touch's start kept from the browser, which then neither focuses,
- * scrolls nor sends mouse events: Chrome on Android otherwise brings up the
- * keyboard that Back hid, and does so too if the touch's end is kept from
- * it (seen in the Android emulator, #281). A finger that moves, or stays
- * down as long as a long press, leaves the task as it is.
+ * A tap on a task's box ticks the task, as one edit that undo reverts, and
+ * one on a callout's chevron folds or opens it, writing nothing, where the
+ * cursor stays: neither the focus nor the selection moves, nor does the box
+ * but with the text. A finger's tap acts as it lifts, the touch's start kept
+ * from the browser, which then neither focuses, scrolls nor sends mouse
+ * events: Chrome on Android otherwise brings up the keyboard that Back hid,
+ * and does so too if the touch's end is kept from it (seen in the Android
+ * emulator, #281). A finger that moves, or stays down as long as a long
+ * press, leaves the task or the callout as it is.
  */
 const ticking = EditorView.domEventHandlers({
   touchstart(event) {
     const touch = event.changedTouches[0];
     boxPressed = null;
-    if (!isTaskBox(event.target) || event.touches.length !== 1 || !touch) {
+    if (!pressing(event.target) || event.touches.length !== 1 || !touch) {
       return false;
     }
     event.preventDefault();
@@ -310,28 +952,1623 @@ const ticking = EditorView.domEventHandlers({
   touchend(event, view) {
     const press = boxPressed;
     boxPressed = null;
-    const touch = event.changedTouches[0];
-    if (!press || !touch || event.touches.length > 0) return false;
-    if (!isTaskBox(event.target)) return false;
-    if (Date.now() - press.at >= LONG_PRESS_MS) return false;
-    const moved = Math.hypot(touch.clientX - press.x, touch.clientY - press.y);
-    if (moved > TAP_SLOP_PX) return false;
-    tick(view, view.posAtDOM(event.target));
+    const act = pressing(event.target);
+    if (!act || !tapped(event, press) || !(event.target instanceof Node)) {
+      return false;
+    }
+    act(view, view.posAtDOM(event.target));
     // Handled, which CodeMirror would keep from the browser.
     return false;
   },
   mousedown(event, view) {
-    if (!isTaskBox(event.target)) return false;
+    const act = pressing(event.target);
+    if (!act || !(event.target instanceof Node)) return false;
     event.preventDefault();
-    tick(view, view.posAtDOM(event.target));
+    act(view, view.posAtDOM(event.target));
     return true;
   },
   click(event) {
-    if (!isTaskBox(event.target)) return false;
+    if (!pressing(event.target)) return false;
     event.preventDefault();
     return true;
   },
 });
+
+/**
+ * A part of a cell's text, drawn in the editor's highlighting, or null for
+ * a line break, which a tag such as `<br>` draws.
+ */
+type Part = { text: string; style: string | null } | null;
+
+export type Alignment = "left" | "right" | "center" | null;
+
+// The table each frame drawn shows, from which a cell edited in place is
+// drawn again as its editor closes.
+const drawing = new WeakMap<Element, Table>();
+
+/**
+ * A table, drawn as the viewer draws it, whose cells a tap or a click
+ * edits in place.
+ */
+class Table extends WidgetType {
+  readonly source: string;
+  readonly alignments: Alignment[];
+  // The head's row, then the body's, each cell's text in parts.
+  readonly rows: Part[][][];
+  // The quotes it is in, outermost first, which its source tells: its
+  // lines after the first hold their marks.
+  readonly levels: Level[];
+  constructor(
+    source: string,
+    alignments: Alignment[],
+    rows: Part[][][],
+    levels: Level[],
+  ) {
+    super();
+    this.source = source;
+    this.alignments = alignments;
+    this.rows = rows;
+    this.levels = levels;
+  }
+  override eq(other: Table): boolean {
+    return other.source === this.source && sameLevels(other, this);
+  }
+  toDOM(): HTMLElement {
+    // A table wider than the note scrolls sideways within this frame, which
+    // draws its quotes' bars, as their lines do.
+    const frame = document.createElement("div");
+    this.frame(frame);
+    const table = document.createElement("table");
+    const head = table.createTHead();
+    const body = table.createTBody();
+    const columns = this.rows[0]?.length ?? 0;
+    this.rows.forEach((_, at) => {
+      const row = (at === 0 ? head : body).insertRow();
+      for (let column = 0; column < columns; column++) {
+        const cell = document.createElement(at === 0 ? "th" : "td");
+        this.fill(cell, at, column);
+        row.append(cell);
+      }
+    });
+    frame.append(table);
+    drawing.set(frame, this);
+    return frame;
+  }
+  /**
+   * Its frame, which draws its quotes' bars, or in a callout, its quotes'
+   * bars and boxes, as its lines do, in its background, which stays as the
+   * table scrolls, the boxes' corners square: a box ending with it has
+   * the viewer's padding below it.
+   */
+  frame(frame: HTMLElement): void {
+    const { levels } = this;
+    const depth = String(levels.length);
+    const inner = levels[levels.length - 1];
+    frame.removeAttribute("style");
+    if (!levels.some((level) => level.callout)) {
+      frame.className =
+        levels.length > 0 ? `cm-table cm-quote cm-quote-${depth}` : "cm-table";
+      return;
+    }
+    frame.className = `cm-table cm-table-framed cm-quote-${depth}`;
+    if (!inner?.callout) frame.classList.add("cm-framed-quote");
+    const layers: string[][] = [];
+    for (const [at, level] of levels.entries()) {
+      const inset = `var(--text-inset) + ${String(at * 1.25)}em`;
+      const left = `calc(${inset})`;
+      const ends = levels.slice(0, at).filter((outer) => outer.bottom).length;
+      const height = `calc(100% - ${String(ends * 0.75)}rem)`;
+      const color = level.callout
+        ? `var(--callout-${level.callout})`
+        : "var(--outline-variant)";
+      layers.push([
+        `linear-gradient(${color}, ${color})`,
+        `${left} 0`,
+        `0.25em ${height}`,
+      ]);
+      if (level.callout) {
+        const tint = `color-mix(in srgb, ${color} 10%, transparent)`;
+        const right = `var(--text-inset) + ${String(at)}em`;
+        layers.push([
+          `linear-gradient(${tint}, ${tint})`,
+          `${left} 0`,
+          `calc(100% - ${inset} - ${right}) ${height}`,
+        ]);
+      }
+    }
+    frame.style.backgroundImage = layers.map(([image]) => image).join(", ");
+    frame.style.backgroundPosition = layers.map(([, at]) => at).join(", ");
+    frame.style.backgroundSize = layers.map(([, , size]) => size).join(", ");
+    const ends = levels.filter((level) => level.bottom).length;
+    frame.style.paddingBottom = `${String(ends * 0.75)}rem`;
+  }
+  /** Draws a cell's text, aligned as its column. */
+  fill(cell: HTMLTableCellElement, row: number, column: number): void {
+    cell.style.textAlign = this.alignments[column] ?? "";
+    cell.replaceChildren(
+      ...(this.rows[row]?.[column] ?? []).map((part) => {
+        if (part === null) return document.createElement("br");
+        if (part.style === null) return part.text;
+        const span = document.createElement("span");
+        span.className = part.style;
+        span.textContent = part.text;
+        return span;
+      }),
+    );
+  }
+  /**
+   * Draws the cells around one edited in place anew, that cell keeping its
+   * editor, and its quotes' bars, while the table keeps its rows and
+   * columns.
+   */
+  override updateDOM(dom: HTMLElement): boolean {
+    const table = dom.querySelector("table");
+    if (!table?.querySelector(".cm-editor")) return false;
+    const rows = [...table.rows];
+    const columns = this.rows[0]?.length ?? 0;
+    if (
+      rows.length !== this.rows.length ||
+      rows.some((row) => row.cells.length !== columns)
+    ) {
+      return false;
+    }
+    // As typed in a cell, the other cells but rarely change.
+    const before = drawing.get(dom);
+    const same = (row: number, column: number) =>
+      before !== undefined &&
+      before.alignments[column] === this.alignments[column] &&
+      JSON.stringify(before.rows[row]?.[column]) ===
+        JSON.stringify(this.rows[row]?.[column]);
+    rows.forEach((row, at) => {
+      for (const cell of row.cells) {
+        const column = cell.cellIndex;
+        if (cell.querySelector(".cm-editor")) {
+          // Its editor stays, aligned as its column now is, as after Undo.
+          cell.style.textAlign = this.alignments[column] ?? "";
+        } else if (!same(at, column)) {
+          this.fill(cell, at, column);
+        }
+      }
+    });
+    this.frame(dom);
+    drawing.set(dom, this);
+    return true;
+  }
+  // A cell's editor goes with its table.
+  override destroy(dom: HTMLElement): void {
+    for (const element of dom.querySelectorAll<HTMLElement>(".cm-editor")) {
+      EditorView.findFromDOM(element)?.destroy();
+    }
+  }
+  override get estimatedHeight(): number {
+    return this.rows.length * 42;
+  }
+  // The editor takes its cells' taps and clicks, which edit them, and
+  // leaves the browser the rest, such as its scroll bar's, and a cell's
+  // editor its own.
+  override ignoreEvent(event: Event): boolean {
+    return (
+      tableCell(event.target) === null ||
+      (event.target instanceof Element &&
+        event.target.closest(".cm-table .cm-editor") !== null)
+    );
+  }
+}
+
+/** A field that `effect` sets, false at first. */
+function flag(effect: StateEffectType<boolean>): StateField<boolean> {
+  return StateField.define<boolean>({
+    create: () => false,
+    update: (value, transaction) =>
+      transaction.effects.reduce(
+        (set, one) => (one.is(effect) ? one.value : set),
+        value,
+      ),
+  });
+}
+
+const focused = StateEffect.define<boolean>();
+
+// Whether the editor has the focus, which a state field cannot ask the view.
+const hasFocus = flag(focused);
+
+/**
+ * Tells `hasFocus` of the view's focus once it changes. CodeMirror's own
+ * focus transaction is dropped when another comes first, as when the
+ * cursor moves right as the editor takes the focus.
+ */
+const followingFocus = ViewPlugin.define((view) => {
+  const follow = () => {
+    queueMicrotask(() => {
+      const has = view.state.field(hasFocus, false);
+      if (has !== undefined && has !== view.hasFocus) {
+        view.dispatch({ effects: focused.of(view.hasFocus) });
+      }
+    });
+  };
+  follow();
+  return {
+    update: (update) => {
+      const has = update.state.field(hasFocus, false);
+      if (has !== undefined && has !== update.view.hasFocus) follow();
+    },
+  };
+});
+
+/**
+ * Visual's tables, drawn but where the selection is while the editor has
+ * the focus, or while Find in note is open, so that its match shows. A
+ * table replaces lines, which only a state field may, a quote's marks
+ * included. A table in a list, whose lines start with its marks, stays as
+ * written. A table is no unit: an edit beside it never takes it whole.
+ */
+const tables = StateField.define<DecorationSet>({
+  create: (state) => drawnTables(state),
+  update: (drawn, transaction) => {
+    const { state, startState } = transaction;
+    return transaction.docChanged ||
+      transaction.selection ||
+      state.field(hasFocus) !== startState.field(hasFocus, false) ||
+      state.facet(inVault) !== startState.facet(inVault) ||
+      foldedRanges(state) !== foldedRanges(startState) ||
+      searchPanelOpen(state) !== searchPanelOpen(startState) ||
+      syntaxTree(state) !== syntaxTree(startState)
+      ? drawnTables(state, drawn)
+      : drawn;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
+/**
+ * Each table outside the lines being written, drawn, with the widget drawn
+ * before for the same Markdown, which is kept rather than built anew.
+ */
+function drawnTables(
+  state: EditorState,
+  before: DecorationSet = Decoration.none,
+): DecorationSet {
+  const kept = new Map<string, Table>();
+  const drawn = before.iter();
+  while (drawn.value) {
+    const { widget } = drawn.value.spec as { widget?: unknown };
+    if (widget instanceof Table) kept.set(widget.source, widget);
+    drawn.next();
+  }
+  const writing =
+    state.field(hasFocus) || searchPanelOpen(state) ? linesWritten(state) : [];
+  const ranges: Range<Decoration>[] = [];
+  syntaxTree(state).iterate({
+    enter: (node) => {
+      if (node.name !== "Table") {
+        // The note, its front matter's or its Markdown's, and its quotes,
+        // but no other block in it.
+        return ["Document", "Body", "Blockquote"].includes(node.name);
+      }
+      // An indented table's lines whole, or a quoted one's, with its marks.
+      const from = state.doc.lineAt(node.from).from;
+      const { to } = node;
+      if (writing.some((line) => from <= line.to && to >= line.from)) {
+        return false;
+      }
+      const levels = quoteLevels(state, node.node);
+      if (levels === null) return false;
+      const before = kept.get(state.sliceDoc(node.from, to));
+      const widget =
+        before && sameLevels(before, { levels })
+          ? before
+          : table(state, node.node, levels);
+      ranges.push(Decoration.replace({ widget, block: true }).range(from, to));
+      return false;
+    },
+  });
+  return Decoration.set(ranges);
+}
+
+/**
+ * The quotes a table is in, outermost first, or none where it stays as
+ * written: deeper than the bars Visual draws, or with a line that lacks its
+ * quotes' marks, a lazy line, at which GFM ends the table, as the viewer
+ * reads it, but Lezer does not.
+ */
+function quoteLevels(state: EditorState, table: SyntaxNode): Level[] | null {
+  const quotes: SyntaxNode[] = [];
+  for (let around = table.parent; around?.name === "Blockquote";) {
+    quotes.unshift(around);
+    around = around.parent;
+  }
+  const marks = ">".repeat(quotes.length);
+  const whole = tableRows(table).every(
+    (row) => lineStart(state, row).replace(/[ \t]/g, "") === marks,
+  );
+  if (quotes.length > QUOTE_LINES.length || !whole) return null;
+  const last = state.doc.lineAt(table.to).from;
+  return quotes.map((quote) => {
+    const callout = calloutOf(state, quote);
+    return {
+      callout: callout?.type ?? null,
+      top: false,
+      bottom: callout !== null && shownLine(state, quote.to) === last,
+      title: false,
+    };
+  });
+}
+
+function sameLevels(one: { levels: Level[] }, other: { levels: Level[] }) {
+  return JSON.stringify(one.levels) === JSON.stringify(other.levels);
+}
+
+/** What comes before a table's line on its line: its quotes' marks, its indent. */
+function lineStart(state: EditorState, row: SyntaxNode): string {
+  return state.sliceDoc(state.doc.lineAt(row.from).from, row.from);
+}
+
+function table(state: EditorState, node: SyntaxNode, levels: Level[]): Table {
+  const [header, delimiter, ...body] = tableRows(node);
+  const columns = header ? cellsOf(state, header).length : 0;
+  return new Table(
+    state.sliceDoc(node.from, node.to),
+    delimiter ? alignments(state.sliceDoc(delimiter.from, delimiter.to)) : [],
+    [header, ...body].flatMap((row) =>
+      row
+        ? [
+            cellsOf(state, row)
+              .slice(0, columns)
+              .map((cell) => parts(state, trimmed(state, cell))),
+          ]
+        : [],
+    ),
+    levels,
+  );
+}
+
+/**
+ * A table's lines' nodes: its head, its delimiter row, then its rows, but
+ * the marks of a quote around it, which Lezer files under it.
+ */
+function tableRows(node: SyntaxNode): SyntaxNode[] {
+  const rows: SyntaxNode[] = [];
+  for (let row = node.firstChild; row; row = row.nextSibling) {
+    if (row.name !== "QuoteMark") rows.push(row);
+  }
+  return rows;
+}
+
+/** Each cell of a row, between its pipes, with the spaces around its text. */
+function cellsOf(state: EditorState, row: SyntaxNode): Stretch[] {
+  const pipes =
+    row.name === "TableDelimiter"
+      ? // The delimiter row, whose pipes Lezer leaves unmarked.
+        [...state.sliceDoc(row.from, row.to).matchAll(/\|/g)].map(
+          ({ index }) => row.from + index,
+        )
+      : row.getChildren("TableDelimiter").map((pipe) => pipe.from);
+  const cells: Stretch[] = [];
+  let from = row.from;
+  for (const pipe of pipes) {
+    cells.push({ from, to: pipe });
+    from = pipe + 1;
+  }
+  cells.push({ from, to: row.to });
+  const blank = (cell: Stretch | undefined) =>
+    cell !== undefined && !state.sliceDoc(cell.from, cell.to).trim();
+  // Neither before a leading pipe nor after a closing one is a cell.
+  if (pipes.length > 0 && blank(cells[0])) cells.shift();
+  if (pipes.length > 0 && blank(cells.at(-1))) cells.pop();
+  return cells;
+}
+
+function trimmed(state: EditorState, { from, to }: Stretch): Stretch {
+  const text = state.sliceDoc(from, to);
+  const start = from + text.length - text.trimStart().length;
+  return { from: start, to: Math.max(start, from + text.trimEnd().length) };
+}
+
+/** Each column's alignment, from the delimiter row's colons. */
+function alignments(delimiter: string): Alignment[] {
+  return delimiter
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((column) => {
+      const marks = column.trim();
+      const left = marks.startsWith(":");
+      const right = marks.endsWith(":");
+      if (left && right) return "center";
+      if (right) return "right";
+      return left ? "left" : null;
+    });
+}
+
+// A tag that the viewer draws as a line break, as `<br>`, `<br />` or
+// `</br>`.
+const LINE_BREAK = /^<\/?br[\s/>]/i;
+
+/**
+ * A cell's text in the editor's highlighting, its inline code on its chip,
+ * its symbols hidden as Visual hides them, and as the viewer does, an
+ * escape's backslash, so that an escaped pipe shows in its cell, and a tag
+ * such as `<br>` a line break, which no row can hold otherwise.
+ */
+function parts(state: EditorState, { from, to }: Stretch): Part[] {
+  const hidden: Stretch[] = [];
+  const chips: Stretch[] = [];
+  const breaks = new Set<number>();
+  syntaxTree(state).iterate({
+    from,
+    to,
+    enter: (node) => {
+      if (node.name === "InlineCode") {
+        chips.push({ from: node.from, to: node.to });
+      }
+      if (node.name === "Escape") {
+        hidden.push({ from: node.from, to: node.from + 1 });
+      }
+      if (
+        node.name === "HTMLTag" &&
+        LINE_BREAK.test(state.sliceDoc(node.from, node.to))
+      ) {
+        hidden.push({ from: node.from, to: node.to });
+        breaks.add(node.from);
+      }
+      for (const symbol of symbols(state, node)) {
+        if (symbol.value === HIDDEN) hidden.push(symbol);
+      }
+    },
+  });
+  const styled: (Stretch & { style: string })[] = [];
+  highlightTree(
+    syntaxTree(state),
+    { style: (tags) => highlightingFor(state, tags) },
+    (start, end, style) => {
+      styled.push({ from: start, to: end, style });
+    },
+    from,
+    to,
+  );
+  const edges = new Set([from, to]);
+  for (const stretch of [...hidden, ...chips, ...styled]) {
+    edges.add(Math.min(to, Math.max(from, stretch.from)));
+    edges.add(Math.min(to, Math.max(from, stretch.to)));
+  }
+  const sorted = [...edges].sort((one, other) => one - other);
+  const result: Part[] = [];
+  sorted.slice(1).forEach((end, at) => {
+    const start = sorted[at] ?? from;
+    if (breaks.has(start)) {
+      result.push(null);
+      return;
+    }
+    const covers = (range: Stretch) => range.from <= start && range.to >= end;
+    if (hidden.some(covers)) return;
+    const style =
+      [styled.find(covers)?.style, chips.some(covers) && CHIP]
+        .filter(Boolean)
+        .join(" ") || null;
+    const text = state.sliceDoc(start, end);
+    const previous = result.at(-1);
+    if (previous?.style === style) previous.text += text;
+    else result.push({ text, style });
+  });
+  return result;
+}
+
+/** The cell of a table drawn that an event's target is in, if any. */
+function tableCell(target: EventTarget | null): HTMLTableCellElement | null {
+  return target instanceof Element
+    ? target.closest<HTMLTableCellElement>(".cm-table :is(td, th)")
+    : null;
+}
+
+/** Where a cell drawn is in its table: its row, the head's first. */
+interface Place {
+  row: number;
+  column: number;
+}
+
+function placeOf(cell: HTMLTableCellElement): Place | null {
+  const row = cell.parentElement;
+  return row instanceof HTMLTableRowElement
+    ? { row: row.rowIndex, column: cell.cellIndex }
+    : null;
+}
+
+/**
+ * The table drawn in `frame`, in the note's syntax tree: from its first
+ * line's end, past its indent and its quotes' marks, which the frame draws
+ * but the table lacks.
+ */
+function tableIn(view: EditorView, frame: Element): SyntaxNode | null {
+  const { to } = view.state.doc.lineAt(view.posAtDOM(frame));
+  let node: SyntaxNode | null = syntaxTree(view.state).resolveInner(to, -1);
+  while (node && node.name !== "Table") node = node.parent;
+  return node;
+}
+
+/** The frame of the table drawn from `from` on, if in view. */
+function frameAt(view: EditorView, from: number): Element | undefined {
+  return [...view.contentDOM.querySelectorAll(".cm-table")].find(
+    (frame) => view.posAtDOM(frame) === from,
+  );
+}
+
+/** A row's line in its table: the head's, or a body's after the delimiter row. */
+function rowOf(table: SyntaxNode, row: number): SyntaxNode | undefined {
+  return tableRows(table)[row === 0 ? 0 : row + 1];
+}
+
+/**
+ * A cell's text in the note, without the spaces around it: in a blank
+ * cell, after its first space, if any. None for a cell its row lacks.
+ */
+function cellText(
+  state: EditorState,
+  table: SyntaxNode,
+  { row, column }: Place,
+): Stretch | null {
+  const line = rowOf(table, row);
+  const cell = line && cellsOf(state, line)[column];
+  if (!cell) return null;
+  if (state.sliceDoc(cell.from, cell.to).trim()) return trimmed(state, cell);
+  const at = Math.min(cell.to, cell.from + 1);
+  return { from: at, to: at };
+}
+
+/** What the table's menu does to the cell edited in place. */
+export type TableEdit =
+  | "lineBreak"
+  | "addRowAbove"
+  | "addRowBelow"
+  | "moveRowUp"
+  | "moveRowDown"
+  | "deleteRow"
+  | "addColumnLeft"
+  | "addColumnRight"
+  | "moveColumnLeft"
+  | "moveColumnRight"
+  | "deleteColumn"
+  | "alignLeft"
+  | "alignCenter"
+  | "alignRight";
+
+/** The edits that apply to a cell, and its column's alignment. */
+export interface CellMenu {
+  edits: ReadonlySet<TableEdit>;
+  alignment: Alignment;
+}
+
+/**
+ * The edits that apply to the cell at `place`, in a table of `rows`, its
+ * head's included, and `columns`: nothing moves the head or comes above
+ * it, since a GFM table starts with its head and its delimiter row, and a
+ * table keeps a column.
+ */
+function editsAt(
+  { row, column }: Place,
+  rows: number,
+  columns: number,
+): Set<TableEdit> {
+  const edits: [TableEdit, boolean][] = [
+    ["lineBreak", true],
+    ["addRowAbove", row > 0],
+    ["addRowBelow", true],
+    ["moveRowUp", row > 1],
+    ["moveRowDown", row > 0 && row < rows - 1],
+    ["deleteRow", row > 0],
+    ["addColumnLeft", true],
+    ["addColumnRight", true],
+    ["moveColumnLeft", column > 0],
+    ["moveColumnRight", column < columns - 1],
+    ["deleteColumn", columns > 1],
+    ["alignLeft", true],
+    ["alignCenter", true],
+    ["alignRight", true],
+  ];
+  return new Set(edits.flatMap(([edit, applies]) => (applies ? [edit] : [])));
+}
+
+/**
+ * A table's line as written, past its indent: its text, its cells in it
+ * with and without the spaces around their text, and whether a pipe ends
+ * it on each side.
+ */
+interface Written {
+  text: string;
+  cells: Stretch[];
+  texts: Stretch[];
+  lead: boolean;
+  trail: boolean;
+}
+
+function asWritten(state: EditorState, row: SyntaxNode): Written {
+  const text = state.sliceDoc(row.from, row.to);
+  const within = ({ from, to }: Stretch) => ({
+    from: from - row.from,
+    to: to - row.from,
+  });
+  const cells = cellsOf(state, row);
+  return {
+    text,
+    cells: cells.map(within),
+    texts: cells.map((cell) => within(trimmed(state, cell))),
+    lead: (cells[0]?.from ?? row.from) > row.from,
+    trail: (cells.at(-1)?.to ?? row.to) < row.to,
+  };
+}
+
+/**
+ * A line with `cell` as its `at`th, between a space on each side and a
+ * pipe, which an empty first or last cell needs on its edge too.
+ */
+function withCell(line: Written, at: number, cell: string): string {
+  const { text, cells, lead, trail } = line;
+  const before = cells[at];
+  if (before) {
+    return at > 0 || lead
+      ? `${text.slice(0, before.from)} ${cell} |${text.slice(before.from)}`
+      : `| ${cell} | ${text}`;
+  }
+  const end = (cells.at(-1)?.to ?? text.length) + 1;
+  return trail
+    ? `${text.slice(0, end)} ${cell} |${text.slice(end)}`
+    : `${text} | ${cell} |`;
+}
+
+/**
+ * A line without its `at`th cell and a pipe beside it. A cell left at an
+ * edge without its pipe takes it, at a line's start, where its text could
+ * start a list, a heading or a quote, or at its end where empty; a cell
+ * left alone pipes on both, without which its line would be no row, or its
+ * table no table.
+ */
+function withoutCell(line: Written, at: number): string {
+  const { text, cells, texts, lead, trail } = line;
+  if (cells.length === 1) return "|  |";
+  if (cells.length === 2 && !(lead && trail)) {
+    const kept = texts[1 - at];
+    return `| ${kept ? text.slice(kept.from, kept.to) : ""} |`;
+  }
+  const [gone, before] = [cells[at], texts[at - 1]];
+  if (!gone) return text;
+  if (cells[at + 1]) {
+    // Up to the next cell, past its pipe, or at the line's start, from the
+    // pipe after it, which then leads the line.
+    return at > 0 || lead
+      ? text.slice(0, gone.from) + text.slice(gone.to + 1)
+      : text.slice(gone.to);
+  }
+  // From the pipe before it.
+  return (
+    text.slice(0, gone.from - 1) +
+    (!trail && before && before.from === before.to ? "|" : text.slice(gone.to))
+  );
+}
+
+/**
+ * A line with its `at`th cell and the next one trading places, each with
+ * the spaces around it, which a padded table's columns keep. At an edge
+ * without its pipe, their texts alone trade places, a space apart from
+ * the pipes, so that a backslash ending one escapes none; one coming to
+ * the line's start takes the pipe before it, and an empty one at its end
+ * the pipe after it.
+ */
+function swapped(line: Written, at: number): string {
+  const { text, cells, texts, lead, trail } = line;
+  const [one, other, first, second] = [
+    cells[at],
+    cells[at + 1],
+    texts[at],
+    texts[at + 1],
+  ];
+  if (!one || !other || !first || !second) return text;
+  const start = at === 0 && !lead;
+  const end = at + 2 === cells.length && !trail;
+  if (!start && !end) {
+    return [
+      text.slice(0, one.from),
+      text.slice(other.from, other.to),
+      text.slice(one.to, other.from),
+      text.slice(one.from, one.to),
+      text.slice(other.to),
+    ].join("");
+  }
+  const [was, now] = [
+    text.slice(first.from, first.to),
+    text.slice(second.from, second.to),
+  ];
+  if (was === now) return text;
+  const before = `${start ? "|" : ""} ${now} `;
+  const after = end ? (was ? ` ${was}` : "  |") : ` ${was} `;
+  return `${text.slice(0, one.from)}${before}|${after}${text.slice(other.to)}`;
+}
+
+/** A delimiter row's cell's marks for `alignment`, as wide as they were. */
+function marks(width: number, alignment: Alignment): string {
+  const left = alignment === "left" || alignment === "center";
+  const right = alignment === "right" || alignment === "center";
+  const dashes = Math.max(1, width - Number(left) - Number(right));
+  return `${left ? ":" : ""}${"-".repeat(dashes)}${right ? ":" : ""}`;
+}
+
+/**
+ * The row that a table takes empty next to its line `beside`, `|  |  |`:
+ * that line's quotes' marks and indent, as written, a pipe at each edge,
+ * and a space on each side of each cell, whatever the table's own edges,
+ * since GFM holds an empty cell between pipes only.
+ */
+function emptyRow(
+  state: EditorState,
+  table: SyntaxNode,
+  beside: SyntaxNode,
+): string {
+  const [head] = tableRows(table);
+  const columns = head ? cellsOf(state, head).length : 0;
+  return `${lineStart(state, beside)}|${"  |".repeat(columns)}`;
+}
+
+/** The alignment each of the table's menu's edits of alignment gives. */
+export const ALIGNING = {
+  alignLeft: "left",
+  alignCenter: "center",
+  alignRight: "right",
+} as const satisfies Partial<Record<TableEdit, Alignment>>;
+
+/**
+ * The changes that make `edit` to the cell at `place` of `table`, which
+ * write only the lines that must change, and the cell to edit then: the
+ * one added or moved, the next in place of one deleted, or in a row too
+ * short for it, the row's own.
+ */
+function tableEdited(
+  state: EditorState,
+  table: SyntaxNode,
+  place: Place,
+  edit: Exclude<TableEdit, "lineBreak">,
+): { changes: ChangeSpec[]; to: Place } {
+  const { row, column } = place;
+  const lines = tableRows(table);
+  const columns = lines[0] ? cellsOf(state, lines[0]).length : 0;
+  const { doc, lineBreak } = state;
+  // Every line, as `write` writes it given its place: the head's 0, the
+  // delimiter row's 1.
+  const rewritten = (write: (line: Written, at: number) => string) =>
+    lines.flatMap((one, at) => {
+      const was = asWritten(state, one);
+      const text = write(was, at);
+      return text === was.text
+        ? []
+        : [{ from: one.from, to: one.to, insert: text }];
+    });
+  // A row's line past its quotes' marks and its indent, which stay with it.
+  const rowLine = (at: number) => {
+    const node = rowOf(table, at);
+    return node ? { from: node.from, to: doc.lineAt(node.from).to } : null;
+  };
+  switch (edit) {
+    case "addRowAbove": {
+      const below = rowOf(table, row);
+      return {
+        changes: below
+          ? [
+              {
+                from: doc.lineAt(below.from).from,
+                insert: emptyRow(state, table, below) + lineBreak,
+              },
+            ]
+          : [],
+        to: place,
+      };
+    }
+    case "addRowBelow": {
+      // Under the head, past the delimiter row.
+      const above = lines[row + 1];
+      return {
+        changes: above
+          ? [
+              {
+                from: doc.lineAt(above.to).to,
+                insert: lineBreak + emptyRow(state, table, above),
+              },
+            ]
+          : [],
+        to: { row: row + 1, column },
+      };
+    }
+    case "moveRowUp":
+    case "moveRowDown": {
+      const by = edit === "moveRowUp" ? -1 : 1;
+      const [one, other] = [rowLine(row), rowLine(row + by)];
+      return {
+        changes:
+          one && other
+            ? [
+                { ...one, insert: state.sliceDoc(other.from, other.to) },
+                { ...other, insert: state.sliceDoc(one.from, one.to) },
+              ]
+            : [],
+        to: { row: row + by, column },
+      };
+    }
+    case "deleteRow": {
+      const gone = doc.lineAt(rowOf(table, row)?.from ?? table.to);
+      return {
+        changes: [{ from: gone.from - 1, to: gone.to }],
+        to: { row: row < lines.length - 2 ? row : row - 1, column },
+      };
+    }
+    case "addColumnLeft":
+    case "addColumnRight": {
+      const at = column + Number(edit === "addColumnRight");
+      return {
+        changes: rewritten((one, index) =>
+          index < 2 || one.cells.length > at
+            ? withCell(one, at, index === 1 ? "---" : "")
+            : one.text,
+        ),
+        to: { row, column: at },
+      };
+    }
+    case "moveColumnLeft":
+    case "moveColumnRight": {
+      const at = edit === "moveColumnLeft" ? column - 1 : column;
+      return {
+        // A row with the first cell but not the next leaves the first's
+        // place empty.
+        changes: rewritten((one) =>
+          one.cells.length > at + 1
+            ? swapped(one, at)
+            : one.cells.length > at
+              ? withCell(one, at, "")
+              : one.text,
+        ),
+        to: { row, column: at === column ? column + 1 : at },
+      };
+    }
+    case "deleteColumn":
+      return {
+        changes: rewritten((one) =>
+          one.cells.length > column ? withoutCell(one, column) : one.text,
+        ),
+        to: { row, column: column === columns - 1 ? column - 1 : column },
+      };
+    default: {
+      const alignment = ALIGNING[edit];
+      return {
+        // The delimiter row's cell alone, the same alignment writing the
+        // same marks.
+        changes: rewritten((one, index) => {
+          const marked = one.texts[column];
+          return index === 1 && marked
+            ? one.text.slice(0, marked.from) +
+                marks(marked.to - marked.from, alignment) +
+                one.text.slice(marked.to)
+            : one.text;
+        }),
+        to: place,
+      };
+    }
+  }
+}
+
+/** Extensions of a cell's editor: the note's language and styling. */
+export const cellSetup = Facet.define<Extension>();
+
+// A cell's edit, which the note already holds, or the note's, which the
+// cell already holds.
+const fromCell = Annotation.define<boolean>();
+const fromNote = Annotation.define<boolean>();
+
+const cellFocused = StateEffect.define<boolean>();
+
+// Whether a cell edited in place has the focus, rather than the note.
+const inCellField = flag(cellFocused);
+
+/** Whether a table's cell edited in place has the focus. */
+export function inCell(state: EditorState): boolean {
+  return state.field(inCellField, false) ?? false;
+}
+
+/** The editor of the table's cell edited in place, if any. */
+export function cellEditor(view: EditorView): EditorView | null {
+  return view.plugin(editingCells)?.editing?.cell ?? null;
+}
+
+/** The table's menu, which closes with the cell it edits. */
+export interface TableMenuControl {
+  close: () => void;
+}
+
+export const tableMenu = Facet.define<
+  TableMenuControl,
+  TableMenuControl | undefined
+>({ combine: (values) => values[0] });
+
+/** The table's menu for the cell edited in place, if any. */
+export function tableMenuOf(view: EditorView): CellMenu | null {
+  const at = view.plugin(editingCells)?.where();
+  return at ? cellMenu(view.state, at) : null;
+}
+
+/** The table's menu for a cell of a table drawn in `frame`. */
+function cellMenu(
+  state: EditorState,
+  { place, frame, table }: { place: Place; frame: Element; table: SyntaxNode },
+): CellMenu {
+  const lines = tableRows(table);
+  return {
+    edits: editsAt(
+      place,
+      lines.length - 1,
+      lines[0] ? cellsOf(state, lines[0]).length : 0,
+    ),
+    alignment: drawing.get(frame)?.alignments[place.column] ?? null,
+  };
+}
+
+/**
+ * Makes an edit from the table's menu to the cell edited in place:
+ * whether it applies.
+ */
+export function editTable(view: EditorView, edit: TableEdit): boolean {
+  return view.plugin(editingCells)?.edit(edit) ?? false;
+}
+
+/**
+ * Keeps the cell edited in place edited while the focus is away from it,
+ * in the formatting toolbar or the table's menu, until `releaseCell`.
+ */
+export function holdCell(view: EditorView): void {
+  const cells = view.plugin(editingCells);
+  if (cells?.editing) cells.holding = true;
+}
+
+/**
+ * Once the table's menu has closed, or the focus has left the formatting
+ * toolbar, gives the focus `back` to the cell edited, which stays edited,
+ * or else closes it, unless it has the focus already.
+ */
+export function releaseCell(view: EditorView, back: boolean): void {
+  view.plugin(editingCells)?.released(back);
+}
+
+/**
+ * The changes that keep a cell's text in its cell, as GFM and Lezer read a
+ * row, counting backslashes: a line break, which would end the row, turns
+ * into the viewer's `<br>`, after a space past an odd run of backslashes,
+ * which would escape its `<`; a pipe after an even run, which
+ * would end the cell, is escaped; and an odd run at the text's end, which
+ * would escape the pipe `after` it, takes a space.
+ */
+function keptInCell(text: string, after: string): ChangeSpec[] {
+  const fixes: ChangeSpec[] = [];
+  let escaped = false;
+  for (let at = 0; at < text.length; at++) {
+    const char = text[at];
+    if (char === "\n") {
+      fixes.push({ from: at, to: at + 1, insert: escaped ? " <br>" : "<br>" });
+    } else if (char === "|" && !escaped) {
+      fixes.push({ from: at, insert: "\\" });
+    }
+    escaped = !escaped && char === "\\";
+  }
+  if (escaped && after === "|") fixes.push({ from: text.length, insert: " " });
+  return fixes;
+}
+
+/** A cell edited in place, its editor, and its text's stretch in the note. */
+interface Editing extends Stretch {
+  cell: EditorView;
+  host: HTMLTableCellElement;
+}
+
+/** Where a cell's editor opens with its cursor: its text's start or end. */
+type Side = "start" | "end";
+
+/** Takes a cell's place to the next one's, in a table of `columns`. */
+type Next = (place: Place, columns: number) => Place;
+
+/** From cell to cell, row after row, onward or back. */
+function stepping(by: 1 | -1): Next {
+  return (place, columns) => {
+    const at = place.row * columns + place.column + by;
+    return { row: Math.floor(at / columns), column: at % columns };
+  };
+}
+
+/** From a cell to the one below, or above. */
+function rowing(by: 1 | -1): Next {
+  return (place) => ({ ...place, row: place.row + by });
+}
+
+/** Whether a cell's cursor is at its text's start, or its end. */
+function atEdge(cell: EditorView, by: 1 | -1): boolean {
+  const { main } = cell.state.selection;
+  return main.empty && main.head === (by === 1 ? cell.state.doc.length : 0);
+}
+
+/**
+ * Edits a table's cells in place, as Obsidian does: a cell tapped or
+ * clicked takes an editor of its own, which shows its Markdown, the table
+ * drawn around it. Its edits are the note's, which holds the text and its
+ * history, so that undo takes them back as any other: a cell's editor
+ * holds its cell's text alone, which can thus never take or break a row.
+ * Tab moves to the next cell, Shift+Tab to the one before, Enter to the
+ * one below, and the arrows to the cell they point to, Left and Right from
+ * the text's edge, or out of the table, past cells rows lack. Tab past the
+ * last cell, or Enter past the last row, adds a row. Escape shows the
+ * table as written.
+ */
+const editingCells = ViewPlugin.fromClass(
+  class {
+    editing: Editing | null = null;
+    // Whether the table's menu or the formatting toolbar has the focus,
+    // the cell edited staying so.
+    holding = false;
+    readonly view: EditorView;
+    constructor(view: EditorView) {
+      this.view = view;
+    }
+    /**
+     * Edits a cell drawn, the cursor at its text's `side`, or the one
+     * edited where its cursor is. While Find in note is open, as for a cell
+     * its row lacks, shows its table as written, the cursor at the cell's
+     * end, or at the row's: a table shows so where Find in note's selection
+     * is.
+     */
+    open(host: HTMLTableCellElement, side: Side = "end"): void {
+      const { editing, view } = this;
+      if (editing?.host === host) {
+        editing.cell.focus();
+        return;
+      }
+      const frame = host.closest(".cm-table");
+      const place = placeOf(host);
+      const table = frame && tableIn(view, frame);
+      if (!place || !table) return;
+      const text = cellText(view.state, table, place);
+      this.close();
+      if (!text || searchPanelOpen(view.state)) {
+        view.focus();
+        view.dispatch({
+          selection: {
+            anchor: text?.to ?? rowOf(table, place.row)?.to ?? table.to,
+          },
+        });
+        return;
+      }
+      const doc = view.state.sliceDoc(text.from, text.to);
+      const at = side === "start" ? 0 : doc.length;
+      host.replaceChildren();
+      host.classList.add("cm-cell-edited");
+      const cell: EditorView = new EditorView({
+        parent: host,
+        root: view.root instanceof ShadowRoot ? view.root : document,
+        state: EditorState.create({
+          doc,
+          selection: { anchor: at },
+          extensions: this.setup(),
+        }),
+        dispatchTransactions: (transactions) => {
+          this.pass(cell, transactions);
+        },
+      });
+      this.editing = { cell, host, ...text };
+      cell.focus();
+      view.dispatch({
+        selection: { anchor: text.from + at },
+        effects: [focused.of(false), cellFocused.of(true)],
+      });
+    }
+    /**
+     * Edits the cell of the table drawn from `from` on that an arrow takes
+     * the note's cursor to, as Obsidian does: Down the head's under the
+     * cursor, Up the last row's, Right the first cell, from its start, and
+     * Left the last: whether there is one.
+     */
+    arrive(from: number, by: 1 | -1, vertical: boolean): boolean {
+      const { view } = this;
+      const frame = frameAt(view, from);
+      const rows = frame?.querySelector("table")?.rows;
+      if (!frame || !rows) return false;
+      if (!vertical) {
+        return by === 1
+          ? this.go(frame, { row: 0, column: -1 }, stepping(1), "start")
+          : this.go(frame, { row: rows.length, column: 0 }, stepping(-1));
+      }
+      // Where the cursor's motion goes across, which CodeMirror keeps from
+      // line to line, as an arrow out of a cell sets it.
+      const { main } = view.state.selection;
+      const x =
+        main.goalColumn === undefined
+          ? (view.coordsAtPos(main.head)?.left ?? 0)
+          : view.contentDOM.getBoundingClientRect().left + main.goalColumn;
+      const column = [...(rows[0]?.cells ?? [])].findLastIndex(
+        (cell) => cell.getBoundingClientRect().left <= x,
+      );
+      return this.go(
+        frame,
+        { row: by === 1 ? -1 : rows.length, column: Math.max(0, column) },
+        rowing(by),
+      );
+    }
+    setup(): Extension {
+      const { view } = this;
+      return [
+        view.state.facet(cellSetup),
+        EditorState.transactionFilter.of((transaction) => {
+          const { editing } = this;
+          if (
+            !editing ||
+            !transaction.docChanged ||
+            transaction.annotation(fromNote)
+          ) {
+            return transaction;
+          }
+          const fixes = keptInCell(
+            transaction.newDoc.toString(),
+            view.state.sliceDoc(editing.to, editing.to + 1),
+          );
+          return fixes.length === 0
+            ? transaction
+            : [transaction, { changes: fixes, sequential: true }];
+        }),
+        keymap.of([
+          { key: "Tab", run: () => this.tab(1), shift: () => this.tab(-1) },
+          // Shift+Enter, a line break alone, which CodeMirror's own would
+          // write twice between brackets, taking the spaces after it.
+          {
+            key: "Enter",
+            run: () => this.enter(),
+            shift: (cell) => insertNewline(cell),
+          },
+          {
+            key: "ArrowUp",
+            run: () => this.move(rowing(-1)) || this.out(-1, true),
+          },
+          {
+            key: "ArrowDown",
+            run: () => this.move(rowing(1)) || this.out(1, true),
+          },
+          {
+            key: "ArrowLeft",
+            run: (cell) =>
+              atEdge(cell, -1) &&
+              (this.move(stepping(-1)) || this.out(-1, false)),
+          },
+          {
+            key: "ArrowRight",
+            run: (cell) =>
+              atEdge(cell, 1) &&
+              (this.move(stepping(1), "start") || this.out(1, false)),
+          },
+          { key: "Escape", run: () => this.leave() },
+          // The note's history, its formatting that keeps the row whole,
+          // as the keyboard toolbar's in a cell, and Find in note.
+          ...[...historyKeymap, ...INLINE_KEYS].flatMap(
+            ({ run, ...binding }) =>
+              run ? [{ ...binding, run: () => run(view) }] : [],
+          ),
+          { key: "Mod-f", run: () => findInNote(view) },
+          ...defaultKeymap,
+        ]),
+        EditorView.contentAttributes.of({ "aria-label": "Cell" }),
+        EditorView.domEventHandlers({
+          blur: (_event, cell) => {
+            // Once the focus has gone where it goes, as to another cell.
+            queueMicrotask(() => {
+              if (
+                this.editing?.cell === cell &&
+                !cell.hasFocus &&
+                !this.holding
+              )
+                this.close();
+            });
+          },
+        }),
+        // The note's, clear of the keyboard toolbar and the app bar.
+        EditorView.scrollMargins.of(() => margins(view)),
+        ViewPlugin.define((cell) => ({
+          destroy: () => {
+            this.closed(cell);
+          },
+        })),
+      ];
+    }
+    /** Makes a cell's edits, and its cursor, the note's. */
+    pass(cell: EditorView, transactions: readonly Transaction[]): void {
+      for (const transaction of transactions) {
+        cell.update([transaction]);
+        const { editing } = this;
+        if (
+          editing?.cell !== cell ||
+          transaction.annotation(fromNote) ||
+          (!transaction.docChanged && !transaction.selection)
+        ) {
+          continue;
+        }
+        const { from } = editing;
+        const changes: ChangeSpec[] = [];
+        transaction.changes.iterChanges((fromA, toA, _from, _to, text) => {
+          changes.push({
+            from: from + fromA,
+            to: from + toA,
+            insert: text.toString(),
+          });
+        });
+        const { anchor, head } = transaction.newSelection.main;
+        const userEvent = transaction.annotation(Transaction.userEvent);
+        this.view.dispatch({
+          changes,
+          selection: { anchor: from + anchor, head: from + head },
+          annotations: fromCell.of(true),
+          // A cursor moved in a cell scrolls the cell, not the note.
+          ...(transaction.docChanged && userEvent ? { userEvent } : {}),
+        });
+      }
+    }
+    update(update: ViewUpdate) {
+      const { editing } = this;
+      if (!editing || !update.docChanged) return;
+      editing.from = update.changes.mapPos(editing.from, -1);
+      editing.to = update.changes.mapPos(editing.to, 1);
+      const { cell } = editing;
+      const text = update.state.sliceDoc(editing.from, editing.to);
+      const passed = update.transactions.every((one) =>
+        one.annotation(fromCell),
+      );
+      if (passed && text === cell.state.sliceDoc()) return;
+      // Undone, redone or formatted in the note, as from the keyboard
+      // toolbar, or changed by the note's own filters: the cell shows its
+      // text and selection as they are now, unless the note's selection
+      // left it, or its text its cell. A line break ends its row, which
+      // draws the table anew.
+      const { anchor, head } = update.state.selection.main;
+      const within = (at: number) => at >= editing.from && at <= editing.to;
+      const after = update.state.sliceDoc(editing.to, editing.to + 1);
+      if (
+        !within(anchor) ||
+        !within(head) ||
+        keptInCell(text, after).length > 0
+      ) {
+        queueMicrotask(() => {
+          if (this.editing !== editing) return;
+          this.close();
+          this.view.focus();
+        });
+        return;
+      }
+      cell.dispatch({
+        changes: { from: 0, to: cell.state.doc.length, insert: text },
+        selection: { anchor: anchor - editing.from, head: head - editing.from },
+        annotations: fromNote.of(true),
+      });
+    }
+    /** Ends the editing of a cell, which shows drawn again. */
+    close(): void {
+      this.editing?.cell.destroy();
+    }
+    /** Once a cell's editor is gone, by its table's or by `close`. */
+    closed(cell: EditorView): void {
+      const { editing, view } = this;
+      if (editing?.cell !== cell) return;
+      this.editing = null;
+      const { host } = editing;
+      host.classList.remove("cm-cell-edited");
+      const frame = host.closest(".cm-table");
+      const place = placeOf(host);
+      if (frame && place)
+        drawing.get(frame)?.fill(host, place.row, place.column);
+      // Its menu, which would edit another cell.
+      view.state.facet(tableMenu)?.close();
+      // Never within an update of the note's, nor once another cell is
+      // edited, as from Tab.
+      queueMicrotask(() => {
+        if (!this.editing && view.plugin(editingCells) && inCell(view.state)) {
+          view.dispatch({ effects: cellFocused.of(false) });
+        }
+      });
+    }
+    /**
+     * Tab: edits the next cell, or past the last a new row's first;
+     * Shift+Tab the one before. The key is taken either way.
+     */
+    tab(by: 1 | -1): boolean {
+      if (!this.move(stepping(by)) && by === 1) this.addRow(0);
+      return true;
+    }
+    /** Enter: edits the cell below, or past the last row a new row's. */
+    enter(): boolean {
+      const place = this.editing && placeOf(this.editing.host);
+      if (place && !this.move(rowing(1))) this.addRow(place.column);
+      return true;
+    }
+    /**
+     * Edits the cell that `next` takes the one edited to, past cells rows
+     * lack, its cursor at its text's `side`: whether there is one.
+     */
+    move(next: Next, side?: Side): boolean {
+      const { editing } = this;
+      const frame = editing?.host.closest(".cm-table");
+      const place = editing && placeOf(editing.host);
+      return !!frame && !!place && this.go(frame, place, next, side);
+    }
+    /**
+     * Edits the first cell the table drawn in `frame` holds past `place`,
+     * as `next` takes it from cell to cell, scrolled into view, as a key
+     * moved to it: whether there is one.
+     */
+    go(frame: Element, place: Place, next: Next, side?: Side): boolean {
+      const { view } = this;
+      const table = frame.querySelector("table");
+      const node = tableIn(view, frame);
+      if (!table || !node) return false;
+      const columns = table.rows[0]?.cells.length ?? 1;
+      for (;;) {
+        place = next(place, columns);
+        const host = table.rows[place.row]?.cells[place.column];
+        if (!host) return false;
+        if (cellText(view.state, node, place)) {
+          this.open(host, side);
+          this.reveal();
+          return true;
+        }
+      }
+    }
+    /**
+     * Scrolls the cell edited into view, sideways in its table too, clear
+     * of the keyboard toolbar. A tap leaves a cell where it was.
+     */
+    reveal(): void {
+      const cell = this.editing?.cell;
+      cell?.dispatch({
+        effects: EditorView.scrollIntoView(cell.state.selection.main),
+      });
+    }
+    /**
+     * Leaves the table for the line before it, or after it, if any: Up and
+     * Down above or below the cell's middle, which a right-aligned cell's
+     * cursor is not, at the next column's edge; Left at the line's end and
+     * Right at its start.
+     */
+    out(by: 1 | -1, vertical: boolean): boolean {
+      const { editing, view } = this;
+      const frame = editing?.host.closest(".cm-table");
+      const node = frame && tableIn(view, frame);
+      if (!editing || !node) return false;
+      const { doc } = view.state;
+      const number = doc.lineAt(by === 1 ? node.to : node.from).number + by;
+      if (number < 1 || number > doc.lines) return false;
+      const line = doc.line(number);
+      let at = by === 1 ? line.from : line.to;
+      let goal: number | undefined;
+      if (vertical) {
+        const { left, right } = editing.host.getBoundingClientRect();
+        const x = (left + right) / 2;
+        const block = view.lineBlockAt(line.from);
+        const half = view.defaultLineHeight / 2;
+        const across = view.posAtCoords(
+          {
+            x,
+            y:
+              view.documentTop +
+              (by === 1 ? block.top + half : block.bottom - half),
+          },
+          false,
+        );
+        at = Math.min(line.to, Math.max(line.from, across));
+        // Kept on, as CodeMirror's own Up and Down keep it, should the line
+        // be short or blank.
+        goal = x - view.contentDOM.getBoundingClientRect().left;
+      }
+      this.close();
+      view.focus();
+      view.dispatch({
+        selection: EditorSelection.create([
+          EditorSelection.cursor(at, 0, undefined, goal),
+        ]),
+        scrollIntoView: true,
+      });
+      return true;
+    }
+    /**
+     * Adds an empty row after the table's last, then edits its cell in
+     * `column`. It takes the last row's quotes' marks and indent, as
+     * written, and a pipe at each edge, whatever the table's: GFM holds an
+     * empty cell between pipes only.
+     */
+    addRow(column: number): void {
+      const table = this.where()?.table;
+      if (!table) return;
+      const last = { row: tableRows(table).length - 2, column };
+      const done = tableEdited(this.view.state, table, last, "addRowBelow");
+      this.close();
+      this.rewrite(table, done);
+    }
+    /** The cell edited, its place, and its table drawn and written. */
+    where(): {
+      editing: Editing;
+      place: Place;
+      frame: Element;
+      table: SyntaxNode;
+    } | null {
+      const { editing, view } = this;
+      const frame = editing?.host.closest(".cm-table");
+      const place = editing && placeOf(editing.host);
+      const table = frame && tableIn(view, frame);
+      return editing && place && frame && table
+        ? { editing, place, frame, table }
+        : null;
+    }
+    /**
+     * Writes `changes` to `table`, as one step for undo, apart from the
+     * edits next to it, then edits the cell `to`, or should its row lack
+     * it, the row's last.
+     */
+    rewrite(
+      table: SyntaxNode,
+      { changes, to }: { changes: ChangeSpec[]; to: Place },
+    ): void {
+      const { view } = this;
+      const from = view.state.doc.lineAt(table.from).from;
+      view.dispatch({ changes, annotations: isolateHistory.of("full") });
+      const frame = frameAt(view, from);
+      const node = frame && tableIn(view, frame);
+      const row = frame?.querySelector("table")?.rows[to.row];
+      if (!node || !row) return;
+      let { column } = to;
+      while (column > 0 && !cellText(view.state, node, { ...to, column })) {
+        column -= 1;
+      }
+      const host = row.cells[column];
+      if (!host) return;
+      this.open(host);
+      this.reveal();
+    }
+    /**
+     * Makes `edit` from the table's menu to the cell edited, then edits the
+     * cell it leaves edited, or gives the cell the focus back should it
+     * change nothing: whether it applies. A line break is Shift+Enter's, in
+     * the cell.
+     */
+    edit(edit: TableEdit): boolean {
+      const at = this.where();
+      if (!at || !cellMenu(this.view.state, at).edits.has(edit)) return false;
+      const { editing, place, table } = at;
+      if (edit === "lineBreak") return insertNewline(editing.cell);
+      const done = tableEdited(this.view.state, table, place, edit);
+      if (done.changes.length === 0) {
+        editing.cell.focus();
+        return true;
+      }
+      this.close();
+      this.rewrite(table, done);
+      return true;
+    }
+    /**
+     * Once the table's menu has closed: the cell edited takes the focus
+     * `back`, or closes where the focus went elsewhere.
+     */
+    released(back: boolean): void {
+      this.holding = false;
+      const { editing } = this;
+      if (!editing || editing.cell.hasFocus) return;
+      if (back) editing.cell.focus();
+      else this.close();
+    }
+    /** Shows the table as written, the cursor where it was in the cell. */
+    leave(): boolean {
+      const { editing, view } = this;
+      if (!editing) return false;
+      const at = editing.from + editing.cell.state.selection.main.head;
+      this.close();
+      view.focus();
+      view.dispatch({ selection: { anchor: at } });
+      return true;
+    }
+    destroy() {
+      this.close();
+    }
+  },
+);
+
+/**
+ * The note's scroll margins, the widest on each side, as CodeMirror takes
+ * them: the keyboard toolbar's and the app bar's, and its panels'.
+ */
+function margins(view: EditorView): Partial<Rect> {
+  const all = view.state
+    .facet(EditorView.scrollMargins)
+    .map((marginOf) => marginOf(view) ?? {});
+  const widest = (side: keyof Rect) =>
+    Math.max(0, ...all.map((margin) => margin[side] ?? 0));
+  return {
+    top: widest("top"),
+    bottom: widest("bottom"),
+    left: widest("left"),
+    right: widest("right"),
+  };
+}
+
+// Where and when a finger pressed a table's cell, until it lifts.
+let cellPressed: Press | null = null;
+
+/**
+ * A click on a table's cell, or a finger's tap, edits that cell; a
+ * right-click is the browser's. A finger's tap does so as it lifts, its
+ * end kept from the browser, which would place the cursor itself: in
+ * WebKit, at the note's start. A finger that moves scrolls the table or
+ * the page, and one that stays down as long as a long press is left to the
+ * system.
+ */
+const editingTables = EditorView.domEventHandlers({
+  mousedown(event, view) {
+    const cell = tableCell(event.target);
+    const modified =
+      event.shiftKey || event.metaKey || event.ctrlKey || event.altKey;
+    if (!cell || event.button !== 0 || modified) return false;
+    event.preventDefault();
+    view.plugin(editingCells)?.open(cell);
+    return true;
+  },
+  touchstart(event) {
+    const touch = event.changedTouches[0];
+    cellPressed =
+      tableCell(event.target) && event.touches.length === 1 && touch
+        ? { x: touch.clientX, y: touch.clientY, at: Date.now() }
+        : null;
+    return false;
+  },
+  touchend(event, view) {
+    const press = cellPressed;
+    cellPressed = null;
+    const cell = tableCell(event.target);
+    if (!cell || !tapped(event, press)) return false;
+    event.preventDefault();
+    view.plugin(editingCells)?.open(cell);
+    return true;
+  },
+});
+
+/**
+ * An arrow that would take the note's cursor from the line before or after
+ * a table drawn into it, or across it, as CodeMirror's step over a widget,
+ * edits a cell of it instead, as Obsidian does. A selection taken into a
+ * table, as with Shift, takes its Markdown.
+ */
+function intoTable(by: 1 | -1, vertical: boolean): Command {
+  return (view) => {
+    const { main } = view.state.selection;
+    const line = view.state.doc.lineAt(main.head);
+    // Where a table drawn on the next line starts, or on the one before ends.
+    const edge = by === 1 ? line.to + 1 : line.from - 1;
+    const drawn = view.state.field(tables).iter(edge);
+    if (
+      !main.empty ||
+      !drawn.value ||
+      (by === 1 ? drawn.from : drawn.to) !== edge
+    ) {
+      return false;
+    }
+    // Up and Down from the row on screen next to the table, a wrapped line
+    // having others; Left and Right from the line's edge.
+    const to = vertical
+      ? view.moveVertically(main, by === 1).head
+      : main.head + by;
+    return (
+      (by === 1 ? to >= edge : to <= edge) &&
+      (view.plugin(editingCells)?.arrive(drawn.from, by, vertical) ?? false)
+    );
+  };
+}
+
+const enteringTables = Prec.high(
+  keymap.of([
+    { key: "ArrowUp", run: intoTable(-1, true) },
+    { key: "ArrowDown", run: intoTable(1, true) },
+    { key: "ArrowLeft", run: intoTable(-1, false) },
+    { key: "ArrowRight", run: intoTable(1, false) },
+  ]),
+);
 
 const LOOK = EditorView.theme({
   // As the preview's.
@@ -342,6 +2579,226 @@ const LOOK = EditorView.theme({
     verticalAlign: "-3px",
     accentColor: "var(--primary)",
   },
+  // The viewer's rule, across the line from what comes before it, such as
+  // a quote's `>`, through the middle of its marks' line.
+  ".cm-rule-line": { display: "flex" },
+  ".cm-rule": {
+    flex: "1",
+    color: "transparent",
+    background:
+      "linear-gradient(var(--outline-variant), var(--outline-variant)) center / 100% 1px no-repeat",
+  },
+  // The viewer's quote, quieter: a 0.25em bar per level, then 1em before
+  // its text, and 1em after it per level.
+  ".cm-quote": {
+    color: "var(--on-surface-variant)",
+    backgroundImage:
+      "repeating-linear-gradient(to right, var(--outline-variant) 0 0.25em, transparent 0.25em 1.25em)",
+    backgroundPosition: "var(--text-inset) 0",
+    backgroundSize: "calc(var(--quote-depth) * 1.25em) 100%",
+    backgroundRepeat: "no-repeat",
+  },
+  // Apart, since CodeMirror scopes each selector between commas, within
+  // `:is()` too, which then outweighed a code block's padding.
+  ".cm-line.cm-quote, .cm-line.cm-framed": {
+    paddingLeft: "calc(var(--text-inset) + var(--quote-depth) * 1.25em)",
+    paddingRight: "calc(var(--text-inset) + var(--quote-depth) * 1em)",
+  },
+  ...Object.fromEntries(
+    QUOTE_LINES.map((_, at) => [
+      `.cm-quote-${String(at + 1)}`,
+      { "--quote-depth": String(at + 1) },
+    ]),
+  ),
+  // A line in a callout, as far in as a quote's, its quotes and boxes
+  // drawn under it, as the viewer's, whose height stays whether its marks
+  // show or not, its title in its type's color.
+  ".cm-line.cm-framed": { position: "relative" },
+  ".cm-framed-quote": { color: "var(--on-surface-variant)" },
+  // Under a code block's, and the selection's.
+  ".cm-frame": {
+    position: "absolute",
+    inset: "0",
+    zIndex: "-2",
+    pointerEvents: "none",
+  },
+  ".cm-frame > span": { position: "absolute", top: "0" },
+  ".cm-frame-bar": { width: "0.25em", background: "var(--outline-variant)" },
+  ".cm-frame-box": {
+    borderLeft: "0.25em solid var(--callout)",
+    background: "color-mix(in srgb, var(--callout) 10%, transparent)",
+  },
+  ".cm-frame-top": {
+    borderTopLeftRadius: "6px",
+    borderTopRightRadius: "6px",
+  },
+  ".cm-frame-bottom": {
+    borderBottomLeftRadius: "6px",
+    borderBottomRightRadius: "6px",
+  },
+  ...Object.fromEntries(
+    CALLOUT_TYPES.map((type) => [
+      `.cm-callout-${type}`,
+      { "--callout": `var(--callout-${type})` },
+    ]),
+  ),
+  ".cm-line.cm-callout-title": { color: "var(--callout)", fontWeight: "600" },
+  // Its marks quieter, `[!type]` too, which Markdown reads as a link.
+  ".cm-callout-marks": {
+    color: "var(--on-surface-variant)",
+    fontWeight: "normal",
+  },
+  ".cm-callout-marks span": { color: "inherit" },
+  // Its title wrapping beside its icon, as the viewer's does.
+  ".cm-line.cm-callout-title:has(.cm-callout-type)": {
+    paddingLeft:
+      "calc(var(--text-inset) + var(--quote-depth) * 1.25em + 1em + 0.25rem)",
+  },
+  ".cm-line .cm-callout-type": {
+    marginLeft: "calc(-1em - 0.25rem)",
+    color: "var(--callout)",
+    fontWeight: "600",
+  },
+  ".cm-callout-icon": {
+    width: "1em",
+    height: "1lh",
+    marginRight: "0.25rem",
+    verticalAlign: "top",
+  },
+  // Its chevron at its title's line's end, a tap target of 44 px that
+  // takes no more room than an icon, turning as the viewer's does.
+  ".cm-callout-fold": {
+    float: "right",
+    padding: "0.625rem 0.875rem",
+    margin: "-0.625rem -0.875rem -0.625rem 0.25rem",
+    cursor: "pointer",
+  },
+  ".cm-callout-chevron": {
+    display: "block",
+    width: "1em",
+    height: "1lh",
+    pointerEvents: "none",
+    transition: "transform 100ms ease-in-out",
+  },
+  ".cm-callout-folded .cm-callout-chevron": { transform: "rotate(-90deg)" },
+  "@media (prefers-reduced-motion: reduce)": {
+    ".cm-callout-chevron": { transition: "none" },
+  },
+  // The viewer's code block, as far in as its quote's text, its text 1rem
+  // further in, drawn under its lines, whose height it keeps: its fences'
+  // lines, hidden, are its padding.
+  ".cm-line.cm-code-block": {
+    position: "relative",
+    paddingLeft:
+      "calc(var(--text-inset) + var(--quote-depth, 0) * 1.25em + 1rem)",
+    paddingRight:
+      "calc(var(--text-inset) + var(--quote-depth, 0) * 1em + 1rem)",
+  },
+  ".cm-code-block::before": {
+    content: '""',
+    position: "absolute",
+    inset:
+      "0 calc(var(--text-inset) + var(--quote-depth, 0) * 1em) var(--boxes-below, 0) calc(var(--text-inset) + var(--quote-depth, 0) * 1.25em)",
+    zIndex: "-1",
+    background: "var(--surface-container-high)",
+  },
+  ".cm-code-first::before": {
+    borderTopLeftRadius: "var(--radius-sm)",
+    borderTopRightRadius: "var(--radius-sm)",
+  },
+  ".cm-code-last::before": {
+    borderBottomLeftRadius: "var(--radius-sm)",
+    borderBottomRightRadius: "var(--radius-sm)",
+  },
+  // The cursor's line marked at its start alone, the block staying whole.
+  "&.cm-focused .cm-activeLine.cm-code-block, &.cm-focused .cm-activeLine.cm-framed":
+    {
+      backgroundColor: "transparent",
+    },
+  // Markdown's code at the code's size, as the viewer's: the light
+  // styling's headings would make its lines taller.
+  ".cm-code-block span:not(.cm-code-language)": { fontSize: "inherit" },
+  // The viewer's chip, at the code's own size, which Safari needs: the
+  // same padding whether its backticks show or not.
+  ".cm-inline-code": {
+    padding: "0.2em 0.4em",
+    borderRadius: "var(--radius-xs)",
+    background: "var(--surface-container-high)",
+  },
+  ".cm-code-language-line": { textAlign: "end" },
+  ".cm-code-language": {
+    color: "var(--on-surface-variant)",
+    fontSize: "0.875em",
+  },
+  ".cm-code-comment": {
+    color: "var(--on-surface-variant)",
+    fontStyle: "italic",
+  },
+  ".cm-code-meta": { color: "var(--on-surface-variant)" },
+  ".cm-code-keyword": { color: "var(--primary)" },
+  ".cm-code-literal": { color: "var(--tertiary)" },
+  ".cm-code-name": { color: "var(--secondary)" },
+  ".cm-code-title": { fontWeight: "600" },
+  ".cm-code-emphasis": { fontStyle: "italic" },
+  ".cm-code-inserted": {
+    background: "var(--diff-added)",
+    color: "var(--on-tertiary-container)",
+    textDecoration: "underline",
+  },
+  ".cm-code-deleted": {
+    background: "var(--diff-removed)",
+    color: "var(--on-error-container)",
+    textDecoration: "line-through",
+  },
+  // The viewer's table, as Drive lists files: a rule under each row, the
+  // head quieter, as far in as the lines' text.
+  ".cm-table": {
+    overflowX: "auto",
+    padding: "0 var(--text-inset)",
+    // Its width the note's, however wide its table.
+    contain: "inline-size",
+  },
+  // In a quote or a callout, its bars and boxes in the frame's border,
+  // which the table scrolls clear of, as the viewer's table does.
+  ".cm-table.cm-quote, .cm-table.cm-table-framed": {
+    borderLeft:
+      "calc(var(--text-inset) + var(--quote-depth) * 1.25em) solid transparent",
+    paddingLeft: "0",
+    paddingRight: "calc(var(--text-inset) + var(--quote-depth) * 1em)",
+    backgroundOrigin: "border-box",
+    backgroundRepeat: "no-repeat",
+  },
+  ".cm-table table": { borderCollapse: "collapse", width: "max-content" },
+  ".cm-table :is(th, td)": {
+    padding: "var(--space-2) var(--space-5) var(--space-2) 0",
+    borderBottom: "1px solid var(--outline-variant)",
+    textAlign: "start",
+  },
+  ".cm-table th": {
+    color: "var(--on-surface-variant)",
+    fontSize: "0.875rem",
+    fontWeight: "500",
+    lineHeight: "1.25rem",
+  },
+  // A cell edited in place shows where the focus is on the cursor's line's
+  // color, with a text field's active indicator under its text, which
+  // starts at its edge, and its Markdown in the cell's own type.
+  ".cm-table .cm-cell-edited": {
+    backgroundColor: "var(--surface-container-low)",
+    boxShadow: "inset 0 -2px 0 var(--primary)",
+  },
+  ".cm-table .cm-editor": { outline: "none" },
+  ".cm-table .cm-scroller": {
+    fontFamily: "inherit",
+    lineHeight: "inherit",
+    overflow: "visible",
+  },
+  ".cm-table .cm-content": { padding: "0" },
+  ".cm-table .cm-line": { padding: "0" },
+  // Safari zooms in on a field whose text is smaller.
+  [`@media ${TOUCH}`]: {
+    ".cm-table th .cm-editor": { fontSize: "max(16px, 1em)" },
+  },
 });
 
 /**
@@ -350,12 +2807,24 @@ const LOOK = EditorView.theme({
  * edit splits.
  */
 export const livePreview: Extension = [
+  FOLDING,
+  foldingAtOpen,
+  foldedCursor,
   hiding,
   scrollingInstead,
   EditorView.atomicRanges.of(
     (view) => view.plugin(hiding)?.decorations ?? Decoration.none,
   ),
   ticking,
+  quoting,
+  coding,
+  hasFocus,
+  followingFocus,
+  tables,
+  editingTables,
+  inCellField,
+  editingCells,
+  enteringTables,
   LOOK,
 ];
 
@@ -407,18 +2876,42 @@ function hidden(view: EditorView, writing: Stretch[]): DecorationSet {
   return Decoration.set(ranges, true);
 }
 
-/** The lines the selection touches, each stretch of them from start to end. */
+/**
+ * The lines the selection touches, each stretch of them from start to end,
+ * with the whole of a table or a fenced code block it touches, which shows
+ * as written.
+ */
 function linesWritten(state: EditorState): Stretch[] {
   return state.selection.ranges.map((range) => ({
-    from: state.doc.lineAt(range.from).from,
-    to: state.doc.lineAt(range.to).to,
+    from: state.doc.lineAt(blockAround(state, range.from)?.from ?? range.from)
+      .from,
+    to: state.doc.lineAt(blockAround(state, range.to)?.to ?? range.to).to,
   }));
 }
 
 /**
+ * The table or fenced code block that `at` is in, if any, the outermost,
+ * since a block of Markdown holds its own: one left as written, in a
+ * quote, shows all its marks too, so that its lines line up.
+ */
+function blockAround(state: EditorState, at: number): SyntaxNode | null {
+  let block: SyntaxNode | null = null;
+  for (
+    let node: SyntaxNode | null = syntaxTree(state).resolveInner(at, 0);
+    node;
+    node = node.parent
+  ) {
+    if (node.name === "Table" || node.name === "FencedCode") block = node;
+  }
+  return block;
+}
+
+/**
  * Visual's symbols, hidden or drawn: emphasis' `*` and `_`,
- * strikethrough's `~~`, inline code's backticks, a heading's `#`, a link's
- * brackets and address, and a list item's marker.
+ * strikethrough's `~~`, inline code's backticks, a code block's fences, a
+ * heading's `#`, a link's brackets and address, a list item's marker, a
+ * thematic break, a quote's `>`, and a callout's title's marks, drawn as
+ * its type.
  */
 function symbols(state: EditorState, node: SyntaxNodeRef): Range<Decoration>[] {
   switch (node.name) {
@@ -426,16 +2919,98 @@ function symbols(state: EditorState, node: SyntaxNodeRef): Range<Decoration>[] {
     case "StrikethroughMark":
       return [hide(node)];
     case "CodeMark":
-      return node.node.parent?.name === "InlineCode" ? [hide(node)] : [];
+      return codeMark(state, node);
     case "HeaderMark":
       return headerMark(state, node).map(hide);
     case "Link":
       return linkSyntax(node).map(hide);
     case "ListMark":
       return listMark(state, node);
+    case "QuoteMark":
+      return calloutTitle(state, node) ?? quoteMark(state, node).map(hide);
+    case "HorizontalRule":
+      return [
+        RULE_LINE.range(state.doc.lineAt(node.from).from),
+        RULE.range(node.from, node.to),
+      ];
     default:
       return [];
   }
+}
+
+/**
+ * A quote's `>`, with the space or tab after it, which belongs to it, and
+ * the indent before it, if it starts its line, when it is one of the first
+ * marks on its line, as many as the quotes drawn around it, and the bars:
+ * a mark is filed under the line's innermost block, maybe a quote in a
+ * list, whatever quote it marks.
+ */
+function quoteMark(state: EditorState, node: SyntaxNodeRef): Stretch[] {
+  let drawn = 0;
+  for (let around = node.node.parent; around; around = around.parent) {
+    if (around.name === "Blockquote" && drawnQuote(around)) drawn++;
+  }
+  const line = state.doc.lineAt(node.from);
+  const before = state.sliceDoc(line.from, node.from);
+  // Only container marks come before it on its line, the quotes' among them.
+  const marks = before.split(">").length - 1;
+  if (marks >= Math.min(drawn, QUOTE_LINES.length)) return [];
+  const space = /[ \t]/.test(state.sliceDoc(node.to, node.to + 1));
+  return [
+    {
+      from: before.trim() ? node.from : line.from,
+      to: space ? node.to + 1 : node.to,
+    },
+  ];
+}
+
+/**
+ * The marks of a callout's title's line, its quotes' and its own, from its
+ * first `>`, if `node` is a `>` on it.
+ */
+function calloutTitle(
+  state: EditorState,
+  node: SyntaxNodeRef,
+): Range<Decoration>[] | null {
+  // Most quotes' lines start no callout, which this tells at once.
+  const line = state.doc.lineAt(node.from);
+  if (!/^[\s>]*\[!/.test(line.text)) return null;
+  const callout = calloutAt(state, node.from);
+  if (!callout) return null;
+  if (state.sliceDoc(callout.marks.from, node.from).includes(">")) return [];
+  return [
+    Decoration.replace({ widget: new CalloutTitle(callout) }).range(
+      callout.marks.from,
+      callout.marks.to,
+    ),
+  ];
+}
+
+/**
+ * Inline code's backticks, or a code block's fence, with the indent before
+ * it and what follows it on its line: its opening fence's language shows
+ * at the line's end.
+ */
+function codeMark(
+  state: EditorState,
+  node: SyntaxNodeRef,
+): Range<Decoration>[] {
+  const code = node.node.parent;
+  if (code?.name === "InlineCode") return [hide(node)];
+  if (code?.name !== "FencedCode" || !drawnCode(code)) return [];
+  const line = state.doc.lineAt(node.from);
+  const before = state.sliceDoc(line.from, node.from);
+  const fence = { from: before.trim() ? node.from : line.from, to: line.to };
+  const info = code.getChild("CodeInfo");
+  if (node.from !== code.firstChild?.from || !info) return [hide(fence)];
+  const [language = ""] = state.sliceDoc(info.from, info.to).split(/\s/);
+  return [
+    LANGUAGE_LINE.range(line.from),
+    Decoration.replace({ widget: new Language(language) }).range(
+      fence.from,
+      fence.to,
+    ),
+  ];
 }
 
 function hide({ from, to }: Stretch): Range<Decoration> {

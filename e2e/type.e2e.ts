@@ -128,12 +128,15 @@ test("sets a note in the design's type", async ({ page, drive }, info) => {
 });
 
 test("sets a page's heading in headline-small", async ({ page }) => {
+  // Home, where signing in lands once Drive has answered it: Home opened
+  // again would ask Drive for its notes' folders again, which the folder's
+  // page could cut short.
   await signIn(page);
   for (const [path, name] of [
-    ["/", "Home"],
+    [null, "Home"],
     ["/folder/work", "Work"],
   ] as const) {
-    await page.goto(path);
+    if (path) await page.goto(path);
     const heading = page.getByRole("heading", { level: 2, name, exact: true });
     await expect(heading).toHaveCSS("font-size", "24px");
     await expect(heading).toHaveCSS("line-height", "32px");
