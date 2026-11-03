@@ -1514,6 +1514,31 @@ describe("Visual's tables", () => {
     ]);
   });
 
+  it("keeps the cell edited while the parse of its table ends later, as on a busy device", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "Ada");
+
+    // Each step of the parse past its time, which then stops partway.
+    let now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => (now += 100));
+    try {
+      type(cell, "!");
+    } finally {
+      clock.mockRestore();
+    }
+    expect(syntaxTreeAvailable(view.state)).toBe(false);
+
+    expect(cellEditor(view)).toBe(cell);
+    expect(cell.hasFocus).toBe(true);
+    await parsed(view);
+    expect(cellEditor(view)).toBe(cell);
+    type(cell, "?");
+    expect(view.state.sliceDoc()).toBe(NOTE.replace("_Ada_", "_Ada_!?"));
+    pressed(view, "Tab");
+    expect(cells(view)[1]).toEqual(["Boil | pour", "Ada!?", ""]);
+  });
+
   it("writes a pipe typed in a cell escaped, and a line break as <br>", async () => {
     const { view } = open(NOTE, "\n", true);
     await parsed(view);
@@ -1762,6 +1787,35 @@ describe("Visual's tables", () => {
       written("  | 1 | 2 |\r\n  | 3 |  |\r\n  |  | 4 |"),
     );
     expect(cells(view).at(-1)).toEqual(["", "4"]);
+  });
+
+  it("adds a row from Enter, and moves on with Tab, while the parse of its table lags behind, as on a busy device", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    editCell(view, "More");
+
+    // Each step of the parse a while, which then stops partway on its own.
+    let now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => (now += 25));
+    let added: ReturnType<typeof pressed> | undefined;
+    let moved: ReturnType<typeof pressed> | undefined;
+    try {
+      added = pressed(view, "Enter");
+      const cell = cellEditor(view);
+      if (cell) type(cell, "x");
+      moved = pressed(view, "Tab");
+    } finally {
+      clock.mockRestore();
+    }
+
+    expect(added).toEqual(["", 0]);
+    expect(moved).toEqual(["", 0]);
+    expect(view.state.sliceDoc()).toBe(
+      NOTE.replace(
+        "| More | Dropped |",
+        "| More | Dropped |\n|  |  | x |\n|  |  |  |",
+      ),
+    );
   });
 
   it.each([
