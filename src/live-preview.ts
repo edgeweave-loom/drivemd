@@ -6,8 +6,10 @@ import {
 } from "@codemirror/commands";
 import {
   codeFolding,
+  ensureSyntaxTree,
   foldEffect,
   foldedRanges,
+  forceParsing,
   highlightingFor,
   syntaxTree,
   syntaxTreeAvailable,
@@ -27,6 +29,7 @@ import {
   type StateEffectType,
   type Extension,
   type Range,
+  type Text,
 } from "@codemirror/state";
 import {
   Decoration,
@@ -1213,7 +1216,7 @@ const tables = StateField.define<DecorationSet>({
       foldedRanges(state) !== foldedRanges(startState) ||
       searchPanelOpen(state) !== searchPanelOpen(startState) ||
       syntaxTree(state) !== syntaxTree(startState)
-      ? drawnTables(state, drawn)
+      ? drawnTables(state, drawn.map(transaction.changes))
       : drawn;
   },
   provide: (field) => EditorView.decorations.from(field),
@@ -1221,7 +1224,10 @@ const tables = StateField.define<DecorationSet>({
 
 /**
  * Each table outside the lines being written, drawn, with the widget drawn
- * before for the same Markdown, which is kept rather than built anew.
+ * before for the same Markdown, which is kept rather than built anew. Where
+ * the parse has yet to read past a table, as when it runs out of time on a
+ * busy device, the table drawn there before stays: one cut short, or gone,
+ * would take the cell edited in it with it.
  */
 function drawnTables(
   state: EditorState,
@@ -1234,8 +1240,13 @@ function drawnTables(
     if (widget instanceof Table) kept.set(widget.source, widget);
     drawn.next();
   }
+  const { doc } = state;
+  const read = (to: number) => syntaxTreeAvailable(state, pastTable(doc, to));
   const writing =
     state.field(hasFocus) || searchPanelOpen(state) ? linesWritten(state) : [];
+  const meets =
+    (from: number, to: number) => (other: { from: number; to: number }) =>
+      from <= other.to && to >= other.from;
   const ranges: Range<Decoration>[] = [];
   syntaxTree(state).iterate({
     enter: (node) => {
@@ -1247,9 +1258,7 @@ function drawnTables(
       // An indented table's lines whole, or a quoted one's, with its marks.
       const from = state.doc.lineAt(node.from).from;
       const { to } = node;
-      if (writing.some((line) => from <= line.to && to >= line.from)) {
-        return false;
-      }
+      if (!read(to) || writing.some(meets(from, to))) return false;
       const levels = quoteLevels(state, node.node);
       if (levels === null) return false;
       const before = kept.get(state.sliceDoc(node.from, to));
@@ -1261,7 +1270,17 @@ function drawnTables(
       return false;
     },
   });
-  return Decoration.set(ranges);
+  // The tables drawn before where the parse has yet to read.
+  before.between(0, doc.length, (from, to, value) => {
+    if (
+      !read(to) &&
+      !ranges.some(meets(from, to)) &&
+      !writing.some(meets(from, to))
+    ) {
+      ranges.push(value.range(from, to));
+    }
+  });
+  return Decoration.set(ranges, true);
 }
 
 /**
@@ -1476,13 +1495,30 @@ function placeOf(cell: HTMLTableCellElement): Place | null {
 /**
  * The table drawn in `frame`, in the note's syntax tree: from its first
  * line's end, past its indent and its quotes' marks, which the frame draws
- * but the table lacks.
+ * but the table lacks. Read whole, should the parse lag behind.
  */
 function tableIn(view: EditorView, frame: Element): SyntaxNode | null {
-  const { to } = view.state.doc.lineAt(view.posAtDOM(frame));
-  let node: SyntaxNode | null = syntaxTree(view.state).resolveInner(to, -1);
+  const { state } = view;
+  const from = view.posAtDOM(frame);
+  const { to } = state.doc.lineAt(from);
+  let end = to;
+  state.field(tables).between(from, from, (drawn, drawnTo) => {
+    if (drawn === from) end = drawnTo;
+  });
+  const tree =
+    ensureSyntaxTree(state, pastTable(state.doc, end), 100) ??
+    syntaxTree(state);
+  let node: SyntaxNode | null = tree.resolveInner(to, -1);
   while (node && node.name !== "Table") node = node.parent;
   return node;
+}
+
+/**
+ * Where the parse has read past a table ending at `to`: the line after it,
+ * which tells whether the table goes on.
+ */
+function pastTable(doc: Text, to: number): number {
+  return doc.lineAt(Math.min(to + 1, doc.length)).to;
 }
 
 /** The frame of the table drawn from `from` on, if in view. */
@@ -2410,7 +2446,10 @@ const editingCells = ViewPlugin.fromClass(
     ): void {
       const { view } = this;
       const from = view.state.doc.lineAt(table.from).from;
-      view.dispatch({ changes, annotations: isolateHistory.of("full") });
+      const done = view.state.changes(changes);
+      view.dispatch({ changes: done, annotations: isolateHistory.of("full") });
+      // Drawn anew once read, which a busy device's parse may not have yet.
+      forceParsing(view, pastTable(view.state.doc, done.mapPos(table.to, 1)));
       const frame = frameAt(view, from);
       const node = frame && tableIn(view, frame);
       const row = frame?.querySelector("table")?.rows[to.row];

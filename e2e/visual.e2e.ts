@@ -528,10 +528,13 @@ test("draws a code block in a quote in Visual after its bar, its text 1rem in", 
   const rem = await page.evaluate(() =>
     Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
   );
-  expect(await inset(lines.nth(2))).toBeCloseTo(
-    (await inset(lines.nth(0))) + rem,
-    0,
-  );
+  // Once Visual has drawn the code block, and the quote around it, which
+  // comes later in WebKit at times.
+  await expect(lines.nth(0)).toContainClass("cm-quote-1");
+  await expect(lines.nth(2)).toContainClass("cm-quote-1 cm-code-block");
+  await expect
+    .poll(async () => (await inset(lines.nth(2))) - (await inset(lines.nth(0))))
+    .toBeCloseTo(rem, 0);
 });
 
 test("draws a table in a vault's callout in Visual, in its box, whose cells a tap edits in place", async ({
@@ -990,6 +993,10 @@ test("writes a line break in a table's cell from its menu, which a phone's keybo
   page,
   drive,
 }, info) => {
+  const mouse = info.project.name === "desktop-chromium";
+  // The keyboard toolbar's 30 frames waited for below, which WebKit draws
+  // slowly on a page at rest: over seconds on a tablet.
+  test.slow(!mouse);
   const plan = drive.files.get("plan");
   if (!plan) throw new Error("No plan");
   plan.content =
@@ -999,7 +1006,6 @@ test("writes a line break in a table's cell from its menu, which a phone's keybo
   const editing = note.getByRole("textbox", { name: "Cell" });
   const menu = page.getByRole("menu", { name: "Table" });
   const item = menu.getByRole("menuitem", { name: "Insert line break" });
-  const mouse = info.project.name === "desktop-chromium";
   const toolbar = mouse
     ? page.getByRole("toolbar", { name: "Format", exact: true })
     : page.getByRole("toolbar", { name: "Formatting" });
@@ -1038,7 +1044,18 @@ test("writes a line break in a table's cell from its menu, which a phone's keybo
 
   const heading = note.getByText("The plan");
   if (mouse) await heading.click();
-  else await heading.tap();
+  else {
+    // Once the keyboard toolbar has settled, over 30 frames, which WebKit
+    // draws on a page at rest only when asked: its scroll to the cursor,
+    // were it to come with the tap's frames, would put the note's cursor
+    // back in the table before WebKit tells where the tap placed it (#386).
+    await page.evaluate(async () => {
+      for (let frame = 0; frame <= 30; frame++) {
+        await new Promise(requestAnimationFrame);
+      }
+    });
+    await heading.tap();
+  }
   await expect(editing).toHaveCount(0);
   await expect
     .poll(() =>
