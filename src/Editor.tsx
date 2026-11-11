@@ -429,9 +429,7 @@ export function Editor({
       const now = tableMenuOf(update.view);
       setCell((was) => (cellKey(was) === cellKey(now) ? was : now));
     }
-    // As the focus comes too, which the toolbars wait for, the cursor where
-    // the note opened it.
-    if (update.docChanged || update.selectionSet || update.focusChanged) {
+    if (update.docChanged || update.selectionSet) {
       setLink(linkAt(update.state, update.state.selection.main.head));
       const now = formatsAt(update.state);
       setFormats((was) => (sameFormats(was, now) ? was : now));
@@ -526,6 +524,9 @@ export function Editor({
       }),
     );
     editor.current = view;
+    // Where the note opens its cursor, which no update has moved yet.
+    setLink(linkAt(view.state, view.state.selection.main.head));
+    setFormats(formatsAt(view.state));
     if (focus) view.focus();
     return () => {
       view.destroy();

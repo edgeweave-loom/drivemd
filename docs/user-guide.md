@@ -189,7 +189,7 @@ While you edit on a touch screen, a row of keys sits above the keyboard. It scro
 | **Heading**                                       | `#`, `##`, `###`, then text again                                                                                                               |
 | **Bold**                                          | Wraps the selection in `**`, or takes it away                                                                                                   |
 | **Italic**                                        | Wraps the selection in `*`, or takes it away                                                                                                    |
-| **List**                                          | Opens a row of lists above it, the cursor's highlighted: a `- ` bullet or numbers, `1.`, `2.`, `3.`; tap the highlighted one to remove it       |
+| **List**                                          | Opens a row of lists above it, the cursor's highlighted: a `- ` bullet or numbers, `1.`, `2.`, `3.`; tap a highlighted list to remove it        |
 | **Checkbox**, in List's row                       | An open task, a done one, then a plain list item again                                                                                          |
 | **Link**, **Open link**                           | Makes the selection a link; in a link, opens it                                                                                                 |
 | **Indent**, **Outdent**                           | Moves a list item one level in or out, lined up with the item above, with tabs where the list uses tabs                                         |

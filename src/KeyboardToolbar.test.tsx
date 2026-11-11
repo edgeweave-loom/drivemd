@@ -214,6 +214,30 @@ describe("the keyboard toolbar", () => {
     },
   );
 
+  it.each([
+    ["a key", (target: Element) => fireEvent.keyDown(target, { key: "a" })],
+    [
+      "the on-screen keyboard's typing",
+      (target: Element) =>
+        target.dispatchEvent(
+          new InputEvent("beforeinput", {
+            inputType: "insertText",
+            data: "a",
+            bubbles: true,
+            composed: true,
+          }),
+        ),
+    ],
+  ])("closes List's menu on %s, which goes on in the note", async (_, type) => {
+    const view = await editing("tea");
+
+    tap("List");
+    const menu = screen.getByRole("menu", { name: "List" });
+    type(view.contentDOM);
+
+    expect(menu).not.toBeVisible();
+  });
+
   it("shows the cursor's list on List and in its menu", async () => {
     const view = await editing("1. [ ] tea\n- milk\nbread");
     const key = () => screen.getByRole("button", { name: "List" });

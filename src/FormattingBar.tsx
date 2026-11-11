@@ -9,7 +9,6 @@ import {
 } from "react";
 import { findInNote } from "./find.ts";
 import {
-  cycleTask,
   FORMATTING_KEYS,
   HEADINGS,
   indentLines,
@@ -18,13 +17,12 @@ import {
   toggleBold,
   toggleCode,
   toggleItalic,
-  toggleList,
-  toggleNumbered,
   toggleQuote,
   toggleStrikethrough,
   type Formats,
 } from "./formatting.ts";
 import { Icon } from "./Icon.tsx";
+import { LISTS } from "./lists.ts";
 import { editTable, type CellMenu } from "./live-preview.ts";
 import { ALIGNS, TABLE_EDITS } from "./table-edits.ts";
 import type { IconName } from "./icons.ts";
@@ -65,27 +63,7 @@ const GROUPS: Button[][] = [
     { name: "Link", command: insertLink, icon: "link" },
   ],
   [
-    {
-      name: "Bulleted list",
-      command: toggleList,
-      icon: "format_list_bulleted",
-      lines: true,
-      toggle: true,
-    },
-    {
-      name: "Numbered list",
-      command: toggleNumbered,
-      icon: "format_list_numbered",
-      lines: true,
-      toggle: true,
-    },
-    {
-      name: "Checkbox",
-      command: cycleTask,
-      icon: "check_box",
-      lines: true,
-      toggle: true,
-    },
+    ...LISTS.map((list) => ({ ...list, lines: true, toggle: true }) as const),
     {
       name: "Quote",
       command: toggleQuote,

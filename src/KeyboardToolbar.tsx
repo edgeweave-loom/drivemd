@@ -2,6 +2,7 @@ import { redo, undo } from "@codemirror/commands";
 import type { Command } from "@codemirror/view";
 import {
   Fragment,
+  useCallback,
   useEffectEvent,
   useId,
   useLayoutEffect,
@@ -12,16 +13,14 @@ import { findInNote } from "./find.ts";
 import { Icon } from "./Icon.tsx";
 import type { IconName } from "./icons.ts";
 import { keepFocus } from "./keys.ts";
+import { LISTS } from "./lists.ts";
 import {
   cycleHeading,
-  cycleTask,
   indentLines,
   insertLink,
   outdentLines,
   toggleBold,
   toggleItalic,
-  toggleList,
-  toggleNumbered,
   type Formats,
 } from "./formatting.ts";
 import { editTable, type CellMenu } from "./live-preview.ts";
@@ -86,20 +85,7 @@ const KEYS: Key[] = [
   },
   {
     name: "List",
-    // The formatting toolbar's lists.
-    menu: [
-      {
-        name: "Bulleted list",
-        command: toggleList,
-        icon: "format_list_bulleted",
-      },
-      {
-        name: "Numbered list",
-        command: toggleNumbered,
-        icon: "format_list_numbered",
-      },
-      { name: "Checkbox", command: cycleTask, icon: "check_box" },
-    ],
+    menu: LISTS,
     icon: "format_list_bulleted",
     lines: true,
   },
@@ -203,6 +189,28 @@ export function KeyboardToolbar({
       removeEventListener("resize", fit);
     };
   }, [inCell]);
+  // Typing goes on in the note, under the menu, whose items stay where it
+  // opened: it closes, as a tap elsewhere closes it.
+  const closing = useCallback((menu: HTMLDivElement | null) => {
+    if (!menu) return;
+    const close = () => {
+      menu.hidePopover();
+    };
+    const listen = (open: boolean) => {
+      for (const type of ["keydown", "beforeinput"]) {
+        if (open) document.addEventListener(type, close, true);
+        else document.removeEventListener(type, close, true);
+      }
+    };
+    const toggled = (event: Event) => {
+      listen((event as ToggleEvent).newState === "open");
+    };
+    menu.addEventListener("toggle", toggled);
+    return () => {
+      menu.removeEventListener("toggle", toggled);
+      listen(false);
+    };
+  }, []);
   const settled = useEffectEvent(onSettle);
   useLayoutEffect(() => {
     if (!bar.current) return;
@@ -301,6 +309,7 @@ export function KeyboardToolbar({
         MENU_KEYS.map(({ name, menu }) => (
           <div
             key={name}
+            ref={closing}
             id={`${menus}${name}`}
             popover="auto"
             role="menu"

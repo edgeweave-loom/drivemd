@@ -2488,11 +2488,16 @@ body:has(> .keyboard-toolbar) .editor {
 }
 
 /* Its menu, a row of icons: above the toolbar, in the screen's middle,
-   where anchors are lacking, and otherwise 4 px above the key and centered
-   on it, kept 8 px in from the screen's edges. */
+   where anchors are lacking, clear of the part of the page that a keyboard
+   covers, and otherwise 4 px above the key and centered on it, kept 8 px
+   in from the screen's edges. */
 .key-menu {
   --width: calc(3 * 48px + 2 * var(--space-1));
-  inset: auto 0 calc(var(--keyboard-toolbar-height) + var(--space-1));
+  inset: auto 0
+    calc(
+      var(--keyboard-toolbar-height) + var(--keyboard-cover, 0px) +
+        var(--space-1)
+    );
   width: var(--width);
   margin: 0 auto;
   padding: var(--space-1);
