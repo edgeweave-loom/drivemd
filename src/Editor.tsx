@@ -429,7 +429,9 @@ export function Editor({
       const now = tableMenuOf(update.view);
       setCell((was) => (cellKey(was) === cellKey(now) ? was : now));
     }
-    if (update.docChanged || update.selectionSet) {
+    // As the focus comes too, which the toolbars wait for, the cursor where
+    // the note opened it.
+    if (update.docChanged || update.selectionSet || update.focusChanged) {
       setLink(linkAt(update.state, update.state.selection.main.head));
       const now = formatsAt(update.state);
       setFormats((was) => (sameFormats(was, now) ? was : now));
@@ -651,6 +653,7 @@ export function Editor({
         <KeyboardToolbar
           link={link}
           cell={cell}
+          formats={formats}
           tableMenu={menuId}
           // A cell edited in place follows what the keys do to its text.
           onCommand={(command) => {

@@ -17,7 +17,6 @@ import remarkGfm from "remark-gfm";
 import { describe, expect, it } from "vitest";
 import {
   cycleHeading,
-  cycleList,
   cycleTask,
   indentLines,
   insertLink,
@@ -195,18 +194,6 @@ describe("toggleNumbered", () => {
     ["- a|\n\tb", "1. a|\n\t b"],
   ])("turns %j into %j", (before, after) => {
     expect(run(toggleNumbered, before).text).toBe(after);
-  });
-});
-
-describe("cycleList", () => {
-  it.each([
-    ["te|a", "- te|a"],
-    ["- te|a", "1. te|a"],
-    ["1. te|a", "te|a"],
-    ["- [x] te|a", "1. [x] te|a"],
-    ["«- a\nb»", "«1. a\n2. b»"],
-  ])("turns %j into %j", (before, after) => {
-    expect(run(cycleList, before).text).toBe(after);
   });
 });
 

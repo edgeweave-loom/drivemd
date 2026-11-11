@@ -181,7 +181,7 @@ DriveMD then opens on Home, in a window of its own, clear of the notch, the came
 
 ### The keyboard toolbar
 
-While you edit on a touch screen, a row of keys sits above the keyboard. It scrolls sideways when it does not fit, which a key cut in half under a shade at its edge shows, and its keys keep the keyboard up. In a table's cell, the keys that change lines (Heading, List, Checkbox, Indent and Outdent) give way to the table's keys, after **Undo** and **Redo**, and **Table options** stays at the row's right end; tap another cell to move to it.
+While you edit on a touch screen, a row of keys sits above the keyboard. It scrolls sideways when it does not fit, which a key cut in half under a shade at its edge shows, and its keys keep the keyboard up. In a table's cell, the keys that change lines (Heading, List, Indent and Outdent) give way to the table's keys, after **Undo** and **Redo**, and **Table options** stays at the row's right end; tap another cell to move to it.
 
 | Key                                               | What it does                                                                                                                                    |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -189,8 +189,8 @@ While you edit on a touch screen, a row of keys sits above the keyboard. It scro
 | **Heading**                                       | `#`, `##`, `###`, then text again                                                                                                               |
 | **Bold**                                          | Wraps the selection in `**`, or takes it away                                                                                                   |
 | **Italic**                                        | Wraps the selection in `*`, or takes it away                                                                                                    |
-| **List**                                          | A `- ` bullet, then numbers, `1.`, `2.`, `3.`, then text again                                                                                  |
-| **Checkbox**                                      | An open task, a done one, then a plain list item again                                                                                          |
+| **List**                                          | Opens a row of lists above it, the cursor's highlighted: a `- ` bullet or numbers, `1.`, `2.`, `3.`; tap the highlighted one to remove it       |
+| **Checkbox**, in List's row                       | An open task, a done one, then a plain list item again                                                                                          |
 | **Link**, **Open link**                           | Makes the selection a link; in a link, opens it                                                                                                 |
 | **Indent**, **Outdent**                           | Moves a list item one level in or out, lined up with the item above, with tabs where the list uses tabs                                         |
 | **Find in note**                                  | Opens the find bar: in the app bar's place on a phone, under it on a tablet                                                                     |

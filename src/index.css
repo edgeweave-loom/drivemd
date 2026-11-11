@@ -2460,6 +2460,78 @@ body:has(> .keyboard-toolbar) .editor {
   anchor-name: --table-options;
 }
 
+/* A key that opens a menu (docs/DESIGN.md, Keyboard toolbar): a ▾ in its
+   bottom right corner, within the key, Material's arrow_drop_down cut by
+   its path's corners, and pressed where the cursor is in its formatting. */
+.keyboard-toolbar .menu-key {
+  position: relative;
+}
+
+.keyboard-toolbar .menu-key::before {
+  position: absolute;
+  right: calc(50% - 21px);
+  bottom: 6px;
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  clip-path: polygon(29.17% 41.67%, 70.83% 41.67%, 50% 62.5%);
+  content: "";
+}
+
+.keyboard-toolbar .menu-key.on {
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+.keyboard-toolbar .menu-key[aria-label="List"] {
+  anchor-name: --list-key;
+}
+
+/* Its menu, a row of icons: above the toolbar, in the screen's middle,
+   where anchors are lacking, and otherwise 4 px above the key and centered
+   on it, kept 8 px in from the screen's edges. */
+.key-menu {
+  --width: calc(3 * 48px + 2 * var(--space-1));
+  inset: auto 0 calc(var(--keyboard-toolbar-height) + var(--space-1));
+  width: var(--width);
+  margin: 0 auto;
+  padding: var(--space-1);
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--surface-container-high);
+  box-shadow: var(--elevation-2);
+}
+
+@supports (anchor-name: --list-key) {
+  .key-menu {
+    inset: auto auto anchor(top)
+      clamp(
+        calc(var(--space-2) + env(safe-area-inset-left)),
+        calc(anchor(center) - var(--width) / 2),
+        calc(100vw - var(--space-2) - env(safe-area-inset-right) - var(--width))
+      );
+    margin: 0 0 var(--space-1);
+  }
+
+  .key-menu[aria-label="List"] {
+    position-anchor: --list-key;
+  }
+}
+
+.key-menu:popover-open {
+  display: flex;
+}
+
+.keyboard-toolbar .key-menu > button {
+  width: 48px;
+  height: 48px;
+}
+
+.keyboard-toolbar .key-menu > [aria-checked="true"] {
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
 /* The formatting toolbar (docs/DESIGN.md, Formatting toolbar): over the
    note, under the app bar, where it stays as the note scrolls under it. */
 .format-slot {
