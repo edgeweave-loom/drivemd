@@ -2483,6 +2483,10 @@ body:has(> .keyboard-toolbar) .editor {
   color: var(--on-secondary-container);
 }
 
+.keyboard-toolbar .menu-key[aria-label="Heading"] {
+  anchor-name: --heading-key;
+}
+
 .keyboard-toolbar .menu-key[aria-label="List"] {
   anchor-name: --list-key;
 }
@@ -2516,6 +2520,10 @@ body:has(> .keyboard-toolbar) .editor {
         calc(100vw - var(--space-2) - env(safe-area-inset-right) - var(--width))
       );
     margin: 0 0 var(--space-1);
+  }
+
+  .key-menu[aria-label="Heading"] {
+    position-anchor: --heading-key;
   }
 
   .key-menu[aria-label="List"] {

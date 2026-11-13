@@ -121,17 +121,6 @@ function makeHeading(line: Prefix, level: number): ChangeSpec[] {
 }
 
 /**
- * Turns the lines into headings one level down from the first line's, up
- * to the third, then back to text: `#`, `##`, `###`, none.
- */
-export const cycleHeading: StateCommand = ({ state, dispatch }) =>
-  formatLines(state, dispatch, (lines) => {
-    const first = lines[0]?.heading ?? 0;
-    const level = first >= 3 ? 0 : first + 1;
-    return lines.flatMap((line) => makeHeading(line, level));
-  });
-
-/**
  * Turns the lines into text, at 0, or headings of each level from 1 to 6,
  * by index.
  */
@@ -142,6 +131,25 @@ export const HEADINGS: readonly StateCommand[] = [0, 1, 2, 3, 4, 5, 6].map(
         lines.flatMap((line) => makeHeading(line, level)),
       ),
 );
+
+/**
+ * Turns the lines into headings of that level, or into text when every one
+ * is a heading of that level already, as the lists are taken off.
+ */
+function toggleHeading(level: number): StateCommand {
+  return ({ state, dispatch }) =>
+    formatLines(state, dispatch, (lines) => {
+      const to = lines.every((line) => line.heading === level) ? 0 : level;
+      return lines.flatMap((line) => makeHeading(line, to));
+    });
+}
+
+/** Heading 1 to 3 as the keyboard toolbar's Heading menu toggles them. */
+export const TOGGLE_HEADINGS = [
+  toggleHeading(1),
+  toggleHeading(2),
+  toggleHeading(3),
+] as const;
 
 type List = "bullet" | "number";
 
@@ -787,5 +795,7 @@ export function formatsAt(state: EditorState): Formats {
   if (list(line) === "number") on.add(toggleNumbered);
   if (line.box !== undefined) on.add(cycleTask);
   if (line.quotes.includes(">")) on.add(toggleQuote);
+  const heading = TOGGLE_HEADINGS[line.heading - 1];
+  if (heading) on.add(heading);
   return { heading: line.heading, on };
 }

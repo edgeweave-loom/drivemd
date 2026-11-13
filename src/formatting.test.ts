@@ -16,8 +16,8 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { describe, expect, it } from "vitest";
 import {
-  cycleHeading,
   cycleTask,
+  formatsAt,
   indentLines,
   insertLink,
   outdentLines,
@@ -28,7 +28,14 @@ import {
   toggleNumbered,
   toggleQuote,
   toggleStrikethrough,
+  TOGGLE_HEADINGS,
 } from "./formatting.ts";
+
+function heading(level: number): StateCommand {
+  const command = TOGGLE_HEADINGS[level - 1];
+  if (!command) throw new Error(`No Heading ${String(level)}`);
+  return command;
+}
 
 /**
  * A state from text marked with its selection: `|` for a cursor, `«…»` for
@@ -82,31 +89,39 @@ function run(command: StateCommand, text: string | EditorState) {
   return { text: marked(state), state };
 }
 
-describe("cycleHeading", () => {
+describe("TOGGLE_HEADINGS", () => {
   it.each([
-    ["|plan", "# |plan"],
-    ["pl|an", "# pl|an"],
-    ["# pl|an", "## pl|an"],
-    ["## pl|an", "### pl|an"],
-    ["### pl|an", "pl|an"],
-    ["#### pl|an", "pl|an"],
-    ["#\tpl|an", "##\tpl|an"],
-    ["|", "# |"],
-    ["#|", "##|"],
-    ["> pl|an", "> # pl|an"],
-    ["#tag|", "# #tag|"],
-  ])("turns %j into %j", (before, after) => {
-    expect(run(cycleHeading, before).text).toBe(after);
+    [1, "|plan", "# |plan"],
+    [2, "pl|an", "## pl|an"],
+    [3, "# pl|an", "### pl|an"],
+    [1, "### pl|an", "# pl|an"],
+    [1, "#### pl|an", "# pl|an"],
+    [2, "## pl|an", "pl|an"],
+    [3, "###\tpl|an", "pl|an"],
+    [2, "#\tpl|an", "##\tpl|an"],
+    [1, "|", "# |"],
+    [2, "#|", "##|"],
+    [3, "> pl|an", "> ### pl|an"],
+    [1, "#tag|", "# #tag|"],
+  ])("Heading %i turns %j into %j", (level, before, after) => {
+    expect(run(heading(level), before).text).toBe(after);
   });
 
-  it("gives every selected line the level after the first line's", () => {
-    expect(run(cycleHeading, "«## one\n\ntwo\n# three»").text).toBe(
+  it("gives every selected line the level, or text when all have it", () => {
+    expect(run(heading(3), "«## one\n\ntwo\n# three»").text).toBe(
       "«### one\n\n### two\n### three»",
     );
-    expect(run(cycleHeading, "### o«ne\ntwo»").text).toBe("o«ne\ntwo»");
-    expect(run(cycleHeading, "«# one\n#### two»").text).toBe(
-      "«## one\n## two»",
-    );
+    expect(run(heading(2), "## o«ne\n# two»").text).toBe("## o«ne\n## two»");
+    expect(run(heading(2), "## o«ne\n\n## two»").text).toBe("o«ne\n\ntwo»");
+    expect(run(heading(1), "«one\n# two»").text).toBe("# «one\n# two»");
+  });
+
+  it("is on in a heading of its level", () => {
+    const on = (marked: string) =>
+      TOGGLE_HEADINGS.map((command) => formatsAt(open(marked)).on.has(command));
+    expect(on("## pl|an")).toEqual([false, true, false]);
+    expect(on("pl|an")).toEqual([false, false, false]);
+    expect(on("#### pl|an")).toEqual([false, false, false]);
   });
 });
 
@@ -531,7 +546,7 @@ describe("outdentLines", () => {
 
 describe("the formatting commands", () => {
   const commands = {
-    cycleHeading,
+    heading: heading(2),
     toggleBold,
     toggleList,
     cycleTask,
