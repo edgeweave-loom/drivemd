@@ -133,13 +133,13 @@ export const HEADINGS: readonly StateCommand[] = [0, 1, 2, 3, 4, 5, 6].map(
 );
 
 /**
- * Turns the lines into headings of that level, or into text where the first
- * line is one of that level already.
+ * Turns the lines into headings of that level, or into text when every one
+ * is a heading of that level already, as the lists are taken off.
  */
 function toggleHeading(level: number): StateCommand {
   return ({ state, dispatch }) =>
     formatLines(state, dispatch, (lines) => {
-      const to = lines[0]?.heading === level ? 0 : level;
+      const to = lines.every((line) => line.heading === level) ? 0 : level;
       return lines.flatMap((line) => makeHeading(line, to));
     });
 }

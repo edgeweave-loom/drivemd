@@ -64,7 +64,7 @@ const HISTORY: Key[] = [
   },
 ];
 
-const HEADINGS: Item[] = [
+const HEADING_ITEMS: Item[] = [
   { name: "Heading 1", command: TOGGLE_HEADINGS[0], icon: "format_h1" },
   { name: "Heading 2", command: TOGGLE_HEADINGS[1], icon: "format_h2" },
   { name: "Heading 3", command: TOGGLE_HEADINGS[2], icon: "format_h3" },
@@ -74,7 +74,7 @@ const KEYS: Key[] = [
   ...HISTORY,
   {
     name: "Heading",
-    menu: HEADINGS,
+    menu: HEADING_ITEMS,
     icon: "title",
     lines: true,
   },

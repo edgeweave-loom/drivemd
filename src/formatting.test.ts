@@ -107,11 +107,12 @@ describe("TOGGLE_HEADINGS", () => {
     expect(run(heading(level), before).text).toBe(after);
   });
 
-  it("gives every selected line the level, or text from the first line's", () => {
+  it("gives every selected line the level, or text when all have it", () => {
     expect(run(heading(3), "«## one\n\ntwo\n# three»").text).toBe(
       "«### one\n\n### two\n### three»",
     );
-    expect(run(heading(2), "## o«ne\n# two»").text).toBe("o«ne\ntwo»");
+    expect(run(heading(2), "## o«ne\n# two»").text).toBe("## o«ne\n## two»");
+    expect(run(heading(2), "## o«ne\n\n## two»").text).toBe("o«ne\n\ntwo»");
     expect(run(heading(1), "«one\n# two»").text).toBe("# «one\n# two»");
   });
 
