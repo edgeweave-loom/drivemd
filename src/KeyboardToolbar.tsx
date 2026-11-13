@@ -15,12 +15,12 @@ import type { IconName } from "./icons.ts";
 import { keepFocus } from "./keys.ts";
 import { LISTS } from "./lists.ts";
 import {
-  cycleHeading,
   indentLines,
   insertLink,
   outdentLines,
   toggleBold,
   toggleItalic,
+  TOGGLE_HEADINGS,
   type Formats,
 } from "./formatting.ts";
 import { editTable, type CellMenu } from "./live-preview.ts";
@@ -44,11 +44,10 @@ type Key = Omit<Item, "command"> & {
     | { command: Command; menu?: never }
     | {
         command?: never;
-        /**
-         * The items of the menu it opens, which show checked where on, the
-         * key taking the first one's icon.
-         */
+        /** The items of the menu it opens, which show checked where on. */
         menu: readonly Item[];
+        /** Whether it takes the icon of its item that is on. */
+        showsItem?: true;
       }
   );
 
@@ -65,11 +64,17 @@ const HISTORY: Key[] = [
   },
 ];
 
+const HEADINGS: Item[] = [
+  { name: "Heading 1", command: TOGGLE_HEADINGS[0], icon: "format_h1" },
+  { name: "Heading 2", command: TOGGLE_HEADINGS[1], icon: "format_h2" },
+  { name: "Heading 3", command: TOGGLE_HEADINGS[2], icon: "format_h3" },
+];
+
 const KEYS: Key[] = [
   ...HISTORY,
   {
     name: "Heading",
-    command: cycleHeading,
+    menu: HEADINGS,
     icon: "title",
     lines: true,
   },
@@ -87,6 +92,7 @@ const KEYS: Key[] = [
     name: "List",
     menu: LISTS,
     icon: "format_list_bulleted",
+    showsItem: true,
     lines: true,
   },
   {
@@ -136,8 +142,9 @@ const TABLE_KEYS = TABLE_EDITS.map((group) =>
  * end, opens the table's menu, `tableMenu`, above it, with the others.
  * The keys that do not fit scroll sideways, the last one in view cut in the
  * middle of its icon, under a shade, so that the row shows it scrolls.
- * List opens a menu above it, a row of the formatting toolbar's lists, a ▾
- * in its corner, and shows the cursor's list, as does its menu.
+ * Heading and List open a menu above them, a row of Heading 1 to 3 and of
+ * the formatting toolbar's lists, a ▾ in their corner, and show pressed in
+ * their formatting, List with the cursor's list, as do their menus.
  */
 export function KeyboardToolbar({
   link,
@@ -155,7 +162,10 @@ export function KeyboardToolbar({
    * edits that apply, and its column's alignment.
    */
   cell: CellMenu | null;
-  /** The formatting where the cursor is, which List and its menu show. */
+  /**
+   * The formatting where the cursor is, which Heading, List and their menus
+   * show.
+   */
   formats: Formats;
   /** The table's menu's id, which the Table options key opens in a cell. */
   tableMenu: string;
@@ -239,7 +249,7 @@ export function KeyboardToolbar({
           aria-haspopup="menu"
           popoverTarget={`${menus}${name}`}
         >
-          <Icon name={on?.icon ?? icon} />
+          <Icon name={key.showsItem && on ? on.icon : icon} />
         </button>
       );
     }

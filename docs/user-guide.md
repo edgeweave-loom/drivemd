@@ -186,7 +186,7 @@ While you edit on a touch screen, a row of keys sits above the keyboard. It scro
 | Key                                               | What it does                                                                                                                                    |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Undo**, **Redo**                                | Take back or redo one change                                                                                                                    |
-| **Heading**                                       | `#`, `##`, `###`, then text again                                                                                                               |
+| **Heading**                                       | Opens a row of Heading 1 to 3 above it, the cursor's level highlighted: `#`, `##` or `###`; tap the highlighted one for text again              |
 | **Bold**                                          | Wraps the selection in `**`, or takes it away                                                                                                   |
 | **Italic**                                        | Wraps the selection in `*`, or takes it away                                                                                                    |
 | **List**                                          | Opens a row of lists above it, the cursor's highlighted: a `- ` bullet or numbers, `1.`, `2.`, `3.`; tap a highlighted list to remove it        |

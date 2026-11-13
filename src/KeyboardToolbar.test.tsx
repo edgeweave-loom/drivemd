@@ -150,7 +150,6 @@ describe("the keyboard toolbar", () => {
   });
 
   it.each([
-    ["Heading", "tea", "# tea"],
     ["Bold", "tea", "****tea"],
     ["Italic", "tea", "**tea"],
     ["Link", "tea", "[]()tea"],
@@ -164,45 +163,50 @@ describe("the keyboard toolbar", () => {
     expect(view.state.sliceDoc()).toBe(after);
   });
 
-  it("opens List's menu of the lists above it, in place of a Checkbox key", async () => {
-    await editing("tea");
+  it.each([
+    ["Heading", ["Heading 1", "Heading 2", "Heading 3"]],
+    ["List", ["Bulleted list", "Numbered list", "Checkbox"]],
+  ])(
+    "opens %s's menu of icons above it, without a Checkbox key",
+    async (name, items) => {
+      await editing("tea");
 
-    expect(screen.queryByRole("button", { name: "Checkbox" })).toBeNull();
-    const key = screen.getByRole("button", { name: "List" });
-    expect(key).toHaveAttribute("aria-haspopup", "menu");
-    expect(fireEvent.mouseDown(key)).toBe(false);
-    tap("List");
-    const menu = screen.getByRole("menu", { name: "List" });
-    expect(menu).toBeVisible();
-    expect(
-      within(menu)
-        .getAllByRole("menuitemcheckbox")
-        .map((item) => [
-          item.getAttribute("aria-label"),
-          item.getAttribute("aria-checked"),
-        ]),
-    ).toEqual([
-      ["Bulleted list", "false"],
-      ["Numbered list", "false"],
-      ["Checkbox", "false"],
-    ]);
-    tap("List");
-    expect(menu).not.toBeVisible();
-  });
+      expect(screen.queryByRole("button", { name: "Checkbox" })).toBeNull();
+      const key = screen.getByRole("button", { name });
+      expect(key).toHaveAttribute("aria-haspopup", "menu");
+      expect(fireEvent.mouseDown(key)).toBe(false);
+      tap(name);
+      const menu = screen.getByRole("menu", { name });
+      expect(menu).toBeVisible();
+      expect(
+        within(menu)
+          .getAllByRole("menuitemcheckbox")
+          .map((item) => [
+            item.getAttribute("aria-label"),
+            item.getAttribute("aria-checked"),
+          ]),
+      ).toEqual(items.map((item) => [item, "false"]));
+      tap(name);
+      expect(menu).not.toBeVisible();
+    },
+  );
 
   it.each([
-    ["Bulleted list", "tea", "- tea"],
-    ["Numbered list", "tea", "1. tea"],
-    ["Checkbox", "tea", "- [ ] tea"],
-    ["Bulleted list", "- tea", "tea"],
-    ["Checkbox", "- [x] tea", "- tea"],
+    ["Heading", "Heading 2", "tea", "## tea"],
+    ["Heading", "Heading 1", "### tea", "# tea"],
+    ["Heading", "Heading 2", "## tea", "tea"],
+    ["List", "Bulleted list", "tea", "- tea"],
+    ["List", "Numbered list", "tea", "1. tea"],
+    ["List", "Checkbox", "tea", "- [ ] tea"],
+    ["List", "Bulleted list", "- tea", "tea"],
+    ["List", "Checkbox", "- [x] tea", "- tea"],
   ])(
-    "formats the line from List's %s, the focus staying",
-    async (name, before, after) => {
+    "formats the line from %s's %s, the focus staying",
+    async (key, name, before, after) => {
       const view = await editing(before);
 
-      tap("List");
-      const menu = screen.getByRole("menu", { name: "List" });
+      tap(key);
+      const menu = screen.getByRole("menu", { name: key });
       const item = within(menu).getByRole("menuitemcheckbox", { name });
       expect(fireEvent.mouseDown(item)).toBe(false);
       fireEvent.click(item);
@@ -238,35 +242,52 @@ describe("the keyboard toolbar", () => {
     expect(menu).not.toBeVisible();
   });
 
+  // Closed, a menu has no names for a screen reader.
+  const checked = (menu: string) =>
+    [
+      ...document.querySelectorAll(
+        `[role="menu"][aria-label="${menu}"] [aria-checked="true"]`,
+      ),
+    ].map((item) => item.getAttribute("aria-label"));
+
+  it("shows the cursor's heading on Heading, which keeps its icon, and in its menu", async () => {
+    const view = await editing("## tea\nmilk");
+    const key = () => screen.getByRole("button", { name: "Heading" });
+
+    expect(key().querySelector("svg")?.dataset.icon).toBe("title");
+    expect(key()).toHaveClass("on");
+    expect(checked("Heading")).toEqual(["Heading 2"]);
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 8 } });
+    });
+    expect(key().querySelector("svg")?.dataset.icon).toBe("title");
+    expect(key()).not.toHaveClass("on");
+    expect(checked("Heading")).toEqual([]);
+  });
+
   it("shows the cursor's list on List and in its menu", async () => {
     const view = await editing("1. [ ] tea\n- milk\nbread");
     const key = () => screen.getByRole("button", { name: "List" });
     const icon = () => key().querySelector("svg")?.dataset.icon;
-    // Closed, it has no names for a screen reader.
-    const checked = () =>
-      [
-        ...document.querySelectorAll(
-          '[role="menu"][aria-label="List"] [aria-checked="true"]',
-        ),
-      ].map((item) => item.getAttribute("aria-label"));
 
     expect(icon()).toBe("format_list_numbered");
     expect(key()).toHaveClass("on");
-    expect(checked()).toEqual(["Numbered list", "Checkbox"]);
+    expect(checked("List")).toEqual(["Numbered list", "Checkbox"]);
 
     act(() => {
       view.dispatch({ selection: { anchor: 13 } });
     });
     expect(icon()).toBe("format_list_bulleted");
     expect(key()).toHaveClass("on");
-    expect(checked()).toEqual(["Bulleted list"]);
+    expect(checked("List")).toEqual(["Bulleted list"]);
 
     act(() => {
       view.dispatch({ selection: { anchor: 20 } });
     });
     expect(icon()).toBe("format_list_bulleted");
     expect(key()).not.toHaveClass("on");
-    expect(checked()).toEqual([]);
+    expect(checked("List")).toEqual([]);
   });
 
   it("undoes and redoes the edits", async () => {
