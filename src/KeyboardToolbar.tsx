@@ -1,20 +1,27 @@
 import { redo, undo } from "@codemirror/commands";
 import type { Command } from "@codemirror/view";
-import { Fragment, useEffectEvent, useLayoutEffect, useRef } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffectEvent,
+  useId,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import { createPortal } from "react-dom";
 import { findInNote } from "./find.ts";
 import { Icon } from "./Icon.tsx";
 import type { IconName } from "./icons.ts";
 import { keepFocus } from "./keys.ts";
+import { LISTS } from "./lists.ts";
 import {
   cycleHeading,
-  cycleList,
-  cycleTask,
   indentLines,
   insertLink,
   outdentLines,
   toggleBold,
   toggleItalic,
+  type Formats,
 } from "./formatting.ts";
 import { editTable, type CellMenu } from "./live-preview.ts";
 import { peekScale, rowItems } from "./peek.ts";
@@ -24,13 +31,26 @@ import { keepRoom, keepVisible } from "./visual-viewport.ts";
 /** The toolbar's height, which the editor keeps clear of the cursor. */
 export const TOOLBAR_HEIGHT = 48;
 
-interface Key {
+interface Item {
   name: string;
   command: Command;
   icon: IconName;
+}
+
+type Key = Omit<Item, "command"> & {
   /** Whether it changes the lines the cursor is on, which a cell lacks. */
   lines?: true;
-}
+} & (
+    | { command: Command; menu?: never }
+    | {
+        command?: never;
+        /**
+         * The items of the menu it opens, which show checked where on, the
+         * key taking the first one's icon.
+         */
+        menu: readonly Item[];
+      }
+  );
 
 const HISTORY: Key[] = [
   {
@@ -65,14 +85,8 @@ const KEYS: Key[] = [
   },
   {
     name: "List",
-    command: cycleList,
+    menu: LISTS,
     icon: "format_list_bulleted",
-    lines: true,
-  },
-  {
-    name: "Checkbox",
-    command: cycleTask,
-    icon: "check_box",
     lines: true,
   },
   {
@@ -99,6 +113,9 @@ const KEYS: Key[] = [
   },
 ];
 
+// The keys that open a menu, which a table's cell lacks.
+const MENU_KEYS = KEYS.flatMap((key) => (key.menu ? [key] : []));
+
 // In a table's cell, the keys that leave its row whole but Undo and Redo,
 // which come first, as a key there deletes a row or a column at a tap.
 const IN_CELL = KEYS.filter((key) => !HISTORY.includes(key) && !key.lines);
@@ -119,10 +136,13 @@ const TABLE_KEYS = TABLE_EDITS.map((group) =>
  * end, opens the table's menu, `tableMenu`, above it, with the others.
  * The keys that do not fit scroll sideways, the last one in view cut in the
  * middle of its icon, under a shade, so that the row shows it scrolls.
+ * List opens a menu above it, a row of the formatting toolbar's lists, a ▾
+ * in its corner, and shows the cursor's list, as does its menu.
  */
 export function KeyboardToolbar({
   link,
   cell,
+  formats,
   tableMenu,
   onCommand,
   onFollow,
@@ -135,6 +155,8 @@ export function KeyboardToolbar({
    * edits that apply, and its column's alignment.
    */
   cell: CellMenu | null;
+  /** The formatting where the cursor is, which List and its menu show. */
+  formats: Formats;
   /** The table's menu's id, which the Table options key opens in a cell. */
   tableMenu: string;
   onCommand: (command: Command) => void;
@@ -147,6 +169,7 @@ export function KeyboardToolbar({
 }) {
   const bar = useRef<HTMLDivElement>(null);
   const row = useRef<HTMLDivElement>(null);
+  const menus = useId();
   const inCell = cell !== null;
   useLayoutEffect(() => {
     const keys = row.current;
@@ -166,6 +189,28 @@ export function KeyboardToolbar({
       removeEventListener("resize", fit);
     };
   }, [inCell]);
+  // Typing goes on in the note, under the menu, whose items stay where it
+  // opened: it closes, as a tap elsewhere closes it.
+  const closing = useCallback((menu: HTMLDivElement | null) => {
+    if (!menu) return;
+    const close = () => {
+      menu.hidePopover();
+    };
+    const listen = (open: boolean) => {
+      for (const type of ["keydown", "beforeinput"]) {
+        if (open) document.addEventListener(type, close, true);
+        else document.removeEventListener(type, close, true);
+      }
+    };
+    const toggled = (event: Event) => {
+      listen((event as ToggleEvent).newState === "open");
+    };
+    menu.addEventListener("toggle", toggled);
+    return () => {
+      menu.removeEventListener("toggle", toggled);
+      listen(false);
+    };
+  }, []);
   const settled = useEffectEvent(onSettle);
   useLayoutEffect(() => {
     if (!bar.current) return;
@@ -181,7 +226,23 @@ export function KeyboardToolbar({
       for (const stop of stops) stop();
     };
   }, []);
-  const keyOf = ({ name, command, icon }: Key) => {
+  const keyOf = (key: Key) => {
+    const { name, command, icon } = key;
+    if (key.menu) {
+      const on = key.menu.find((item) => formats.on.has(item.command));
+      return (
+        <button
+          key={name}
+          type="button"
+          className={on ? "menu-key on" : "menu-key"}
+          aria-label={name}
+          aria-haspopup="menu"
+          popoverTarget={`${menus}${name}`}
+        >
+          <Icon name={on?.icon ?? icon} />
+        </button>
+      );
+    }
     const follows = command === insertLink ? link : undefined;
     return (
       <button
@@ -189,8 +250,8 @@ export function KeyboardToolbar({
         type="button"
         aria-label={follows === undefined ? name : "Open link"}
         onClick={() => {
-          if (follows === undefined) onCommand(command);
-          else onFollow(follows);
+          if (follows !== undefined) onFollow(follows);
+          else if (command) onCommand(command);
         }}
       >
         <Icon name={follows === undefined ? icon : "open_in_new"} />
@@ -244,6 +305,34 @@ export function KeyboardToolbar({
           KEYS.map(keyOf)
         )}
       </div>
+      {!cell &&
+        MENU_KEYS.map(({ name, menu }) => (
+          <div
+            key={name}
+            ref={closing}
+            id={`${menus}${name}`}
+            popover="auto"
+            role="menu"
+            aria-label={name}
+            className="key-menu"
+          >
+            {menu.map((item) => (
+              <button
+                key={item.name}
+                type="button"
+                role="menuitemcheckbox"
+                aria-label={item.name}
+                aria-checked={formats.on.has(item.command)}
+                onClick={(event) => {
+                  event.currentTarget.parentElement?.hidePopover();
+                  onCommand(item.command);
+                }}
+              >
+                <Icon name={item.icon} />
+              </button>
+            ))}
+          </div>
+        ))}
       {cell && (
         <>
           <hr aria-orientation="vertical" />

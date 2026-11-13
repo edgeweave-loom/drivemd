@@ -197,8 +197,8 @@ test("formats the source from the keyboard toolbar on touch screens", async ({
   // Along the screen's bottom edge, where the keyboard would rise.
   const bar = await toolbar.boundingBox();
   expect((bar?.y ?? 0) + (bar?.height ?? 0)).toBe(page.viewportSize()?.height);
-  const checkbox = toolbar.getByRole("button", { name: "Checkbox" });
-  expect((await checkbox.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  const list = toolbar.getByRole("button", { name: "List" });
+  expect((await list.boundingBox())?.height).toBeGreaterThanOrEqual(44);
   // Each key's icon sits in its middle.
   for (const key of await toolbar.getByRole("button").all()) {
     const button = await key.boundingBox();
@@ -207,9 +207,19 @@ test("formats the source from the keyboard toolbar on touch screens", async ({
     expect(icon.x + icon.width / 2).toBeCloseTo(button.x + button.width / 2, 0);
   }
 
-  await checkbox.tap();
+  await list.tap();
+  // Its menu, a row of icons, 4 px above the key and centered on it.
+  const menu = toolbar.getByRole("menu", { name: "List" });
+  const key = await list.boundingBox();
+  const shown = await menu.boundingBox();
+  if (!key || !shown) throw new Error("Not shown");
+  expect(shown.height).toBe(56);
+  expect(shown.y + shown.height).toBeCloseTo(key.y - 4, 0);
+  expect(shown.x + shown.width / 2).toBeCloseTo(key.x + key.width / 2, 0);
+  await menu.getByRole("menuitemcheckbox", { name: "Checkbox" }).tap();
+  await expect(menu).toBeHidden();
   await expect(source.locator(".cm-line").nth(1)).toHaveText("- [ ] two");
-  // The key left the focus, and the keyboard, with the editor.
+  // The key and the menu left the focus, and the keyboard, with the editor.
   await expect(source).toBeFocused();
   await page.getByRole("button", { name: "Save", exact: true }).click();
 

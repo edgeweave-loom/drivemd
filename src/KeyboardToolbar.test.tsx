@@ -153,8 +153,6 @@ describe("the keyboard toolbar", () => {
     ["Heading", "tea", "# tea"],
     ["Bold", "tea", "****tea"],
     ["Italic", "tea", "**tea"],
-    ["List", "tea", "- tea"],
-    ["Checkbox", "tea", "- [ ] tea"],
     ["Link", "tea", "[]()tea"],
     ["Indent", "tea", "  tea"],
     ["Outdent", "  tea", "tea"],
@@ -164,6 +162,111 @@ describe("the keyboard toolbar", () => {
     tap(name);
 
     expect(view.state.sliceDoc()).toBe(after);
+  });
+
+  it("opens List's menu of the lists above it, in place of a Checkbox key", async () => {
+    await editing("tea");
+
+    expect(screen.queryByRole("button", { name: "Checkbox" })).toBeNull();
+    const key = screen.getByRole("button", { name: "List" });
+    expect(key).toHaveAttribute("aria-haspopup", "menu");
+    expect(fireEvent.mouseDown(key)).toBe(false);
+    tap("List");
+    const menu = screen.getByRole("menu", { name: "List" });
+    expect(menu).toBeVisible();
+    expect(
+      within(menu)
+        .getAllByRole("menuitemcheckbox")
+        .map((item) => [
+          item.getAttribute("aria-label"),
+          item.getAttribute("aria-checked"),
+        ]),
+    ).toEqual([
+      ["Bulleted list", "false"],
+      ["Numbered list", "false"],
+      ["Checkbox", "false"],
+    ]);
+    tap("List");
+    expect(menu).not.toBeVisible();
+  });
+
+  it.each([
+    ["Bulleted list", "tea", "- tea"],
+    ["Numbered list", "tea", "1. tea"],
+    ["Checkbox", "tea", "- [ ] tea"],
+    ["Bulleted list", "- tea", "tea"],
+    ["Checkbox", "- [x] tea", "- tea"],
+  ])(
+    "formats the line from List's %s, the focus staying",
+    async (name, before, after) => {
+      const view = await editing(before);
+
+      tap("List");
+      const menu = screen.getByRole("menu", { name: "List" });
+      const item = within(menu).getByRole("menuitemcheckbox", { name });
+      expect(fireEvent.mouseDown(item)).toBe(false);
+      fireEvent.click(item);
+
+      expect(view.state.sliceDoc()).toBe(after);
+      expect(menu).not.toBeVisible();
+      expect(item).not.toHaveFocus();
+      expect(view.hasFocus).toBe(true);
+    },
+  );
+
+  it.each([
+    ["a key", (target: Element) => fireEvent.keyDown(target, { key: "a" })],
+    [
+      "the on-screen keyboard's typing",
+      (target: Element) =>
+        target.dispatchEvent(
+          new InputEvent("beforeinput", {
+            inputType: "insertText",
+            data: "a",
+            bubbles: true,
+            composed: true,
+          }),
+        ),
+    ],
+  ])("closes List's menu on %s, which goes on in the note", async (_, type) => {
+    const view = await editing("tea");
+
+    tap("List");
+    const menu = screen.getByRole("menu", { name: "List" });
+    type(view.contentDOM);
+
+    expect(menu).not.toBeVisible();
+  });
+
+  it("shows the cursor's list on List and in its menu", async () => {
+    const view = await editing("1. [ ] tea\n- milk\nbread");
+    const key = () => screen.getByRole("button", { name: "List" });
+    const icon = () => key().querySelector("svg")?.dataset.icon;
+    // Closed, it has no names for a screen reader.
+    const checked = () =>
+      [
+        ...document.querySelectorAll(
+          '[role="menu"][aria-label="List"] [aria-checked="true"]',
+        ),
+      ].map((item) => item.getAttribute("aria-label"));
+
+    expect(icon()).toBe("format_list_numbered");
+    expect(key()).toHaveClass("on");
+    expect(checked()).toEqual(["Numbered list", "Checkbox"]);
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 13 } });
+    });
+    expect(icon()).toBe("format_list_bulleted");
+    expect(key()).toHaveClass("on");
+    expect(checked()).toEqual(["Bulleted list"]);
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 20 } });
+    });
+    expect(icon()).toBe("format_list_bulleted");
+    expect(key()).not.toHaveClass("on");
+    expect(checked()).toEqual([]);
   });
 
   it("undoes and redoes the edits", async () => {
@@ -239,7 +342,7 @@ describe("the keyboard toolbar", () => {
     tap("Undo");
     expect(view.state.sliceDoc()).toBe(text);
     // Their marks would break its row.
-    for (const name of ["Heading", "List", "Checkbox", "Indent", "Outdent"]) {
+    for (const name of ["Heading", "List", "Indent", "Outdent"]) {
       expect(screen.queryByRole("button", { name })).toBeNull();
     }
 

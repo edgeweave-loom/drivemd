@@ -524,6 +524,9 @@ export function Editor({
       }),
     );
     editor.current = view;
+    // Where the note opens its cursor, which no update has moved yet.
+    setLink(linkAt(view.state, view.state.selection.main.head));
+    setFormats(formatsAt(view.state));
     if (focus) view.focus();
     return () => {
       view.destroy();
@@ -651,6 +654,7 @@ export function Editor({
         <KeyboardToolbar
           link={link}
           cell={cell}
+          formats={formats}
           tableMenu={menuId}
           // A cell edited in place follows what the keys do to its text.
           onCommand={(command) => {

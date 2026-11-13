@@ -262,22 +262,6 @@ export const toggleNumbered: StateCommand = ({ state, dispatch }) =>
   );
 
 /**
- * Moves the lines on from the first line's list: text becomes a bulleted
- * list, a bulleted list a numbered one, and a numbered list text again.
- */
-export const cycleList: StateCommand = ({ state, dispatch }) =>
-  formatLines(state, dispatch, (lines) => {
-    const first = lines[0] && list(lines[0]);
-    const to =
-      first === undefined
-        ? "bullet"
-        : first === "bullet"
-          ? "number"
-          : undefined;
-    return makeList(state, lines, to);
-  });
-
-/**
  * Makes the lines a quote, `> `, blank lines between them included, or,
  * when all of them are quoted, takes their outer quote marker away.
  */
