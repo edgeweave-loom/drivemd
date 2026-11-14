@@ -155,12 +155,36 @@ describe("the keyboard toolbar", () => {
     ["Link", "tea", "[]()tea"],
     ["Indent", "tea", "  tea"],
     ["Outdent", "  tea", "tea"],
+    ["Quote", "tea", "> tea"],
+    ["Quote", "> > tea", "> tea"],
   ])("%s formats the line", async (name, before, after) => {
     const view = await editing(before);
 
     tap(name);
 
     expect(view.state.sliceDoc()).toBe(after);
+  });
+
+  it("holds its keys in order, Quote after Outdent", async () => {
+    await editing("tea");
+
+    expect(
+      within(screen.getByRole("toolbar", { name: "Formatting" }))
+        .getAllByRole("button")
+        .map((key) => key.getAttribute("aria-label")),
+    ).toEqual([
+      "Undo",
+      "Redo",
+      "Heading",
+      "Bold",
+      "Italic",
+      "List",
+      "Link",
+      "Indent",
+      "Outdent",
+      "Quote",
+      "Find in note",
+    ]);
   });
 
   it.each([
@@ -363,7 +387,7 @@ describe("the keyboard toolbar", () => {
     tap("Undo");
     expect(view.state.sliceDoc()).toBe(text);
     // Their marks would break its row.
-    for (const name of ["Heading", "List", "Indent", "Outdent"]) {
+    for (const name of ["Heading", "List", "Indent", "Outdent", "Quote"]) {
       expect(screen.queryByRole("button", { name })).toBeNull();
     }
 
