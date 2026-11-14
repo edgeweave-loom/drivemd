@@ -181,7 +181,7 @@ DriveMD then opens on Home, in a window of its own, clear of the notch, the came
 
 ### The keyboard toolbar
 
-While you edit on a touch screen, a row of keys sits above the keyboard. It scrolls sideways when it does not fit, which a key cut in half under a shade at its edge shows, and its keys keep the keyboard up. In a table's cell, the keys that change lines (Heading, List, Indent and Outdent) give way to the table's keys, after **Undo** and **Redo**, and **Table options** stays at the row's right end; tap another cell to move to it.
+While you edit on a touch screen, a row of keys sits above the keyboard. It scrolls sideways when it does not fit, which a key cut in half under a shade at its edge shows, and its keys keep the keyboard up. In a table's cell, the keys that change lines (Heading, List, Indent, Outdent and Quote) give way to the table's keys, after **Undo** and **Redo**, and **Table options** stays at the row's right end; tap another cell to move to it.
 
 | Key                                               | What it does                                                                                                                                    |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -193,6 +193,7 @@ While you edit on a touch screen, a row of keys sits above the keyboard. It scro
 | **Checkbox**, in List's row                       | An open task, a done one, then a plain list item again                                                                                          |
 | **Link**, **Open link**                           | Makes the selection a link; in a link, opens it                                                                                                 |
 | **Indent**, **Outdent**                           | Moves a list item one level in or out, lined up with the item above, with tabs where the list uses tabs                                         |
+| **Quote**                                         | Puts `> ` before the selected lines, or takes it away when all of them are quoted                                                               |
 | **Find in note**                                  | Opens the find bar: in the app bar's place on a phone, under it on a tablet                                                                     |
 | **Add row below**, **Delete row**                 | In a table's cell, adds a row under its row, or deletes its row                                                                                 |
 | **Add column to the right**, **Delete column**    | In a table's cell, adds a column after its column, or deletes its column                                                                        |

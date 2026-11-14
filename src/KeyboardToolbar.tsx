@@ -20,6 +20,7 @@ import {
   outdentLines,
   toggleBold,
   toggleItalic,
+  toggleQuote,
   TOGGLE_HEADINGS,
   type Formats,
 } from "./formatting.ts";
@@ -110,6 +111,12 @@ const KEYS: Key[] = [
     name: "Outdent",
     command: outdentLines,
     icon: "format_indent_decrease",
+    lines: true,
+  },
+  {
+    name: "Quote",
+    command: toggleQuote,
+    icon: "blockquote",
     lines: true,
   },
   {
