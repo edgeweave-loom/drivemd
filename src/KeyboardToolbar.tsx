@@ -41,8 +41,6 @@ interface Item {
 type Key = Omit<Item, "command"> & {
   /** Whether it changes the lines the cursor is on, which a cell lacks. */
   lines?: true;
-  /** Whether it writes a table, off where none may be. */
-  writesTable?: true;
 } & (
     | { command: Command; menu?: never }
     | {
@@ -126,7 +124,6 @@ const KEYS: Key[] = [
     command: insertTable,
     icon: "table",
     lines: true,
-    writesTable: true,
   },
   {
     name: "Find in note",
@@ -275,8 +272,10 @@ export function KeyboardToolbar({
         key={name}
         type="button"
         aria-label={follows === undefined ? name : "Open link"}
-        // Off where it would write nothing, which a tap then leaves undone.
-        aria-disabled={key.writesTable && formats.tableOff ? true : undefined}
+        // Off where it writes nothing, which a tap then leaves undone.
+        aria-disabled={
+          command === insertTable && formats.tableOff ? true : undefined
+        }
         onClick={() => {
           if (follows !== undefined) onFollow(follows);
           else if (command) onCommand(command);

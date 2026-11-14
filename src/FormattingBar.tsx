@@ -37,8 +37,6 @@ interface Button {
   lines?: true;
   /** Whether it takes its formatting away where the cursor is in it. */
   toggle?: true;
-  /** Whether it writes a table, off where none may be. */
-  writesTable?: true;
 }
 
 const GROUPS: Button[][] = [
@@ -73,13 +71,7 @@ const GROUPS: Button[][] = [
       lines: true,
       toggle: true,
     },
-    {
-      name: "Insert table",
-      command: insertTable,
-      icon: "table",
-      lines: true,
-      writesTable: true,
-    },
+    { name: "Insert table", command: insertTable, icon: "table", lines: true },
   ],
   [
     {
@@ -314,35 +306,32 @@ export function FormattingBar({
               <hr aria-orientation="vertical" />
             </>
           )}
-          {group.map(
-            ({ name, command, icon, toggle, writesTable }, position) => {
-              const key = keyOf(command);
-              return (
-                <button
-                  key={name}
-                  type="button"
-                  aria-label={name}
-                  aria-keyshortcuts={key && ariaKeys(key)}
-                  aria-pressed={toggle ? formats.on.has(command) : undefined}
-                  // Off where it would write nothing, as the table's buttons
-                  // are, a click leaving it undone.
-                  aria-disabled={
-                    writesTable && formats.tableOff ? true : undefined
-                  }
-                  title={key ? `${name} (${keyLabel(key)})` : name}
-                  // One stop for Tab, the arrows moving between them.
-                  tabIndex={index === 0 && position === 0 ? 0 : -1}
-                  onClick={(event) => {
-                    const toolbar = event.currentTarget.parentElement;
-                    onCommand(command);
-                    left(toolbar);
-                  }}
-                >
-                  <Icon name={icon} />
-                </button>
-              );
-            },
-          )}
+          {group.map(({ name, command, icon, toggle }, position) => {
+            const key = keyOf(command);
+            return (
+              <button
+                key={name}
+                type="button"
+                aria-label={name}
+                aria-keyshortcuts={key && ariaKeys(key)}
+                aria-pressed={toggle ? formats.on.has(command) : undefined}
+                // Off where it writes nothing, as a table's button.
+                aria-disabled={
+                  command === insertTable && formats.tableOff ? true : undefined
+                }
+                title={key ? `${name} (${keyLabel(key)})` : name}
+                // One stop for Tab, the arrows moving between them.
+                tabIndex={index === 0 && position === 0 ? 0 : -1}
+                onClick={(event) => {
+                  const toolbar = event.currentTarget.parentElement;
+                  onCommand(command);
+                  left(toolbar);
+                }}
+              >
+                <Icon name={icon} />
+              </button>
+            );
+          })}
         </Fragment>
       ))}
       {cell &&
