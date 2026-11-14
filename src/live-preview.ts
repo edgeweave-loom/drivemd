@@ -52,7 +52,7 @@ import {
   type CalloutType,
 } from "./callouts.ts";
 import { findInNote } from "./find.ts";
-import { INLINE_KEYS } from "./formatting.ts";
+import { INLINE_KEYS, writeTable } from "./formatting.ts";
 import { TOUCH } from "./layout.ts";
 
 interface Stretch {
@@ -1948,6 +1948,24 @@ function cellMenu(
 export function editTable(view: EditorView, edit: TableEdit): boolean {
   return view.plugin(editingCells)?.edit(edit) ?? false;
 }
+
+/**
+ * Writes an empty table where the cursor is, `writeTable`, then, where
+ * tables show drawn, edits its head's first cell, once read.
+ */
+export const insertTable: Command = (view) => {
+  if (!writeTable(view)) return false;
+  const cells = view.plugin(editingCells);
+  if (!cells) return true;
+  const { doc, selection } = view.state;
+  const head = doc.lineAt(selection.main.head);
+  // Drawn, though the cursor is in it, as with a cell edited, which takes
+  // the focus; should none be, `followingFocus` sets it back.
+  view.dispatch({ effects: focused.of(false) });
+  forceParsing(view, pastTable(doc, doc.line(head.number + 2).to));
+  cells.arrive(head.from, 1, false);
+  return true;
+};
 
 /**
  * Keeps the cell edited in place edited while the focus is away from it,

@@ -241,11 +241,12 @@ function followLinks(follow: (href: string) => void): Extension {
   });
 }
 
-const NO_FORMATS: Formats = { heading: 0, on: new Set() };
+const NO_FORMATS: Formats = { heading: 0, code: false, on: new Set() };
 
 function sameFormats(one: Formats, other: Formats): boolean {
   return (
     one.heading === other.heading &&
+    one.code === other.code &&
     one.on.size === other.on.size &&
     [...one.on].every((command) => other.on.has(command))
   );

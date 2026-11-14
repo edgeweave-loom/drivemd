@@ -24,7 +24,7 @@ import {
   TOGGLE_HEADINGS,
   type Formats,
 } from "./formatting.ts";
-import { editTable, type CellMenu } from "./live-preview.ts";
+import { editTable, insertTable, type CellMenu } from "./live-preview.ts";
 import { peekScale, rowItems } from "./peek.ts";
 import { ALIGNS, TABLE_EDITS } from "./table-edits.ts";
 import { keepRoom, keepVisible } from "./visual-viewport.ts";
@@ -41,6 +41,8 @@ interface Item {
 type Key = Omit<Item, "command"> & {
   /** Whether it changes the lines the cursor is on, which a cell lacks. */
   lines?: true;
+  /** Whether it is off in a code block, where it writes nothing. */
+  offInCode?: true;
 } & (
     | { command: Command; menu?: never }
     | {
@@ -118,6 +120,13 @@ const KEYS: Key[] = [
     command: toggleQuote,
     icon: "blockquote",
     lines: true,
+  },
+  {
+    name: "Insert table",
+    command: insertTable,
+    icon: "table",
+    lines: true,
+    offInCode: true,
   },
   {
     name: "Find in note",
@@ -266,6 +275,8 @@ export function KeyboardToolbar({
         key={name}
         type="button"
         aria-label={follows === undefined ? name : "Open link"}
+        // Off where it would write nothing, which a tap then leaves undone.
+        aria-disabled={key.offInCode && formats.code ? true : undefined}
         onClick={() => {
           if (follows !== undefined) onFollow(follows);
           else if (command) onCommand(command);

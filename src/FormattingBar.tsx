@@ -23,7 +23,7 @@ import {
 } from "./formatting.ts";
 import { Icon } from "./Icon.tsx";
 import { LISTS } from "./lists.ts";
-import { editTable, type CellMenu } from "./live-preview.ts";
+import { editTable, insertTable, type CellMenu } from "./live-preview.ts";
 import { ALIGNS, TABLE_EDITS } from "./table-edits.ts";
 import type { IconName } from "./icons.ts";
 import { ariaKeys, keepFocus, keyLabel, MAC } from "./keys.ts";
@@ -37,6 +37,8 @@ interface Button {
   lines?: true;
   /** Whether it takes its formatting away where the cursor is in it. */
   toggle?: true;
+  /** Whether it is off in a code block, where it writes nothing. */
+  offInCode?: true;
 }
 
 const GROUPS: Button[][] = [
@@ -70,6 +72,13 @@ const GROUPS: Button[][] = [
       icon: "blockquote",
       lines: true,
       toggle: true,
+    },
+    {
+      name: "Insert table",
+      command: insertTable,
+      icon: "table",
+      lines: true,
+      offInCode: true,
     },
   ],
   [
@@ -305,7 +314,7 @@ export function FormattingBar({
               <hr aria-orientation="vertical" />
             </>
           )}
-          {group.map(({ name, command, icon, toggle }, position) => {
+          {group.map(({ name, command, icon, toggle, offInCode }, position) => {
             const key = keyOf(command);
             return (
               <button
@@ -314,6 +323,9 @@ export function FormattingBar({
                 aria-label={name}
                 aria-keyshortcuts={key && ariaKeys(key)}
                 aria-pressed={toggle ? formats.on.has(command) : undefined}
+                // Off where it would write nothing, as the table's buttons
+                // are, a click leaving it undone.
+                aria-disabled={offInCode && formats.code ? true : undefined}
                 title={key ? `${name} (${keyLabel(key)})` : name}
                 // One stop for Tab, the arrows moving between them.
                 tabIndex={index === 0 && position === 0 ? 0 : -1}

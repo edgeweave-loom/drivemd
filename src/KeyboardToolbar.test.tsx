@@ -165,18 +165,79 @@ describe("the keyboard toolbar", () => {
     expect(view.state.sliceDoc()).toBe(after);
   });
 
-  it("holds Quote after Outdent, before Find in note", async () => {
+  it("holds Quote and Insert table after Outdent, before Find in note", async () => {
     await editing("tea");
 
     const names = within(screen.getByRole("toolbar", { name: "Formatting" }))
       .getAllByRole("button")
       .map((key) => key.getAttribute("aria-label"));
     const at = names.indexOf("Outdent");
-    expect(names.slice(at, at + 3)).toEqual([
+    expect(names.slice(at, at + 4)).toEqual([
       "Outdent",
       "Quote",
+      "Insert table",
       "Find in note",
     ]);
+  });
+
+  it("writes an empty table from Insert table, the cursor in its first cell", async () => {
+    const view = await editing("tea");
+
+    expect(
+      fireEvent.mouseDown(screen.getByRole("button", { name: "Insert table" })),
+    ).toBe(false);
+    tap("Insert table");
+
+    expect(view.state.sliceDoc()).toBe(
+      "tea\n\n|  |  |\n| --- | --- |\n|  |  |",
+    );
+    expect(view.state.selection.main.head).toBe(7);
+    expect(view.hasFocus).toBe(true);
+  });
+
+  it("edits the first cell of the table Insert table writes in Visual", async () => {
+    holdTouch(true);
+    const view = open("tea", undefined, true);
+    act(() => {
+      view.focus();
+    });
+    await screen.findByRole("toolbar", { name: "Formatting" });
+
+    tap("Insert table");
+
+    const element = view.contentDOM.querySelector<HTMLElement>(
+      ".cm-table .cm-editor",
+    );
+    const cell = element && EditorView.findFromDOM(element);
+    expect(cell?.hasFocus).toBe(true);
+    // The table's keys in its place, as in any cell.
+    expect(screen.getByRole("button", { name: "Add row below" })).toBeVisible();
+    act(() => {
+      cell?.dispatch(cell.state.replaceSelection("Tea"));
+    });
+    expect(view.state.sliceDoc()).toBe(
+      "tea\n\n| Tea |  |\n| --- | --- |\n|  |  |",
+    );
+  });
+
+  it("keeps Insert table off in a code block", async () => {
+    const view = await editing("```\ncode\n```");
+    act(() => {
+      view.dispatch({ selection: { anchor: 5 } });
+    });
+
+    const key = screen.getByRole("button", { name: "Insert table" });
+    expect(key).toHaveAttribute("aria-disabled", "true");
+    tap("Insert table");
+    expect(view.state.sliceDoc()).toBe("```\ncode\n```");
+
+    act(() => {
+      view.dispatch({
+        changes: { from: 12, insert: "\ntea" },
+        selection: { anchor: 16 },
+      });
+    });
+    expect(key).not.toHaveAttribute("aria-disabled");
   });
 
   it.each([
@@ -379,7 +440,14 @@ describe("the keyboard toolbar", () => {
     tap("Undo");
     expect(view.state.sliceDoc()).toBe(text);
     // Their marks would break its row.
-    for (const name of ["Heading", "List", "Indent", "Outdent", "Quote"]) {
+    for (const name of [
+      "Heading",
+      "List",
+      "Indent",
+      "Outdent",
+      "Quote",
+      "Insert table",
+    ]) {
       expect(screen.queryByRole("button", { name })).toBeNull();
     }
 
