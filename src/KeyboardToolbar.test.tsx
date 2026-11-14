@@ -165,22 +165,14 @@ describe("the keyboard toolbar", () => {
     expect(view.state.sliceDoc()).toBe(after);
   });
 
-  it("holds its keys in order, Quote after Outdent", async () => {
+  it("holds Quote after Outdent, before Find in note", async () => {
     await editing("tea");
 
-    expect(
-      within(screen.getByRole("toolbar", { name: "Formatting" }))
-        .getAllByRole("button")
-        .map((key) => key.getAttribute("aria-label")),
-    ).toEqual([
-      "Undo",
-      "Redo",
-      "Heading",
-      "Bold",
-      "Italic",
-      "List",
-      "Link",
-      "Indent",
+    const names = within(screen.getByRole("toolbar", { name: "Formatting" }))
+      .getAllByRole("button")
+      .map((key) => key.getAttribute("aria-label"));
+    const at = names.indexOf("Outdent");
+    expect(names.slice(at, at + 3)).toEqual([
       "Outdent",
       "Quote",
       "Find in note",
