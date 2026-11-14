@@ -7,12 +7,15 @@ import {
   useRef,
   type KeyboardEvent,
 } from "react";
+import { CalloutIcon } from "./CalloutIcon.tsx";
+import { CALLOUT_TYPES, titled, type CalloutType } from "./callouts.ts";
 import { findInNote } from "./find.ts";
 import {
   FORMATTING_KEYS,
   HEADINGS,
   indentLines,
   insertLink,
+  makeCallout,
   outdentLines,
   toggleBold,
   toggleCode,
@@ -143,6 +146,32 @@ const STYLES = [
 ];
 
 /**
+ * A toolbar's menu: its id, the element it holds, and the ref that holds
+ * it, which focuses its checked item, or else its first, once it opens.
+ */
+function useMenu() {
+  const id = useId();
+  const menu = useRef<HTMLDivElement>(null);
+  const holding = useCallback((element: HTMLDivElement | null) => {
+    menu.current = element;
+    if (!element) return;
+    const opened = (event: Event) => {
+      if ((event as ToggleEvent).newState !== "open") return;
+      const item =
+        element.querySelector<HTMLElement>('[aria-checked="true"]') ??
+        element.querySelector<HTMLElement>('[role="menuitemradio"]');
+      item?.focus();
+    };
+    element.addEventListener("toggle", opened);
+    return () => {
+      element.removeEventListener("toggle", opened);
+      menu.current = null;
+    };
+  }, []);
+  return [id, menu, holding] as const;
+}
+
+/**
  * The cursor's line's style, as Docs's toolbar gives it: a button naming
  * it, and a menu of text and the six headings, each with its key, the one
  * shown checked. The focus starts at it, and goes back to the text once a
@@ -157,21 +186,7 @@ function StyleMenu({
   onCommand: (command: Command) => void;
   onLeave: () => void;
 }) {
-  const id = useId();
-  const menu = useRef<HTMLDivElement>(null);
-  const holding = useCallback((element: HTMLDivElement | null) => {
-    menu.current = element;
-    if (!element) return;
-    const opened = (event: Event) => {
-      if ((event as ToggleEvent).newState !== "open") return;
-      element.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
-    };
-    element.addEventListener("toggle", opened);
-    return () => {
-      element.removeEventListener("toggle", opened);
-      menu.current = null;
-    };
-  }, []);
+  const [id, menu, holding] = useMenu();
   return (
     <>
       <button
@@ -230,17 +245,87 @@ function StyleMenu({
 }
 
 /**
+ * Quote's ▾, in a vault's note: a menu of Obsidian's callout types, each
+ * after its icon in its color, the type of the callout around the cursor
+ * checked, which makes a callout of the type picked or changes its type,
+ * as Docs' list buttons open their menus.
+ */
+function CalloutMenu({
+  off,
+  callout,
+  onCommand,
+  onLeave,
+}: {
+  /** Whether it is off, in code or the front matter, opening nothing. */
+  off: boolean;
+  callout: CalloutType | null;
+  onCommand: (command: Command) => void;
+  onLeave: () => void;
+}) {
+  const [id, menu, holding] = useMenu();
+  return (
+    <>
+      <button
+        type="button"
+        className="split"
+        aria-label="Callout type"
+        aria-haspopup="menu"
+        aria-disabled={off || undefined}
+        popoverTarget={off ? undefined : id}
+        tabIndex={-1}
+        title="Callout type"
+      >
+        <Icon name="arrow_drop_down" />
+      </button>
+      <div
+        ref={holding}
+        id={id}
+        popover="auto"
+        role="menu"
+        aria-label="Callout type"
+        className="menu callout-menu"
+        // Its keys stay its own, rather than moving along the toolbar.
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          moveInMenu(event);
+        }}
+      >
+        {CALLOUT_TYPES.map((type) => (
+          <button
+            key={type}
+            type="button"
+            role="menuitemradio"
+            aria-checked={type === callout}
+            data-callout={type}
+            onClick={() => {
+              menu.current?.hidePopover();
+              onCommand(makeCallout(type));
+              onLeave();
+            }}
+          >
+            <CalloutIcon type={type} />
+            {titled(type)}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/**
  * The formatting commands as buttons over the note, as Google Docs shows
  * them, where the pointer is a mouse's or a trackpad's. Each button's name
  * and key show in its tooltip. A click keeps the focus in the text; from
  * the keyboard, Alt+F10 reaches the toolbar, and a button pressed gives the
  * focus back to the text. The cursor's line's style shows in its menu, and
- * the formatting around the cursor as buttons pressed. In a table's cell,
+ * the formatting around the cursor as buttons pressed, and, in a vault's
+ * note, Quote's menu makes callouts. In a table's cell,
  * the style and the buttons of lines leave, since their marks would break
  * its row.
  */
 export function FormattingBar({
   cell,
+  vault,
   tableMenu,
   formats,
   onCommand,
@@ -252,6 +337,8 @@ export function FormattingBar({
    * edits that apply, and its column's alignment.
    */
   cell: CellMenu | null;
+  /** Whether the note is in a vault, whose callouts Quote's menu makes. */
+  vault: boolean;
   /** The table's menu's id, which the Table button opens in a cell. */
   tableMenu: string;
   /** The formatting where the cursor is, which its buttons show pressed. */
@@ -309,27 +396,38 @@ export function FormattingBar({
           {group.map(({ name, command, icon, toggle }, position) => {
             const key = keyOf(command);
             return (
-              <button
-                key={name}
-                type="button"
-                aria-label={name}
-                aria-keyshortcuts={key && ariaKeys(key)}
-                aria-pressed={toggle ? formats.on.has(command) : undefined}
-                // Off where it writes nothing, as a table's button.
-                aria-disabled={
-                  command === insertTable && formats.tableOff ? true : undefined
-                }
-                title={key ? `${name} (${keyLabel(key)})` : name}
-                // One stop for Tab, the arrows moving between them.
-                tabIndex={index === 0 && position === 0 ? 0 : -1}
-                onClick={(event) => {
-                  const toolbar = event.currentTarget.parentElement;
-                  onCommand(command);
-                  left(toolbar);
-                }}
-              >
-                <Icon name={icon} />
-              </button>
+              <Fragment key={name}>
+                <button
+                  type="button"
+                  aria-label={name}
+                  aria-keyshortcuts={key && ariaKeys(key)}
+                  aria-pressed={toggle ? formats.on.has(command) : undefined}
+                  // Off where it writes nothing, as a table's button.
+                  aria-disabled={
+                    command === insertTable && formats.tableOff
+                      ? true
+                      : undefined
+                  }
+                  title={key ? `${name} (${keyLabel(key)})` : name}
+                  // One stop for Tab, the arrows moving between them.
+                  tabIndex={index === 0 && position === 0 ? 0 : -1}
+                  onClick={(event) => {
+                    const toolbar = event.currentTarget.parentElement;
+                    onCommand(command);
+                    left(toolbar);
+                  }}
+                >
+                  <Icon name={icon} />
+                </button>
+                {command === toggleQuote && vault && (
+                  <CalloutMenu
+                    off={formats.calloutOff}
+                    callout={formats.callout}
+                    onCommand={onCommand}
+                    onLeave={onLeave}
+                  />
+                )}
+              </Fragment>
             );
           })}
         </Fragment>

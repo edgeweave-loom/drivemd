@@ -13,6 +13,7 @@ import {
 } from "@codemirror/state";
 import type { Command, KeyBinding } from "@codemirror/view";
 import type { SyntaxNode, Tree } from "@lezer/common";
+import { calloutMarker, type CalloutType } from "./callouts.ts";
 
 /*
  * Markdown formatting, as the keyboard toolbar offers it on phones. Each
@@ -287,18 +288,130 @@ export const toggleQuote: StateCommand = ({ state, dispatch }) =>
             );
             return { from: mark, to: mark + (space ? 2 : 1) };
           })
-        : lines.flatMap((line) =>
-            line.quotes === ""
-              ? [
-                  {
-                    from: state.doc.lineAt(line.at).from,
-                    insert: line.blank ? ">" : "> ",
-                  },
-                ]
-              : [],
-          ),
+        : lines.flatMap((line) => quoteLine(state, line)),
     selectedLines(state, true),
   );
+
+/** Quotes a line, as Quote does, if it is not quoted yet. */
+function quoteLine(state: EditorState, line: Prefix): ChangeSpec[] {
+  if (line.quotes !== "") return [];
+  const from = state.doc.lineAt(line.at).from;
+  return [{ from, insert: line.blank ? ">" : "> " }];
+}
+
+/**
+ * A quote's first block, past its marks, if it has one, and the callout's
+ * marker that opens it, if the quote is a callout: a paragraph that starts
+ * with `[!type]`.
+ */
+export function quoteOpening(state: EditorState, quote: SyntaxNode) {
+  let first = quote.firstChild;
+  while (first?.name === "QuoteMark") first = first.nextSibling;
+  const marker =
+    first?.name === "Paragraph"
+      ? calloutMarker(
+          state.sliceDoc(first.from, state.doc.lineAt(first.from).to),
+        )
+      : null;
+  return { first, marker };
+}
+
+/** The first selected line with text, or else the first one. */
+function firstSelected(state: EditorState): Line {
+  const { ranges } = state.selection;
+  for (const range of ranges) {
+    for (let at = range.from; at <= range.to;) {
+      const line = state.doc.lineAt(at);
+      if (!BLANK.test(line.text) && (range.empty || range.to > line.from)) {
+        return line;
+      }
+      at = line.to + 1;
+    }
+  }
+  return state.doc.lineAt(ranges[0]?.from ?? 0);
+}
+
+/**
+ * The block of the note's own that a line is in, out of any list or quote,
+ * if any.
+ */
+function topBlock(tree: Tree, line: Line): SyntaxNode | null {
+  let node = tree.resolveInner(line.to, -1);
+  while (node.parent && node.parent.name !== "Document") node = node.parent;
+  return node.name === "Document" ? null : node;
+}
+
+// What `[!type]` writes after it, on a line of its own above a block that
+// is not a paragraph: a line break and the marks of the block's line, as
+// those of a line that continues it.
+function titleAbove(state: EditorState, block: SyntaxNode): string {
+  const line = state.doc.lineAt(block.from);
+  const marks = state.sliceDoc(line.from, block.from).replace(/[^>\s]/g, " ");
+  return `${state.lineBreak}${marks}`;
+}
+
+/** The marker of a callout of `type` in a quote that is not yet one. */
+function markQuote(
+  state: EditorState,
+  quote: SyntaxNode,
+  type: CalloutType,
+): ChangeSpec[] {
+  const { first, marker } = quoteOpening(state, quote);
+  if (marker) {
+    if (marker.type === type) return [];
+    // After its `[!`.
+    const from = (first?.from ?? 0) + 2;
+    return [{ from, to: from + marker.name.length, insert: type }];
+  }
+  if (!first) {
+    // A quote of nothing but its marks: its text would follow them.
+    const { to } = state.doc.lineAt(quote.from);
+    const space = /[ \t]/.test(state.sliceDoc(to - 1, to)) ? "" : " ";
+    return [{ from: to, insert: `${space}[!${type}] ` }];
+  }
+  const title = first.name === "Paragraph" ? " " : titleAbove(state, first);
+  return [{ from: first.from, insert: `[!${type}]${title}` }];
+}
+
+/**
+ * Makes the selected lines a callout of `type`, in lower case, as one edit.
+ * In a quote, the innermost around the first line, only that quote
+ * changes: a callout's type, the name in its `[!type]` alone, and nothing
+ * where it already shows as `type`, written as an alias or unknown; or a
+ * quote's first paragraph, which `[!type] ` makes the title. Lines not
+ * quoted, up to one that is, are quoted as Quote does, a first line of a
+ * paragraph's text becoming the title. Another block keeps its line, under
+ * a title's of its own. It is off in code, in the front matter, and where
+ * the parse has not reached.
+ */
+export function makeCallout(type: CalloutType): StateCommand {
+  return ({ state, dispatch }) => {
+    if (state.readOnly) return false;
+    const first = firstSelected(state);
+    const tree = ensureSyntaxTree(state, first.to, 100);
+    if (!tree || blockAt(tree, first, NO_TABLE)) return false;
+    const quote = blockAt(tree, first, ["Blockquote"]);
+    let changes: ChangeSpec[];
+    if (quote) {
+      changes = markQuote(state, quote, type);
+    } else {
+      const lines = selectedLines(state, true);
+      const quoted = lines.findIndex((line) => line.quotes !== "");
+      const taken = quoted === -1 ? lines : lines.slice(0, quoted);
+      // Blank lines before a quote would join it to the callout.
+      while (taken.length > 1 && taken.at(-1)?.blank) taken.pop();
+      const block = topBlock(tree, first);
+      const title =
+        !block || block.name === "Paragraph" ? " " : `${state.lineBreak}> `;
+      changes = [
+        { from: first.from, insert: `> [!${type}]${title}` },
+        ...taken.slice(1).flatMap((line) => quoteLine(state, line)),
+      ];
+    }
+    if (changes.length === 0) return true;
+    return formatLines(state, dispatch, () => changes);
+  };
+}
 
 type Task = "text" | "item" | "open" | "done";
 type Target = Exclude<Task, "text">;
@@ -882,6 +995,13 @@ export interface Formats {
    * has read so far.
    */
   tableOff: boolean;
+  /** Whether Quote's callout types are off, as Insert table, on the first line. */
+  calloutOff: boolean;
+  /**
+   * The type of the callout around the first selected line, the innermost,
+   * as it shows, if it is in one.
+   */
+  callout: CalloutType | null;
   on: ReadonlySet<StateCommand | Command>;
 }
 
@@ -904,9 +1024,19 @@ export function formatsAt(state: EditorState): Formats {
   if (line.quotes.includes(">")) on.add(toggleQuote);
   const heading = TOGGLE_HEADINGS[line.heading - 1];
   if (heading) on.add(heading);
+  const tree = syntaxTree(state);
+  const first = firstSelected(state);
   return {
     heading: line.heading,
-    tableOff: blockAt(syntaxTree(state), lastLine(state), NO_TABLE) !== null,
+    tableOff: blockAt(tree, lastLine(state), NO_TABLE) !== null,
+    calloutOff: blockAt(tree, first, NO_TABLE) !== null,
+    callout: calloutAround(state, tree, first),
     on,
   };
+}
+
+/** The type of the callout around the first selected line, if any. */
+function calloutAround(state: EditorState, tree: Tree, first: Line) {
+  const quote = blockAt(tree, first, ["Blockquote"]);
+  return quote ? (quoteOpening(state, quote).marker?.type ?? null) : null;
 }

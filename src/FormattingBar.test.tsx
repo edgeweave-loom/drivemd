@@ -14,7 +14,7 @@ import { Editor } from "./Editor.tsx";
 import { holdTouch } from "./test/screen.ts";
 
 /** Opens the editor, its formatting toolbar's place over it. */
-function open(text: string, visual = false) {
+function open(text: string, visual = false, vault = false) {
   const slot = document.createElement("div");
   document.body.append(slot);
   const { container } = render(
@@ -22,6 +22,7 @@ function open(text: string, visual = false) {
       initial={text}
       lineBreak={"\n"}
       visual={visual}
+      vault={vault}
       onChange={() => undefined}
       onFollow={() => undefined}
       formatSlot={slot}
@@ -223,6 +224,111 @@ describe("the formatting toolbar", () => {
     expect(view.hasFocus).toBe(true);
   });
 
+  it("makes a callout from Quote's menu in a vault's note, its type checked", () => {
+    const view = open("> [!faq] tea", false, true);
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 12 } });
+    });
+    expect(names().slice(12, 15)).toEqual([
+      "Quote",
+      "Callout type",
+      "Insert table",
+    ]);
+    const type = within(toolbar()).getByRole("button", {
+      name: "Callout type",
+    });
+    expect(type).toHaveAttribute("aria-haspopup", "menu");
+    expect(type).toHaveAttribute("title", "Callout type");
+
+    fireEvent.click(type);
+    const menu = screen.getByRole("menu", { name: "Callout type" });
+    const items = within(menu).getAllByRole("menuitemradio");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Note",
+      "Abstract",
+      "Info",
+      "Todo",
+      "Tip",
+      "Success",
+      "Question",
+      "Warning",
+      "Failure",
+      "Danger",
+      "Bug",
+      "Example",
+      "Quote",
+    ]);
+    // Written as an alias, it shows as its type.
+    const checked = within(menu).getByRole("menuitemradio", { checked: true });
+    expect(checked).toHaveTextContent("Question");
+    expect(checked).toHaveFocus();
+    const warning = within(menu).getByRole("menuitemradio", {
+      name: "Warning",
+    });
+    expect(warning.querySelector("svg")).toHaveAttribute(
+      "data-icon",
+      "lucide-triangle-alert",
+    );
+    fireEvent.click(warning);
+
+    expect(view.state.sliceDoc()).toBe("> [!warning] tea");
+    expect(view.hasFocus).toBe(true);
+  });
+
+  it("focuses Note in Quote's menu outside a callout, and follows the cursor", () => {
+    const view = open("tea\n\n> [!tip] cup\n\n> [!bug] pot", false, true);
+    act(() => {
+      view.focus();
+    });
+    fireEvent.click(
+      within(toolbar()).getByRole("button", { name: "Callout type" }),
+    );
+    const menu = screen.getByRole("menu", { name: "Callout type" });
+
+    expect(
+      within(menu).queryByRole("menuitemradio", { checked: true }),
+    ).toBeNull();
+    expect(
+      within(menu).getByRole("menuitemradio", { name: "Note" }),
+    ).toHaveFocus();
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 15 } });
+    });
+    expect(
+      within(menu).getByRole("menuitemradio", { checked: true }),
+    ).toHaveTextContent("Tip");
+    // From one callout to another, as quoted as it.
+    act(() => {
+      view.dispatch({ selection: { anchor: 29 } });
+    });
+    expect(
+      within(menu).getByRole("menuitemradio", { checked: true }),
+    ).toHaveTextContent("Bug");
+  });
+
+  it("turns Quote's menu off in code, where it opens nothing", () => {
+    const view = open("```\ncode\n```", false, true);
+    act(() => {
+      view.dispatch({ selection: { anchor: 5 } });
+    });
+    const type = within(toolbar()).getByRole("button", {
+      name: "Callout type",
+    });
+
+    expect(type).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(type);
+    expect(screen.queryByRole("menu", { name: "Callout type" })).toBeNull();
+    expect(view.state.sliceDoc()).toBe("```\ncode\n```");
+  });
+
+  it("leaves Quote without a menu outside a vault", () => {
+    open("> [!note] tea");
+
+    expect(names()).not.toContain("Callout type");
+  });
+
   it("presses the buttons of the formatting around the cursor", () => {
     const view = open("- **tea** and _cups_");
     const pressed = () =>
@@ -298,7 +404,8 @@ describe("the formatting toolbar", () => {
   });
 
   it("trades the buttons of lines for the table's in a cell, whose text it formats", async () => {
-    const view = open("| Tea | Cups |\n| - | - |", true);
+    // In a vault's note, whose Quote has a menu.
+    const view = open("| Tea | Cups |\n| - | - |", true, true);
     const cell = await editCell(view, "Tea");
     act(() => {
       cell.dispatch({ selection: { anchor: 0, head: 3 } });

@@ -1766,8 +1766,13 @@ dialog.drawer > .close {
   --callout-quote: rgb(158 158 158);
 }
 
-.markdown .callout {
+/* A callout's color, or a type's in Quote's menu, an unknown one a note's. */
+.markdown .callout,
+.callout-menu > [data-callout] {
   --callout: var(--callout-note);
+}
+
+.markdown .callout {
   padding: 0.75rem 1rem;
   border-left: 0.25em solid var(--callout);
   border-radius: 6px;
@@ -1779,15 +1784,18 @@ dialog.drawer > .close {
   margin: 0 0 1rem;
 }
 
-.markdown .callout:is([data-callout="abstract"], [data-callout="tip"]) {
+.markdown .callout:is([data-callout="abstract"], [data-callout="tip"]),
+.callout-menu > :is([data-callout="abstract"], [data-callout="tip"]) {
   --callout: var(--callout-abstract);
 }
 
-.markdown .callout[data-callout="success"] {
+.markdown .callout[data-callout="success"],
+.callout-menu > [data-callout="success"] {
   --callout: var(--callout-success);
 }
 
-.markdown .callout:is([data-callout="question"], [data-callout="warning"]) {
+.markdown .callout:is([data-callout="question"], [data-callout="warning"]),
+.callout-menu > :is([data-callout="question"], [data-callout="warning"]) {
   --callout: var(--callout-question);
 }
 
@@ -1796,15 +1804,23 @@ dialog.drawer > .close {
     [data-callout="failure"],
     [data-callout="danger"],
     [data-callout="bug"]
+  ),
+.callout-menu
+  > :is(
+    [data-callout="failure"],
+    [data-callout="danger"],
+    [data-callout="bug"]
   ) {
   --callout: var(--callout-failure);
 }
 
-.markdown .callout[data-callout="example"] {
+.markdown .callout[data-callout="example"],
+.callout-menu > [data-callout="example"] {
   --callout: var(--callout-example);
 }
 
-.markdown .callout[data-callout="quote"] {
+.markdown .callout[data-callout="quote"],
+.callout-menu > [data-callout="quote"] {
   --callout: var(--callout-quote);
 }
 
@@ -2620,6 +2636,13 @@ body:has(> .keyboard-toolbar) .editor {
   anchor-name: --table-button;
 }
 
+/* Quote's ▾ in a vault's note, the narrow half of a split button. */
+.format-bar > button.split {
+  width: 20px;
+  margin-inline-start: -2px;
+  anchor-name: --callout-type;
+}
+
 /* A table's edit that does not apply to the cell. */
 .format-bar > button[aria-disabled="true"] {
   background-image: none;
@@ -2627,7 +2650,8 @@ body:has(> .keyboard-toolbar) .editor {
   cursor: default;
 }
 
-.style-menu {
+.style-menu,
+.callout-menu {
   inset: calc(var(--app-bar-bottom) + 48px) auto auto var(--space-4);
 }
 
@@ -2637,16 +2661,34 @@ body:has(> .keyboard-toolbar) .editor {
     inset: anchor(bottom) auto auto anchor(left);
     margin: var(--space-1) 0 0;
   }
+
+  .callout-menu {
+    position-anchor: --callout-type;
+    inset: anchor(bottom) auto auto anchor(left);
+    margin: var(--space-1) 0 0;
+  }
 }
 
-/* Dense under a mouse, which alone shows it. */
-.style-menu > button {
+/* Dense under a mouse, which alone shows them. */
+:is(.style-menu, .callout-menu) > button {
   min-height: 32px;
 }
 
-.style-menu > [aria-checked="true"] {
+:is(.style-menu, .callout-menu) > [aria-checked="true"] {
   background: var(--secondary-container);
   color: var(--on-secondary-container);
+}
+
+/* Each type after its icon in its color, as Visual draws it. */
+.callout-menu {
+  min-width: 180px;
+}
+
+.callout-menu .callout-icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--callout);
 }
 
 .style-menu .key {

@@ -20,6 +20,7 @@ import {
   formatsAt,
   indentLines,
   insertLink,
+  makeCallout,
   outdentLines,
   toggleBold,
   toggleCode,
@@ -372,6 +373,112 @@ describe("toggleQuote", () => {
   });
 });
 
+describe("makeCallout", () => {
+  it.each([
+    // Lines not quoted: the first one's text becomes the title.
+    ["te|a", "> [!warning] te|a"],
+    ["|", "> [!warning] |"],
+    ["«a\nb»", "> [!warning] «a\n> b»"],
+    ["«a\n\nb»", "> [!warning] «a\n>\n> b»"],
+    // A block that is not a paragraph keeps its line, under a title's.
+    ["- te|a", "> [!warning]\n> - te|a"],
+    ["# Ti|tle", "> [!warning]\n> # Ti|tle"],
+    // Up to a quote, which it never takes in.
+    ["«a\n\n> [!tip] b»", "> [!warning] «a\n\n> [!tip] b»"],
+    // A quote: its first line's.
+    ["> te|a", "> [!warning] te|a"],
+    [">te|a", ">[!warning] te|a"],
+    ["> a\n> b|", "> [!warning] a\n> b|"],
+    ["- > te|a", "- > [!warning] te|a"],
+    ["> a\n>|", "> [!warning] a\n>|"],
+    [">|\n\nb", "> [!warning] |\n\nb"],
+    [
+      "> ```js\n> x\n> ```\n> te|a",
+      "> [!warning]\n> ```js\n> x\n> ```\n> te|a",
+    ],
+    ["- > - te|a", "- > [!warning]\n  > - te|a"],
+    // Only the quote around the first line.
+    ["«> a\nb»", "«> [!warning] a\nb»"],
+    ["«> [!tip] a\n\n> [!bug] b»", "«> [!warning] a\n\n> [!bug] b»"],
+    // A callout: only its type's name.
+    ["> [!note] Ti|tle", "> [!warning] Ti|tle"],
+    ["> [!NOTE]- Ti|tle\n> body", "> [!warning]- Ti|tle\n> body"],
+    ["> [!note]+\n> bo|dy", "> [!warning]+\n> bo|dy"],
+    ["> [!faq] te|a", "> [!warning] te|a"],
+    // The innermost quote around the line.
+    ["> [!note] T\n> bo|dy", "> [!warning] T\n> bo|dy"],
+    ["> [!note]\n> > [!tip] in|ner", "> [!note]\n> > [!warning] in|ner"],
+    ["> [!note] T\n> > qu|ote", "> [!note] T\n> > [!warning] qu|ote"],
+  ])("turns %j into %j", (before, after) => {
+    expect(run(makeCallout("warning"), before).text).toBe(after);
+  });
+
+  it("writes a table's rows under a title line of their own", () => {
+    const { text } = run(
+      makeCallout("warning"),
+      EditorState.create({
+        doc: "| a |\n| - |",
+        selection: { anchor: 0, head: 11 },
+        extensions: [markdown({ base: markdownLanguage })],
+      }),
+    );
+
+    expect(text).toBe("> [!warning]\n> «| a |\n> | - |»");
+  });
+
+  it("writes nothing where the callout already shows as the type", () => {
+    for (const [text, type] of [
+      ["> [!faq] te|a", "question"],
+      ["> [!question] te|a", "question"],
+      ["> [!whatever] te|a", "note"],
+    ] as const) {
+      const state = open(text);
+      const dispatched: Transaction[] = [];
+      const done = makeCallout(type)({
+        state,
+        dispatch: (transaction) => dispatched.push(transaction),
+      });
+
+      expect(done).toBe(true);
+      expect(dispatched).toEqual([]);
+    }
+  });
+
+  it("is off in code and in the front matter", () => {
+    for (const text of ["```\nco|de\n```", "> ```\n> co|de\n> ```"]) {
+      const state = open(text);
+      expect(makeCallout("tip")({ state, dispatch: () => undefined })).toBe(
+        false,
+      );
+      expect(formatsAt(state).calloutOff).toBe(true);
+    }
+    const front = EditorState.create({
+      doc: "---\ntitle: Tea\n---\nTea.",
+      selection: { anchor: 6 },
+      extensions: [withFrontmatter(markdown({ base: markdownLanguage }))],
+    });
+    expect(
+      makeCallout("tip")({ state: front, dispatch: () => undefined }),
+    ).toBe(false);
+    expect(formatsAt(front).calloutOff).toBe(true);
+    expect(formatsAt(open("te|a")).calloutOff).toBe(false);
+  });
+
+  it("is the type checked where the cursor's line is in a callout", () => {
+    const callout = (text: string) => formatsAt(open(text)).callout;
+
+    expect(callout("te|a")).toBeNull();
+    expect(callout("> te|a")).toBeNull();
+    expect(callout("> [!tip] te|a")).toBe("tip");
+    expect(callout("> [!FAQ]-\n> te|a")).toBe("question");
+    expect(callout("> [!whatever]\n> te|a")).toBe("note");
+    expect(callout("> [!note]\n> > [!bug]\n> > te|a")).toBe("bug");
+    expect(callout("> [!note]\n> > te|a")).toBeNull();
+    expect(callout(">\n> [!tip] te|a")).toBe("tip");
+    expect(callout("> te|a\n> [!tip]")).toBeNull();
+  });
+});
+
 describe("toggleList", () => {
   it.each([
     ["te|a", "- te|a"],
@@ -691,6 +798,7 @@ describe("outdentLines", () => {
 describe("the formatting commands", () => {
   const commands = {
     heading: heading(2),
+    callout: makeCallout("warning"),
     toggleBold,
     toggleList,
     cycleTask,
@@ -707,7 +815,10 @@ describe("the formatting commands", () => {
         EditorState.create({
           doc: "one\r\ntwo",
           selection: { anchor: 0, head: 7 },
-          extensions: [EditorState.lineSeparator.of("\r\n")],
+          extensions: [
+            EditorState.lineSeparator.of("\r\n"),
+            markdown({ base: markdownLanguage }),
+          ],
         }),
       );
 

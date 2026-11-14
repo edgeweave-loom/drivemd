@@ -32,13 +32,9 @@ import rehypeSlug from "rehype-slug";
 import remarkBreaks from "remark-breaks";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
-import { CHEVRON, ICONS } from "./callout-icons.tsx";
-import {
-  CALLOUT_TYPES,
-  isCalloutType,
-  remarkCallouts,
-  type CalloutType,
-} from "./callouts.ts";
+import { CHEVRON } from "./callout-icons.tsx";
+import { CalloutIcon, Lucide } from "./CalloutIcon.tsx";
+import { CALLOUT_TYPES, isCalloutType, remarkCallouts } from "./callouts.ts";
 import { useDrive } from "./drive-context.ts";
 import { inDrive } from "./drive-web.ts";
 import {
@@ -908,19 +904,6 @@ function calloutTitle(
 }
 
 /**
- * The icon of a callout's type, drawn in the text's color; its meaning is
- * the title's.
- */
-function CalloutIcon({ type }: { type: CalloutType }) {
-  const [name, drawing] = ICONS[type];
-  return (
-    <Lucide name={name} className="callout-icon">
-      {drawing}
-    </Lucide>
-  );
-}
-
-/**
  * The chevron that ends a folding callout's title, which the stylesheet
  * turns while the callout is folded.
  */
@@ -929,33 +912,6 @@ function CalloutFold() {
     <Lucide name={CHEVRON[0]} className="callout-fold">
       {CHEVRON[1]}
     </Lucide>
-  );
-}
-
-/** A Lucide icon, drawn in the text's color; its meaning is the text's. */
-function Lucide({
-  name,
-  className,
-  children,
-}: {
-  name: string;
-  className: string;
-  children: ReactNode;
-}) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      data-icon={`lucide-${name}`}
-    >
-      {children}
-    </svg>
   );
 }
 

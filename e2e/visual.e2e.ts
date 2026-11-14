@@ -444,6 +444,59 @@ test("draws a vault's callout in Visual as the viewer does, its marks shown wher
   );
 });
 
+test("makes a callout from Quote's menu in a vault's note, and changes its type, by mouse and by keyboard", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.name !== "desktop-chromium",
+    "A touch screen has the keyboard toolbar",
+  );
+  const today = drive.files.get("today");
+  if (!today) throw new Error("No today");
+  today.content = "Tea.\n\nWhy tea?\n";
+  const note = await editInVisual(page, "today");
+  const title = note.locator(".cm-line").nth(2);
+  const toolbar = page.getByRole("toolbar", { name: "Format", exact: true });
+  const menu = page.getByRole("menu", { name: "Callout type" });
+
+  // With a mouse: the line's text becomes the title.
+  await title.click();
+  await toolbar.getByRole("button", { name: "Callout type" }).click();
+  await expect(
+    menu.getByRole("menuitemradio", { name: "Warning" }).locator("svg"),
+  ).toHaveCSS("color", "rgb(236, 117, 0)");
+  await menu.getByRole("menuitemradio", { name: "Question" }).click();
+  await expect(menu).toBeHidden();
+  await expect(title).toHaveText("> [!question] Why tea?");
+  await expect(note).toBeFocused();
+
+  // From the keyboard: the ▾ is a stop of its own, after Quote.
+  await page.keyboard.press("Alt+F10");
+  await page.keyboard.press("End");
+  for (let stop = 0; stop < 3; stop++) await page.keyboard.press("ArrowLeft");
+  await expect(
+    toolbar.getByRole("button", { name: "Callout type" }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(
+    menu.getByRole("menuitemradio", { name: "Question" }),
+  ).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(note).toBeFocused();
+  await expect(title).toHaveText("> [!warning] Why tea?");
+
+  // Each pick, one edit that undo takes back.
+  await page.keyboard.press("Control+z");
+  await expect(title).toHaveText("> [!question] Why tea?");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("today")?.content)).toBe(
+    "Tea.\n\n> [!question] Why tea?\n",
+  );
+});
+
 test("folds a vault's callout in Visual as its `-` says, which a tap on its chevron opens, writing nothing", async ({
   page,
   drive,
