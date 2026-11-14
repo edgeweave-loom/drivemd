@@ -82,6 +82,7 @@ describe("the formatting toolbar", () => {
       "Numbered list",
       "Checkbox",
       "Quote",
+      "Insert table",
       "Outdent",
       "Indent",
     ]);
@@ -255,6 +256,46 @@ describe("the formatting toolbar", () => {
     if (!cell) throw new Error("No cell's editor");
     return cell;
   }
+
+  it("writes an empty table from Insert table, editing its first cell in Visual", async () => {
+    const view = open("tea", true);
+    act(() => {
+      view.focus();
+    });
+    const insert = within(toolbar()).getByRole("button", {
+      name: "Insert table",
+    });
+    expect(insert).toHaveAttribute("title", "Insert table");
+
+    expect(fireEvent.mouseDown(insert)).toBe(false);
+    fireEvent.click(insert);
+
+    expect(view.state.sliceDoc()).toBe(
+      "tea\n\n|  |  |\n| --- | --- |\n|  |  |",
+    );
+    const element = view.contentDOM.querySelector<HTMLElement>(
+      ".cm-table .cm-editor",
+    );
+    expect(element && EditorView.findFromDOM(element)?.hasFocus).toBe(true);
+    await waitFor(() => {
+      expect(names()).toContain("Add row below");
+    });
+  });
+
+  it("keeps Insert table off in a code block", () => {
+    const view = open("```\ncode\n```");
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 5 } });
+    });
+    const insert = within(toolbar()).getByRole("button", {
+      name: "Insert table",
+    });
+
+    expect(insert).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(insert);
+    expect(view.state.sliceDoc()).toBe("```\ncode\n```");
+  });
 
   it("trades the buttons of lines for the table's in a cell, whose text it formats", async () => {
     const view = open("| Tea | Cups |\n| - | - |", true);

@@ -23,7 +23,7 @@ import {
 } from "./formatting.ts";
 import { Icon } from "./Icon.tsx";
 import { LISTS } from "./lists.ts";
-import { editTable, type CellMenu } from "./live-preview.ts";
+import { editTable, insertTable, type CellMenu } from "./live-preview.ts";
 import { ALIGNS, TABLE_EDITS } from "./table-edits.ts";
 import type { IconName } from "./icons.ts";
 import { ariaKeys, keepFocus, keyLabel, MAC } from "./keys.ts";
@@ -71,6 +71,7 @@ const GROUPS: Button[][] = [
       lines: true,
       toggle: true,
     },
+    { name: "Insert table", command: insertTable, icon: "table", lines: true },
   ],
   [
     {
@@ -314,6 +315,10 @@ export function FormattingBar({
                 aria-label={name}
                 aria-keyshortcuts={key && ariaKeys(key)}
                 aria-pressed={toggle ? formats.on.has(command) : undefined}
+                // Off where it writes nothing, as a table's button.
+                aria-disabled={
+                  command === insertTable && formats.tableOff ? true : undefined
+                }
                 title={key ? `${name} (${keyLabel(key)})` : name}
                 // One stop for Tab, the arrows moving between them.
                 tabIndex={index === 0 && position === 0 ? 0 : -1}

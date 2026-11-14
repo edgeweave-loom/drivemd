@@ -12,7 +12,7 @@ import {
   type Transaction,
 } from "@codemirror/state";
 import type { Command, KeyBinding } from "@codemirror/view";
-import type { SyntaxNode } from "@lezer/common";
+import type { SyntaxNode, Tree } from "@lezer/common";
 
 /*
  * Markdown formatting, as the keyboard toolbar offers it on phones. Each
@@ -755,6 +755,108 @@ export const INLINE_KEYS: readonly KeyBinding[] = [
   { key: "Mod-k", run: insertLink },
 ];
 
+// Where a table is never written: code, whose lines show as written, and
+// the front matter's YAML.
+const NO_TABLE = ["FencedCode", "CodeBlock", "Frontmatter"];
+
+// The blocks that a table never comes between the lines of, as a line of
+// one runs on from the line before: a paragraph's, a setext heading's
+// underline, a table's rows.
+const WHOLE = [
+  "Paragraph",
+  "SetextHeading1",
+  "SetextHeading2",
+  "Table",
+  "HTMLBlock",
+];
+
+/**
+ * The innermost node of `names` that holds `line`, if any, from its end:
+ * its start may be a quote's mark, or an indented code block's indent.
+ */
+function blockAt(
+  tree: Tree,
+  line: Line,
+  names: readonly string[],
+): SyntaxNode | null {
+  for (
+    let node: SyntaxNode | null = tree.resolveInner(line.to, -1);
+    node;
+    node = node.parent
+  ) {
+    if (names.includes(node.name)) return node;
+  }
+  return null;
+}
+
+/**
+ * The last line the main selection holds, which one ending at a line's
+ * start leaves out, as the formatting of lines does.
+ */
+function lastLine(state: EditorState): Line {
+  const { from, to } = state.selection.main;
+  const line = state.doc.lineAt(to);
+  return to > from && to === line.from ? state.doc.lineAt(to - 1) : line;
+}
+
+// A line with nothing but quotes' marks, if any.
+const BLANK = /^[ \t>]*$/;
+
+// An empty table of two columns: its head, its delimiter row, and a row
+// as Tab's.
+const TABLE = ["|  |  |", "| --- | --- |", "|  |  |"];
+
+/**
+ * Writes an empty table, its cursor in the head's first cell: on a blank
+ * line, there, and on a line with text, the last selected, after the
+ * paragraph, the heading or the table it is in, a blank line apart from
+ * text before and after, so that a paragraph's last line does not become
+ * its head nor the next line a row. Its lines take the quotes' marks of the
+ * line it comes after, as a row added does. It is off in code and in the
+ * front matter.
+ */
+export const writeTable: StateCommand = ({ state, dispatch }) => {
+  const { doc, lineBreak } = state;
+  const last = lastLine(state);
+  let tree = ensureSyntaxTree(state, last.to, 100) ?? syntaxTree(state);
+  if (state.readOnly || blockAt(tree, last, NO_TABLE)) return false;
+  // Read to its end, which a parse that ran out of time ends at the line
+  // it reached.
+  let block = blockAt(tree, last, WHOLE);
+  for (let reach = last.to; block && block.to >= reach;) {
+    reach = doc.lineAt(Math.min(block.to + 1, doc.length)).to;
+    if (reach === block.to) break;
+    tree = ensureSyntaxTree(state, reach, 100) ?? tree;
+    block = blockAt(tree, last, WHOLE);
+  }
+  const line = block ? doc.lineAt(block.to) : last;
+  const marks = QUOTES.exec(line.text)?.[0] ?? "";
+  const gap = marks.trimEnd();
+  const filled = (number: number) =>
+    number >= 1 && number <= doc.lines && !BLANK.test(doc.line(number).text);
+  const rows = TABLE.map((row) => marks + row);
+  const there = !block && BLANK.test(line.text);
+  const before = there ? filled(line.number - 1) : true;
+  const after = filled(line.number + 1);
+  const lines = [...(before ? [gap] : []), ...rows, ...(after ? [gap] : [])];
+  // On a blank line, in its place, or else after the line.
+  const from = there ? line.from : line.to;
+  const start = there ? "" : lineBreak;
+  // The head's first cell, past the blank line before it, if any.
+  const head =
+    from + start.length + (before ? gap.length + lineBreak.length : 0);
+  dispatch(
+    state.update({
+      changes: { from, to: line.to, insert: start + lines.join(lineBreak) },
+      selection: { anchor: head + marks.length + 2 },
+      scrollIntoView: true,
+      userEvent: "input.format",
+      annotations: isolateHistory.of("full"),
+    }),
+  );
+  return true;
+};
+
 /**
  * The formatting commands' keys: the headings' and the lists' as Google
  * Docs binds them, and the indent's as Obsidian does.
@@ -775,6 +877,11 @@ export const FORMATTING_KEYS: readonly KeyBinding[] = [
  */
 export interface Formats {
   heading: number;
+  /**
+   * Whether Insert table is off: in code or the front matter, as the parse
+   * has read so far.
+   */
+  tableOff: boolean;
   on: ReadonlySet<StateCommand | Command>;
 }
 
@@ -797,5 +904,9 @@ export function formatsAt(state: EditorState): Formats {
   if (line.quotes.includes(">")) on.add(toggleQuote);
   const heading = TOGGLE_HEADINGS[line.heading - 1];
   if (heading) on.add(heading);
-  return { heading: line.heading, on };
+  return {
+    heading: line.heading,
+    tableOff: blockAt(syntaxTree(state), lastLine(state), NO_TABLE) !== null,
+    on,
+  };
 }

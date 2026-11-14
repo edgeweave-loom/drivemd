@@ -989,6 +989,44 @@ test("edits a table's rows and columns from a toolbar's buttons or its Table men
   );
 });
 
+test("inserts an empty table from a toolbar, its first cell edited", async ({
+  page,
+  drive,
+}, info) => {
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content = "# The plan\n\nNotes.\n";
+  const note = await editInVisual(page);
+  const mouse = info.project.name === "desktop-chromium";
+  // The formatting toolbar with a mouse, the keyboard toolbar on a touch
+  // screen, where Insert table scrolls into view.
+  const toolbar = mouse
+    ? page.getByRole("toolbar", { name: "Format", exact: true })
+    : page.getByRole("toolbar", { name: "Formatting" });
+  await note.locator(".cm-line").filter({ hasText: "Notes." }).click();
+  const insert = toolbar.getByRole("button", { name: "Insert table" });
+  await (mouse ? insert.click() : insert.tap());
+
+  // Drawn under the line, a blank line apart, its first cell edited.
+  const editing = note.getByRole("textbox", { name: "Cell" });
+  await expect(editing).toBeFocused();
+  await expect(note.getByRole("table").getByRole("columnheader")).toHaveCount(
+    2,
+  );
+  await page.keyboard.type("Tea");
+  await expect(editing).toHaveText("Tea");
+  // The table's edits in the toolbar, as in any cell.
+  await expect(
+    toolbar.getByRole("button", { name: "Add row below" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("plan")?.content)).toBe(
+    "# The plan\n\nNotes.\n\n| Tea |  |\n| --- | --- |\n|  |  |\n",
+  );
+});
+
 test("writes a line break in a table's cell from its menu, which a phone's keyboard has no Shift+Enter for", async ({
   page,
   drive,

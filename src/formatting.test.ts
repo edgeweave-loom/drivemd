@@ -29,7 +29,9 @@ import {
   toggleQuote,
   toggleStrikethrough,
   TOGGLE_HEADINGS,
+  writeTable,
 } from "./formatting.ts";
+import { withFrontmatter } from "./frontmatter.ts";
 
 function heading(level: number): StateCommand {
   const command = TOGGLE_HEADINGS[level - 1];
@@ -122,6 +124,148 @@ describe("TOGGLE_HEADINGS", () => {
     expect(on("## pl|an")).toEqual([false, true, false]);
     expect(on("pl|an")).toEqual([false, false, false]);
     expect(on("#### pl|an")).toEqual([false, false, false]);
+  });
+});
+
+describe("writeTable", () => {
+  // Its rows, after the quotes' marks of the line it comes after.
+  const table = (marks = "") =>
+    ["|  |  |", "| --- | --- |", "|  |  |"].map((row) => marks + row);
+  /** The text it leaves, and where the cursor is in it. */
+  const written = (from: string | EditorState) => {
+    const { state } = run(writeTable, from);
+    return [state.sliceDoc(), state.selection.main.head] as const;
+  };
+  // The text, the cursor in the first cell of its first table.
+  const at = (text: string) => [text, text.indexOf("|  |") + 2] as const;
+
+  it.each([
+    ["on an empty note", "|", table().join("\n")],
+    [
+      "after a line of text, a blank line apart",
+      "t|ea",
+      ["tea", "", ...table()].join("\n"),
+    ],
+    [
+      "between two paragraphs, a blank line apart from each",
+      "tea|\n\nmilk",
+      ["tea", "", ...table(), "", "milk"].join("\n"),
+    ],
+    [
+      "after the paragraph, never between its lines",
+      "tea|\nmilk",
+      ["tea", "milk", "", ...table()].join("\n"),
+    ],
+    [
+      "after a setext heading's underline",
+      "Te|a\n---\nmilk",
+      ["Tea", "---", "", ...table(), "", "milk"].join("\n"),
+    ],
+    [
+      "after a quote's lazy line",
+      "> t|ea\nmilk",
+      ["> tea", "milk", "", ...table()].join("\n"),
+    ],
+    [
+      "after a list item's lines",
+      "- t|ea\n  milk",
+      ["- tea", "  milk", "", ...table()].join("\n"),
+    ],
+    [
+      "on a blank line between text, apart from each",
+      "tea\n|\nmilk",
+      ["tea", "", ...table(), "", "milk"].join("\n"),
+    ],
+    [
+      "on a blank line between blank lines, there",
+      "tea\n\n|\n\nmilk",
+      ["tea", "", ...table(), "", "milk"].join("\n"),
+    ],
+    [
+      "after the last selected line",
+      "«tea\n\nmi»lk\n\nbread",
+      ["tea", "", "milk", "", ...table(), "", "bread"].join("\n"),
+    ],
+    [
+      "after the last selected line, not the next one's start",
+      "«tea\n»\nmilk",
+      ["tea", "", ...table(), "", "milk"].join("\n"),
+    ],
+    [
+      "in a quote, after its marks",
+      "> > t|ea\n> >\n> > milk",
+      ["> > tea", "> >", ...table("> > "), "> >", "> > milk"].join("\n"),
+    ],
+    [
+      "on a quote's blank line",
+      "> tea\n> |",
+      ["> tea", ">", ...table("> ")].join("\n"),
+    ],
+    [
+      "in a callout",
+      "> [!note] Plan\n> te|a",
+      ["> [!note] Plan", "> tea", ">", ...table("> ")].join("\n"),
+    ],
+  ])("writes an empty table %s, its first cell edited", (_, before, after) => {
+    expect(written(before)).toEqual(at(after));
+  });
+
+  it("comes after the table it is in, not between its rows", () => {
+    const state = EditorState.create({
+      doc: "| a |\n| - |\n| b |\n\ntea",
+      selection: { anchor: 2 },
+      extensions: markdown({ base: markdownLanguage }),
+    });
+    expect(written(state)).toEqual(
+      at(["| a |", "| - |", "| b |", "", ...table(), "", "tea"].join("\n")),
+    );
+  });
+
+  it("writes the note's own line endings", () => {
+    const state = open("tea|", [EditorState.lineSeparator.of("\r\n")]);
+    expect(written(state)).toEqual(at(["tea", "", ...table()].join("\r\n")));
+  });
+
+  it("is one edit, which undo takes back", () => {
+    const { state } = run(writeTable, open("tea|\nmilk", [history()]));
+    let back = state;
+    undo({
+      state,
+      dispatch: (transaction) => {
+        back = transaction.state;
+      },
+    });
+    expect(marked(back)).toBe("tea|\nmilk");
+  });
+
+  it("is off in the front matter", () => {
+    const state = (anchor: number) =>
+      EditorState.create({
+        doc: "---\ntitle: Tea\n---\nmilk",
+        selection: { anchor },
+        extensions: withFrontmatter(markdown({ base: markdownLanguage })),
+      });
+    for (const anchor of [1, 6, 16]) {
+      expect(
+        writeTable({ state: state(anchor), dispatch: () => undefined }),
+      ).toBe(false);
+      expect(formatsAt(state(anchor)).tableOff).toBe(true);
+    }
+    expect(formatsAt(state(21)).tableOff).toBe(false);
+  });
+
+  it("is off in a code block", () => {
+    for (const text of [
+      "```\nco|de\n```",
+      "    co|de",
+      "``|`\ncode\n```",
+      "> ```\n> co|de\n> ```",
+    ]) {
+      const state = open(text);
+      expect(writeTable({ state, dispatch: () => undefined })).toBe(false);
+      expect(formatsAt(state).tableOff).toBe(true);
+    }
+    expect(formatsAt(open("```\ncode\n```\nte|a")).tableOff).toBe(false);
   });
 });
 
