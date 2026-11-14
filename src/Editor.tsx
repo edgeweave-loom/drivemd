@@ -241,12 +241,12 @@ function followLinks(follow: (href: string) => void): Extension {
   });
 }
 
-const NO_FORMATS: Formats = { heading: 0, code: false, on: new Set() };
+const NO_FORMATS: Formats = { heading: 0, tableOff: false, on: new Set() };
 
 function sameFormats(one: Formats, other: Formats): boolean {
   return (
     one.heading === other.heading &&
-    one.code === other.code &&
+    one.tableOff === other.tableOff &&
     one.on.size === other.on.size &&
     [...one.on].every((command) => other.on.has(command))
   );
@@ -432,6 +432,13 @@ export function Editor({
     }
     if (update.docChanged || update.selectionSet) {
       setLink(linkAt(update.state, update.state.selection.main.head));
+    }
+    // Anew as the parse reads on too, which tells where code is.
+    if (
+      update.docChanged ||
+      update.selectionSet ||
+      syntaxTree(update.state) !== syntaxTree(update.startState)
+    ) {
       const now = formatsAt(update.state);
       setFormats((was) => (sameFormats(was, now) ? was : now));
     }

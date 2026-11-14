@@ -31,6 +31,7 @@ import {
   TOGGLE_HEADINGS,
   writeTable,
 } from "./formatting.ts";
+import { withFrontmatter } from "./frontmatter.ts";
 
 function heading(level: number): StateCommand {
   const command = TOGGLE_HEADINGS[level - 1];
@@ -146,9 +147,29 @@ describe("writeTable", () => {
       ["tea", "", ...table()].join("\n"),
     ],
     [
-      "between two lines of text, a blank line apart from each",
-      "tea|\nmilk",
+      "between two paragraphs, a blank line apart from each",
+      "tea|\n\nmilk",
       ["tea", "", ...table(), "", "milk"].join("\n"),
+    ],
+    [
+      "after the paragraph, never between its lines",
+      "tea|\nmilk",
+      ["tea", "milk", "", ...table()].join("\n"),
+    ],
+    [
+      "after a setext heading's underline",
+      "Te|a\n---\nmilk",
+      ["Tea", "---", "", ...table(), "", "milk"].join("\n"),
+    ],
+    [
+      "after a quote's lazy line",
+      "> t|ea\nmilk",
+      ["> tea", "milk", "", ...table()].join("\n"),
+    ],
+    [
+      "after a list item's lines",
+      "- t|ea\n  milk",
+      ["- tea", "  milk", "", ...table()].join("\n"),
     ],
     [
       "on a blank line between text, apart from each",
@@ -162,12 +183,17 @@ describe("writeTable", () => {
     ],
     [
       "after the last selected line",
-      "«tea\nmi»lk\nbread",
-      ["tea", "milk", "", ...table(), "", "bread"].join("\n"),
+      "«tea\n\nmi»lk\n\nbread",
+      ["tea", "", "milk", "", ...table(), "", "bread"].join("\n"),
+    ],
+    [
+      "after the last selected line, not the next one's start",
+      "«tea\n»\nmilk",
+      ["tea", "", ...table(), "", "milk"].join("\n"),
     ],
     [
       "in a quote, after its marks",
-      "> > t|ea\n> > milk",
+      "> > t|ea\n> >\n> > milk",
       ["> > tea", "> >", ...table("> > "), "> >", "> > milk"].join("\n"),
     ],
     [
@@ -212,6 +238,22 @@ describe("writeTable", () => {
     expect(marked(back)).toBe("tea|\nmilk");
   });
 
+  it("is off in the front matter", () => {
+    const state = (anchor: number) =>
+      EditorState.create({
+        doc: "---\ntitle: Tea\n---\nmilk",
+        selection: { anchor },
+        extensions: withFrontmatter(markdown({ base: markdownLanguage })),
+      });
+    for (const anchor of [1, 6, 16]) {
+      expect(
+        writeTable({ state: state(anchor), dispatch: () => undefined }),
+      ).toBe(false);
+      expect(formatsAt(state(anchor)).tableOff).toBe(true);
+    }
+    expect(formatsAt(state(21)).tableOff).toBe(false);
+  });
+
   it("is off in a code block", () => {
     for (const text of [
       "```\nco|de\n```",
@@ -221,9 +263,9 @@ describe("writeTable", () => {
     ]) {
       const state = open(text);
       expect(writeTable({ state, dispatch: () => undefined })).toBe(false);
-      expect(formatsAt(state).code).toBe(true);
+      expect(formatsAt(state).tableOff).toBe(true);
     }
-    expect(formatsAt(open("```\ncode\n```\nte|a")).code).toBe(false);
+    expect(formatsAt(open("```\ncode\n```\nte|a")).tableOff).toBe(false);
   });
 });
 
