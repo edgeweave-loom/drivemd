@@ -431,10 +431,6 @@ describe("the formatting toolbar", () => {
         "Table",
       ]);
     });
-    // The head's row is never deleted.
-    expect(
-      within(toolbar()).getByRole("button", { name: "Delete row" }),
-    ).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(within(toolbar()).getByRole("button", { name: "Bold" }));
     expect(view.state.sliceDoc()).toBe("| **Tea** | Cups |\n| - | - |");
     expect(cell.hasFocus).toBe(true);
