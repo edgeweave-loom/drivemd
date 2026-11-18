@@ -21,6 +21,7 @@ import {
   insertLink,
   outdentLines,
   quoteAs,
+  quoteLines,
   toggleBold,
   toggleItalic,
   toggleQuote,
@@ -55,10 +56,10 @@ type Key = Omit<Item, "command" | "callout" | "on"> & {
         showsItem?: never;
         /**
          * In a vault's note, but in code and the front matter, the menu it
-         * opens too, its command running first where none of its items is
-         * on.
+         * opens in its command's place, after its own command where none of
+         * its items is on.
          */
-        vaultMenu?: readonly Item[];
+        vaultMenu?: { command: Command; items: readonly Item[] };
       }
     | {
         command?: never;
@@ -152,7 +153,9 @@ const KEYS: Key[] = [
     name: "Quote",
     command: toggleQuote,
     icon: "blockquote",
-    vaultMenu: QUOTE_ITEMS,
+    // The tree tells the quote, which the text may not have reached yet:
+    // a tap that misread it never takes a quote away.
+    vaultMenu: { command: quoteLines, items: QUOTE_ITEMS },
     lines: true,
   },
   {
@@ -167,16 +170,6 @@ const KEYS: Key[] = [
     icon: "search",
   },
 ];
-
-// The keys that open a menu, which a table's cell lacks, and whether they
-// open it only in a vault's note.
-const MENU_KEYS = KEYS.flatMap((key) => {
-  if (key.menu) return [{ name: key.name, menu: key.menu, vault: false }];
-  if (key.vaultMenu) {
-    return [{ name: key.name, menu: key.vaultMenu, vault: true }];
-  }
-  return [];
-});
 
 /** Whether the item shows checked where the cursor is. */
 function isOn(item: Item, formats: Formats): boolean {
@@ -302,12 +295,18 @@ export function KeyboardToolbar({
       for (const stop of stops) stop();
     };
   }, []);
+  // The menu a key opens, and the command it runs first, where none of
+  // the menu's items is on: Quote's in a vault's note but in code.
+  const menuOf = (key: Key) => {
+    if (key.menu) return { items: key.menu, first: undefined };
+    if (!key.vaultMenu || !vault || formats.calloutOff) return null;
+    return { items: key.vaultMenu.items, first: key.vaultMenu.command };
+  };
   const keyOf = (key: Key) => {
     const { name, command, icon } = key;
-    const menu =
-      key.menu ?? (vault && !formats.calloutOff ? key.vaultMenu : undefined);
+    const menu = menuOf(key);
     if (menu) {
-      const on = menu.find((item) => isOn(item, formats));
+      const on = menu.items.find((item) => isOn(item, formats));
       return (
         <button
           key={name}
@@ -317,7 +316,7 @@ export function KeyboardToolbar({
           aria-haspopup="menu"
           popoverTarget={`${menus}${name}`}
           onClick={() => {
-            if (command && !on) onCommand(command);
+            if (menu.first && !on) onCommand(menu.first);
           }}
         >
           <Icon name={key.showsItem && on ? on.icon : icon} />
@@ -391,38 +390,44 @@ export function KeyboardToolbar({
         )}
       </div>
       {!cell &&
-        MENU_KEYS.filter((key) => vault || !key.vault).map(({ name, menu }) => (
-          <div
-            key={name}
-            ref={closing}
-            id={`${menus}${name}`}
-            popover="auto"
-            role="menu"
-            aria-label={name}
-            className="key-menu"
-          >
-            {menu.map((item) => (
-              <button
-                key={item.name}
-                type="button"
-                role="menuitemcheckbox"
-                aria-label={item.name}
-                aria-checked={isOn(item, formats)}
-                data-callout={item.callout}
-                onClick={(event) => {
-                  event.currentTarget.parentElement?.hidePopover();
-                  onCommand(item.command);
-                }}
+        KEYS.map((key) => {
+          const name = key.name;
+          const menu = menuOf(key)?.items;
+          return (
+            menu && (
+              <div
+                key={name}
+                ref={closing}
+                id={`${menus}${name}`}
+                popover="auto"
+                role="menu"
+                aria-label={name}
+                className="key-menu"
               >
-                {item.callout ? (
-                  <CalloutIcon type={item.callout} />
-                ) : (
-                  <Icon name={item.icon} />
-                )}
-              </button>
-            ))}
-          </div>
-        ))}
+                {menu.map((item) => (
+                  <button
+                    key={item.name}
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-label={item.name}
+                    aria-checked={isOn(item, formats)}
+                    data-callout={item.callout}
+                    onClick={(event) => {
+                      event.currentTarget.parentElement?.hidePopover();
+                      onCommand(item.command);
+                    }}
+                  >
+                    {item.callout ? (
+                      <CalloutIcon type={item.callout} />
+                    ) : (
+                      <Icon name={item.icon} />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )
+          );
+        })}
       {cell && (
         <>
           <hr aria-orientation="vertical" />

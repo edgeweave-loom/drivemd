@@ -566,6 +566,39 @@ test("quotes a line from Quote's key in a vault's note, then makes it a callout,
   );
 });
 
+test.describe("on a 320 px phone", () => {
+  test.use({ viewport: { width: 320, height: 568 } });
+
+  test("keeps Quote's menu 8 px in from the screen's edges", async ({
+    page,
+    drive,
+  }, info) => {
+    test.skip(
+      info.project.name !== "iphone-webkit",
+      "A phone held upright alone is this narrow",
+    );
+    const today = drive.files.get("today");
+    if (!today) throw new Error("No today");
+    today.content = "Tea.\n";
+    const note = await editInVisual(page, "today");
+    await expect(note.locator(".cm-line").first()).toHaveText("Tea.");
+    await note.locator(".cm-line").first().tap();
+    const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+    await toolbar.getByRole("button", { name: "Quote" }).tap();
+
+    const menu = toolbar.getByRole("menu", { name: "Quote" });
+    await expect(menu).toBeVisible();
+    const shown = await menu.boundingBox();
+    if (!shown) throw new Error("Not shown");
+    expect(shown.x).toBeGreaterThanOrEqual(8);
+    expect(shown.x + shown.width).toBeLessThanOrEqual(320 - 8);
+    for (const item of await menu.getByRole("menuitemcheckbox").all()) {
+      const box = await item.boundingBox();
+      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320 - 8);
+    }
+  });
+});
+
 test("folds a vault's callout in Visual as its `-` says, which a tap on its chevron opens, writing nothing", async ({
   page,
   drive,

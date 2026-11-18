@@ -23,6 +23,7 @@ import {
   makeCallout,
   outdentLines,
   quoteAs,
+  quoteLines,
   toggleBold,
   toggleCode,
   toggleItalic,
@@ -480,6 +481,27 @@ describe("makeCallout", () => {
   });
 });
 
+describe("quoteLines", () => {
+  it.each([
+    ["te|a", "> te|a"],
+    ["«a\n> b»", "> «a\n> b»"],
+    ["«a\n\nb»", "> «a\n>\n> b»"],
+  ])("turns %j into %j", (before, after) => {
+    expect(run(quoteLines, before).text).toBe(after);
+  });
+
+  it("never takes a quote away", () => {
+    const dispatched: Transaction[] = [];
+    const done = quoteLines({
+      state: open("«> a\n> b»"),
+      dispatch: (transaction) => dispatched.push(transaction),
+    });
+
+    expect(done).toBe(true);
+    expect(dispatched).toEqual([]);
+  });
+});
+
 describe("quoteAs", () => {
   it.each([
     // The plain quote: lines not quoted become one, as Quote does.
@@ -508,6 +530,18 @@ describe("quoteAs", () => {
     ["> [!whatever] te|a", "note", "te|a"],
     ["> [!note] T\n> > [!tip] in|ner", "tip", "> [!note] T\n> in|ner"],
     ["> [!tip] T|\n> > inner", "tip", "T|\n> inner"],
+    // Each line's own marks, in a paragraph's later lines too.
+    [
+      "> [!note] T\n> > in|ner\n> > more",
+      "quote",
+      "> [!note] T\n> in|ner\n> more",
+    ],
+    ["> [!tip] T|\n> > inner\n> > more", "tip", "T|\n> inner\n> more"],
+    ["> [!tip] T|\n> > inner\n> more", "tip", "T|\n> inner\nmore"],
+    // What comes before the quote on its first line stays.
+    ["- > [!tip]\n  > bo|dy", "quote", "- > bo|dy"],
+    ["- > [!tip]\n  > bo|dy", "tip", "- bo|dy"],
+    ["> [!note] T\n> > [!tip]\n> > in|ner", "quote", "> [!note] T\n> > in|ner"],
     // Another type: as the callout types' menu makes it.
     ["te|a", "tip", "> [!tip] te|a"],
     ["> te|a", "tip", "> [!tip] te|a"],

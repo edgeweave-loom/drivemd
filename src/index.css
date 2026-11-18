@@ -2558,9 +2558,16 @@ body:has(> .keyboard-toolbar) .editor {
 }
 
 /* Quote's, in a vault's note: a plain quote and the thirteen callout types,
-   in two rows of seven, which a 375 px phone holds. */
+   in two rows of seven, which a 375 px phone holds, or in more rows, as
+   many as keep it 8 px in from a narrower screen's edges. */
 .key-menu[aria-label="Quote"] {
-  --width: calc(7 * 48px + 2 * var(--space-1));
+  --width: min(
+    calc(7 * 48px + 2 * var(--space-1)),
+    calc(
+      100vw - 2 * var(--space-2) - env(safe-area-inset-left) -
+        env(safe-area-inset-right)
+    )
+  );
   flex-wrap: wrap;
   border-radius: var(--radius-xl);
 }

@@ -282,15 +282,34 @@ export const toggleQuote: StateCommand = ({ state, dispatch }) =>
       lines.every((line) => line.quotes.includes(">"))
         ? lines.map((line) => {
             const start = line.at - line.indent.length - line.quotes.length;
-            const mark = start + line.quotes.indexOf(">");
-            const space = /[ \t]/.test(
-              state.doc.sliceString(mark + 1, mark + 2),
-            );
-            return { from: mark, to: mark + (space ? 2 : 1) };
+            return markAt(state, start + line.quotes.indexOf(">"));
           })
         : lines.flatMap((line) => quoteLine(state, line)),
     selectedLines(state, true),
   );
+
+/**
+ * Quotes the lines that are not, as Quote does, never taking a quote away:
+ * where all of them are quoted, it writes nothing.
+ */
+export const quoteLines: StateCommand = ({ state, dispatch }) => {
+  if (state.readOnly) return false;
+  const lines = selectedLines(state, true);
+  const changes = lines.flatMap((line) => quoteLine(state, line));
+  if (changes.length === 0) return true;
+  return formatLines(state, dispatch, () => changes, lines);
+};
+
+interface Range {
+  from: number;
+  to: number;
+}
+
+/** A quote's mark, `>`, at `at`, with the space or tab after it. */
+function markAt(state: EditorState, at: number): Range {
+  const space = /[ \t]/.test(state.sliceDoc(at + 1, at + 2));
+  return { from: at, to: at + (space ? 2 : 1) };
+}
 
 /** Quotes a line, as Quote does, if it is not quoted yet. */
 function quoteLine(state: EditorState, line: Prefix): ChangeSpec[] {
@@ -413,46 +432,58 @@ export function makeCallout(type: CalloutType): StateCommand {
   };
 }
 
-interface Range {
-  from: number;
-  to: number;
-}
-
 /**
- * The quote's own marks, each `>` with the space or tab after it, those of
- * the quotes in it and around it left out.
+ * The quote's own mark on each of its lines, by line number. A line's marks
+ * run from the outermost quote in, whichever node of the tree holds them,
+ * a paragraph's later lines holding those of the quotes around it too: the
+ * quote's own is the one at its depth, which a lazy line lacks.
  */
-function quoteMarks(state: EditorState, quote: SyntaxNode): Range[] {
-  const marks: Range[] = [];
-  // A paragraph's lines after its first hold their marks.
-  const walk = (node: SyntaxNode) => {
-    for (let child = node.firstChild; child; child = child.nextSibling) {
-      if (child.name === "QuoteMark") {
-        const space = /[ \t]/.test(state.sliceDoc(child.to, child.to + 1));
-        marks.push({ from: child.from, to: child.to + (space ? 1 : 0) });
-      } else if (child.name !== "Blockquote") {
-        walk(child);
-      }
-    }
-  };
-  walk(quote);
+function quoteMarks(
+  state: EditorState,
+  tree: Tree,
+  quote: SyntaxNode,
+): Map<number, Range> {
+  let depth = 0;
+  for (let node: SyntaxNode | null = quote; node; node = node.parent) {
+    if (node.name === "Blockquote") depth++;
+  }
+  const marks = new Map<number, Range>();
+  const last = state.doc.lineAt(quote.to).number;
+  for (let at = state.doc.lineAt(quote.from).number; at <= last; at++) {
+    const line = state.doc.line(at);
+    const found: number[] = [];
+    tree.iterate({
+      from: line.from,
+      to: line.to,
+      enter: (node) => {
+        if (node.name === "QuoteMark" && node.from >= line.from) {
+          found.push(node.from);
+        }
+      },
+    });
+    const own = found.sort((one, other) => one - other)[depth - 1];
+    if (own !== undefined) marks.set(at, markAt(state, own));
+  }
   return marks;
 }
 
 /**
  * Where a callout's `[!type]` is, with its fold sign and the spaces after
- * it, so that its title opens the quote once it goes; or its whole line,
- * line break included, where it has no title and the callout goes on.
+ * it, so that its title opens the quote once it goes; or, where it has no
+ * title and the callout goes on, up to where the quote's text starts on
+ * the next line, which then opens it, what comes before it staying.
  */
 function calloutMarkerAt(
   state: EditorState,
   quote: SyntaxNode,
   opening: SyntaxNode,
   length: number,
+  marks: Map<number, Range>,
 ): Range {
   const line = state.doc.lineAt(opening.from);
   if (opening.from + length >= line.to && line.to < quote.to) {
-    return { from: line.from, to: line.to + 1 };
+    const next = state.doc.line(line.number + 1);
+    return { from: opening.from, to: marks.get(next.number)?.to ?? next.from };
   }
   return { from: opening.from, to: opening.from + length };
 }
@@ -480,13 +511,14 @@ export function quoteAs(target: CalloutType | "quote"): StateCommand {
     const { first: opening, marker } = quoteOpening(state, quote);
     const now = marker?.type ?? "quote";
     if (target !== now && target !== "quote") return makeCallout(target)(view);
+    const marks = quoteMarks(state, tree, quote);
     // A callout loses its `[!type]` either way. Each change maps through
-    // those before it, so a mark on a title's line that goes whole is gone.
+    // those before it, so a mark that went with it is gone.
     const changes: Range[] =
       marker && opening
-        ? [calloutMarkerAt(state, quote, opening, marker.length)]
+        ? [calloutMarkerAt(state, quote, opening, marker.length, marks)]
         : [];
-    if (target === now) changes.push(...quoteMarks(state, quote));
+    if (target === now) changes.push(...marks.values());
     return formatLines(state, dispatch, () => changes);
   };
 }
@@ -1106,18 +1138,13 @@ export function formatsAt(state: EditorState): Formats {
   if (heading) on.add(heading);
   const tree = syntaxTree(state);
   const first = firstSelected(state);
+  const quote = blockAt(tree, first, ["Blockquote"]);
   return {
     heading: line.heading,
     tableOff: blockAt(tree, lastLine(state), NO_TABLE) !== null,
     calloutOff: blockAt(tree, first, NO_TABLE) !== null,
-    callout: calloutAround(state, tree, first),
-    quoted: blockAt(tree, first, ["Blockquote"]) !== null,
+    callout: quote ? (quoteOpening(state, quote).marker?.type ?? null) : null,
+    quoted: quote !== null,
     on,
   };
-}
-
-/** The type of the callout around the first selected line, if any. */
-function calloutAround(state: EditorState, tree: Tree, first: Line) {
-  const quote = blockAt(tree, first, ["Blockquote"]);
-  return quote ? (quoteOpening(state, quote).marker?.type ?? null) : null;
 }
