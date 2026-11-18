@@ -497,6 +497,108 @@ test("makes a callout from Quote's menu in a vault's note, and changes its type,
   );
 });
 
+test("quotes a line from Quote's key in a vault's note, then makes it a callout, or text again, from its menu", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.name === "desktop-chromium",
+    "A mouse has the formatting toolbar",
+  );
+  const today = drive.files.get("today");
+  if (!today) throw new Error("No today");
+  today.content = "Tea.\n\nWhy tea?\n";
+  const note = await editInVisual(page, "today");
+  const line = note.locator(".cm-line").nth(2);
+  const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+  const key = toolbar.getByRole("button", { name: "Quote" });
+  const menu = toolbar.getByRole("menu", { name: "Quote" });
+
+  await expect(note.locator(".cm-line")).toHaveText([
+    "Tea.",
+    "",
+    "Why tea?",
+    "",
+  ]);
+
+  // A tap quotes the line and opens the menu: two rows of seven, 4 px
+  // above the key, within the screen.
+  await line.tap();
+  await key.tap();
+  await expect(menu).toBeVisible();
+  await expect(line).toHaveText("> Why tea?");
+  await expect(
+    menu.getByRole("menuitemcheckbox", { name: "Plain quote" }),
+  ).toHaveAttribute("aria-checked", "true");
+  const shown = await menu.boundingBox();
+  const under = await key.boundingBox();
+  const width = page.viewportSize()?.width ?? 0;
+  if (!shown || !under) throw new Error("Not shown");
+  expect(shown.height).toBe(2 * 48 + 2 * 4);
+  expect(shown.y + shown.height).toBeCloseTo(under.y - 4, 0);
+  expect(shown.x).toBeGreaterThanOrEqual(8);
+  expect(shown.x + shown.width).toBeLessThanOrEqual(width - 8);
+  await expect(
+    menu.getByRole("menuitemcheckbox", { name: "Warning" }).locator("svg"),
+  ).toHaveCSS("color", "rgb(236, 117, 0)");
+
+  // A type makes it a callout, the line's text its title.
+  await menu.getByRole("menuitemcheckbox", { name: "Question" }).tap();
+  await expect(menu).toBeHidden();
+  await expect(note).toBeFocused();
+  await expect(line).toHaveText("> [!question] Why tea?");
+
+  // Its type, checked, turns it back into text.
+  await key.tap();
+  await expect(line).toHaveText("> [!question] Why tea?");
+  const question = menu.getByRole("menuitemcheckbox", { name: "Question" });
+  await expect(question).toHaveAttribute("aria-checked", "true");
+  await question.tap();
+  await expect(line).toHaveText("Why tea?");
+
+  // Each, one edit that undo takes back.
+  await toolbar.getByRole("button", { name: "Undo" }).tap();
+  await expect(line).toHaveText("> [!question] Why tea?");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("today")?.content)).toBe(
+    "Tea.\n\n> [!question] Why tea?\n",
+  );
+});
+
+test.describe("on a 320 px phone", () => {
+  test.use({ viewport: { width: 320, height: 568 } });
+
+  test("keeps Quote's menu 8 px in from the screen's edges", async ({
+    page,
+    drive,
+  }, info) => {
+    test.skip(
+      info.project.name !== "iphone-webkit",
+      "A phone held upright alone is this narrow",
+    );
+    const today = drive.files.get("today");
+    if (!today) throw new Error("No today");
+    today.content = "Tea.\n";
+    const note = await editInVisual(page, "today");
+    await expect(note.locator(".cm-line").first()).toHaveText("Tea.");
+    await note.locator(".cm-line").first().tap();
+    const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+    await toolbar.getByRole("button", { name: "Quote" }).tap();
+
+    const menu = toolbar.getByRole("menu", { name: "Quote" });
+    await expect(menu).toBeVisible();
+    const shown = await menu.boundingBox();
+    if (!shown) throw new Error("Not shown");
+    expect(shown.x).toBeGreaterThanOrEqual(8);
+    expect(shown.x + shown.width).toBeLessThanOrEqual(320 - 8);
+    for (const item of await menu.getByRole("menuitemcheckbox").all()) {
+      const box = await item.boundingBox();
+      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320 - 8);
+    }
+  });
+});
+
 test("folds a vault's callout in Visual as its `-` says, which a tap on its chevron opens, writing nothing", async ({
   page,
   drive,

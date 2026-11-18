@@ -246,6 +246,7 @@ const NO_FORMATS: Formats = {
   tableOff: false,
   calloutOff: false,
   callout: null,
+  quoted: false,
   on: new Set(),
 };
 
@@ -255,6 +256,7 @@ function sameFormats(one: Formats, other: Formats): boolean {
     one.tableOff === other.tableOff &&
     one.calloutOff === other.calloutOff &&
     one.callout === other.callout &&
+    one.quoted === other.quoted &&
     one.on.size === other.on.size &&
     [...one.on].every((command) => other.on.has(command))
   );
@@ -670,6 +672,7 @@ export function Editor({
       {toolbar && (
         <KeyboardToolbar
           link={link}
+          vault={vault}
           cell={cell}
           formats={formats}
           tableMenu={menuId}

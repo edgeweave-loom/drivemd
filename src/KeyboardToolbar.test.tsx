@@ -17,12 +17,14 @@ function open(
   text: string,
   onFollow: (href: string) => void = () => undefined,
   visual = false,
+  vault = false,
 ) {
   const { container } = render(
     <Editor
       initial={text}
       lineBreak={"\n"}
       visual={visual}
+      vault={vault}
       onChange={() => undefined}
       onFollow={onFollow}
     />,
@@ -39,9 +41,10 @@ function open(
 async function editing(
   text: string,
   onFollow: (href: string) => void = () => undefined,
+  vault = false,
 ) {
   holdTouch(true);
-  const view = open(text, onFollow);
+  const view = open(text, onFollow, false, vault);
   act(() => {
     view.focus();
   });
@@ -326,6 +329,118 @@ describe("the keyboard toolbar", () => {
         `[role="menu"][aria-label="${menu}"] [aria-checked="true"]`,
       ),
     ].map((item) => item.getAttribute("aria-label"));
+
+  it("keeps Quote a key without a menu outside a vault's note", async () => {
+    const view = await editing("tea");
+    expect(screen.getByRole("button", { name: "Quote" })).not.toHaveAttribute(
+      "aria-haspopup",
+    );
+    tap("Quote");
+    expect(view.state.sliceDoc()).toBe("> tea");
+    expect(screen.queryByRole("menu", { name: "Quote" })).toBeNull();
+  });
+
+  it("keeps Quote a key without a menu in a vault's code block", async () => {
+    const view = await editing("```\ncode\n```", undefined, true);
+    act(() => {
+      view.dispatch({ selection: { anchor: 5 } });
+    });
+
+    expect(screen.getByRole("button", { name: "Quote" })).not.toHaveAttribute(
+      "aria-haspopup",
+    );
+  });
+
+  const TYPES = [
+    "Note",
+    "Abstract",
+    "Info",
+    "Todo",
+    "Tip",
+    "Success",
+    "Question",
+    "Warning",
+    "Failure",
+    "Danger",
+    "Bug",
+    "Example",
+    "Quote",
+  ];
+
+  it("quotes the line from Quote in a vault's note, opening its menu of a plain quote and the callout types", async () => {
+    const view = await editing("tea", undefined, true);
+    const key = screen.getByRole("button", { name: "Quote" });
+    expect(key).toHaveAttribute("aria-haspopup", "menu");
+    expect(key).not.toHaveClass("on");
+
+    expect(fireEvent.mouseDown(key)).toBe(false);
+    tap("Quote");
+
+    expect(view.state.sliceDoc()).toBe("> tea");
+    expect(key).toHaveClass("on");
+    const menu = screen.getByRole("menu", { name: "Quote" });
+    expect(menu).toBeVisible();
+    const items = within(menu).getAllByRole("menuitemcheckbox");
+    expect(items.map((item) => item.getAttribute("aria-label"))).toEqual([
+      "Plain quote",
+      ...TYPES,
+    ]);
+    expect(checked("Quote")).toEqual(["Plain quote"]);
+    // Each type after its icon, in its color.
+    expect(items[0]?.querySelector("svg")?.dataset.icon).toBe("blockquote");
+    expect(items[5]).toHaveAttribute("data-callout", "tip");
+    expect(items[5]?.querySelector("svg")?.dataset.icon).toBe("lucide-flame");
+  });
+
+  it.each([
+    ["tea", "Tip", "> [!tip] tea"],
+    ["> tea", "Tip", "> [!tip] tea"],
+    ["> tea", "Plain quote", "tea"],
+    ["> [!tip] tea", "Warning", "> [!warning] tea"],
+    ["> [!tip] tea", "Plain quote", "> tea"],
+    ["> [!tip] tea", "Tip", "tea"],
+  ])(
+    "turns %j, from Quote's %s, into %j, the focus staying",
+    async (before, name, after) => {
+      const view = await editing(before, undefined, true);
+
+      tap("Quote");
+      const menu = screen.getByRole("menu", { name: "Quote" });
+      const item = within(menu).getByRole("menuitemcheckbox", { name });
+      expect(fireEvent.mouseDown(item)).toBe(false);
+      fireEvent.click(item);
+
+      expect(view.state.sliceDoc()).toBe(after);
+      expect(menu).not.toBeVisible();
+      expect(view.hasFocus).toBe(true);
+    },
+  );
+
+  it("opens Quote's menu in a quote or a callout without changing it, its format checked", async () => {
+    const view = await editing("> [!faq] tea\n\n> milk", undefined, true);
+
+    expect(screen.getByRole("button", { name: "Quote" })).toHaveClass("on");
+    tap("Quote");
+    expect(view.state.sliceDoc()).toBe("> [!faq] tea\n\n> milk");
+    expect(screen.getByRole("menu", { name: "Quote" })).toBeVisible();
+    expect(checked("Quote")).toEqual(["Question"]);
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 16 } });
+    });
+    expect(checked("Quote")).toEqual(["Plain quote"]);
+  });
+
+  it("shows Quote pressed in a quote in a list", async () => {
+    const view = await editing("- tea\n- > milk", undefined, true);
+    const key = screen.getByRole("button", { name: "Quote" });
+    expect(key).not.toHaveClass("on");
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 12 } });
+    });
+    expect(key).toHaveClass("on");
+  });
 
   it("shows the cursor's heading on Heading, which keeps its icon, and in its menu", async () => {
     const view = await editing("## tea\nmilk");
