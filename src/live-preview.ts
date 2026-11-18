@@ -28,6 +28,7 @@ import {
   type ChangeSpec,
   type StateEffectType,
   type Extension,
+  type Line,
   type Range,
   type Text,
 } from "@codemirror/state";
@@ -1569,7 +1570,7 @@ export interface CellMenu {
  * The edits that apply to the cell at `place`, in a table of `rows`, its
  * head's included, and `columns`: nothing moves the head or comes above
  * it, since a GFM table starts with its head and its delimiter row, and a
- * table keeps a column.
+ * table keeps a column. Its head deleted, its first row takes its place.
  */
 function editsAt(
   { row, column }: Place,
@@ -1582,7 +1583,7 @@ function editsAt(
     ["addRowBelow", true],
     ["moveRowUp", row > 1],
     ["moveRowDown", row > 0 && row < rows - 1],
-    ["deleteRow", row > 0],
+    ["deleteRow", true],
     ["addColumnLeft", true],
     ["addColumnRight", true],
     ["moveColumnLeft", column > 0],
@@ -1710,6 +1711,17 @@ function swapped(line: Written, at: number): string {
   return `${text.slice(0, one.from)}${before}|${after}${text.slice(other.to)}`;
 }
 
+/**
+ * A line with `cell` added past its last until it has `columns`, which a
+ * head and its delimiter row must have alike for GFM.
+ */
+function padded(line: Written, columns: number, cell: string): string {
+  const missing = columns - line.cells.length;
+  if (missing <= 0) return line.text;
+  const once = withCell(line, line.cells.length, cell).trimEnd();
+  return once + ` ${cell} |`.repeat(missing - 1);
+}
+
 /** A delimiter row's cell's marks for `alignment`, as wide as they were. */
 function marks(width: number, alignment: Alignment): string {
   const left = alignment === "left" || alignment === "center";
@@ -1742,17 +1754,39 @@ export const ALIGNING = {
 } as const satisfies Partial<Record<TableEdit, Alignment>>;
 
 /**
+ * The changes that delete a table, its lines and a line break beside them,
+ * the one after unless it ends the note. Should a blank line, or the
+ * note's start, come before and a blank line after, that line goes too,
+ * as before the table was inserted.
+ */
+function tableDeleted(state: EditorState, table: SyntaxNode): ChangeSpec {
+  const { doc } = state;
+  const first = doc.lineAt(table.from);
+  const last = doc.lineAt(tableRows(table).at(-1)?.to ?? table.to);
+  const line = (at: number) =>
+    at >= 1 && at <= doc.lines ? doc.line(at) : null;
+  const blank = (one: Line | null) => one && /^[\s>]*$/.test(one.text);
+  const [before, after] = [line(first.number - 1), line(last.number + 1)];
+  if (!after) return { from: before ? before.to : first.from, to: last.to };
+  if (!blank(after) || (before && !blank(before))) {
+    return { from: first.from, to: after.from };
+  }
+  if (before) return { from: before.to, to: after.to };
+  return { from: first.from, to: line(after.number + 1)?.from ?? after.to };
+}
+
+/**
  * The changes that make `edit` to the cell at `place` of `table`, which
  * write only the lines that must change, and the cell to edit then: the
  * one added or moved, the next in place of one deleted, or in a row too
- * short for it, the row's own.
+ * short for it, the row's own; none once the table is deleted.
  */
 function tableEdited(
   state: EditorState,
   table: SyntaxNode,
   place: Place,
   edit: Exclude<TableEdit, "lineBreak">,
-): { changes: ChangeSpec[]; to: Place } {
+): { changes: ChangeSpec[]; to: Place | null } {
   const { row, column } = place;
   const lines = tableRows(table);
   const columns = lines[0] ? cellsOf(state, lines[0]).length : 0;
@@ -1818,6 +1852,34 @@ function tableEdited(
       };
     }
     case "deleteRow": {
+      const [head, delimiter, first] = lines;
+      if (row === 0 && !first) {
+        return { changes: [tableDeleted(state, table)], to: null };
+      }
+      if (row === 0 && head && delimiter && first) {
+        // The first row takes the head's place, as wide as the delimiter
+        // row, which widens should the row be wider.
+        const raised = asWritten(state, first);
+        const marked = asWritten(state, delimiter);
+        const wide = Math.max(raised.cells.length, columns);
+        const gone = doc.lineAt(first.from);
+        return {
+          changes: [
+            { from: head.from, to: head.to, insert: padded(raised, wide, "") },
+            ...(marked.cells.length < wide
+              ? [
+                  {
+                    from: delimiter.from,
+                    to: delimiter.to,
+                    insert: padded(marked, wide, "---"),
+                  },
+                ]
+              : []),
+            { from: gone.from - 1, to: gone.to },
+          ],
+          to: place,
+        };
+      }
       const gone = doc.lineAt(rowOf(table, row)?.from ?? table.to);
       return {
         changes: [{ from: gone.from - 1, to: gone.to }],
@@ -2448,15 +2510,25 @@ const editingCells = ViewPlugin.fromClass(
     /**
      * Writes `changes` to `table`, as one step for undo, apart from the
      * edits next to it, then edits the cell `to`, or should its row lack
-     * it, the row's last.
+     * it, the row's last; without one, the note takes the focus, the
+     * cursor where the table was.
      */
     rewrite(
       table: SyntaxNode,
-      { changes, to }: { changes: ChangeSpec[]; to: Place },
+      { changes, to }: { changes: ChangeSpec[]; to: Place | null },
     ): void {
       const { view } = this;
       const from = view.state.doc.lineAt(table.from).from;
       const done = view.state.changes(changes);
+      if (!to) {
+        view.focus();
+        view.dispatch({
+          changes: done,
+          selection: { anchor: done.mapPos(from) },
+          annotations: isolateHistory.of("full"),
+        });
+        return;
+      }
       view.dispatch({ changes: done, annotations: isolateHistory.of("full") });
       // Drawn anew once read, which a busy device's parse may not have yet.
       forceParsing(view, pastTable(view.state.doc, done.mapPos(table.to, 1)));

@@ -694,11 +694,10 @@ describe("the keyboard toolbar", () => {
         (key) => key.getAttribute("aria-label"),
       );
 
-    expect(off()).toEqual(["Delete row", "Delete column"]);
+    expect(off()).toEqual(["Delete column"]);
     // Still keeping the focus, and the keyboard up.
-    const key = screen.getByRole("button", { name: "Delete row" });
+    const key = screen.getByRole("button", { name: "Delete column" });
     expect(fireEvent.mouseDown(key)).toBe(false);
-    tap("Delete row");
     tap("Delete column");
     expect(view.state.sliceDoc()).toBe("| Tea |\n| - |\n| 1 |");
     expect(edited()?.hasFocus).toBe(true);
@@ -721,6 +720,29 @@ describe("the keyboard toolbar", () => {
       expect(keys()).toContain("Heading");
     });
     expect(keys()).not.toContain("Table options");
+  });
+
+  it("deletes an empty table's head, its row taking its place, then the table, from Delete row", async () => {
+    const { view, edited } = await inTable(
+      "Tea\n\n|  |  |\n| --- | --- |\n| Cups |  |\n\nBoil",
+      "",
+    );
+
+    tap("Delete row");
+    expect(view.state.sliceDoc()).toBe(
+      "Tea\n\n| Cups |  |\n| --- | --- |\n\nBoil",
+    );
+    expect(edited()?.state.sliceDoc()).toBe("Cups");
+    expect(edited()?.hasFocus).toBe(true);
+    tap("Delete row");
+    expect(view.state.sliceDoc()).toBe("Tea\n\nBoil");
+    expect(edited()).toBeNull();
+    // The cursor on the blank line where the table was, the keyboard up.
+    expect(view.hasFocus).toBe(true);
+    expect(view.state.selection.main.head).toBe(4);
+    await waitFor(() => {
+      expect(keys()).toContain("Heading");
+    });
   });
 
   it("holds a table's other edits in the menu of its Table options key, above it, the focus staying", async () => {
