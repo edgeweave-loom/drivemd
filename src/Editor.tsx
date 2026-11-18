@@ -241,12 +241,20 @@ function followLinks(follow: (href: string) => void): Extension {
   });
 }
 
-const NO_FORMATS: Formats = { heading: 0, tableOff: false, on: new Set() };
+const NO_FORMATS: Formats = {
+  heading: 0,
+  tableOff: false,
+  calloutOff: false,
+  callout: null,
+  on: new Set(),
+};
 
 function sameFormats(one: Formats, other: Formats): boolean {
   return (
     one.heading === other.heading &&
     one.tableOff === other.tableOff &&
+    one.calloutOff === other.calloutOff &&
+    one.callout === other.callout &&
     one.on.size === other.on.size &&
     [...one.on].every((command) => other.on.has(command))
   );
@@ -625,6 +633,7 @@ export function Editor({
         createPortal(
           <FormattingBar
             cell={cell}
+            vault={vault}
             tableMenu={menuId}
             formats={formats}
             onCommand={(command) => {

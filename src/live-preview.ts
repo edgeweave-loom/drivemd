@@ -45,14 +45,9 @@ import {
 import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
 import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
 import { calloutFold, calloutIcon } from "./callout-icons.tsx";
-import {
-  CALLOUT_TYPES,
-  calloutMarker,
-  titled,
-  type CalloutType,
-} from "./callouts.ts";
+import { CALLOUT_TYPES, titled, type CalloutType } from "./callouts.ts";
 import { findInNote } from "./find.ts";
-import { INLINE_KEYS, writeTable } from "./formatting.ts";
+import { INLINE_KEYS, quoteOpening, writeTable } from "./formatting.ts";
 import { TOUCH } from "./layout.ts";
 
 interface Stretch {
@@ -316,12 +311,9 @@ function calloutOf(state: EditorState, quote: SyntaxNode): Callout | null {
     if (around.name === "Blockquote") depth++;
   }
   if (depth > QUOTE_LINES.length) return null;
-  let first = quote.firstChild;
-  while (first?.name === "QuoteMark") first = first.nextSibling;
-  if (first?.name !== "Paragraph") return null;
+  const { first, marker } = quoteOpening(state, quote);
+  if (!first || !marker) return null;
   const line = state.doc.lineAt(first.from);
-  const marker = calloutMarker(state.sliceDoc(first.from, line.to));
-  if (!marker) return null;
   const untitled = !state.sliceDoc(first.from + marker.length, line.to).trim();
   const last = state.doc.lineAt(quote.to);
   return {
