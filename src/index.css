@@ -970,6 +970,15 @@ button:is(.entry, .link):disabled {
   min-width: 0;
 }
 
+/* As wide as what holds them, never as their widest content: a table as
+   wide as its text, which scrolls within the note, made the page scroll
+   sideways on a phone or a tablet, and a phone's Edit with it, off the
+   screen. */
+.sheets,
+.sheet {
+  min-width: 0;
+}
+
 .pane {
   display: grid;
   gap: 0.5rem;
