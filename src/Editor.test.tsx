@@ -2649,6 +2649,8 @@ describe("Visual's tables", () => {
     // The cell edited after is the next row's, or the one before's.
     ["Delete row", "2", "| A | B |\n| --- | --- |\n| 3 | 4 |", "4"],
     ["Delete row", "4", "| A | B |\n| --- | --- |\n| 1 | 2 |", "2"],
+    // The head's, the first row taking its place.
+    ["Delete row", "B", "| 1 | 2 |\n| --- | --- |\n| 3 | 4 |", "2"],
     [
       "Add column to the left",
       "2",
@@ -2785,6 +2787,62 @@ describe("Visual's tables", () => {
     expect(picked(view, "", "Delete row")[0]).toBe(text);
   });
 
+  it.each([
+    [
+      "padding a shorter row",
+      "| A | B | C |\n| - | - | - |\n| 1 |",
+      "| 1 |  |  |\n| - | - | - |",
+    ],
+    [
+      "widening the delimiter row for a wider one",
+      "> | A |\n> | - |\n> 1 | 2",
+      "> 1 | 2\n> | - | --- |",
+    ],
+  ])(
+    "makes the first row the head in place of the head deleted, %s",
+    async (_, text, written) => {
+      const { view } = open(text, "\n", true);
+      await parsed(view);
+
+      expect(picked(view, "A", "Delete row")[0]).toBe(written);
+    },
+  );
+
+  it.each([
+    [
+      "between blank lines, keeping one",
+      "Tea\n\n| A |\n| - |\n\nCups",
+      "Tea\n\nCups",
+      4,
+    ],
+    ["before a heading", "Tea\n| A |\n| - |\n# Cups", "Tea\n# Cups", 4],
+    ["starting the note", "| A |\n| - |\n\nCups", "Cups", 0],
+    ["ending the note", "Tea\n\n| A |\n| - |", "Tea\n", 4],
+    ["alone", "| A |\n| - |", "", 0],
+    [
+      "in a quote",
+      "> Tea\n>\n> | A |\n> | - |\n>\n> Cups",
+      "> Tea\n>\n> Cups",
+      7,
+    ],
+  ])(
+    "deletes a table %s with its head, its only row, as one step for undo",
+    async (_, text, written, cursor) => {
+      const { view } = open(text, "\n", true);
+      await parsed(view);
+
+      expect(picked(view, "A", "Delete row")).toEqual([
+        written,
+        undefined,
+        undefined,
+      ]);
+      expect(view.hasFocus).toBe(true);
+      expect(view.state.selection.main.head).toBe(cursor);
+      undo(view);
+      expect(view.state.sliceDoc()).toBe(text);
+    },
+  );
+
   it("offers only the table's edits that apply to the cell, its column's alignment pressed", async () => {
     const text = "| A | B |\n| - | -: |\n| 1 | 2 |\n| 3 | 4 |";
     const { view } = open(text, "\n", true);
@@ -2813,13 +2871,7 @@ describe("Visual's tables", () => {
     // Nothing moves the head, nor comes above it, as GFM's table starts
     // with its head.
     expect(offered("A")).toEqual([
-      [
-        "Add row above",
-        "Move row up",
-        "Move row down",
-        "Delete row",
-        "Move column left",
-      ],
+      ["Add row above", "Move row up", "Move row down", "Move column left"],
       [],
     ]);
     expect(offered("2")).toEqual([
