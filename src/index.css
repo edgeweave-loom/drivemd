@@ -1768,7 +1768,7 @@ dialog.drawer > .close {
 
 /* A callout's color, or a type's in Quote's menu, an unknown one a note's. */
 .markdown .callout,
-.callout-menu > [data-callout] {
+:is(.callout-menu, .key-menu) > [data-callout] {
   --callout: var(--callout-note);
 }
 
@@ -1785,17 +1785,19 @@ dialog.drawer > .close {
 }
 
 .markdown .callout:is([data-callout="abstract"], [data-callout="tip"]),
-.callout-menu > :is([data-callout="abstract"], [data-callout="tip"]) {
+:is(.callout-menu, .key-menu)
+  > :is([data-callout="abstract"], [data-callout="tip"]) {
   --callout: var(--callout-abstract);
 }
 
 .markdown .callout[data-callout="success"],
-.callout-menu > [data-callout="success"] {
+:is(.callout-menu, .key-menu) > [data-callout="success"] {
   --callout: var(--callout-success);
 }
 
 .markdown .callout:is([data-callout="question"], [data-callout="warning"]),
-.callout-menu > :is([data-callout="question"], [data-callout="warning"]) {
+:is(.callout-menu, .key-menu)
+  > :is([data-callout="question"], [data-callout="warning"]) {
   --callout: var(--callout-question);
 }
 
@@ -1805,7 +1807,7 @@ dialog.drawer > .close {
     [data-callout="danger"],
     [data-callout="bug"]
   ),
-.callout-menu
+:is(.callout-menu, .key-menu)
   > :is(
     [data-callout="failure"],
     [data-callout="danger"],
@@ -1815,12 +1817,12 @@ dialog.drawer > .close {
 }
 
 .markdown .callout[data-callout="example"],
-.callout-menu > [data-callout="example"] {
+:is(.callout-menu, .key-menu) > [data-callout="example"] {
   --callout: var(--callout-example);
 }
 
 .markdown .callout[data-callout="quote"],
-.callout-menu > [data-callout="quote"] {
+:is(.callout-menu, .key-menu) > [data-callout="quote"] {
   --callout: var(--callout-quote);
 }
 
@@ -2507,6 +2509,10 @@ body:has(> .keyboard-toolbar) .editor {
   anchor-name: --list-key;
 }
 
+.keyboard-toolbar .menu-key[aria-label="Quote"] {
+  anchor-name: --quote-key;
+}
+
 /* Its menu, a row of icons: above the toolbar, in the screen's middle,
    where anchors are lacking, clear of the part of the page that a keyboard
    covers, and otherwise 4 px above the key and centered on it, kept 8 px
@@ -2545,6 +2551,18 @@ body:has(> .keyboard-toolbar) .editor {
   .key-menu[aria-label="List"] {
     position-anchor: --list-key;
   }
+
+  .key-menu[aria-label="Quote"] {
+    position-anchor: --quote-key;
+  }
+}
+
+/* Quote's, in a vault's note: a plain quote and the thirteen callout types,
+   in two rows of seven, which a 375 px phone holds. */
+.key-menu[aria-label="Quote"] {
+  --width: calc(7 * 48px + 2 * var(--space-1));
+  flex-wrap: wrap;
+  border-radius: var(--radius-xl);
 }
 
 .key-menu:popover-open {
@@ -2554,6 +2572,12 @@ body:has(> .keyboard-toolbar) .editor {
 .keyboard-toolbar .key-menu > button {
   width: 48px;
   height: 48px;
+}
+
+.keyboard-toolbar .key-menu .callout-icon {
+  width: 24px;
+  height: 24px;
+  color: var(--callout);
 }
 
 .keyboard-toolbar .key-menu > [aria-checked="true"] {

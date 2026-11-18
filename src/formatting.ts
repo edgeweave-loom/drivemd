@@ -413,6 +413,84 @@ export function makeCallout(type: CalloutType): StateCommand {
   };
 }
 
+interface Range {
+  from: number;
+  to: number;
+}
+
+/**
+ * The quote's own marks, each `>` with the space or tab after it, those of
+ * the quotes in it and around it left out.
+ */
+function quoteMarks(state: EditorState, quote: SyntaxNode): Range[] {
+  const marks: Range[] = [];
+  // A paragraph's lines after its first hold their marks.
+  const walk = (node: SyntaxNode) => {
+    for (let child = node.firstChild; child; child = child.nextSibling) {
+      if (child.name === "QuoteMark") {
+        const space = /[ \t]/.test(state.sliceDoc(child.to, child.to + 1));
+        marks.push({ from: child.from, to: child.to + (space ? 1 : 0) });
+      } else if (child.name !== "Blockquote") {
+        walk(child);
+      }
+    }
+  };
+  walk(quote);
+  return marks;
+}
+
+/**
+ * Where a callout's `[!type]` is, with its fold sign and the spaces after
+ * it, so that its title opens the quote once it goes; or its whole line,
+ * line break included, where it has no title and the callout goes on.
+ */
+function calloutMarkerAt(
+  state: EditorState,
+  quote: SyntaxNode,
+  opening: SyntaxNode,
+  length: number,
+): Range {
+  const line = state.doc.lineAt(opening.from);
+  if (opening.from + length >= line.to && line.to < quote.to) {
+    return { from: line.from, to: line.to + 1 };
+  }
+  return { from: opening.from, to: opening.from + length };
+}
+
+/**
+ * Sets the format of the quote around the first selected line, the
+ * innermost, to one of those Quote's menus list, a plain quote or a
+ * callout's type, as one edit. The format it is in already turns it back
+ * into text, whole; another changes it: lines not quoted become a quote as
+ * Quote makes it, a callout a plain one as it loses its `[!type]` and fold
+ * sign, and a type is `makeCallout`'s. Off in code, in the front matter,
+ * and where the parse has not reached.
+ */
+export function quoteAs(target: CalloutType | "quote"): StateCommand {
+  return (view) => {
+    const { state, dispatch } = view;
+    if (state.readOnly) return false;
+    const first = firstSelected(state);
+    const tree = ensureSyntaxTree(state, first.to, 100);
+    if (!tree || blockAt(tree, first, NO_TABLE)) return false;
+    const quote = blockAt(tree, first, ["Blockquote"]);
+    if (!quote) {
+      return target === "quote" ? toggleQuote(view) : makeCallout(target)(view);
+    }
+    const { first: opening, marker } = quoteOpening(state, quote);
+    const now = marker?.type ?? "quote";
+    if (target !== now && target !== "quote") return makeCallout(target)(view);
+    // A callout loses its `[!type]` either way. Each change maps through
+    // those before it, so a mark on a title's line that goes whole is gone.
+    const changes: Range[] =
+      marker && opening
+        ? [calloutMarkerAt(state, quote, opening, marker.length)]
+        : [];
+    if (target === now) changes.push(...quoteMarks(state, quote));
+    return formatLines(state, dispatch, () => changes);
+  };
+}
+
 type Task = "text" | "item" | "open" | "done";
 type Target = Exclude<Task, "text">;
 
@@ -1002,6 +1080,8 @@ export interface Formats {
    * as it shows, if it is in one.
    */
   callout: CalloutType | null;
+  /** Whether the first selected line is in a quote, a callout included. */
+  quoted: boolean;
   on: ReadonlySet<StateCommand | Command>;
 }
 
@@ -1031,6 +1111,7 @@ export function formatsAt(state: EditorState): Formats {
     tableOff: blockAt(tree, lastLine(state), NO_TABLE) !== null,
     calloutOff: blockAt(tree, first, NO_TABLE) !== null,
     callout: calloutAround(state, tree, first),
+    quoted: blockAt(tree, first, ["Blockquote"]) !== null,
     on,
   };
 }

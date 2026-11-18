@@ -9,6 +9,8 @@ import {
   useRef,
 } from "react";
 import { createPortal } from "react-dom";
+import { CalloutIcon } from "./CalloutIcon.tsx";
+import { CALLOUT_TYPES, titled, type CalloutType } from "./callouts.ts";
 import { findInNote } from "./find.ts";
 import { Icon } from "./Icon.tsx";
 import type { IconName } from "./icons.ts";
@@ -18,6 +20,7 @@ import {
   indentLines,
   insertLink,
   outdentLines,
+  quoteAs,
   toggleBold,
   toggleItalic,
   toggleQuote,
@@ -36,13 +39,27 @@ interface Item {
   name: string;
   command: Command;
   icon: IconName;
+  /** The callout type whose icon it shows, in its color, in `icon`'s place. */
+  callout?: CalloutType;
+  /** Whether it shows checked, or else where its command's formatting is. */
+  on?: (formats: Formats) => boolean;
 }
 
-type Key = Omit<Item, "command"> & {
+type Key = Omit<Item, "command" | "callout" | "on"> & {
   /** Whether it changes the lines the cursor is on, which a cell lacks. */
   lines?: true;
 } & (
-    | { command: Command; menu?: never }
+    | {
+        command: Command;
+        menu?: never;
+        showsItem?: never;
+        /**
+         * In a vault's note, but in code and the front matter, the menu it
+         * opens too, its command running first where none of its items is
+         * on.
+         */
+        vaultMenu?: readonly Item[];
+      }
     | {
         command?: never;
         /** The items of the menu it opens, which show checked where on. */
@@ -69,6 +86,24 @@ const HEADING_ITEMS: Item[] = [
   { name: "Heading 1", command: TOGGLE_HEADINGS[0], icon: "format_h1" },
   { name: "Heading 2", command: TOGGLE_HEADINGS[1], icon: "format_h2" },
   { name: "Heading 3", command: TOGGLE_HEADINGS[2], icon: "format_h3" },
+];
+
+// Quote's formats in a vault's note: a plain quote, or a callout's type,
+// each a way to go and, where the quote is in it, back to text.
+const QUOTE_ITEMS: Item[] = [
+  {
+    name: "Plain quote",
+    command: quoteAs("quote"),
+    icon: "blockquote",
+    on: ({ quoted, callout }) => quoted && callout === null,
+  },
+  ...CALLOUT_TYPES.map((type): Item => ({
+    name: titled(type),
+    command: quoteAs(type),
+    icon: "blockquote",
+    callout: type,
+    on: ({ callout }) => callout === type,
+  })),
 ];
 
 const KEYS: Key[] = [
@@ -117,6 +152,7 @@ const KEYS: Key[] = [
     name: "Quote",
     command: toggleQuote,
     icon: "blockquote",
+    vaultMenu: QUOTE_ITEMS,
     lines: true,
   },
   {
@@ -132,8 +168,20 @@ const KEYS: Key[] = [
   },
 ];
 
-// The keys that open a menu, which a table's cell lacks.
-const MENU_KEYS = KEYS.flatMap((key) => (key.menu ? [key] : []));
+// The keys that open a menu, which a table's cell lacks, and whether they
+// open it only in a vault's note.
+const MENU_KEYS = KEYS.flatMap((key) => {
+  if (key.menu) return [{ name: key.name, menu: key.menu, vault: false }];
+  if (key.vaultMenu) {
+    return [{ name: key.name, menu: key.vaultMenu, vault: true }];
+  }
+  return [];
+});
+
+/** Whether the item shows checked where the cursor is. */
+function isOn(item: Item, formats: Formats): boolean {
+  return item.on ? item.on(formats) : formats.on.has(item.command);
+}
 
 // In a table's cell, the keys that leave its row whole but Undo and Redo,
 // which come first, as a key there deletes a row or a column at a tap.
@@ -157,10 +205,13 @@ const TABLE_KEYS = TABLE_EDITS.map((group) =>
  * middle of its icon, under a shade, so that the row shows it scrolls.
  * Heading and List open a menu above them, a row of Heading 1 to 3 and of
  * the formatting toolbar's lists, a ▾ in their corner, and show pressed in
- * their formatting, List with the cursor's list, as do their menus.
+ * their formatting, List with the cursor's list, as do their menus. In a
+ * vault's note, Quote quotes the lines, unless they are, and opens a menu
+ * of a plain quote and the callout types, the quote's format checked.
  */
 export function KeyboardToolbar({
   link,
+  vault,
   cell,
   formats,
   tableMenu,
@@ -170,6 +221,8 @@ export function KeyboardToolbar({
 }: {
   /** The address of the link the cursor is in. */
   link: string | undefined;
+  /** Whether the note is in an Obsidian vault, whose callouts Quote makes. */
+  vault: boolean;
   /**
    * The table's cell edited in place that the cursor is in, if any: the
    * edits that apply, and its column's alignment.
@@ -251,8 +304,10 @@ export function KeyboardToolbar({
   }, []);
   const keyOf = (key: Key) => {
     const { name, command, icon } = key;
-    if (key.menu) {
-      const on = key.menu.find((item) => formats.on.has(item.command));
+    const menu =
+      key.menu ?? (vault && !formats.calloutOff ? key.vaultMenu : undefined);
+    if (menu) {
+      const on = menu.find((item) => isOn(item, formats));
       return (
         <button
           key={name}
@@ -261,6 +316,9 @@ export function KeyboardToolbar({
           aria-label={name}
           aria-haspopup="menu"
           popoverTarget={`${menus}${name}`}
+          onClick={() => {
+            if (command && !on) onCommand(command);
+          }}
         >
           <Icon name={key.showsItem && on ? on.icon : icon} />
         </button>
@@ -333,7 +391,7 @@ export function KeyboardToolbar({
         )}
       </div>
       {!cell &&
-        MENU_KEYS.map(({ name, menu }) => (
+        MENU_KEYS.filter((key) => vault || !key.vault).map(({ name, menu }) => (
           <div
             key={name}
             ref={closing}
@@ -349,13 +407,18 @@ export function KeyboardToolbar({
                 type="button"
                 role="menuitemcheckbox"
                 aria-label={item.name}
-                aria-checked={formats.on.has(item.command)}
+                aria-checked={isOn(item, formats)}
+                data-callout={item.callout}
                 onClick={(event) => {
                   event.currentTarget.parentElement?.hidePopover();
                   onCommand(item.command);
                 }}
               >
-                <Icon name={item.icon} />
+                {item.callout ? (
+                  <CalloutIcon type={item.callout} />
+                ) : (
+                  <Icon name={item.icon} />
+                )}
               </button>
             ))}
           </div>
