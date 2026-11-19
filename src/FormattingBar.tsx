@@ -8,15 +8,14 @@ import {
   type KeyboardEvent,
 } from "react";
 import { CalloutIcon } from "./CalloutIcon.tsx";
-import { CALLOUT_TYPES, titled, type CalloutType } from "./callouts.ts";
 import { findInNote } from "./find.ts";
 import {
   FORMATTING_KEYS,
   HEADINGS,
   indentLines,
   insertLink,
-  makeCallout,
   outdentLines,
+  QUOTE_FORMATS,
   toggleBold,
   toggleCode,
   toggleItalic,
@@ -159,7 +158,7 @@ function useMenu() {
       if ((event as ToggleEvent).newState !== "open") return;
       const item =
         element.querySelector<HTMLElement>('[aria-checked="true"]') ??
-        element.querySelector<HTMLElement>('[role="menuitemradio"]');
+        element.querySelector<HTMLElement>('[role^="menuitem"]');
       item?.focus();
     };
     element.addEventListener("toggle", opened);
@@ -245,35 +244,34 @@ function StyleMenu({
 }
 
 /**
- * Quote's ▾, in a vault's note: a menu of Obsidian's callout types, each
- * after its icon in its color, the type of the callout around the cursor
- * checked, which makes a callout of the type picked or changes its type,
- * as Docs' list buttons open their menus.
+ * Quote's ▾, in a vault's note: a menu of a plain quote, then Obsidian's
+ * callout types, each after its icon in its color, the quote's own format
+ * checked, as Docs' list buttons open their menus. A format picked sets the
+ * quote's, or, where it is checked, turns the quote back into text.
  */
-function CalloutMenu({
-  off,
-  callout,
+function QuoteMenu({
+  formats,
   onCommand,
   onLeave,
 }: {
-  /** Whether it is off, in code or the front matter, opening nothing. */
-  off: boolean;
-  callout: CalloutType | null;
+  /** Where the cursor is: off in code and the front matter, opening nothing. */
+  formats: Formats;
   onCommand: (command: Command) => void;
   onLeave: () => void;
 }) {
   const [id, menu, holding] = useMenu();
+  const off = formats.calloutOff;
   return (
     <>
       <button
         type="button"
         className="split"
-        aria-label="Callout type"
+        aria-label="Quote format"
         aria-haspopup="menu"
         aria-disabled={off || undefined}
         popoverTarget={off ? undefined : id}
         tabIndex={-1}
-        title="Callout type"
+        title="Quote format"
       >
         <Icon name="arrow_drop_down" />
       </button>
@@ -282,7 +280,7 @@ function CalloutMenu({
         id={id}
         popover="auto"
         role="menu"
-        aria-label="Callout type"
+        aria-label="Quote format"
         className="menu callout-menu"
         // Its keys stay its own, rather than moving along the toolbar.
         onKeyDown={(event) => {
@@ -290,21 +288,26 @@ function CalloutMenu({
           moveInMenu(event);
         }}
       >
-        {CALLOUT_TYPES.map((type) => (
+        {QUOTE_FORMATS.map((format) => (
           <button
-            key={type}
+            key={format.name}
             type="button"
-            role="menuitemradio"
-            aria-checked={type === callout}
-            data-callout={type}
+            // A click on the one checked takes it away, as a checkbox.
+            role="menuitemcheckbox"
+            aria-checked={format.on(formats)}
+            data-callout={format.callout}
             onClick={() => {
               menu.current?.hidePopover();
-              onCommand(makeCallout(type));
+              onCommand(format.command);
               onLeave();
             }}
           >
-            <CalloutIcon type={type} />
-            {titled(type)}
+            {format.callout ? (
+              <CalloutIcon type={format.callout} />
+            ) : (
+              <Icon name={format.icon} />
+            )}
+            {format.name}
           </button>
         ))}
       </div>
@@ -319,9 +322,9 @@ function CalloutMenu({
  * the keyboard, Alt+F10 reaches the toolbar, and a button pressed gives the
  * focus back to the text. The cursor's line's style shows in its menu, and
  * the formatting around the cursor as buttons pressed, and, in a vault's
- * note, Quote's menu makes callouts. In a table's cell,
- * the style and the buttons of lines leave, since their marks would break
- * its row.
+ * note, Quote's menu sets a quote's format, plain or a callout's. In a
+ * table's cell, the style and the buttons of lines leave, since their marks
+ * would break its row.
  */
 export function FormattingBar({
   cell,
@@ -420,9 +423,8 @@ export function FormattingBar({
                   <Icon name={icon} />
                 </button>
                 {command === toggleQuote && vault && (
-                  <CalloutMenu
-                    off={formats.calloutOff}
-                    callout={formats.callout}
+                  <QuoteMenu
+                    formats={formats}
                     onCommand={onCommand}
                     onLeave={onLeave}
                   />
