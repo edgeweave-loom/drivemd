@@ -224,7 +224,7 @@ describe("the formatting toolbar", () => {
     expect(view.hasFocus).toBe(true);
   });
 
-  it("makes a callout from Quote's menu in a vault's note, its type checked", () => {
+  it("makes a callout from Quote's menu in a vault's note, its format checked", () => {
     const view = open("> [!faq] tea", false, true);
     act(() => {
       view.focus();
@@ -232,19 +232,20 @@ describe("the formatting toolbar", () => {
     });
     expect(names().slice(12, 15)).toEqual([
       "Quote",
-      "Callout type",
+      "Quote format",
       "Insert table",
     ]);
     const type = within(toolbar()).getByRole("button", {
-      name: "Callout type",
+      name: "Quote format",
     });
     expect(type).toHaveAttribute("aria-haspopup", "menu");
-    expect(type).toHaveAttribute("title", "Callout type");
+    expect(type).toHaveAttribute("title", "Quote format");
 
     fireEvent.click(type);
-    const menu = screen.getByRole("menu", { name: "Callout type" });
-    const items = within(menu).getAllByRole("menuitemradio");
+    const menu = screen.getByRole("menu", { name: "Quote format" });
+    const items = within(menu).getAllByRole("menuitemcheckbox");
     expect(items.map((item) => item.textContent)).toEqual([
+      "Plain quote",
       "Note",
       "Abstract",
       "Info",
@@ -260,52 +261,97 @@ describe("the formatting toolbar", () => {
       "Quote",
     ]);
     // Written as an alias, it shows as its type.
-    const checked = within(menu).getByRole("menuitemradio", { checked: true });
+    const checked = within(menu).getByRole("menuitemcheckbox", {
+      checked: true,
+    });
     expect(checked).toHaveTextContent("Question");
     expect(checked).toHaveFocus();
-    const warning = within(menu).getByRole("menuitemradio", {
+    const warning = within(menu).getByRole("menuitemcheckbox", {
       name: "Warning",
     });
     expect(warning.querySelector("svg")).toHaveAttribute(
       "data-icon",
       "lucide-triangle-alert",
     );
+    expect(
+      within(menu)
+        .getByRole("menuitemcheckbox", { name: "Plain quote" })
+        .querySelector("svg"),
+    ).toHaveAttribute("data-icon", "blockquote");
     fireEvent.click(warning);
 
     expect(view.state.sliceDoc()).toBe("> [!warning] tea");
     expect(view.hasFocus).toBe(true);
   });
 
-  it("focuses Note in Quote's menu outside a callout, and follows the cursor", () => {
+  it("focuses Plain quote in Quote's menu outside a quote, and follows the cursor", () => {
     const view = open("tea\n\n> [!tip] cup\n\n> [!bug] pot", false, true);
     act(() => {
       view.focus();
     });
     fireEvent.click(
-      within(toolbar()).getByRole("button", { name: "Callout type" }),
+      within(toolbar()).getByRole("button", { name: "Quote format" }),
     );
-    const menu = screen.getByRole("menu", { name: "Callout type" });
+    const menu = screen.getByRole("menu", { name: "Quote format" });
 
     expect(
-      within(menu).queryByRole("menuitemradio", { checked: true }),
+      within(menu).queryByRole("menuitemcheckbox", { checked: true }),
     ).toBeNull();
     expect(
-      within(menu).getByRole("menuitemradio", { name: "Note" }),
+      within(menu).getByRole("menuitemcheckbox", { name: "Plain quote" }),
     ).toHaveFocus();
 
     act(() => {
       view.dispatch({ selection: { anchor: 15 } });
     });
     expect(
-      within(menu).getByRole("menuitemradio", { checked: true }),
+      within(menu).getByRole("menuitemcheckbox", { checked: true }),
     ).toHaveTextContent("Tip");
     // From one callout to another, as quoted as it.
     act(() => {
       view.dispatch({ selection: { anchor: 29 } });
     });
     expect(
-      within(menu).getByRole("menuitemradio", { checked: true }),
+      within(menu).getByRole("menuitemcheckbox", { checked: true }),
     ).toHaveTextContent("Bug");
+  });
+
+  it("turns a callout into a plain quote, or text, from Quote's menu", () => {
+    const view = open("> [!tip]- tea", false, true);
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 13 } });
+    });
+    const pick = (name: string) => {
+      fireEvent.click(
+        within(toolbar()).getByRole("button", { name: "Quote format" }),
+      );
+      const menu = screen.getByRole("menu", { name: "Quote format" });
+      fireEvent.click(within(menu).getByRole("menuitemcheckbox", { name }));
+    };
+    // Closed once a format is picked, the menu has no name to find it by.
+    const checked = () =>
+      Array.from(
+        document.querySelectorAll(
+          '[aria-label="Quote format"] > [aria-checked="true"]',
+        ),
+        (item) => item.textContent,
+      );
+    pick("Plain quote");
+    expect(view.state.sliceDoc()).toBe("> tea");
+    expect(checked()).toEqual(["Plain quote"]);
+    // The format checked takes the quote away.
+    pick("Plain quote");
+    expect(view.state.sliceDoc()).toBe("tea");
+    expect(checked()).toEqual([]);
+    pick("Plain quote");
+    expect(view.state.sliceDoc()).toBe("> tea");
+    pick("Tip");
+    expect(view.state.sliceDoc()).toBe("> [!tip] tea");
+    expect(checked()).toEqual(["Tip"]);
+    pick("Tip");
+    expect(view.state.sliceDoc()).toBe("tea");
+    expect(view.hasFocus).toBe(true);
   });
 
   it("turns Quote's menu off in code, where it opens nothing", () => {
@@ -314,19 +360,19 @@ describe("the formatting toolbar", () => {
       view.dispatch({ selection: { anchor: 5 } });
     });
     const type = within(toolbar()).getByRole("button", {
-      name: "Callout type",
+      name: "Quote format",
     });
 
     expect(type).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(type);
-    expect(screen.queryByRole("menu", { name: "Callout type" })).toBeNull();
+    expect(screen.queryByRole("menu", { name: "Quote format" })).toBeNull();
     expect(view.state.sliceDoc()).toBe("```\ncode\n```");
   });
 
   it("leaves Quote without a menu outside a vault", () => {
     open("> [!note] tea");
 
-    expect(names()).not.toContain("Callout type");
+    expect(names()).not.toContain("Quote format");
   });
 
   it("presses the buttons of the formatting around the cursor", () => {

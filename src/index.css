@@ -2719,15 +2719,18 @@ body:has(> .keyboard-toolbar) .editor {
   color: var(--on-secondary-container);
 }
 
-/* Each type after its icon in its color, as Visual draws it. */
+/* Each format after its icon, a type's in its color, as Visual draws it. */
 .callout-menu {
   min-width: 180px;
 }
 
-.callout-menu .callout-icon {
+.callout-menu :is(.icon, .callout-icon) {
   flex: none;
   width: 20px;
   height: 20px;
+}
+
+.callout-menu .callout-icon {
   color: var(--callout);
 }
 

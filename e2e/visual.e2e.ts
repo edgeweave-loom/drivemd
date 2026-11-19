@@ -444,7 +444,7 @@ test("draws a vault's callout in Visual as the viewer does, its marks shown wher
   );
 });
 
-test("makes a callout from Quote's menu in a vault's note, and changes its type, by mouse and by keyboard", async ({
+test("makes a callout from Quote's menu in a vault's note, changes its type, and turns it back into text, by mouse and by keyboard", async ({
   page,
   drive,
 }, info) => {
@@ -458,15 +458,15 @@ test("makes a callout from Quote's menu in a vault's note, and changes its type,
   const note = await editInVisual(page, "today");
   const title = note.locator(".cm-line").nth(2);
   const toolbar = page.getByRole("toolbar", { name: "Format", exact: true });
-  const menu = page.getByRole("menu", { name: "Callout type" });
+  const menu = page.getByRole("menu", { name: "Quote format" });
 
   // With a mouse: the line's text becomes the title.
   await title.click();
-  await toolbar.getByRole("button", { name: "Callout type" }).click();
+  await toolbar.getByRole("button", { name: "Quote format" }).click();
   await expect(
-    menu.getByRole("menuitemradio", { name: "Warning" }).locator("svg"),
+    menu.getByRole("menuitemcheckbox", { name: "Warning" }).locator("svg"),
   ).toHaveCSS("color", "rgb(236, 117, 0)");
-  await menu.getByRole("menuitemradio", { name: "Question" }).click();
+  await menu.getByRole("menuitemcheckbox", { name: "Question" }).click();
   await expect(menu).toBeHidden();
   await expect(title).toHaveText("> [!question] Why tea?");
   await expect(note).toBeFocused();
@@ -476,18 +476,25 @@ test("makes a callout from Quote's menu in a vault's note, and changes its type,
   await page.keyboard.press("End");
   for (let stop = 0; stop < 3; stop++) await page.keyboard.press("ArrowLeft");
   await expect(
-    toolbar.getByRole("button", { name: "Callout type" }),
+    toolbar.getByRole("button", { name: "Quote format" }),
   ).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(
-    menu.getByRole("menuitemradio", { name: "Question" }),
+    menu.getByRole("menuitemcheckbox", { name: "Question" }),
   ).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   await expect(note).toBeFocused();
   await expect(title).toHaveText("> [!warning] Why tea?");
 
+  // The format checked turns the callout back into text.
+  await toolbar.getByRole("button", { name: "Quote format" }).click();
+  await menu.getByRole("menuitemcheckbox", { name: "Warning" }).click();
+  await expect(title).toHaveText("Why tea?");
+
   // Each pick, one edit that undo takes back.
+  await page.keyboard.press("Control+z");
+  await expect(title).toHaveText("> [!warning] Why tea?");
   await page.keyboard.press("Control+z");
   await expect(title).toHaveText("> [!question] Why tea?");
   await page.getByRole("button", { name: "Save", exact: true }).click();

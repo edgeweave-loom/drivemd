@@ -13,7 +13,13 @@ import {
 } from "@codemirror/state";
 import type { Command, KeyBinding } from "@codemirror/view";
 import type { SyntaxNode, Tree } from "@lezer/common";
-import { calloutMarker, type CalloutType } from "./callouts.ts";
+import {
+  CALLOUT_TYPES,
+  calloutMarker,
+  titled,
+  type CalloutType,
+} from "./callouts.ts";
+import type { IconName } from "./icons.ts";
 
 /*
  * Markdown formatting, as the keyboard toolbar offers it on phones. Each
@@ -522,6 +528,38 @@ export function quoteAs(target: CalloutType | "quote"): StateCommand {
     return formatLines(state, dispatch, () => changes);
   };
 }
+
+/** A format of Quote's menus: a plain quote, or a callout's type. */
+export interface QuoteFormat {
+  name: string;
+  /** Its icon, a callout's type's drawn in its place. */
+  icon: IconName;
+  /** The callout's type, which a plain quote lacks. */
+  callout?: CalloutType;
+  command: StateCommand;
+  /** Whether the quote around the cursor is in it. */
+  on: (formats: Formats) => boolean;
+}
+
+/**
+ * Quote's formats in a vault's note, as both toolbars list them: each a
+ * way to go and, where the quote is in it, back to text.
+ */
+export const QUOTE_FORMATS: readonly QuoteFormat[] = [
+  {
+    name: "Plain quote",
+    icon: "blockquote",
+    command: quoteAs("quote"),
+    on: ({ quoted, callout }) => quoted && callout === null,
+  },
+  ...CALLOUT_TYPES.map((type): QuoteFormat => ({
+    name: titled(type),
+    icon: "blockquote",
+    callout: type,
+    command: quoteAs(type),
+    on: ({ callout }) => callout === type,
+  })),
+];
 
 type Task = "text" | "item" | "open" | "done";
 type Target = Exclude<Task, "text">;
@@ -1105,7 +1143,7 @@ export interface Formats {
    * has read so far.
    */
   tableOff: boolean;
-  /** Whether Quote's callout types are off, as Insert table, on the first line. */
+  /** Whether Quote's formats are off, as Insert table, on the first line. */
   calloutOff: boolean;
   /**
    * The type of the callout around the first selected line, the innermost,

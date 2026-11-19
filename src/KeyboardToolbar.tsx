@@ -10,7 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { CalloutIcon } from "./CalloutIcon.tsx";
-import { CALLOUT_TYPES, titled, type CalloutType } from "./callouts.ts";
+import type { CalloutType } from "./callouts.ts";
 import { findInNote } from "./find.ts";
 import { Icon } from "./Icon.tsx";
 import type { IconName } from "./icons.ts";
@@ -20,7 +20,7 @@ import {
   indentLines,
   insertLink,
   outdentLines,
-  quoteAs,
+  QUOTE_FORMATS,
   quoteLines,
   toggleBold,
   toggleItalic,
@@ -89,24 +89,6 @@ const HEADING_ITEMS: Item[] = [
   { name: "Heading 3", command: TOGGLE_HEADINGS[2], icon: "format_h3" },
 ];
 
-// Quote's formats in a vault's note: a plain quote, or a callout's type,
-// each a way to go and, where the quote is in it, back to text.
-const QUOTE_ITEMS: Item[] = [
-  {
-    name: "Plain quote",
-    command: quoteAs("quote"),
-    icon: "blockquote",
-    on: ({ quoted, callout }) => quoted && callout === null,
-  },
-  ...CALLOUT_TYPES.map((type): Item => ({
-    name: titled(type),
-    command: quoteAs(type),
-    icon: "blockquote",
-    callout: type,
-    on: ({ callout }) => callout === type,
-  })),
-];
-
 const KEYS: Key[] = [
   ...HISTORY,
   {
@@ -155,7 +137,7 @@ const KEYS: Key[] = [
     icon: "blockquote",
     // The tree tells the quote, which the text may not have reached yet:
     // a tap that misread it never takes a quote away.
-    vaultMenu: { command: quoteLines, items: QUOTE_ITEMS },
+    vaultMenu: { command: quoteLines, items: QUOTE_FORMATS },
     lines: true,
   },
   {
