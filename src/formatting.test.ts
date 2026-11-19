@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 import {
   cycleTask,
   formatsAt,
+  HEADINGS,
   indentLines,
   insertLink,
   makeCallout,
@@ -79,6 +80,20 @@ function marked(state: EditorState) {
   return text;
 }
 
+/** Runs a command that is off, which writes nothing. */
+function off(command: StateCommand, text: string | EditorState) {
+  const state = typeof text === "string" ? open(text) : text;
+  let dispatched = false;
+  const done = command({
+    state,
+    dispatch() {
+      dispatched = true;
+    },
+  });
+  expect(done).toBe(false);
+  expect(dispatched).toBe(false);
+}
+
 function run(command: StateCommand, text: string | EditorState) {
   let state = typeof text === "string" ? open(text) : text;
   const transactions: Transaction[] = [];
@@ -108,6 +123,11 @@ describe("TOGGLE_HEADINGS", () => {
     [2, "#|", "##|"],
     [3, "> pl|an", "> ### pl|an"],
     [1, "#tag|", "# #tag|"],
+    [2, "1. Fre|eze", "1. ## Fre|eze"],
+    [1, "- ## pl|an", "- # pl|an"],
+    [2, "- ## pl|an", "- pl|an"],
+    [3, "> - pl|an", "> - ### pl|an"],
+    [1, "  12) |", "  12) # |"],
   ])("Heading %i turns %j into %j", (level, before, after) => {
     expect(run(heading(level), before).text).toBe(after);
   });
@@ -127,6 +147,70 @@ describe("TOGGLE_HEADINGS", () => {
     expect(on("## pl|an")).toEqual([false, true, false]);
     expect(on("pl|an")).toEqual([false, false, false]);
     expect(on("#### pl|an")).toEqual([false, false, false]);
+    expect(on("1. ## pl|an")).toEqual([false, true, false]);
+  });
+
+  it("makes a list item's heading, which the viewer renders in it", () => {
+    const { text } = run(heading(2), "1. Fre|eze\n2. Ship");
+    expect(text).toBe("1. ## Fre|eze\n2. Ship");
+    const html = renderToStaticMarkup(
+      createElement(Markdown, { remarkPlugins: [remarkGfm] }, "1. ## Freeze"),
+    );
+    expect(html).toContain("<li>\n<h2>Freeze</h2>\n</li>");
+  });
+
+  it("leaves a task alone, which holds no heading", () => {
+    off(heading(1), "- [ ] Pa|ck");
+    expect(run(heading(1), "«one\n- [x] two»").text).toBe("# «one\n- [x] two»");
+    expect(formatsAt(open("- [ ] Pa|ck")).off.has(heading(1))).toBe(true);
+  });
+
+  it.each([
+    "```sh\n## comm|ent\n```",
+    "``|`sh\n## comment\n```",
+    "    ## co|de",
+    "> ```\n> ## co|de\n> ```",
+  ])("is off in code: %j", (text) => {
+    for (const command of [...TOGGLE_HEADINGS, ...HEADINGS]) off(command, text);
+    const formats = formatsAt(open(text));
+    expect(formats.heading).toBe(0);
+    expect(TOGGLE_HEADINGS.some((command) => formats.on.has(command))).toBe(
+      false,
+    );
+    expect(HEADINGS.every((command) => formats.off.has(command))).toBe(true);
+  });
+
+  it("leaves code alone among the selected lines", () => {
+    expect(run(heading(2), "«one\n```\n# two\n```\nthree»").text).toBe(
+      "## «one\n```\n# two\n```\n## three»",
+    );
+    expect(
+      run(HEADINGS[0] ?? heading(1), "«# one\n```\n# two\n```»").text,
+    ).toBe("«one\n```\n# two\n```»");
+  });
+
+  it("is off in the front matter", () => {
+    const state = EditorState.create({
+      doc: "---\ntitle: Tea\n---\nmilk",
+      selection: { anchor: 6 },
+      extensions: withFrontmatter(markdown({ base: markdownLanguage })),
+    });
+    off(heading(1), state);
+    off(toggleList, state);
+    expect(formatsAt(state).off.has(heading(1))).toBe(true);
+  });
+});
+
+describe("HEADINGS", () => {
+  it.each([
+    [0, "1. ## Free|ze", "1. Free|ze"],
+    [0, "> - ### pl|an", "> - pl|an"],
+    [4, "- ## pl|an", "- #### pl|an"],
+    [6, "1. pl|an", "1. ###### pl|an"],
+  ])("style %i turns %j into %j", (level, before, after) => {
+    const command = HEADINGS[level];
+    if (!command) throw new Error(`No style ${String(level)}`);
+    expect(run(command, before).text).toBe(after);
   });
 });
 
@@ -660,6 +744,25 @@ describe("toggleList", () => {
   it("leaves out the line where the selection ends at its start", () => {
     expect(run(toggleList, "«one\n»two").text).toBe("- «one\n»two");
   });
+
+  it("keeps a heading in the item", () => {
+    expect(run(toggleList, "## pl|an").text).toBe("- ## pl|an");
+    expect(run(toggleNumbered, "- ## pl|an").text).toBe("1. ## pl|an");
+    expect(run(toggleList, "- ## pl|an").text).toBe("## pl|an");
+  });
+
+  it("is off in code, which reads as text", () => {
+    for (const command of [toggleList, toggleNumbered, cycleTask]) {
+      off(command, "```\n- co|de\n```");
+    }
+    const formats = formatsAt(open("```\n- [ ] co|de\n```"));
+    expect(formats.on.has(toggleList)).toBe(false);
+    expect(formats.on.has(cycleTask)).toBe(false);
+    expect(formats.off.has(toggleList)).toBe(true);
+    expect(run(toggleList, "«one\n```\ntwo\n```»").text).toBe(
+      "- «one\n```\ntwo\n```»",
+    );
+  });
 });
 
 describe("cycleTask", () => {
@@ -684,6 +787,14 @@ describe("cycleTask", () => {
     expect(run(cycleTask, "«- [x] one\n- [ ] two\nthree»").text).toBe(
       "«- one\n- two\n- three»",
     );
+  });
+
+  it("leaves a heading alone, which a task cannot hold", () => {
+    off(cycleTask, "## Ti|tle");
+    off(cycleTask, "- ## Ti|tle");
+    expect(run(cycleTask, "«one\n## two»").text).toBe("- [ ] «one\n## two»");
+    expect(formatsAt(open("- ## Ti|tle")).off.has(cycleTask)).toBe(true);
+    expect(formatsAt(open("- [ ] Ti|tle")).off.has(cycleTask)).toBe(false);
   });
 
   it("leaves a line alone that already is in that state", () => {

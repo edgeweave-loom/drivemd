@@ -174,14 +174,17 @@ function useMenu() {
  * The cursor's line's style, as Docs's toolbar gives it: a button naming
  * it, and a menu of text and the six headings, each with its key, the one
  * shown checked. The focus starts at it, and goes back to the text once a
- * style is picked.
+ * style is picked. It is off where no style applies, opening nothing.
  */
 function StyleMenu({
   heading,
+  off,
   onCommand,
   onLeave,
 }: {
   heading: number;
+  /** Whether no style applies: in code, the front matter or a task. */
+  off: boolean;
   onCommand: (command: Command) => void;
   onLeave: () => void;
 }) {
@@ -193,7 +196,8 @@ function StyleMenu({
         className="style"
         aria-label="Style"
         aria-haspopup="menu"
-        popoverTarget={id}
+        aria-disabled={off || undefined}
+        popoverTarget={off ? undefined : id}
         tabIndex={-1}
         title="Style"
       >
@@ -390,6 +394,7 @@ export function FormattingBar({
             <>
               <StyleMenu
                 heading={formats.heading}
+                off={HEADINGS.every((command) => formats.off.has(command))}
                 onCommand={onCommand}
                 onLeave={onLeave}
               />
@@ -407,9 +412,9 @@ export function FormattingBar({
                   aria-pressed={toggle ? formats.on.has(command) : undefined}
                   // Off where it writes nothing, as a table's button.
                   aria-disabled={
-                    command === insertTable && formats.tableOff
-                      ? true
-                      : undefined
+                    (command === insertTable && formats.tableOff) ||
+                    formats.off.has(command) ||
+                    undefined
                   }
                   title={key ? `${name} (${keyLabel(key)})` : name}
                   // One stop for Tab, the arrows moving between them.

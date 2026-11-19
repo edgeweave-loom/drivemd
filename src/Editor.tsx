@@ -248,7 +248,12 @@ const NO_FORMATS: Formats = {
   callout: null,
   quoted: false,
   on: new Set(),
+  off: new Set(),
 };
+
+function sameSet<T>(one: ReadonlySet<T>, other: ReadonlySet<T>): boolean {
+  return one.size === other.size && [...one].every((item) => other.has(item));
+}
 
 function sameFormats(one: Formats, other: Formats): boolean {
   return (
@@ -257,8 +262,8 @@ function sameFormats(one: Formats, other: Formats): boolean {
     one.calloutOff === other.calloutOff &&
     one.callout === other.callout &&
     one.quoted === other.quoted &&
-    one.on.size === other.on.size &&
-    [...one.on].every((command) => other.on.has(command))
+    sameSet(one.on, other.on) &&
+    sameSet(one.off, other.off)
   );
 }
 

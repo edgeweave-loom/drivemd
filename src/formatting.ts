@@ -41,8 +41,11 @@ function prefix(line: Line) {
   const quoted = line.text.replace(QUOTES, "");
   const rest = quoted.replace(INDENT, "");
   const lead = line.text.length - rest.length;
-  const heading = HEADING.exec(rest);
   const item = ITEM.exec(rest);
+  // A list item holds a heading after its marker, as GitHub and Obsidian
+  // read it, but not a task, whose box GFM reads before a paragraph alone.
+  const after = item?.[3] === undefined ? (item?.[0].length ?? 0) : null;
+  const heading = after === null ? null : HEADING.exec(rest.slice(after));
   return {
     /** Where the line's own Markdown starts. */
     at: line.from + lead,
@@ -51,6 +54,8 @@ function prefix(line: Line) {
     quotes: line.text.slice(0, line.text.length - quoted.length),
     /** The line's indent, after any quote markers. */
     indent: quoted.slice(0, quoted.length - rest.length),
+    /** Where a heading's hashes start, or would, after a list's marker. */
+    headingAt: line.from + lead + (after ?? 0),
     heading: heading?.[1]?.length ?? 0,
     headingLength: heading?.[0].length ?? 0,
     marker: item?.[1],
@@ -114,28 +119,63 @@ function formatLines(
   return true;
 }
 
-/** Makes the line a heading of that level, or text at 0. */
+/**
+ * Applies the changes `format` makes to the selected lines that `takes`,
+ * out of code and the front matter, whose lines show as written. It is off
+ * where none is left, and where the parse has not reached the last.
+ */
+function formatText(
+  state: EditorState,
+  dispatch: (transaction: Transaction) => void,
+  format: (lines: Prefix[]) => ChangeSpec[],
+  takes: (line: Prefix) => boolean = () => true,
+): boolean {
+  const lines = selectedLines(state);
+  const last = lines.at(-1);
+  const tree =
+    last && ensureSyntaxTree(state, state.doc.lineAt(last.at).to, 100);
+  if (!tree) return false;
+  const text = lines.filter(
+    (line) =>
+      takes(line) && !blockAt(tree, state.doc.lineAt(line.at), AS_WRITTEN),
+  );
+  return text.length > 0 && formatLines(state, dispatch, format, text);
+}
+
+// A task holds no heading, nor a heading a task's box: GFM reads the box
+// before a paragraph alone.
+const takesHeading = (line: Prefix) => line.box === undefined;
+const takesBox = (line: Prefix) => line.heading === 0;
+
+/**
+ * Makes the line a heading of that level, or text at 0, a list item's
+ * heading after its marker.
+ */
 function makeHeading(line: Prefix, level: number): ChangeSpec[] {
-  const hashes = line.at + line.heading;
+  const at = line.headingAt;
+  const hashes = at + line.heading;
   if (line.heading === level) return [];
   if (line.heading === 0) {
-    return [{ from: line.at, insert: `${"#".repeat(level)} ` }];
+    return [{ from: at, insert: `${"#".repeat(level)} ` }];
   }
-  if (level === 0) return [{ from: line.at, to: line.at + line.headingLength }];
+  if (level === 0) return [{ from: at, to: at + line.headingLength }];
   return level > line.heading
     ? [{ from: hashes, insert: "#".repeat(level - line.heading) }]
-    : [{ from: line.at + level, to: hashes }];
+    : [{ from: at + level, to: hashes }];
 }
 
 /**
  * Turns the lines into text, at 0, or headings of each level from 1 to 6,
- * by index.
+ * by index, leaving tasks alone.
  */
 export const HEADINGS: readonly StateCommand[] = [0, 1, 2, 3, 4, 5, 6].map(
   (level) =>
     ({ state, dispatch }) =>
-      formatLines(state, dispatch, (lines) =>
-        lines.flatMap((line) => makeHeading(line, level)),
+      formatText(
+        state,
+        dispatch,
+        (lines) => lines.flatMap((line) => makeHeading(line, level)),
+        takesHeading,
       ),
 );
 
@@ -145,10 +185,15 @@ export const HEADINGS: readonly StateCommand[] = [0, 1, 2, 3, 4, 5, 6].map(
  */
 function toggleHeading(level: number): StateCommand {
   return ({ state, dispatch }) =>
-    formatLines(state, dispatch, (lines) => {
-      const to = lines.every((line) => line.heading === level) ? 0 : level;
-      return lines.flatMap((line) => makeHeading(line, to));
-    });
+    formatText(
+      state,
+      dispatch,
+      (lines) => {
+        const to = lines.every((line) => line.heading === level) ? 0 : level;
+        return lines.flatMap((line) => makeHeading(line, to));
+      },
+      takesHeading,
+    );
 }
 
 /** Heading 1 to 3 as the keyboard toolbar's Heading menu toggles them. */
@@ -255,7 +300,7 @@ function makeList(
  * a bullet, plain text again. A numbered item takes a bullet instead.
  */
 export const toggleList: StateCommand = ({ state, dispatch }) =>
-  formatLines(state, dispatch, (lines) =>
+  formatText(state, dispatch, (lines) =>
     makeList(
       state,
       lines,
@@ -268,7 +313,7 @@ export const toggleList: StateCommand = ({ state, dispatch }) =>
  * are numbered list items, plain text again.
  */
 export const toggleNumbered: StateCommand = ({ state, dispatch }) =>
-  formatLines(state, dispatch, (lines) =>
+  formatText(state, dispatch, (lines) =>
     makeList(
       state,
       lines,
@@ -476,7 +521,7 @@ export function makeCallout(type: CalloutType): StateCommand {
     if (state.readOnly) return false;
     const first = firstSelected(state);
     const tree = ensureSyntaxTree(state, first.to, 100);
-    if (!tree || blockAt(tree, first, NO_TABLE)) return false;
+    if (!tree || blockAt(tree, first, AS_WRITTEN)) return false;
     const quote = blockAt(tree, first, ["Blockquote"]);
     let changes: ChangeSpec[];
     if (quote) {
@@ -579,7 +624,7 @@ export function quoteAs(target: CalloutType | "quote"): StateCommand {
     if (state.readOnly) return false;
     const first = firstSelected(state);
     const tree = ensureSyntaxTree(state, first.to, 100);
-    if (!tree || blockAt(tree, first, NO_TABLE)) return false;
+    if (!tree || blockAt(tree, first, AS_WRITTEN)) return false;
     const quote = blockAt(tree, first, ["Blockquote"]);
     if (!quote) {
       return target === "quote" ? toggleQuote(view) : makeCallout(target)(view);
@@ -659,15 +704,20 @@ function makeTask(line: Prefix, state: Target): ChangeSpec[] {
 /**
  * Moves the lines to the task state after the first line's: a line or a
  * list item becomes an open task, an open task a done one, and a done task
- * a list item again.
+ * a list item again. Headings stay as they are.
  */
 export const cycleTask: StateCommand = ({ state, dispatch }) =>
-  formatLines(state, dispatch, (lines) => {
-    const first = lines[0] ? task(lines[0]) : "text";
-    const next: Target =
-      first === "open" ? "done" : first === "done" ? "item" : "open";
-    return lines.flatMap((line) => makeTask(line, next));
-  });
+  formatText(
+    state,
+    dispatch,
+    (lines) => {
+      const first = lines[0] ? task(lines[0]) : "text";
+      const next: Target =
+        first === "open" ? "done" : first === "done" ? "item" : "open";
+      return lines.flatMap((line) => makeTask(line, next));
+    },
+    takesBox,
+  );
 
 /** The range without the spaces at its ends, the way the user means it. */
 function trimmed(state: EditorState, { from, to }: SelectionRange) {
@@ -1086,9 +1136,9 @@ export const INLINE_KEYS: readonly KeyBinding[] = [
   { key: "Mod-k", run: insertLink },
 ];
 
-// Where a table is never written: code, whose lines show as written, and
-// the front matter's YAML.
-const NO_TABLE = ["FencedCode", "CodeBlock", "Frontmatter"];
+// Where no table, heading or list is written: code, whose lines show as
+// written, and the front matter's YAML.
+const AS_WRITTEN = ["FencedCode", "CodeBlock", "Frontmatter"];
 
 // The blocks that a table never comes between the lines of, as a line of
 // one runs on from the line before: a paragraph's, a setext heading's
@@ -1174,7 +1224,7 @@ export const writeTable: StateCommand = ({ state, dispatch }) => {
   const { doc, lineBreak } = state;
   const last = lastLine(state);
   const tree = ensureSyntaxTree(state, last.to, 100) ?? syntaxTree(state);
-  if (state.readOnly || blockAt(tree, last, NO_TABLE)) return false;
+  if (state.readOnly || blockAt(tree, last, AS_WRITTEN)) return false;
   const { block } = readBlock(state, tree, last, (read, line) =>
     blockAt(read, line, WHOLE),
   );
@@ -1220,9 +1270,19 @@ export const FORMATTING_KEYS: readonly KeyBinding[] = [
   { key: "Mod-[", run: outdentLines },
 ];
 
+// The commands of lines that code and the front matter are off for.
+const OF_TEXT: readonly StateCommand[] = [
+  ...HEADINGS,
+  ...TOGGLE_HEADINGS,
+  toggleList,
+  toggleNumbered,
+  cycleTask,
+];
+
 /**
  * The formatting the main selection is in: its line's heading level, and
- * the commands whose formatting holds it, which they would take away.
+ * the commands whose formatting holds it, which they would take away. In
+ * code and the front matter, the line reads as text.
  */
 export interface Formats {
   heading: number;
@@ -1241,12 +1301,22 @@ export interface Formats {
   /** Whether the first selected line is in a quote, a callout included. */
   quoted: boolean;
   on: ReadonlySet<StateCommand | Command>;
+  /**
+   * The commands of lines that write nothing on the cursor's line, as the
+   * parse has read so far: all of them in code and the front matter, the
+   * headings on a task, and Checkbox on a heading.
+   */
+  off: ReadonlySet<StateCommand | Command>;
 }
 
 export function formatsAt(state: EditorState): Formats {
   const range = state.selection.main;
-  const line = prefix(state.doc.lineAt(range.head));
+  const tree = syntaxTree(state);
+  const cursor = state.doc.lineAt(range.head);
+  const written = blockAt(tree, cursor, AS_WRITTEN) !== null;
+  const line = prefix(cursor);
   const on = new Set<StateCommand | Command>();
+  const off = new Set<StateCommand | Command>(written ? OF_TEXT : []);
   const inline: [string, StateCommand][] = [
     ["StrongEmphasis", toggleBold],
     ["Emphasis", toggleItalic],
@@ -1256,21 +1326,28 @@ export function formatsAt(state: EditorState): Formats {
   for (const [name, command] of inline) {
     if (inlineAround(state, range, name)) on.add(command);
   }
-  if (list(line) === "bullet") on.add(toggleList);
-  if (list(line) === "number") on.add(toggleNumbered);
-  if (line.box !== undefined) on.add(cycleTask);
   if (line.quotes.includes(">")) on.add(toggleQuote);
-  const heading = TOGGLE_HEADINGS[line.heading - 1];
-  if (heading) on.add(heading);
-  const tree = syntaxTree(state);
+  const level = written ? 0 : line.heading;
+  if (!written) {
+    if (list(line) === "bullet") on.add(toggleList);
+    if (list(line) === "number") on.add(toggleNumbered);
+    if (line.box !== undefined) {
+      on.add(cycleTask);
+      for (const command of [...HEADINGS, ...TOGGLE_HEADINGS]) off.add(command);
+    }
+    const heading = TOGGLE_HEADINGS[level - 1];
+    if (heading) on.add(heading);
+    if (level > 0) off.add(cycleTask);
+  }
   const first = firstSelected(state);
   const quote = blockAt(tree, first, ["Blockquote"]);
   return {
-    heading: line.heading,
-    tableOff: blockAt(tree, lastLine(state), NO_TABLE) !== null,
-    calloutOff: blockAt(tree, first, NO_TABLE) !== null,
+    heading: level,
+    tableOff: blockAt(tree, lastLine(state), AS_WRITTEN) !== null,
+    calloutOff: blockAt(tree, first, AS_WRITTEN) !== null,
     callout: quote ? (quoteOpening(state, quote).marker?.type ?? null) : null,
     quoted: quote !== null,
     on,
+    off,
   };
 }

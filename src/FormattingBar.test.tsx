@@ -224,6 +224,32 @@ describe("the formatting toolbar", () => {
     expect(view.hasFocus).toBe(true);
   });
 
+  it("turns Style off in code, as text, and Checkbox off on a heading", () => {
+    const view = open("```\n## code\n```\n- ## tea");
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 6 } });
+    });
+    const style = within(toolbar()).getByRole("button", { name: "Style" });
+    const checkbox = within(toolbar()).getByRole("button", {
+      name: "Checkbox",
+    });
+    expect(style).toHaveTextContent("Normal text");
+    expect(style).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(style);
+    expect(screen.queryByRole("menu", { name: "Style" })).toBeNull();
+    expect(checkbox).toHaveAttribute("aria-disabled", "true");
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 23 } });
+    });
+    expect(style).toHaveTextContent("Heading 2");
+    expect(style).not.toHaveAttribute("aria-disabled");
+    expect(checkbox).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(checkbox);
+    expect(view.state.sliceDoc()).toBe("```\n## code\n```\n- ## tea");
+  });
+
   it("makes a callout from Quote's menu in a vault's note, its format checked", () => {
     const view = open("> [!faq] tea", false, true);
     act(() => {
