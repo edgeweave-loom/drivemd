@@ -93,6 +93,45 @@ test("ends a short note's sheet at the window's bottom, under what heads it", as
   expect(above.x).toBeCloseTo(box.x, 0);
 });
 
+test("keeps a note with a wide table as wide as the window, the table scrolling", async ({
+  page,
+  drive,
+}, info) => {
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content = [
+    "# Wide",
+    "",
+    "| Tea | Cups |",
+    "| --- | --- |",
+    `| ${"Green".repeat(60)} | 2 |`,
+    "",
+  ].join("\n");
+  await signIn(page);
+  await page.goto("/edit?id=plan");
+  const table = page.locator(".markdown").getByRole("table");
+  await expect(table).toContainText("Cups");
+
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("No window");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    viewport.width,
+  );
+  expect(
+    await table.evaluate(
+      (element) => element.scrollWidth > element.clientWidth,
+    ),
+  ).toBe(true);
+  if (info.project.metadata.layout === "phone") {
+    // Edit floats over the note, on the screen.
+    const edit = await page
+      .getByRole("button", { name: "Edit", exact: true })
+      .boundingBox();
+    if (!edit) throw new Error("No Edit");
+    expect(edit.x + edit.width).toBeLessThanOrEqual(viewport.width);
+  }
+});
+
 test("edits a note on two sheets side by side, on a wide screen", async ({
   page,
 }, info) => {
