@@ -154,7 +154,7 @@ test("shows the formatting toolbar under the app bar with a mouse, Find in note 
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("plan")?.content)).toContain(
-    "Line 1.\n> Line 2. Tea.\nLine 3.\n",
+    "> Line 1.\n> Line 2. Tea.\n> Line 3.\n",
   );
 });
 

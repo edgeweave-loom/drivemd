@@ -278,7 +278,8 @@ export const toggleNumbered: StateCommand = ({ state, dispatch }) =>
 
 /**
  * Makes the lines a quote, `> `, blank lines between them included, or,
- * when all of them are quoted, takes their outer quote marker away.
+ * when all of them are quoted, takes their outer quote marker away. A line
+ * in no quote takes its whole block with it, as `quoteBlocks` writes it.
  */
 export const toggleQuote: StateCommand = ({ state, dispatch }) =>
   formatLines(
@@ -290,7 +291,10 @@ export const toggleQuote: StateCommand = ({ state, dispatch }) =>
             const start = line.at - line.indent.length - line.quotes.length;
             return markAt(state, start + line.quotes.indexOf(">"));
           })
-        : lines.flatMap((line) => quoteLine(state, line)),
+        : quoteBlocks(
+            state,
+            lines.map((line) => state.doc.lineAt(line.at)),
+          ),
     selectedLines(state, true),
   );
 
@@ -301,7 +305,10 @@ export const toggleQuote: StateCommand = ({ state, dispatch }) =>
 export const quoteLines: StateCommand = ({ state, dispatch }) => {
   if (state.readOnly) return false;
   const lines = selectedLines(state, true);
-  const changes = lines.flatMap((line) => quoteLine(state, line));
+  const changes = quoteBlocks(
+    state,
+    lines.map((line) => state.doc.lineAt(line.at)),
+  );
   if (changes.length === 0) return true;
   return formatLines(state, dispatch, () => changes, lines);
 };
@@ -322,6 +329,61 @@ function quoteLine(state: EditorState, line: Prefix): ChangeSpec[] {
   if (line.quotes !== "") return [];
   const from = state.doc.lineAt(line.at).from;
   return [{ from, insert: line.blank ? ">" : "> " }];
+}
+
+const blank = (line: Line) => line.text.trim() === "";
+
+/**
+ * Quotes the lines as Quote does: a line in a quote alone, if it is not
+ * quoted yet, as a lazy one, and any other line with the whole block it is
+ * in, so that no paragraph, table, list or setext heading splits. Each run
+ * of lines quoted is a blank line apart from the text before and after it
+ * that is not among `lines`, so that it joins no block next to it; those
+ * among them, a quote, it joins. `opening`, where given, is the first line's
+ * mark in place of `> `.
+ */
+function quoteBlocks(
+  state: EditorState,
+  lines: readonly Line[],
+  opening?: string,
+): ChangeSpec[] {
+  const { doc, lineBreak } = state;
+  const last = lines.at(-1);
+  if (!last) return [];
+  let tree = ensureSyntaxTree(state, last.to, 100) ?? syntaxTree(state);
+  ({ tree } = readBlock(state, tree, last, topBlock));
+  const picked = new Set(lines.map((line) => line.number));
+  const marked = new Set<number>();
+  const changes: ChangeSpec[] = [];
+  for (const line of lines) {
+    const block = topBlock(tree, line);
+    if (block?.name === "Blockquote") {
+      changes.push(...quoteLine(state, prefix(line)));
+      continue;
+    }
+    const from = block ? doc.lineAt(block.from).number : line.number;
+    const to = block ? doc.lineAt(block.to).number : line.number;
+    for (let number = from; number <= to; number++) marked.add(number);
+  }
+  // A line with text, neither selected nor quoted, that a run would join.
+  const apart = (number: number) =>
+    number >= 1 &&
+    number <= doc.lines &&
+    !picked.has(number) &&
+    !marked.has(number) &&
+    !blank(doc.line(number));
+  const numbers = [...marked].sort((one, other) => one - other);
+  for (const number of numbers) {
+    const line = doc.line(number);
+    if (apart(number - 1)) changes.push({ from: line.from, insert: lineBreak });
+    const mark = blank(line) ? ">" : "> ";
+    const first = number === numbers[0] && opening !== undefined;
+    changes.push({ from: line.from, insert: first ? opening : mark });
+    if (apart(number + 1)) {
+      changes.push({ from: doc.line(number + 1).from, insert: lineBreak });
+    }
+  }
+  return changes;
 }
 
 /**
@@ -420,18 +482,26 @@ export function makeCallout(type: CalloutType): StateCommand {
     if (quote) {
       changes = markQuote(state, quote, type);
     } else {
-      const lines = selectedLines(state, true);
-      const quoted = lines.findIndex((line) => line.quotes !== "");
-      const taken = quoted === -1 ? lines : lines.slice(0, quoted);
+      // The range of the first line alone: another cursor's is far away.
+      const range =
+        state.selection.ranges.find(
+          (one) => lastLine(state, one).number >= first.number,
+        ) ?? state.selection.main;
+      const last = lastLine(state, range);
+      const read = ensureSyntaxTree(state, last.to, 100) ?? tree;
+      const taken: Line[] = [];
+      for (let at = first.number; at <= last.number; at++) {
+        const line = state.doc.line(at);
+        if (topBlock(read, line)?.name === "Blockquote") break;
+        taken.push(line);
+      }
       // Blank lines before a quote would join it to the callout.
-      while (taken.length > 1 && taken.at(-1)?.blank) taken.pop();
+      const end = taken.findLastIndex((line) => !blank(line));
+      taken.splice(Math.max(end, 0) + 1);
       const block = topBlock(tree, first);
       const title =
         !block || block.name === "Paragraph" ? " " : `${state.lineBreak}> `;
-      changes = [
-        { from: first.from, insert: `> [!${type}]${title}` },
-        ...taken.slice(1).flatMap((line) => quoteLine(state, line)),
-      ];
+      changes = quoteBlocks(state, taken, `> [!${type}]${title}`);
     }
     if (changes.length === 0) return true;
     return formatLines(state, dispatch, () => changes);
@@ -1051,11 +1121,35 @@ function blockAt(
 }
 
 /**
- * The last line the main selection holds, which one ending at a line's
- * start leaves out, as the formatting of lines does.
+ * The block `find` gives for the line, read to its end, which a parse that
+ * ran out of time ends at the line it reached, and the tree that holds it.
  */
-function lastLine(state: EditorState): Line {
-  const { from, to } = state.selection.main;
+function readBlock(
+  state: EditorState,
+  tree: Tree,
+  line: Line,
+  find: (tree: Tree, line: Line) => SyntaxNode | null,
+) {
+  const { doc } = state;
+  let block = find(tree, line);
+  for (let reach = line.to; block && block.to >= reach;) {
+    reach = doc.lineAt(Math.min(block.to + 1, doc.length)).to;
+    if (reach === block.to) break;
+    tree = ensureSyntaxTree(state, reach, 100) ?? tree;
+    block = find(tree, line);
+  }
+  return { tree, block };
+}
+
+/**
+ * The last line the range holds, the main selection by default, which one
+ * ending at a line's start leaves out, as the formatting of lines does.
+ */
+function lastLine(
+  state: EditorState,
+  range: SelectionRange = state.selection.main,
+): Line {
+  const { from, to } = range;
   const line = state.doc.lineAt(to);
   return to > from && to === line.from ? state.doc.lineAt(to - 1) : line;
 }
@@ -1079,17 +1173,11 @@ const TABLE = ["|  |  |", "| --- | --- |", "|  |  |"];
 export const writeTable: StateCommand = ({ state, dispatch }) => {
   const { doc, lineBreak } = state;
   const last = lastLine(state);
-  let tree = ensureSyntaxTree(state, last.to, 100) ?? syntaxTree(state);
+  const tree = ensureSyntaxTree(state, last.to, 100) ?? syntaxTree(state);
   if (state.readOnly || blockAt(tree, last, NO_TABLE)) return false;
-  // Read to its end, which a parse that ran out of time ends at the line
-  // it reached.
-  let block = blockAt(tree, last, WHOLE);
-  for (let reach = last.to; block && block.to >= reach;) {
-    reach = doc.lineAt(Math.min(block.to + 1, doc.length)).to;
-    if (reach === block.to) break;
-    tree = ensureSyntaxTree(state, reach, 100) ?? tree;
-    block = blockAt(tree, last, WHOLE);
-  }
+  const { block } = readBlock(state, tree, last, (read, line) =>
+    blockAt(read, line, WHOLE),
+  );
   const line = block ? doc.lineAt(block.to) : last;
   const marks = QUOTES.exec(line.text)?.[0] ?? "";
   const gap = marks.trimEnd();

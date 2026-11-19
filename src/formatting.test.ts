@@ -370,8 +370,30 @@ describe("toggleQuote", () => {
     ["«a\n\nb»", "> «a\n>\n> b»"],
     ["«> a\nb»", "«> a\n> b»"],
     ["«> a\n>\n> b»", "«a\n\nb»"],
+    // A line not quoted takes its whole block.
+    ["a\nb|\nc", "> a\n> b|\n> c"],
+    ["Tit|le\n===", "> Tit|le\n> ==="],
+    ["- a\n|\n- b", "> - a\n>|\n> - b"],
+    // A blank line apart from the text around, unselected.
+    ["> quote\n|\nnext", "> quote\n\n>|\n\nnext"],
+    ["a\n|\nb", "a\n\n>|\n\nb"],
+    ["> q\n# Hea|d", "> q\n\n> # Hea|d"],
+    ["te|a\n> [!tip] cup", "> te|a\n\n> [!tip] cup"],
   ])("turns %j into %j", (before, after) => {
     expect(run(toggleQuote, before).text).toBe(after);
+  });
+
+  it("quotes a table whole from one of its rows", () => {
+    const { text } = run(
+      toggleQuote,
+      EditorState.create({
+        doc: "| a |\n| - |\n| b |",
+        selection: { anchor: 14, head: 15 },
+        extensions: [markdown({ base: markdownLanguage })],
+      }),
+    );
+
+    expect(text).toBe("> | a |\n> | - |\n> | «b» |");
   });
 });
 
@@ -411,8 +433,49 @@ describe("makeCallout", () => {
     ["> [!note] T\n> bo|dy", "> [!warning] T\n> bo|dy"],
     ["> [!note]\n> > [!tip] in|ner", "> [!note]\n> > [!warning] in|ner"],
     ["> [!note] T\n> > qu|ote", "> [!note] T\n> > [!warning] qu|ote"],
+    // A blank line apart from the blocks around it.
+    ["> quote\n|\nnext", "> quote\n\n> [!warning] |\n\nnext"],
+    ["a\n|\nb", "a\n\n> [!warning] |\n\nb"],
+    ["> q\n# Hea|d", "> q\n\n> [!warning]\n> # Hea|d"],
+    ["te|a\n> [!tip] cup", "> [!warning] te|a\n\n> [!tip] cup"],
+    // The whole block the cursor is in.
+    ["a\nb|\nc", "> [!warning] a\n> b|\n> c"],
+    ["Tit|le\n===", "> [!warning]\n> Tit|le\n> ==="],
+    ["- a\n|\n- b", "> [!warning]\n> - a\n>|\n> - b"],
+    // The first cursor's lines alone.
+    ["on|e\n\ntwo|", "> [!warning] on|e\n\ntwo|"],
   ])("turns %j into %j", (before, after) => {
     expect(run(makeCallout("warning"), before).text).toBe(after);
+  });
+
+  it("takes a table whole from its last row", () => {
+    const { text } = run(
+      makeCallout("warning"),
+      EditorState.create({
+        doc: "| a |\n| - |\n| b |",
+        selection: { anchor: 14, head: 15 },
+        extensions: [markdown({ base: markdownLanguage })],
+      }),
+    );
+
+    expect(text).toBe("> [!warning]\n> | a |\n> | - |\n> | «b» |");
+  });
+
+  it("makes the callout that Quote then a type make, as on a phone", () => {
+    for (const text of [
+      "> quote\n|\nnext",
+      "a\n|\nb",
+      "> q\n# Hea|d",
+      "te|a\n> [!tip] cup",
+      "Tit|le\n===",
+      "- a\n|\n- b",
+    ]) {
+      const quoted = run(quoteLines, text).state;
+
+      expect(run(quoteAs("warning"), quoted).text).toBe(
+        run(makeCallout("warning"), text).text,
+      );
+    }
   });
 
   it("writes a table's rows under a title line of their own", () => {
