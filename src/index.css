@@ -2453,8 +2453,8 @@ body:has(> .keyboard-toolbar) .editor {
   content: none;
 }
 
-/* A key off in a table's cell, as a disabled button, which would take the
-   focus from the cell. */
+/* A key off where it writes nothing, as a disabled button, which would take
+   the focus from the text or the cell. */
 .keyboard-toolbar button[aria-disabled="true"] {
   background-image: none;
   color: color-mix(in srgb, var(--on-surface) 38%, transparent);
@@ -2683,7 +2683,8 @@ body:has(> .keyboard-toolbar) .editor {
   anchor-name: --callout-type;
 }
 
-/* A table's edit that does not apply to the cell. */
+/* A button off where it writes nothing, as a table's edit that does not
+   apply to the cell. */
 .format-bar > button[aria-disabled="true"] {
   background-image: none;
   color: color-mix(in srgb, var(--on-surface) 38%, transparent);

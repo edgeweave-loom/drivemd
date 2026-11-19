@@ -289,6 +289,7 @@ export function KeyboardToolbar({
     const menu = menuOf(key);
     if (menu) {
       const on = menu.items.find((item) => isOn(item, formats));
+      const off = menu.items.every((item) => formats.off.has(item.command));
       return (
         <button
           key={name}
@@ -296,7 +297,8 @@ export function KeyboardToolbar({
           className={on ? "menu-key on" : "menu-key"}
           aria-label={name}
           aria-haspopup="menu"
-          popoverTarget={`${menus}${name}`}
+          aria-disabled={off || undefined}
+          popoverTarget={off ? undefined : `${menus}${name}`}
           onClick={() => {
             if (menu.first && !on) onCommand(menu.first);
           }}
@@ -393,6 +395,7 @@ export function KeyboardToolbar({
                     role="menuitemcheckbox"
                     aria-label={item.name}
                     aria-checked={isOn(item, formats)}
+                    aria-disabled={formats.off.has(item.command) || undefined}
                     data-callout={item.callout}
                     onClick={(event) => {
                       event.currentTarget.parentElement?.hidePopover();

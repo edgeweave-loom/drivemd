@@ -271,6 +271,36 @@ describe("the keyboard toolbar", () => {
     },
   );
 
+  it("turns Heading and List off in code, and Checkbox on a heading", async () => {
+    const view = await editing("```\n## code\n```\n- ## tea");
+    act(() => {
+      view.dispatch({ selection: { anchor: 6 } });
+    });
+    for (const name of ["Heading", "List"]) {
+      const key = screen.getByRole("button", { name });
+      expect(key).toHaveAttribute("aria-disabled", "true");
+      expect(key).not.toHaveClass("on");
+      tap(name);
+      expect(screen.queryByRole("menu", { name })).toBeNull();
+    }
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 23 } });
+    });
+    expect(screen.getByRole("button", { name: "Heading" })).toHaveClass("on");
+    tap("List");
+    const menu = screen.getByRole("menu", { name: "List" });
+    const off = within(menu)
+      .getAllByRole("menuitemcheckbox")
+      .filter((item) => item.getAttribute("aria-disabled") === "true")
+      .map((item) => item.getAttribute("aria-label"));
+    expect(off).toEqual(["Checkbox"]);
+    fireEvent.click(
+      within(menu).getByRole("menuitemcheckbox", { name: "Checkbox" }),
+    );
+    expect(view.state.sliceDoc()).toBe("```\n## code\n```\n- ## tea");
+  });
+
   it.each([
     ["Heading", "Heading 2", "tea", "## tea"],
     ["Heading", "Heading 1", "### tea", "# tea"],
