@@ -1775,9 +1775,10 @@ dialog.drawer > .close {
   --callout-quote: rgb(158 158 158);
 }
 
-/* A callout's color, or a type's in Quote's menu, an unknown one a note's. */
+/* A callout's color, or a type's in Quote's menu and button, an unknown one
+   a note's. */
 .markdown .callout,
-:is(.callout-menu, .key-menu) > [data-callout] {
+:is(.callout-menu, .key-menu, .format-bar) > [data-callout] {
   --callout: var(--callout-note);
 }
 
@@ -1794,18 +1795,18 @@ dialog.drawer > .close {
 }
 
 .markdown .callout:is([data-callout="abstract"], [data-callout="tip"]),
-:is(.callout-menu, .key-menu)
+:is(.callout-menu, .key-menu, .format-bar)
   > :is([data-callout="abstract"], [data-callout="tip"]) {
   --callout: var(--callout-abstract);
 }
 
 .markdown .callout[data-callout="success"],
-:is(.callout-menu, .key-menu) > [data-callout="success"] {
+:is(.callout-menu, .key-menu, .format-bar) > [data-callout="success"] {
   --callout: var(--callout-success);
 }
 
 .markdown .callout:is([data-callout="question"], [data-callout="warning"]),
-:is(.callout-menu, .key-menu)
+:is(.callout-menu, .key-menu, .format-bar)
   > :is([data-callout="question"], [data-callout="warning"]) {
   --callout: var(--callout-question);
 }
@@ -1816,7 +1817,7 @@ dialog.drawer > .close {
     [data-callout="danger"],
     [data-callout="bug"]
   ),
-:is(.callout-menu, .key-menu)
+:is(.callout-menu, .key-menu, .format-bar)
   > :is(
     [data-callout="failure"],
     [data-callout="danger"],
@@ -1826,12 +1827,12 @@ dialog.drawer > .close {
 }
 
 .markdown .callout[data-callout="example"],
-:is(.callout-menu, .key-menu) > [data-callout="example"] {
+:is(.callout-menu, .key-menu, .format-bar) > [data-callout="example"] {
   --callout: var(--callout-example);
 }
 
 .markdown .callout[data-callout="quote"],
-:is(.callout-menu, .key-menu) > [data-callout="quote"] {
+:is(.callout-menu, .key-menu, .format-bar) > [data-callout="quote"] {
   --callout: var(--callout-quote);
 }
 
@@ -2676,11 +2677,21 @@ body:has(> .keyboard-toolbar) .editor {
   anchor-name: --table-button;
 }
 
-/* Quote's ▾ in a vault's note, the narrow half of a split button. */
-.format-bar > button.split {
-  width: 20px;
-  margin-inline-start: -2px;
+/* Quote in a vault's note: its format's icon, then the ▾ of its menu. */
+.format-bar > button.quote {
+  display: flex;
+  width: auto;
+  padding: 0 0 0 var(--space-1);
   anchor-name: --callout-type;
+}
+
+.format-bar > button > .callout-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.format-bar > button:not([aria-disabled]) > .callout-icon {
+  color: var(--callout);
 }
 
 /* A button off where it writes nothing, as a table's edit that does not
@@ -2733,6 +2744,11 @@ body:has(> .keyboard-toolbar) .editor {
 
 .callout-menu .callout-icon {
   color: var(--callout);
+}
+
+/* No quote, lined up with the formats' names after their icons. */
+.callout-menu > .none {
+  padding-inline-start: calc(var(--space-4) + 20px + var(--space-3));
 }
 
 .style-menu .key {

@@ -458,38 +458,42 @@ test("makes a callout from Quote's menu in a vault's note, changes its type, and
   const note = await editInVisual(page, "today");
   const title = note.locator(".cm-line").nth(2);
   const toolbar = page.getByRole("toolbar", { name: "Format", exact: true });
-  const menu = page.getByRole("menu", { name: "Quote format" });
+  const quote = toolbar.getByRole("button", { name: "Quote", exact: true });
+  const menu = page.getByRole("menu", { name: "Quote", exact: true });
 
   // With a mouse: the line's text becomes the title.
   await title.click();
-  await toolbar.getByRole("button", { name: "Quote format" }).click();
+  await quote.click();
   await expect(
-    menu.getByRole("menuitemcheckbox", { name: "Warning" }).locator("svg"),
+    menu.getByRole("menuitemradio", { name: "Warning" }).locator("svg"),
   ).toHaveCSS("color", "rgb(236, 117, 0)");
-  await menu.getByRole("menuitemcheckbox", { name: "Question" }).click();
+  await menu.getByRole("menuitemradio", { name: "Question" }).click();
   await expect(menu).toBeHidden();
   await expect(title).toHaveText("> [!question] Why tea?");
   await expect(note).toBeFocused();
+  // The button shows the callout's icon, in its color.
+  await expect(quote.locator(".callout-icon")).toHaveCSS(
+    "color",
+    "rgb(236, 117, 0)",
+  );
 
-  // From the keyboard: the ▾ is a stop of its own, after Quote.
+  // From the keyboard: Quote opens its menu, as Style does.
   await page.keyboard.press("Alt+F10");
   await page.keyboard.press("End");
   for (let stop = 0; stop < 3; stop++) await page.keyboard.press("ArrowLeft");
-  await expect(
-    toolbar.getByRole("button", { name: "Quote format" }),
-  ).toBeFocused();
+  await expect(quote).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(
-    menu.getByRole("menuitemcheckbox", { name: "Question" }),
+    menu.getByRole("menuitemradio", { name: "Question" }),
   ).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   await expect(note).toBeFocused();
   await expect(title).toHaveText("> [!warning] Why tea?");
 
-  // The format checked turns the callout back into text.
-  await toolbar.getByRole("button", { name: "Quote format" }).click();
-  await menu.getByRole("menuitemcheckbox", { name: "Warning" }).click();
+  // No quote turns the callout back into text.
+  await quote.click();
+  await menu.getByRole("menuitemradio", { name: "No quote" }).click();
   await expect(title).toHaveText("Why tea?");
 
   // Each pick, one edit that undo takes back.
