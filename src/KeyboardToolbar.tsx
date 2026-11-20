@@ -315,7 +315,9 @@ export function KeyboardToolbar({
         aria-label={follows === undefined ? name : "Open link"}
         // Off where it writes nothing, which a tap then leaves undone.
         aria-disabled={
-          command === insertTable && formats.tableOff ? true : undefined
+          (command === insertTable && formats.tableOff) ||
+          (command !== undefined && formats.off.has(command)) ||
+          undefined
         }
         onClick={() => {
           if (follows !== undefined) onFollow(follows);

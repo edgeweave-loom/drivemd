@@ -1,4 +1,10 @@
-import { isolateHistory } from "@codemirror/commands";
+import {
+  isolateHistory,
+  redo,
+  redoDepth,
+  undo,
+  undoDepth,
+} from "@codemirror/commands";
 import { ensureSyntaxTree, indentUnit, syntaxTree } from "@codemirror/language";
 import {
   countColumn,
@@ -1302,9 +1308,10 @@ export interface Formats {
   quoted: boolean;
   on: ReadonlySet<StateCommand | Command>;
   /**
-   * The commands of lines that write nothing on the cursor's line, as the
-   * parse has read so far: all of them in code and the front matter, the
-   * headings on a task, and Checkbox on a heading.
+   * The commands that would do nothing: Undo and Redo with no edit to take
+   * back or to make again, and the commands of lines that write nothing on
+   * the cursor's line, as the parse has read so far: all of them in code
+   * and the front matter, the headings on a task, and Checkbox on a heading.
    */
   off: ReadonlySet<StateCommand | Command>;
 }
@@ -1317,6 +1324,8 @@ export function formatsAt(state: EditorState): Formats {
   const line = prefix(cursor);
   const on = new Set<StateCommand | Command>();
   const off = new Set<StateCommand | Command>(written ? OF_TEXT : []);
+  if (undoDepth(state) === 0) off.add(undo);
+  if (redoDepth(state) === 0) off.add(redo);
   const inline: [string, StateCommand][] = [
     ["StrongEmphasis", toggleBold],
     ["Emphasis", toggleItalic],

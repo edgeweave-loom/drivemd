@@ -180,9 +180,63 @@ describe("the formatting toolbar", () => {
     expect(view.hasFocus).toBe(true);
   });
 
+  it("leaves only Find in note on until the note has the cursor", () => {
+    const view = open("tea", false, true);
+    const buttons = within(toolbar()).getAllByRole("button");
+    const on = () =>
+      buttons
+        .filter((button) => !button.hasAttribute("aria-disabled"))
+        .map((button) => button.getAttribute("aria-label"));
+    expect(on()).toEqual(["Find in note"]);
+
+    fireEvent.click(within(toolbar()).getByRole("button", { name: "Bold" }));
+    fireEvent.click(within(toolbar()).getByRole("button", { name: "Style" }));
+    fireEvent.click(
+      within(toolbar()).getByRole("button", { name: "Quote format" }),
+    );
+    expect(view.state.sliceDoc()).toBe("tea");
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 3 } });
+    });
+    // Undo and Redo wait for an edit.
+    expect(on()).toHaveLength(buttons.length - 2);
+  });
+
+  it("turns Undo and Redo on while there is an edit to take back or make again", () => {
+    const view = open("tea");
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 3 } });
+    });
+    const undo = within(toolbar()).getByRole("button", { name: "Undo" });
+    const redo = within(toolbar()).getByRole("button", { name: "Redo" });
+    expect(undo).toHaveAttribute("aria-disabled", "true");
+    expect(redo).toHaveAttribute("aria-disabled", "true");
+
+    act(() => {
+      view.dispatch(view.state.replaceSelection(" cup"));
+    });
+    expect(undo).not.toHaveAttribute("aria-disabled");
+    expect(redo).toHaveAttribute("aria-disabled", "true");
+
+    fireEvent.click(undo);
+    expect(view.state.sliceDoc()).toBe("tea");
+    expect(undo).toHaveAttribute("aria-disabled", "true");
+    expect(redo).not.toHaveAttribute("aria-disabled");
+
+    fireEvent.click(redo);
+    expect(view.state.sliceDoc()).toBe("tea cup");
+    expect(undo).not.toHaveAttribute("aria-disabled");
+    expect(redo).toHaveAttribute("aria-disabled", "true");
+  });
+
   it("gives the focus back to the text once a button is pressed from the keyboard", () => {
     const view = open("tea");
     act(() => {
+      view.focus();
       view.dispatch({ selection: { anchor: 0, head: 3 } });
     });
     const bold = within(toolbar()).getByRole("button", { name: "Bold" });
@@ -314,6 +368,7 @@ describe("the formatting toolbar", () => {
     const view = open("tea\n\n> [!tip] cup\n\n> [!bug] pot", false, true);
     act(() => {
       view.focus();
+      view.dispatch({ selection: { anchor: 0 } });
     });
     fireEvent.click(
       within(toolbar()).getByRole("button", { name: "Quote format" }),
@@ -439,6 +494,7 @@ describe("the formatting toolbar", () => {
     const view = open("tea", true);
     act(() => {
       view.focus();
+      view.dispatch({ selection: { anchor: 0 } });
     });
     const insert = within(toolbar()).getByRole("button", {
       name: "Insert table",

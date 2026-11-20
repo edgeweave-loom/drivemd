@@ -413,6 +413,9 @@ export function Editor({
   const editor = useRef<EditorView | null>(null);
   const field = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
+  // Whether the note has had the cursor, which the formatting toolbar's
+  // buttons wait for.
+  const [entered, setEntered] = useState(focus);
   // The table's cell edited in place that has the focus, if any: the edits
   // that apply to it, and its column's alignment, which the toolbar shows.
   const [cell, setCell] = useState<CellMenu | null>(null);
@@ -439,6 +442,7 @@ export function Editor({
     const celled = inCell(update.state);
     if (update.focusChanged || celled !== inCell(update.startState)) {
       setFocused(update.view.hasFocus || celled);
+      if (update.view.hasFocus || celled) setEntered(true);
     }
     // Anew as the cell, its table or its column's alignment change.
     if (celled || inCell(update.startState)) {
@@ -643,6 +647,7 @@ export function Editor({
             vault={vault}
             tableMenu={menuId}
             formats={formats}
+            idle={!entered}
             onCommand={(command) => {
               if (editor.current) command(editor.current);
             }}

@@ -724,7 +724,8 @@ describe("the keyboard toolbar", () => {
         (key) => key.getAttribute("aria-label"),
       );
 
-    expect(off()).toEqual(["Delete column"]);
+    // Undo and Redo too, with no edit yet.
+    expect(off()).toEqual(["Undo", "Redo", "Delete column"]);
     // Still keeping the focus, and the keyboard up.
     const key = screen.getByRole("button", { name: "Delete column" });
     expect(fireEvent.mouseDown(key)).toBe(false);
@@ -740,7 +741,7 @@ describe("the keyboard toolbar", () => {
     // Anew in another cell of the column, its alignment the same.
     fireEvent.mouseDown(view.contentDOM.querySelector("td") ?? document.body);
     await waitFor(() => {
-      expect(off()).toEqual(["Delete column"]);
+      expect(off()).toEqual(["Undo", "Redo", "Delete column"]);
     });
     // And gone with the cell, as the note takes the focus.
     act(() => {
