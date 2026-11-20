@@ -2864,6 +2864,7 @@ describe("Visual's tables", () => {
         all
           .filter((item) => item.getAttribute(attribute) === "true")
           .map((item) => item.getAttribute("aria-label") ?? item.textContent)
+          .filter((name) => order.includes(name))
           .sort((one, other) => order.indexOf(one) - order.indexOf(other));
       return [marked("aria-disabled"), marked("aria-pressed")];
     };

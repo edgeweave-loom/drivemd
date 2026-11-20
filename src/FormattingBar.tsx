@@ -255,16 +255,18 @@ function StyleMenu({
  */
 function QuoteMenu({
   formats,
+  off,
   onCommand,
   onLeave,
 }: {
-  /** Where the cursor is: off in code and the front matter, opening nothing. */
+  /** Where the cursor is, whose quote's format shows checked. */
   formats: Formats;
+  /** Whether it opens nothing: in code, the front matter, or idle. */
+  off: boolean;
   onCommand: (command: Command) => void;
   onLeave: () => void;
 }) {
   const [id, menu, holding] = useMenu();
-  const off = formats.calloutOff;
   return (
     <>
       <button
@@ -328,13 +330,15 @@ function QuoteMenu({
  * the formatting around the cursor as buttons pressed, and, in a vault's
  * note, Quote's menu sets a quote's format, plain or a callout's. In a
  * table's cell, the style and the buttons of lines leave, since their marks
- * would break its row.
+ * would break its row. Until the note first has the cursor, only Find in
+ * note is on: the others would write where no cursor shows.
  */
 export function FormattingBar({
   cell,
   vault,
   tableMenu,
   formats,
+  idle,
   onCommand,
   onLeave,
   onHold,
@@ -350,6 +354,8 @@ export function FormattingBar({
   tableMenu: string;
   /** The formatting where the cursor is, which its buttons show pressed. */
   formats: Formats;
+  /** Whether the note has not had the cursor yet. */
+  idle: boolean;
   onCommand: (command: Command) => void;
   /** Gives the focus back to the text. */
   onLeave: () => void;
@@ -394,7 +400,9 @@ export function FormattingBar({
             <>
               <StyleMenu
                 heading={formats.heading}
-                off={HEADINGS.every((command) => formats.off.has(command))}
+                off={
+                  idle || HEADINGS.every((command) => formats.off.has(command))
+                }
                 onCommand={onCommand}
                 onLeave={onLeave}
               />
@@ -403,6 +411,11 @@ export function FormattingBar({
           )}
           {group.map(({ name, command, icon, toggle }, position) => {
             const key = keyOf(command);
+            // Off where it writes nothing, as a table's button.
+            const off =
+              (idle && command !== findInNote) ||
+              (command === insertTable && formats.tableOff) ||
+              formats.off.has(command);
             return (
               <Fragment key={name}>
                 <button
@@ -410,16 +423,12 @@ export function FormattingBar({
                   aria-label={name}
                   aria-keyshortcuts={key && ariaKeys(key)}
                   aria-pressed={toggle ? formats.on.has(command) : undefined}
-                  // Off where it writes nothing, as a table's button.
-                  aria-disabled={
-                    (command === insertTable && formats.tableOff) ||
-                    formats.off.has(command) ||
-                    undefined
-                  }
+                  aria-disabled={off || undefined}
                   title={key ? `${name} (${keyLabel(key)})` : name}
                   // One stop for Tab, the arrows moving between them.
                   tabIndex={index === 0 && position === 0 ? 0 : -1}
                   onClick={(event) => {
+                    if (off) return;
                     const toolbar = event.currentTarget.parentElement;
                     onCommand(command);
                     left(toolbar);
@@ -430,6 +439,7 @@ export function FormattingBar({
                 {command === toggleQuote && vault && (
                   <QuoteMenu
                     formats={formats}
+                    off={idle || formats.calloutOff}
                     onCommand={onCommand}
                     onLeave={onLeave}
                   />
