@@ -191,9 +191,7 @@ describe("the formatting toolbar", () => {
 
     fireEvent.click(within(toolbar()).getByRole("button", { name: "Bold" }));
     fireEvent.click(within(toolbar()).getByRole("button", { name: "Style" }));
-    fireEvent.click(
-      within(toolbar()).getByRole("button", { name: "Quote format" }),
-    );
+    fireEvent.click(within(toolbar()).getByRole("button", { name: "Quote" }));
     expect(view.state.sliceDoc()).toBe("tea");
     expect(screen.queryByRole("menu")).toBeNull();
 
@@ -304,27 +302,29 @@ describe("the formatting toolbar", () => {
     expect(view.state.sliceDoc()).toBe("```\n## code\n```\n- ## tea");
   });
 
-  it("makes a callout from Quote's menu in a vault's note, its format checked", () => {
+  it("makes Quote a menu in a vault's note, as Style is, its format checked", () => {
     const view = open("> [!faq] tea", false, true);
     act(() => {
       view.focus();
       view.dispatch({ selection: { anchor: 12 } });
     });
-    expect(names().slice(12, 15)).toEqual([
-      "Quote",
-      "Quote format",
-      "Insert table",
-    ]);
-    const type = within(toolbar()).getByRole("button", {
-      name: "Quote format",
-    });
-    expect(type).toHaveAttribute("aria-haspopup", "menu");
-    expect(type).toHaveAttribute("title", "Quote format");
+    expect(names().slice(12, 14)).toEqual(["Quote", "Insert table"]);
+    const quote = within(toolbar()).getByRole("button", { name: "Quote" });
+    expect(quote).toHaveAttribute("aria-haspopup", "menu");
+    expect(quote).toHaveAttribute("title", "Quote");
+    expect(quote).not.toHaveAttribute("aria-pressed");
+    // It shows the callout's icon, written as an alias as its type.
+    expect(quote.querySelector("svg")).toHaveAttribute(
+      "data-icon",
+      "lucide-circle-question-mark",
+    );
 
-    fireEvent.click(type);
-    const menu = screen.getByRole("menu", { name: "Quote format" });
-    const items = within(menu).getAllByRole("menuitemcheckbox");
+    fireEvent.click(quote);
+    expect(view.state.sliceDoc()).toBe("> [!faq] tea");
+    const menu = screen.getByRole("menu", { name: "Quote" });
+    const items = within(menu).getAllByRole("menuitemradio");
     expect(items.map((item) => item.textContent)).toEqual([
+      "No quote",
       "Plain quote",
       "Note",
       "Abstract",
@@ -340,13 +340,10 @@ describe("the formatting toolbar", () => {
       "Example",
       "Quote",
     ]);
-    // Written as an alias, it shows as its type.
-    const checked = within(menu).getByRole("menuitemcheckbox", {
-      checked: true,
-    });
+    const checked = within(menu).getByRole("menuitemradio", { checked: true });
     expect(checked).toHaveTextContent("Question");
     expect(checked).toHaveFocus();
-    const warning = within(menu).getByRole("menuitemcheckbox", {
+    const warning = within(menu).getByRole("menuitemradio", {
       name: "Warning",
     });
     expect(warning.querySelector("svg")).toHaveAttribute(
@@ -355,82 +352,83 @@ describe("the formatting toolbar", () => {
     );
     expect(
       within(menu)
-        .getByRole("menuitemcheckbox", { name: "Plain quote" })
+        .getByRole("menuitemradio", { name: "Plain quote" })
         .querySelector("svg"),
     ).toHaveAttribute("data-icon", "blockquote");
     fireEvent.click(warning);
 
     expect(view.state.sliceDoc()).toBe("> [!warning] tea");
     expect(view.hasFocus).toBe(true);
+    expect(quote.querySelector("svg")).toHaveAttribute(
+      "data-icon",
+      "lucide-triangle-alert",
+    );
   });
 
-  it("focuses Plain quote in Quote's menu outside a quote, and follows the cursor", () => {
+  it("checks No quote in Quote's menu outside a quote, and follows the cursor", () => {
     const view = open("tea\n\n> [!tip] cup\n\n> [!bug] pot", false, true);
     act(() => {
       view.focus();
       view.dispatch({ selection: { anchor: 0 } });
     });
-    fireEvent.click(
-      within(toolbar()).getByRole("button", { name: "Quote format" }),
+    const quote = within(toolbar()).getByRole("button", { name: "Quote" });
+    expect(quote.querySelector("svg")).toHaveAttribute(
+      "data-icon",
+      "blockquote",
     );
-    const menu = screen.getByRole("menu", { name: "Quote format" });
+    fireEvent.click(quote);
+    const menu = screen.getByRole("menu", { name: "Quote" });
+    const checked = () =>
+      within(menu).getByRole("menuitemradio", { checked: true });
 
-    expect(
-      within(menu).queryByRole("menuitemcheckbox", { checked: true }),
-    ).toBeNull();
-    expect(
-      within(menu).getByRole("menuitemcheckbox", { name: "Plain quote" }),
-    ).toHaveFocus();
+    expect(checked()).toHaveTextContent("No quote");
+    expect(checked()).toHaveFocus();
 
     act(() => {
       view.dispatch({ selection: { anchor: 15 } });
     });
-    expect(
-      within(menu).getByRole("menuitemcheckbox", { checked: true }),
-    ).toHaveTextContent("Tip");
+    expect(checked()).toHaveTextContent("Tip");
     // From one callout to another, as quoted as it.
     act(() => {
       view.dispatch({ selection: { anchor: 29 } });
     });
-    expect(
-      within(menu).getByRole("menuitemcheckbox", { checked: true }),
-    ).toHaveTextContent("Bug");
+    expect(checked()).toHaveTextContent("Bug");
   });
 
-  it("turns a callout into a plain quote, or text, from Quote's menu", () => {
+  it("sets a quote's format from Quote's menu, No quote taking it away", () => {
     const view = open("> [!tip]- tea", false, true);
     act(() => {
       view.focus();
       view.dispatch({ selection: { anchor: 13 } });
     });
     const pick = (name: string) => {
-      fireEvent.click(
-        within(toolbar()).getByRole("button", { name: "Quote format" }),
-      );
-      const menu = screen.getByRole("menu", { name: "Quote format" });
-      fireEvent.click(within(menu).getByRole("menuitemcheckbox", { name }));
+      fireEvent.click(within(toolbar()).getByRole("button", { name: "Quote" }));
+      const menu = screen.getByRole("menu", { name: "Quote" });
+      fireEvent.click(within(menu).getByRole("menuitemradio", { name }));
     };
     // Closed once a format is picked, the menu has no name to find it by.
     const checked = () =>
       Array.from(
         document.querySelectorAll(
-          '[aria-label="Quote format"] > [aria-checked="true"]',
+          '[role="menu"][aria-label="Quote"] > [aria-checked="true"]',
         ),
         (item) => item.textContent,
       );
     pick("Plain quote");
     expect(view.state.sliceDoc()).toBe("> tea");
     expect(checked()).toEqual(["Plain quote"]);
-    // The format checked takes the quote away.
-    pick("Plain quote");
-    expect(view.state.sliceDoc()).toBe("tea");
-    expect(checked()).toEqual([]);
+    // The format checked leaves the quote as it is.
     pick("Plain quote");
     expect(view.state.sliceDoc()).toBe("> tea");
+    pick("No quote");
+    expect(view.state.sliceDoc()).toBe("tea");
+    expect(checked()).toEqual(["No quote"]);
+    pick("No quote");
+    expect(view.state.sliceDoc()).toBe("tea");
     pick("Tip");
     expect(view.state.sliceDoc()).toBe("> [!tip] tea");
     expect(checked()).toEqual(["Tip"]);
-    pick("Tip");
+    pick("No quote");
     expect(view.state.sliceDoc()).toBe("tea");
     expect(view.hasFocus).toBe(true);
   });
@@ -440,20 +438,26 @@ describe("the formatting toolbar", () => {
     act(() => {
       view.dispatch({ selection: { anchor: 5 } });
     });
-    const type = within(toolbar()).getByRole("button", {
-      name: "Quote format",
-    });
+    const quote = within(toolbar()).getByRole("button", { name: "Quote" });
 
-    expect(type).toHaveAttribute("aria-disabled", "true");
-    fireEvent.click(type);
-    expect(screen.queryByRole("menu", { name: "Quote format" })).toBeNull();
+    expect(quote).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(quote);
+    expect(screen.queryByRole("menu", { name: "Quote" })).toBeNull();
     expect(view.state.sliceDoc()).toBe("```\ncode\n```");
   });
 
-  it("leaves Quote without a menu outside a vault", () => {
-    open("> [!note] tea");
+  it("leaves Quote a button that quotes outside a vault", () => {
+    const view = open("> [!note] tea");
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 13 } });
+    });
+    const quote = within(toolbar()).getByRole("button", { name: "Quote" });
 
-    expect(names()).not.toContain("Quote format");
+    expect(quote).not.toHaveAttribute("aria-haspopup");
+    expect(quote).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(quote);
+    expect(view.state.sliceDoc()).toBe("[!note] tea");
   });
 
   it("presses the buttons of the formatting around the cursor", () => {

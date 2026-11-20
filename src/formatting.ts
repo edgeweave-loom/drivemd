@@ -618,13 +618,13 @@ function calloutMarkerAt(
 /**
  * Sets the format of the quote around the first selected line, the
  * innermost, to one of those Quote's menus list, a plain quote or a
- * callout's type, as one edit. The format it is in already turns it back
- * into text, whole; another changes it: lines not quoted become a quote as
- * Quote makes it, a callout a plain one as it loses its `[!type]` and fold
- * sign, and a type is `makeCallout`'s. Off in code, in the front matter,
- * and where the parse has not reached.
+ * callout's type, as one edit, or to text. Text, or the format it is in
+ * already, turns it back into text, whole; another changes it: lines not
+ * quoted become a quote as Quote makes it, a callout a plain one as it
+ * loses its `[!type]` and fold sign, and a type is `makeCallout`'s. Off in
+ * code, in the front matter, and where the parse has not reached.
  */
-export function quoteAs(target: CalloutType | "quote"): StateCommand {
+export function quoteAs(target: CalloutType | "quote" | "text"): StateCommand {
   return (view) => {
     const { state, dispatch } = view;
     if (state.readOnly) return false;
@@ -633,11 +633,13 @@ export function quoteAs(target: CalloutType | "quote"): StateCommand {
     if (!tree || blockAt(tree, first, AS_WRITTEN)) return false;
     const quote = blockAt(tree, first, ["Blockquote"]);
     if (!quote) {
+      if (target === "text") return false;
       return target === "quote" ? toggleQuote(view) : makeCallout(target)(view);
     }
     const { first: opening, marker } = quoteOpening(state, quote);
     const now = marker?.type ?? "quote";
-    if (target !== now && target !== "quote") return makeCallout(target)(view);
+    const to = target === "text" ? now : target;
+    if (to !== now && to !== "quote") return makeCallout(to)(view);
     const marks = quoteMarks(state, tree, quote);
     // A callout loses its `[!type]` either way. Each change maps through
     // those before it, so a mark that went with it is gone.
@@ -645,7 +647,7 @@ export function quoteAs(target: CalloutType | "quote"): StateCommand {
       marker && opening
         ? [calloutMarkerAt(state, quote, opening, marker.length, marks)]
         : [];
-    if (target === now) changes.push(...marks.values());
+    if (to === now) changes.push(...marks.values());
     return formatLines(state, dispatch, () => changes);
   };
 }

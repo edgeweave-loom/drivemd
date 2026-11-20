@@ -689,6 +689,10 @@ describe("quoteAs", () => {
     ["- > [!tip]\n  > bo|dy", "quote", "- > bo|dy"],
     ["- > [!tip]\n  > bo|dy", "tip", "- bo|dy"],
     ["> [!note] T\n> > [!tip]\n> > in|ner", "quote", "> [!note] T\n> > in|ner"],
+    // Text: a quote or a callout goes, whole.
+    ["> te|a", "text", "te|a"],
+    ["> [!tip]- Brew|\n> body", "text", "Brew|\nbody"],
+    ["> [!note] T\n> > [!tip] in|ner", "text", "> [!note] T\n> in|ner"],
     // Another type: as the callout types' menu makes it.
     ["te|a", "tip", "> [!tip] te|a"],
     ["> te|a", "tip", "> [!tip] te|a"],
@@ -697,8 +701,14 @@ describe("quoteAs", () => {
     expect(run(quoteAs(target), before).text).toBe(after);
   });
 
+  it("leaves lines not quoted as text", () => {
+    expect(
+      quoteAs("text")({ state: open("te|a"), dispatch: () => undefined }),
+    ).toBe(false);
+  });
+
   it("is off in code and in the front matter", () => {
-    for (const target of ["quote", "tip"] as const) {
+    for (const target of ["quote", "tip", "text"] as const) {
       for (const text of ["```\nco|de\n```", "> ```\n> co|de\n> ```"]) {
         expect(
           quoteAs(target)({ state: open(text), dispatch: () => undefined }),

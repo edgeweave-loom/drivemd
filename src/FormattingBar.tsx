@@ -16,6 +16,7 @@ import {
   insertLink,
   outdentLines,
   QUOTE_FORMATS,
+  quoteAs,
   toggleBold,
   toggleCode,
   toggleItalic,
@@ -247,11 +248,14 @@ function StyleMenu({
   );
 }
 
+// Takes the quote around the cursor away, as Style's Normal text a heading.
+const NO_QUOTE = quoteAs("text");
+
 /**
- * Quote's ▾, in a vault's note: a menu of a plain quote, then Obsidian's
- * callout types, each after its icon in its color, the quote's own format
- * checked, as Docs' list buttons open their menus. A format picked sets the
- * quote's, or, where it is checked, turns the quote back into text.
+ * Quote, in a vault's note, as Style is: a button showing the format of the
+ * quote the cursor is in, a plain quote's icon or a callout's in its color,
+ * and a menu of No quote, a plain quote, then Obsidian's callout types, each
+ * after its icon, that format checked. A format picked sets the quote's.
  */
 function QuoteMenu({
   formats,
@@ -267,18 +271,29 @@ function QuoteMenu({
   onLeave: () => void;
 }) {
   const [id, menu, holding] = useMenu();
+  const pick = (command: Command | null) => {
+    menu.current?.hidePopover();
+    if (command) onCommand(command);
+    onLeave();
+  };
   return (
     <>
       <button
         type="button"
-        className="split"
-        aria-label="Quote format"
+        className="quote"
+        aria-label="Quote"
         aria-haspopup="menu"
         aria-disabled={off || undefined}
         popoverTarget={off ? undefined : id}
         tabIndex={-1}
-        title="Quote format"
+        title="Quote"
+        data-callout={formats.callout ?? undefined}
       >
+        {formats.callout ? (
+          <CalloutIcon type={formats.callout} />
+        ) : (
+          <Icon name="blockquote" />
+        )}
         <Icon name="arrow_drop_down" />
       </button>
       <div
@@ -286,7 +301,7 @@ function QuoteMenu({
         id={id}
         popover="auto"
         role="menu"
-        aria-label="Quote format"
+        aria-label="Quote"
         className="menu callout-menu"
         // Its keys stay its own, rather than moving along the toolbar.
         onKeyDown={(event) => {
@@ -294,28 +309,40 @@ function QuoteMenu({
           moveInMenu(event);
         }}
       >
-        {QUOTE_FORMATS.map((format) => (
-          <button
-            key={format.name}
-            type="button"
-            // A click on the one checked takes it away, as a checkbox.
-            role="menuitemcheckbox"
-            aria-checked={format.on(formats)}
-            data-callout={format.callout}
-            onClick={() => {
-              menu.current?.hidePopover();
-              onCommand(format.command);
-              onLeave();
-            }}
-          >
-            {format.callout ? (
-              <CalloutIcon type={format.callout} />
-            ) : (
-              <Icon name={format.icon} />
-            )}
-            {format.name}
-          </button>
-        ))}
+        <button
+          type="button"
+          role="menuitemradio"
+          className="none"
+          aria-checked={!formats.quoted}
+          onClick={() => {
+            pick(formats.quoted ? NO_QUOTE : null);
+          }}
+        >
+          No quote
+        </button>
+        {QUOTE_FORMATS.map((format) => {
+          const checked = format.on(formats);
+          return (
+            <button
+              key={format.name}
+              type="button"
+              role="menuitemradio"
+              aria-checked={checked}
+              data-callout={format.callout}
+              onClick={() => {
+                // The checked one leaves the quote as it is, as a radio.
+                pick(checked ? null : format.command);
+              }}
+            >
+              {format.callout ? (
+                <CalloutIcon type={format.callout} />
+              ) : (
+                <Icon name={format.icon} />
+              )}
+              {format.name}
+            </button>
+          );
+        })}
       </div>
     </>
   );
@@ -327,10 +354,10 @@ function QuoteMenu({
  * and key show in its tooltip. A click keeps the focus in the text; from
  * the keyboard, Alt+F10 reaches the toolbar, and a button pressed gives the
  * focus back to the text. The cursor's line's style shows in its menu, and
- * the formatting around the cursor as buttons pressed, and, in a vault's
- * note, Quote's menu sets a quote's format, plain or a callout's. In a
- * table's cell, the style and the buttons of lines leave, since their marks
- * would break its row. Until the note first has the cursor, only Find in
+ * the formatting around the cursor as buttons pressed; in a vault's note,
+ * Quote is a menu, as Style is, of a quote's formats, plain or a callout's.
+ * In a table's cell, the style and the buttons of lines leave, since their
+ * marks would break its row. Until the note first has the cursor, only Find in
  * note is on: the others would write where no cursor shows.
  */
 export function FormattingBar({
@@ -416,35 +443,37 @@ export function FormattingBar({
               (idle && command !== findInNote) ||
               (command === insertTable && formats.tableOff) ||
               formats.off.has(command);
+            if (command === toggleQuote && vault) {
+              return (
+                <QuoteMenu
+                  key={name}
+                  formats={formats}
+                  off={idle || formats.calloutOff}
+                  onCommand={onCommand}
+                  onLeave={onLeave}
+                />
+              );
+            }
             return (
-              <Fragment key={name}>
-                <button
-                  type="button"
-                  aria-label={name}
-                  aria-keyshortcuts={key && ariaKeys(key)}
-                  aria-pressed={toggle ? formats.on.has(command) : undefined}
-                  aria-disabled={off || undefined}
-                  title={key ? `${name} (${keyLabel(key)})` : name}
-                  // One stop for Tab, the arrows moving between them.
-                  tabIndex={index === 0 && position === 0 ? 0 : -1}
-                  onClick={(event) => {
-                    if (off) return;
-                    const toolbar = event.currentTarget.parentElement;
-                    onCommand(command);
-                    left(toolbar);
-                  }}
-                >
-                  <Icon name={icon} />
-                </button>
-                {command === toggleQuote && vault && (
-                  <QuoteMenu
-                    formats={formats}
-                    off={idle || formats.calloutOff}
-                    onCommand={onCommand}
-                    onLeave={onLeave}
-                  />
-                )}
-              </Fragment>
+              <button
+                key={name}
+                type="button"
+                aria-label={name}
+                aria-keyshortcuts={key && ariaKeys(key)}
+                aria-pressed={toggle ? formats.on.has(command) : undefined}
+                aria-disabled={off || undefined}
+                title={key ? `${name} (${keyLabel(key)})` : name}
+                // One stop for Tab, the arrows moving between them.
+                tabIndex={index === 0 && position === 0 ? 0 : -1}
+                onClick={(event) => {
+                  if (off) return;
+                  const toolbar = event.currentTarget.parentElement;
+                  onCommand(command);
+                  left(toolbar);
+                }}
+              >
+                <Icon name={icon} />
+              </button>
             );
           })}
         </Fragment>
