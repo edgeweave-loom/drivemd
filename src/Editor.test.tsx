@@ -1514,6 +1514,31 @@ describe("Visual's tables", () => {
     ]);
   });
 
+  it("keeps the cell edited while the parse of its table ends later, as on a busy device", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    const cell = editCell(view, "Ada");
+
+    // Each step of the parse past its time, which then stops partway.
+    let now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => (now += 100));
+    try {
+      type(cell, "!");
+    } finally {
+      clock.mockRestore();
+    }
+    expect(syntaxTreeAvailable(view.state)).toBe(false);
+
+    expect(cellEditor(view)).toBe(cell);
+    expect(cell.hasFocus).toBe(true);
+    await parsed(view);
+    expect(cellEditor(view)).toBe(cell);
+    type(cell, "?");
+    expect(view.state.sliceDoc()).toBe(NOTE.replace("_Ada_", "_Ada_!?"));
+    pressed(view, "Tab");
+    expect(cells(view)[1]).toEqual(["Boil | pour", "Ada!?", ""]);
+  });
+
   it("writes a pipe typed in a cell escaped, and a line break as <br>", async () => {
     const { view } = open(NOTE, "\n", true);
     await parsed(view);
@@ -1762,6 +1787,35 @@ describe("Visual's tables", () => {
       written("  | 1 | 2 |\r\n  | 3 |  |\r\n  |  | 4 |"),
     );
     expect(cells(view).at(-1)).toEqual(["", "4"]);
+  });
+
+  it("adds a row from Enter, and moves on with Tab, while the parse of its table lags behind, as on a busy device", async () => {
+    const { view } = open(NOTE, "\n", true);
+    await parsed(view);
+    editCell(view, "More");
+
+    // Each step of the parse a while, which then stops partway on its own.
+    let now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => (now += 25));
+    let added: ReturnType<typeof pressed> | undefined;
+    let moved: ReturnType<typeof pressed> | undefined;
+    try {
+      added = pressed(view, "Enter");
+      const cell = cellEditor(view);
+      if (cell) type(cell, "x");
+      moved = pressed(view, "Tab");
+    } finally {
+      clock.mockRestore();
+    }
+
+    expect(added).toEqual(["", 0]);
+    expect(moved).toEqual(["", 0]);
+    expect(view.state.sliceDoc()).toBe(
+      NOTE.replace(
+        "| More | Dropped |",
+        "| More | Dropped |\n|  |  | x |\n|  |  |  |",
+      ),
+    );
   });
 
   it.each([
@@ -2595,6 +2649,8 @@ describe("Visual's tables", () => {
     // The cell edited after is the next row's, or the one before's.
     ["Delete row", "2", "| A | B |\n| --- | --- |\n| 3 | 4 |", "4"],
     ["Delete row", "4", "| A | B |\n| --- | --- |\n| 1 | 2 |", "2"],
+    // The head's, the first row taking its place.
+    ["Delete row", "B", "| 1 | 2 |\n| --- | --- |\n| 3 | 4 |", "2"],
     [
       "Add column to the left",
       "2",
@@ -2731,6 +2787,62 @@ describe("Visual's tables", () => {
     expect(picked(view, "", "Delete row")[0]).toBe(text);
   });
 
+  it.each([
+    [
+      "padding a shorter row",
+      "| A | B | C |\n| - | - | - |\n| 1 |",
+      "| 1 |  |  |\n| - | - | - |",
+    ],
+    [
+      "widening the delimiter row for a wider one",
+      "> | A |\n> | - |\n> 1 | 2",
+      "> 1 | 2\n> | - | --- |",
+    ],
+  ])(
+    "makes the first row the head in place of the head deleted, %s",
+    async (_, text, written) => {
+      const { view } = open(text, "\n", true);
+      await parsed(view);
+
+      expect(picked(view, "A", "Delete row")[0]).toBe(written);
+    },
+  );
+
+  it.each([
+    [
+      "between blank lines, keeping one",
+      "Tea\n\n| A |\n| - |\n\nCups",
+      "Tea\n\nCups",
+      4,
+    ],
+    ["before a heading", "Tea\n| A |\n| - |\n# Cups", "Tea\n# Cups", 4],
+    ["starting the note", "| A |\n| - |\n\nCups", "Cups", 0],
+    ["ending the note", "Tea\n\n| A |\n| - |", "Tea\n", 4],
+    ["alone", "| A |\n| - |", "", 0],
+    [
+      "in a quote",
+      "> Tea\n>\n> | A |\n> | - |\n>\n> Cups",
+      "> Tea\n>\n> Cups",
+      7,
+    ],
+  ])(
+    "deletes a table %s with its head, its only row, as one step for undo",
+    async (_, text, written, cursor) => {
+      const { view } = open(text, "\n", true);
+      await parsed(view);
+
+      expect(picked(view, "A", "Delete row")).toEqual([
+        written,
+        undefined,
+        undefined,
+      ]);
+      expect(view.hasFocus).toBe(true);
+      expect(view.state.selection.main.head).toBe(cursor);
+      undo(view);
+      expect(view.state.sliceDoc()).toBe(text);
+    },
+  );
+
   it("offers only the table's edits that apply to the cell, its column's alignment pressed", async () => {
     const text = "| A | B |\n| - | -: |\n| 1 | 2 |\n| 3 | 4 |";
     const { view } = open(text, "\n", true);
@@ -2752,6 +2864,7 @@ describe("Visual's tables", () => {
         all
           .filter((item) => item.getAttribute(attribute) === "true")
           .map((item) => item.getAttribute("aria-label") ?? item.textContent)
+          .filter((name) => order.includes(name))
           .sort((one, other) => order.indexOf(one) - order.indexOf(other));
       return [marked("aria-disabled"), marked("aria-pressed")];
     };
@@ -2759,13 +2872,7 @@ describe("Visual's tables", () => {
     // Nothing moves the head, nor comes above it, as GFM's table starts
     // with its head.
     expect(offered("A")).toEqual([
-      [
-        "Add row above",
-        "Move row up",
-        "Move row down",
-        "Delete row",
-        "Move column left",
-      ],
+      ["Add row above", "Move row up", "Move row down", "Move column left"],
       [],
     ]);
     expect(offered("2")).toEqual([

@@ -241,13 +241,29 @@ function followLinks(follow: (href: string) => void): Extension {
   });
 }
 
-const NO_FORMATS: Formats = { heading: 0, on: new Set() };
+const NO_FORMATS: Formats = {
+  heading: 0,
+  tableOff: false,
+  calloutOff: false,
+  callout: null,
+  quoted: false,
+  on: new Set(),
+  off: new Set(),
+};
+
+function sameSet<T>(one: ReadonlySet<T>, other: ReadonlySet<T>): boolean {
+  return one.size === other.size && [...one].every((item) => other.has(item));
+}
 
 function sameFormats(one: Formats, other: Formats): boolean {
   return (
     one.heading === other.heading &&
-    one.on.size === other.on.size &&
-    [...one.on].every((command) => other.on.has(command))
+    one.tableOff === other.tableOff &&
+    one.calloutOff === other.calloutOff &&
+    one.callout === other.callout &&
+    one.quoted === other.quoted &&
+    sameSet(one.on, other.on) &&
+    sameSet(one.off, other.off)
   );
 }
 
@@ -397,6 +413,9 @@ export function Editor({
   const editor = useRef<EditorView | null>(null);
   const field = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
+  // Whether the note has had the cursor, which the formatting toolbar's
+  // buttons wait for.
+  const [entered, setEntered] = useState(focus);
   // The table's cell edited in place that has the focus, if any: the edits
   // that apply to it, and its column's alignment, which the toolbar shows.
   const [cell, setCell] = useState<CellMenu | null>(null);
@@ -423,6 +442,7 @@ export function Editor({
     const celled = inCell(update.state);
     if (update.focusChanged || celled !== inCell(update.startState)) {
       setFocused(update.view.hasFocus || celled);
+      if (update.view.hasFocus || celled) setEntered(true);
     }
     // Anew as the cell, its table or its column's alignment change.
     if (celled || inCell(update.startState)) {
@@ -431,6 +451,13 @@ export function Editor({
     }
     if (update.docChanged || update.selectionSet) {
       setLink(linkAt(update.state, update.state.selection.main.head));
+    }
+    // Anew as the parse reads on too, which tells where code is.
+    if (
+      update.docChanged ||
+      update.selectionSet ||
+      syntaxTree(update.state) !== syntaxTree(update.startState)
+    ) {
       const now = formatsAt(update.state);
       setFormats((was) => (sameFormats(was, now) ? was : now));
     }
@@ -524,6 +551,9 @@ export function Editor({
       }),
     );
     editor.current = view;
+    // Where the note opens its cursor, which no update has moved yet.
+    setLink(linkAt(view.state, view.state.selection.main.head));
+    setFormats(formatsAt(view.state));
     if (focus) view.focus();
     return () => {
       view.destroy();
@@ -614,8 +644,10 @@ export function Editor({
         createPortal(
           <FormattingBar
             cell={cell}
+            vault={vault}
             tableMenu={menuId}
             formats={formats}
+            idle={!entered}
             onCommand={(command) => {
               if (editor.current) command(editor.current);
             }}
@@ -650,7 +682,9 @@ export function Editor({
       {toolbar && (
         <KeyboardToolbar
           link={link}
+          vault={vault}
           cell={cell}
+          formats={formats}
           tableMenu={menuId}
           // A cell edited in place follows what the keys do to its text.
           onCommand={(command) => {

@@ -17,12 +17,14 @@ function open(
   text: string,
   onFollow: (href: string) => void = () => undefined,
   visual = false,
+  vault = false,
 ) {
   const { container } = render(
     <Editor
       initial={text}
       lineBreak={"\n"}
       visual={visual}
+      vault={vault}
       onChange={() => undefined}
       onFollow={onFollow}
     />,
@@ -39,9 +41,10 @@ function open(
 async function editing(
   text: string,
   onFollow: (href: string) => void = () => undefined,
+  vault = false,
 ) {
   holdTouch(true);
-  const view = open(text, onFollow);
+  const view = open(text, onFollow, false, vault);
   act(() => {
     view.focus();
   });
@@ -150,20 +153,363 @@ describe("the keyboard toolbar", () => {
   });
 
   it.each([
-    ["Heading", "tea", "# tea"],
     ["Bold", "tea", "****tea"],
     ["Italic", "tea", "**tea"],
-    ["List", "tea", "- tea"],
-    ["Checkbox", "tea", "- [ ] tea"],
     ["Link", "tea", "[]()tea"],
     ["Indent", "tea", "  tea"],
     ["Outdent", "  tea", "tea"],
+    ["Quote", "tea", "> tea"],
+    ["Quote", "> > tea", "> tea"],
   ])("%s formats the line", async (name, before, after) => {
     const view = await editing(before);
 
     tap(name);
 
     expect(view.state.sliceDoc()).toBe(after);
+  });
+
+  it("holds Quote and Insert table after Outdent, before Find in note", async () => {
+    await editing("tea");
+
+    const names = within(screen.getByRole("toolbar", { name: "Formatting" }))
+      .getAllByRole("button")
+      .map((key) => key.getAttribute("aria-label"));
+    const at = names.indexOf("Outdent");
+    expect(names.slice(at, at + 4)).toEqual([
+      "Outdent",
+      "Quote",
+      "Insert table",
+      "Find in note",
+    ]);
+  });
+
+  it("writes an empty table from Insert table, the cursor in its first cell", async () => {
+    const view = await editing("tea");
+
+    expect(
+      fireEvent.mouseDown(screen.getByRole("button", { name: "Insert table" })),
+    ).toBe(false);
+    tap("Insert table");
+
+    expect(view.state.sliceDoc()).toBe(
+      "tea\n\n|  |  |\n| --- | --- |\n|  |  |",
+    );
+    expect(view.state.selection.main.head).toBe(7);
+    expect(view.hasFocus).toBe(true);
+  });
+
+  it("edits the first cell of the table Insert table writes in Visual", async () => {
+    holdTouch(true);
+    const view = open("tea", undefined, true);
+    act(() => {
+      view.focus();
+    });
+    await screen.findByRole("toolbar", { name: "Formatting" });
+
+    tap("Insert table");
+
+    const element = view.contentDOM.querySelector<HTMLElement>(
+      ".cm-table .cm-editor",
+    );
+    const cell = element && EditorView.findFromDOM(element);
+    expect(cell?.hasFocus).toBe(true);
+    // The table's keys in its place, as in any cell.
+    expect(screen.getByRole("button", { name: "Add row below" })).toBeVisible();
+    act(() => {
+      cell?.dispatch(cell.state.replaceSelection("Tea"));
+    });
+    expect(view.state.sliceDoc()).toBe(
+      "tea\n\n| Tea |  |\n| --- | --- |\n|  |  |",
+    );
+  });
+
+  it("keeps Insert table off in a code block", async () => {
+    const view = await editing("```\ncode\n```");
+    act(() => {
+      view.dispatch({ selection: { anchor: 5 } });
+    });
+
+    const key = screen.getByRole("button", { name: "Insert table" });
+    expect(key).toHaveAttribute("aria-disabled", "true");
+    tap("Insert table");
+    expect(view.state.sliceDoc()).toBe("```\ncode\n```");
+
+    act(() => {
+      view.dispatch({
+        changes: { from: 12, insert: "\ntea" },
+        selection: { anchor: 16 },
+      });
+    });
+    expect(key).not.toHaveAttribute("aria-disabled");
+  });
+
+  it.each([
+    ["Heading", ["Heading 1", "Heading 2", "Heading 3"]],
+    ["List", ["Bulleted list", "Numbered list", "Checkbox"]],
+  ])(
+    "opens %s's menu of icons above it, without a Checkbox key",
+    async (name, items) => {
+      await editing("tea");
+
+      expect(screen.queryByRole("button", { name: "Checkbox" })).toBeNull();
+      const key = screen.getByRole("button", { name });
+      expect(key).toHaveAttribute("aria-haspopup", "menu");
+      expect(fireEvent.mouseDown(key)).toBe(false);
+      tap(name);
+      const menu = screen.getByRole("menu", { name });
+      expect(menu).toBeVisible();
+      expect(
+        within(menu)
+          .getAllByRole("menuitemcheckbox")
+          .map((item) => [
+            item.getAttribute("aria-label"),
+            item.getAttribute("aria-checked"),
+          ]),
+      ).toEqual(items.map((item) => [item, "false"]));
+      tap(name);
+      expect(menu).not.toBeVisible();
+    },
+  );
+
+  it("turns Heading and List off in code, and Checkbox on a heading", async () => {
+    const view = await editing("```\n## code\n```\n- ## tea");
+    act(() => {
+      view.dispatch({ selection: { anchor: 6 } });
+    });
+    for (const name of ["Heading", "List"]) {
+      const key = screen.getByRole("button", { name });
+      expect(key).toHaveAttribute("aria-disabled", "true");
+      expect(key).not.toHaveClass("on");
+      tap(name);
+      expect(screen.queryByRole("menu", { name })).toBeNull();
+    }
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 23 } });
+    });
+    expect(screen.getByRole("button", { name: "Heading" })).toHaveClass("on");
+    tap("List");
+    const menu = screen.getByRole("menu", { name: "List" });
+    const off = within(menu)
+      .getAllByRole("menuitemcheckbox")
+      .filter((item) => item.getAttribute("aria-disabled") === "true")
+      .map((item) => item.getAttribute("aria-label"));
+    expect(off).toEqual(["Checkbox"]);
+    fireEvent.click(
+      within(menu).getByRole("menuitemcheckbox", { name: "Checkbox" }),
+    );
+    expect(view.state.sliceDoc()).toBe("```\n## code\n```\n- ## tea");
+  });
+
+  it.each([
+    ["Heading", "Heading 2", "tea", "## tea"],
+    ["Heading", "Heading 1", "### tea", "# tea"],
+    ["Heading", "Heading 2", "## tea", "tea"],
+    ["List", "Bulleted list", "tea", "- tea"],
+    ["List", "Numbered list", "tea", "1. tea"],
+    ["List", "Checkbox", "tea", "- [ ] tea"],
+    ["List", "Bulleted list", "- tea", "tea"],
+    ["List", "Checkbox", "- [x] tea", "- tea"],
+  ])(
+    "formats the line from %s's %s, the focus staying",
+    async (key, name, before, after) => {
+      const view = await editing(before);
+
+      tap(key);
+      const menu = screen.getByRole("menu", { name: key });
+      const item = within(menu).getByRole("menuitemcheckbox", { name });
+      expect(fireEvent.mouseDown(item)).toBe(false);
+      fireEvent.click(item);
+
+      expect(view.state.sliceDoc()).toBe(after);
+      expect(menu).not.toBeVisible();
+      expect(item).not.toHaveFocus();
+      expect(view.hasFocus).toBe(true);
+    },
+  );
+
+  it.each([
+    ["a key", (target: Element) => fireEvent.keyDown(target, { key: "a" })],
+    [
+      "the on-screen keyboard's typing",
+      (target: Element) =>
+        target.dispatchEvent(
+          new InputEvent("beforeinput", {
+            inputType: "insertText",
+            data: "a",
+            bubbles: true,
+            composed: true,
+          }),
+        ),
+    ],
+  ])("closes List's menu on %s, which goes on in the note", async (_, type) => {
+    const view = await editing("tea");
+
+    tap("List");
+    const menu = screen.getByRole("menu", { name: "List" });
+    type(view.contentDOM);
+
+    expect(menu).not.toBeVisible();
+  });
+
+  // Closed, a menu has no names for a screen reader.
+  const checked = (menu: string) =>
+    [
+      ...document.querySelectorAll(
+        `[role="menu"][aria-label="${menu}"] [aria-checked="true"]`,
+      ),
+    ].map((item) => item.getAttribute("aria-label"));
+
+  it("keeps Quote a key without a menu outside a vault's note", async () => {
+    const view = await editing("tea");
+    expect(screen.getByRole("button", { name: "Quote" })).not.toHaveAttribute(
+      "aria-haspopup",
+    );
+    tap("Quote");
+    expect(view.state.sliceDoc()).toBe("> tea");
+    expect(screen.queryByRole("menu", { name: "Quote" })).toBeNull();
+  });
+
+  it("keeps Quote a key without a menu in a vault's code block", async () => {
+    const view = await editing("```\ncode\n```", undefined, true);
+    act(() => {
+      view.dispatch({ selection: { anchor: 5 } });
+    });
+
+    expect(screen.getByRole("button", { name: "Quote" })).not.toHaveAttribute(
+      "aria-haspopup",
+    );
+  });
+
+  const TYPES = [
+    "Note",
+    "Abstract",
+    "Info",
+    "Todo",
+    "Tip",
+    "Success",
+    "Question",
+    "Warning",
+    "Failure",
+    "Danger",
+    "Bug",
+    "Example",
+    "Quote",
+  ];
+
+  it("quotes the line from Quote in a vault's note, opening its menu of a plain quote and the callout types", async () => {
+    const view = await editing("tea", undefined, true);
+    const key = screen.getByRole("button", { name: "Quote" });
+    expect(key).toHaveAttribute("aria-haspopup", "menu");
+    expect(key).not.toHaveClass("on");
+
+    expect(fireEvent.mouseDown(key)).toBe(false);
+    tap("Quote");
+
+    expect(view.state.sliceDoc()).toBe("> tea");
+    expect(key).toHaveClass("on");
+    const menu = screen.getByRole("menu", { name: "Quote" });
+    expect(menu).toBeVisible();
+    const items = within(menu).getAllByRole("menuitemcheckbox");
+    expect(items.map((item) => item.getAttribute("aria-label"))).toEqual([
+      "Plain quote",
+      ...TYPES,
+    ]);
+    expect(checked("Quote")).toEqual(["Plain quote"]);
+    // Each type after its icon, in its color.
+    expect(items[0]?.querySelector("svg")?.dataset.icon).toBe("blockquote");
+    expect(items[5]).toHaveAttribute("data-callout", "tip");
+    expect(items[5]?.querySelector("svg")?.dataset.icon).toBe("lucide-flame");
+  });
+
+  it.each([
+    ["tea", "Tip", "> [!tip] tea"],
+    ["> tea", "Tip", "> [!tip] tea"],
+    ["> tea", "Plain quote", "tea"],
+    ["> [!tip] tea", "Warning", "> [!warning] tea"],
+    ["> [!tip] tea", "Plain quote", "> tea"],
+    ["> [!tip] tea", "Tip", "tea"],
+  ])(
+    "turns %j, from Quote's %s, into %j, the focus staying",
+    async (before, name, after) => {
+      const view = await editing(before, undefined, true);
+
+      tap("Quote");
+      const menu = screen.getByRole("menu", { name: "Quote" });
+      const item = within(menu).getByRole("menuitemcheckbox", { name });
+      expect(fireEvent.mouseDown(item)).toBe(false);
+      fireEvent.click(item);
+
+      expect(view.state.sliceDoc()).toBe(after);
+      expect(menu).not.toBeVisible();
+      expect(view.hasFocus).toBe(true);
+    },
+  );
+
+  it("opens Quote's menu in a quote or a callout without changing it, its format checked", async () => {
+    const view = await editing("> [!faq] tea\n\n> milk", undefined, true);
+
+    expect(screen.getByRole("button", { name: "Quote" })).toHaveClass("on");
+    tap("Quote");
+    expect(view.state.sliceDoc()).toBe("> [!faq] tea\n\n> milk");
+    expect(screen.getByRole("menu", { name: "Quote" })).toBeVisible();
+    expect(checked("Quote")).toEqual(["Question"]);
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 16 } });
+    });
+    expect(checked("Quote")).toEqual(["Plain quote"]);
+  });
+
+  it("shows Quote pressed in a quote in a list", async () => {
+    const view = await editing("- tea\n- > milk", undefined, true);
+    const key = screen.getByRole("button", { name: "Quote" });
+    expect(key).not.toHaveClass("on");
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 12 } });
+    });
+    expect(key).toHaveClass("on");
+  });
+
+  it("shows the cursor's heading on Heading, which keeps its icon, and in its menu", async () => {
+    const view = await editing("## tea\nmilk");
+    const key = () => screen.getByRole("button", { name: "Heading" });
+
+    expect(key().querySelector("svg")?.dataset.icon).toBe("title");
+    expect(key()).toHaveClass("on");
+    expect(checked("Heading")).toEqual(["Heading 2"]);
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 8 } });
+    });
+    expect(key().querySelector("svg")?.dataset.icon).toBe("title");
+    expect(key()).not.toHaveClass("on");
+    expect(checked("Heading")).toEqual([]);
+  });
+
+  it("shows the cursor's list on List and in its menu", async () => {
+    const view = await editing("1. [ ] tea\n- milk\nbread");
+    const key = () => screen.getByRole("button", { name: "List" });
+    const icon = () => key().querySelector("svg")?.dataset.icon;
+
+    expect(icon()).toBe("format_list_numbered");
+    expect(key()).toHaveClass("on");
+    expect(checked("List")).toEqual(["Numbered list", "Checkbox"]);
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 13 } });
+    });
+    expect(icon()).toBe("format_list_bulleted");
+    expect(key()).toHaveClass("on");
+    expect(checked("List")).toEqual(["Bulleted list"]);
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 20 } });
+    });
+    expect(icon()).toBe("format_list_bulleted");
+    expect(key()).not.toHaveClass("on");
+    expect(checked("List")).toEqual([]);
   });
 
   it("undoes and redoes the edits", async () => {
@@ -239,7 +585,14 @@ describe("the keyboard toolbar", () => {
     tap("Undo");
     expect(view.state.sliceDoc()).toBe(text);
     // Their marks would break its row.
-    for (const name of ["Heading", "List", "Checkbox", "Indent", "Outdent"]) {
+    for (const name of [
+      "Heading",
+      "List",
+      "Indent",
+      "Outdent",
+      "Quote",
+      "Insert table",
+    ]) {
       expect(screen.queryByRole("button", { name })).toBeNull();
     }
 
@@ -371,11 +724,11 @@ describe("the keyboard toolbar", () => {
         (key) => key.getAttribute("aria-label"),
       );
 
-    expect(off()).toEqual(["Delete row", "Delete column"]);
+    // Undo and Redo too, with no edit yet.
+    expect(off()).toEqual(["Undo", "Redo", "Delete column"]);
     // Still keeping the focus, and the keyboard up.
-    const key = screen.getByRole("button", { name: "Delete row" });
+    const key = screen.getByRole("button", { name: "Delete column" });
     expect(fireEvent.mouseDown(key)).toBe(false);
-    tap("Delete row");
     tap("Delete column");
     expect(view.state.sliceDoc()).toBe("| Tea |\n| - |\n| 1 |");
     expect(edited()?.hasFocus).toBe(true);
@@ -388,7 +741,7 @@ describe("the keyboard toolbar", () => {
     // Anew in another cell of the column, its alignment the same.
     fireEvent.mouseDown(view.contentDOM.querySelector("td") ?? document.body);
     await waitFor(() => {
-      expect(off()).toEqual(["Delete column"]);
+      expect(off()).toEqual(["Undo", "Redo", "Delete column"]);
     });
     // And gone with the cell, as the note takes the focus.
     act(() => {
@@ -398,6 +751,29 @@ describe("the keyboard toolbar", () => {
       expect(keys()).toContain("Heading");
     });
     expect(keys()).not.toContain("Table options");
+  });
+
+  it("deletes an empty table's head, its row taking its place, then the table, from Delete row", async () => {
+    const { view, edited } = await inTable(
+      "Tea\n\n|  |  |\n| --- | --- |\n| Cups |  |\n\nBoil",
+      "",
+    );
+
+    tap("Delete row");
+    expect(view.state.sliceDoc()).toBe(
+      "Tea\n\n| Cups |  |\n| --- | --- |\n\nBoil",
+    );
+    expect(edited()?.state.sliceDoc()).toBe("Cups");
+    expect(edited()?.hasFocus).toBe(true);
+    tap("Delete row");
+    expect(view.state.sliceDoc()).toBe("Tea\n\nBoil");
+    expect(edited()).toBeNull();
+    // The cursor on the blank line where the table was, the keyboard up.
+    expect(view.hasFocus).toBe(true);
+    expect(view.state.selection.main.head).toBe(4);
+    await waitFor(() => {
+      expect(keys()).toContain("Heading");
+    });
   });
 
   it("holds a table's other edits in the menu of its Table options key, above it, the focus staying", async () => {

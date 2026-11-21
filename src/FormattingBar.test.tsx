@@ -14,7 +14,7 @@ import { Editor } from "./Editor.tsx";
 import { holdTouch } from "./test/screen.ts";
 
 /** Opens the editor, its formatting toolbar's place over it. */
-function open(text: string, visual = false) {
+function open(text: string, visual = false, vault = false) {
   const slot = document.createElement("div");
   document.body.append(slot);
   const { container } = render(
@@ -22,6 +22,7 @@ function open(text: string, visual = false) {
       initial={text}
       lineBreak={"\n"}
       visual={visual}
+      vault={vault}
       onChange={() => undefined}
       onFollow={() => undefined}
       formatSlot={slot}
@@ -82,6 +83,7 @@ describe("the formatting toolbar", () => {
       "Numbered list",
       "Checkbox",
       "Quote",
+      "Insert table",
       "Outdent",
       "Indent",
     ]);
@@ -178,9 +180,61 @@ describe("the formatting toolbar", () => {
     expect(view.hasFocus).toBe(true);
   });
 
+  it("leaves only Find in note on until the note has the cursor", () => {
+    const view = open("tea", false, true);
+    const buttons = within(toolbar()).getAllByRole("button");
+    const on = () =>
+      buttons
+        .filter((button) => !button.hasAttribute("aria-disabled"))
+        .map((button) => button.getAttribute("aria-label"));
+    expect(on()).toEqual(["Find in note"]);
+
+    fireEvent.click(within(toolbar()).getByRole("button", { name: "Bold" }));
+    fireEvent.click(within(toolbar()).getByRole("button", { name: "Style" }));
+    fireEvent.click(within(toolbar()).getByRole("button", { name: "Quote" }));
+    expect(view.state.sliceDoc()).toBe("tea");
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 3 } });
+    });
+    // Undo and Redo wait for an edit.
+    expect(on()).toHaveLength(buttons.length - 2);
+  });
+
+  it("turns Undo and Redo on while there is an edit to take back or make again", () => {
+    const view = open("tea");
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 3 } });
+    });
+    const undo = within(toolbar()).getByRole("button", { name: "Undo" });
+    const redo = within(toolbar()).getByRole("button", { name: "Redo" });
+    expect(undo).toHaveAttribute("aria-disabled", "true");
+    expect(redo).toHaveAttribute("aria-disabled", "true");
+
+    act(() => {
+      view.dispatch(view.state.replaceSelection(" cup"));
+    });
+    expect(undo).not.toHaveAttribute("aria-disabled");
+    expect(redo).toHaveAttribute("aria-disabled", "true");
+
+    fireEvent.click(undo);
+    expect(view.state.sliceDoc()).toBe("tea");
+    expect(undo).toHaveAttribute("aria-disabled", "true");
+    expect(redo).not.toHaveAttribute("aria-disabled");
+
+    fireEvent.click(redo);
+    expect(view.state.sliceDoc()).toBe("tea cup");
+    expect(undo).not.toHaveAttribute("aria-disabled");
+    expect(redo).toHaveAttribute("aria-disabled", "true");
+  });
+
   it("gives the focus back to the text once a button is pressed from the keyboard", () => {
     const view = open("tea");
     act(() => {
+      view.focus();
       view.dispatch({ selection: { anchor: 0, head: 3 } });
     });
     const bold = within(toolbar()).getByRole("button", { name: "Bold" });
@@ -222,6 +276,190 @@ describe("the formatting toolbar", () => {
     expect(view.hasFocus).toBe(true);
   });
 
+  it("turns Style off in code, as text, and Checkbox off on a heading", () => {
+    const view = open("```\n## code\n```\n- ## tea");
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 6 } });
+    });
+    const style = within(toolbar()).getByRole("button", { name: "Style" });
+    const checkbox = within(toolbar()).getByRole("button", {
+      name: "Checkbox",
+    });
+    expect(style).toHaveTextContent("Normal text");
+    expect(style).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(style);
+    expect(screen.queryByRole("menu", { name: "Style" })).toBeNull();
+    expect(checkbox).toHaveAttribute("aria-disabled", "true");
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 23 } });
+    });
+    expect(style).toHaveTextContent("Heading 2");
+    expect(style).not.toHaveAttribute("aria-disabled");
+    expect(checkbox).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(checkbox);
+    expect(view.state.sliceDoc()).toBe("```\n## code\n```\n- ## tea");
+  });
+
+  it("makes Quote a menu in a vault's note, as Style is, its format checked", () => {
+    const view = open("> [!faq] tea", false, true);
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 12 } });
+    });
+    expect(names().slice(12, 14)).toEqual(["Quote", "Insert table"]);
+    const quote = within(toolbar()).getByRole("button", { name: "Quote" });
+    expect(quote).toHaveAttribute("aria-haspopup", "menu");
+    expect(quote).toHaveAttribute("title", "Quote");
+    expect(quote).not.toHaveAttribute("aria-pressed");
+    // It shows the callout's icon, written as an alias as its type.
+    expect(quote.querySelector("svg")).toHaveAttribute(
+      "data-icon",
+      "lucide-circle-question-mark",
+    );
+
+    fireEvent.click(quote);
+    expect(view.state.sliceDoc()).toBe("> [!faq] tea");
+    const menu = screen.getByRole("menu", { name: "Quote" });
+    const items = within(menu).getAllByRole("menuitemradio");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "No quote",
+      "Plain quote",
+      "Note",
+      "Abstract",
+      "Info",
+      "Todo",
+      "Tip",
+      "Success",
+      "Question",
+      "Warning",
+      "Failure",
+      "Danger",
+      "Bug",
+      "Example",
+      "Quote",
+    ]);
+    const checked = within(menu).getByRole("menuitemradio", { checked: true });
+    expect(checked).toHaveTextContent("Question");
+    expect(checked).toHaveFocus();
+    const warning = within(menu).getByRole("menuitemradio", {
+      name: "Warning",
+    });
+    expect(warning.querySelector("svg")).toHaveAttribute(
+      "data-icon",
+      "lucide-triangle-alert",
+    );
+    expect(
+      within(menu)
+        .getByRole("menuitemradio", { name: "Plain quote" })
+        .querySelector("svg"),
+    ).toHaveAttribute("data-icon", "blockquote");
+    fireEvent.click(warning);
+
+    expect(view.state.sliceDoc()).toBe("> [!warning] tea");
+    expect(view.hasFocus).toBe(true);
+    expect(quote.querySelector("svg")).toHaveAttribute(
+      "data-icon",
+      "lucide-triangle-alert",
+    );
+  });
+
+  it("checks No quote in Quote's menu outside a quote, and follows the cursor", () => {
+    const view = open("tea\n\n> [!tip] cup\n\n> [!bug] pot", false, true);
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 0 } });
+    });
+    const quote = within(toolbar()).getByRole("button", { name: "Quote" });
+    expect(quote.querySelector("svg")).toHaveAttribute(
+      "data-icon",
+      "blockquote",
+    );
+    fireEvent.click(quote);
+    const menu = screen.getByRole("menu", { name: "Quote" });
+    const checked = () =>
+      within(menu).getByRole("menuitemradio", { checked: true });
+
+    expect(checked()).toHaveTextContent("No quote");
+    expect(checked()).toHaveFocus();
+
+    act(() => {
+      view.dispatch({ selection: { anchor: 15 } });
+    });
+    expect(checked()).toHaveTextContent("Tip");
+    // From one callout to another, as quoted as it.
+    act(() => {
+      view.dispatch({ selection: { anchor: 29 } });
+    });
+    expect(checked()).toHaveTextContent("Bug");
+  });
+
+  it("sets a quote's format from Quote's menu, No quote taking it away", () => {
+    const view = open("> [!tip]- tea", false, true);
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 13 } });
+    });
+    const pick = (name: string) => {
+      fireEvent.click(within(toolbar()).getByRole("button", { name: "Quote" }));
+      const menu = screen.getByRole("menu", { name: "Quote" });
+      fireEvent.click(within(menu).getByRole("menuitemradio", { name }));
+    };
+    // Closed once a format is picked, the menu has no name to find it by.
+    const checked = () =>
+      Array.from(
+        document.querySelectorAll(
+          '[role="menu"][aria-label="Quote"] > [aria-checked="true"]',
+        ),
+        (item) => item.textContent,
+      );
+    pick("Plain quote");
+    expect(view.state.sliceDoc()).toBe("> tea");
+    expect(checked()).toEqual(["Plain quote"]);
+    // The format checked leaves the quote as it is.
+    pick("Plain quote");
+    expect(view.state.sliceDoc()).toBe("> tea");
+    pick("No quote");
+    expect(view.state.sliceDoc()).toBe("tea");
+    expect(checked()).toEqual(["No quote"]);
+    pick("No quote");
+    expect(view.state.sliceDoc()).toBe("tea");
+    pick("Tip");
+    expect(view.state.sliceDoc()).toBe("> [!tip] tea");
+    expect(checked()).toEqual(["Tip"]);
+    pick("No quote");
+    expect(view.state.sliceDoc()).toBe("tea");
+    expect(view.hasFocus).toBe(true);
+  });
+
+  it("turns Quote's menu off in code, where it opens nothing", () => {
+    const view = open("```\ncode\n```", false, true);
+    act(() => {
+      view.dispatch({ selection: { anchor: 5 } });
+    });
+    const quote = within(toolbar()).getByRole("button", { name: "Quote" });
+
+    expect(quote).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(quote);
+    expect(screen.queryByRole("menu", { name: "Quote" })).toBeNull();
+    expect(view.state.sliceDoc()).toBe("```\ncode\n```");
+  });
+
+  it("leaves Quote a button that quotes outside a vault", () => {
+    const view = open("> [!note] tea");
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 13 } });
+    });
+    const quote = within(toolbar()).getByRole("button", { name: "Quote" });
+
+    expect(quote).not.toHaveAttribute("aria-haspopup");
+    expect(quote).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(quote);
+    expect(view.state.sliceDoc()).toBe("[!note] tea");
+  });
+
   it("presses the buttons of the formatting around the cursor", () => {
     const view = open("- **tea** and _cups_");
     const pressed = () =>
@@ -256,8 +494,50 @@ describe("the formatting toolbar", () => {
     return cell;
   }
 
+  it("writes an empty table from Insert table, editing its first cell in Visual", async () => {
+    const view = open("tea", true);
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 0 } });
+    });
+    const insert = within(toolbar()).getByRole("button", {
+      name: "Insert table",
+    });
+    expect(insert).toHaveAttribute("title", "Insert table");
+
+    expect(fireEvent.mouseDown(insert)).toBe(false);
+    fireEvent.click(insert);
+
+    expect(view.state.sliceDoc()).toBe(
+      "tea\n\n|  |  |\n| --- | --- |\n|  |  |",
+    );
+    const element = view.contentDOM.querySelector<HTMLElement>(
+      ".cm-table .cm-editor",
+    );
+    expect(element && EditorView.findFromDOM(element)?.hasFocus).toBe(true);
+    await waitFor(() => {
+      expect(names()).toContain("Add row below");
+    });
+  });
+
+  it("keeps Insert table off in a code block", () => {
+    const view = open("```\ncode\n```");
+    act(() => {
+      view.focus();
+      view.dispatch({ selection: { anchor: 5 } });
+    });
+    const insert = within(toolbar()).getByRole("button", {
+      name: "Insert table",
+    });
+
+    expect(insert).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(insert);
+    expect(view.state.sliceDoc()).toBe("```\ncode\n```");
+  });
+
   it("trades the buttons of lines for the table's in a cell, whose text it formats", async () => {
-    const view = open("| Tea | Cups |\n| - | - |", true);
+    // In a vault's note, whose Quote has a menu.
+    const view = open("| Tea | Cups |\n| - | - |", true, true);
     const cell = await editCell(view, "Tea");
     act(() => {
       cell.dispatch({ selection: { anchor: 0, head: 3 } });
@@ -283,10 +563,6 @@ describe("the formatting toolbar", () => {
         "Table",
       ]);
     });
-    // The head's row is never deleted.
-    expect(
-      within(toolbar()).getByRole("button", { name: "Delete row" }),
-    ).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(within(toolbar()).getByRole("button", { name: "Bold" }));
     expect(view.state.sliceDoc()).toBe("| **Tea** | Cups |\n| - | - |");
     expect(cell.hasFocus).toBe(true);

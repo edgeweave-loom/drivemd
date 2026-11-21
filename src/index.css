@@ -970,6 +970,15 @@ button:is(.entry, .link):disabled {
   min-width: 0;
 }
 
+/* As wide as what holds them, never as their widest content: a table as
+   wide as its text, which scrolls within the note, made the page scroll
+   sideways on a phone or a tablet, and a phone's Edit with it, off the
+   screen. */
+.sheets,
+.sheet {
+  min-width: 0;
+}
+
 .pane {
   display: grid;
   gap: 0.5rem;
@@ -1766,8 +1775,14 @@ dialog.drawer > .close {
   --callout-quote: rgb(158 158 158);
 }
 
-.markdown .callout {
+/* A callout's color, or a type's in Quote's menu and button, an unknown one
+   a note's. */
+.markdown .callout,
+:is(.callout-menu, .key-menu, .format-bar) > [data-callout] {
   --callout: var(--callout-note);
+}
+
+.markdown .callout {
   padding: 0.75rem 1rem;
   border-left: 0.25em solid var(--callout);
   border-radius: 6px;
@@ -1779,15 +1794,20 @@ dialog.drawer > .close {
   margin: 0 0 1rem;
 }
 
-.markdown .callout:is([data-callout="abstract"], [data-callout="tip"]) {
+.markdown .callout:is([data-callout="abstract"], [data-callout="tip"]),
+:is(.callout-menu, .key-menu, .format-bar)
+  > :is([data-callout="abstract"], [data-callout="tip"]) {
   --callout: var(--callout-abstract);
 }
 
-.markdown .callout[data-callout="success"] {
+.markdown .callout[data-callout="success"],
+:is(.callout-menu, .key-menu, .format-bar) > [data-callout="success"] {
   --callout: var(--callout-success);
 }
 
-.markdown .callout:is([data-callout="question"], [data-callout="warning"]) {
+.markdown .callout:is([data-callout="question"], [data-callout="warning"]),
+:is(.callout-menu, .key-menu, .format-bar)
+  > :is([data-callout="question"], [data-callout="warning"]) {
   --callout: var(--callout-question);
 }
 
@@ -1796,15 +1816,23 @@ dialog.drawer > .close {
     [data-callout="failure"],
     [data-callout="danger"],
     [data-callout="bug"]
+  ),
+:is(.callout-menu, .key-menu, .format-bar)
+  > :is(
+    [data-callout="failure"],
+    [data-callout="danger"],
+    [data-callout="bug"]
   ) {
   --callout: var(--callout-failure);
 }
 
-.markdown .callout[data-callout="example"] {
+.markdown .callout[data-callout="example"],
+:is(.callout-menu, .key-menu, .format-bar) > [data-callout="example"] {
   --callout: var(--callout-example);
 }
 
-.markdown .callout[data-callout="quote"] {
+.markdown .callout[data-callout="quote"],
+:is(.callout-menu, .key-menu, .format-bar) > [data-callout="quote"] {
   --callout: var(--callout-quote);
 }
 
@@ -2426,8 +2454,8 @@ body:has(> .keyboard-toolbar) .editor {
   content: none;
 }
 
-/* A key off in a table's cell, as a disabled button, which would take the
-   focus from the cell. */
+/* A key off where it writes nothing, as a disabled button, which would take
+   the focus from the text or the cell. */
 .keyboard-toolbar button[aria-disabled="true"] {
   background-image: none;
   color: color-mix(in srgb, var(--on-surface) 38%, transparent);
@@ -2458,6 +2486,120 @@ body:has(> .keyboard-toolbar) .editor {
 
 .keyboard-toolbar .table-options {
   anchor-name: --table-options;
+}
+
+/* A key that opens a menu (docs/DESIGN.md, Keyboard toolbar): a ▾ in its
+   bottom right corner, within the key, Material's arrow_drop_down cut by
+   its path's corners, and pressed where the cursor is in its formatting. */
+.keyboard-toolbar .menu-key {
+  position: relative;
+}
+
+.keyboard-toolbar .menu-key::before {
+  position: absolute;
+  right: calc(50% - 21px);
+  bottom: 6px;
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  clip-path: polygon(29.17% 41.67%, 70.83% 41.67%, 50% 62.5%);
+  content: "";
+}
+
+.keyboard-toolbar .menu-key.on {
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+.keyboard-toolbar .menu-key[aria-label="Heading"] {
+  anchor-name: --heading-key;
+}
+
+.keyboard-toolbar .menu-key[aria-label="List"] {
+  anchor-name: --list-key;
+}
+
+.keyboard-toolbar .menu-key[aria-label="Quote"] {
+  anchor-name: --quote-key;
+}
+
+/* Its menu, a row of icons: above the toolbar, in the screen's middle,
+   where anchors are lacking, clear of the part of the page that a keyboard
+   covers, and otherwise 4 px above the key and centered on it, kept 8 px
+   in from the screen's edges. */
+.key-menu {
+  --width: calc(3 * 48px + 2 * var(--space-1));
+  inset: auto 0
+    calc(
+      var(--keyboard-toolbar-height) + var(--keyboard-cover, 0px) +
+        var(--space-1)
+    );
+  width: var(--width);
+  margin: 0 auto;
+  padding: var(--space-1);
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--surface-container-high);
+  box-shadow: var(--elevation-2);
+}
+
+@supports (anchor-name: --list-key) {
+  .key-menu {
+    inset: auto auto anchor(top)
+      clamp(
+        calc(var(--space-2) + env(safe-area-inset-left)),
+        calc(anchor(center) - var(--width) / 2),
+        calc(100vw - var(--space-2) - env(safe-area-inset-right) - var(--width))
+      );
+    margin: 0 0 var(--space-1);
+  }
+
+  .key-menu[aria-label="Heading"] {
+    position-anchor: --heading-key;
+  }
+
+  .key-menu[aria-label="List"] {
+    position-anchor: --list-key;
+  }
+
+  .key-menu[aria-label="Quote"] {
+    position-anchor: --quote-key;
+  }
+}
+
+/* Quote's, in a vault's note: a plain quote and the thirteen callout types,
+   in two rows of seven, which a 375 px phone holds, or in more rows, as
+   many as keep it 8 px in from a narrower screen's edges. */
+.key-menu[aria-label="Quote"] {
+  --width: min(
+    calc(7 * 48px + 2 * var(--space-1)),
+    calc(
+      100vw - 2 * var(--space-2) - env(safe-area-inset-left) -
+        env(safe-area-inset-right)
+    )
+  );
+  flex-wrap: wrap;
+  border-radius: var(--radius-xl);
+}
+
+.key-menu:popover-open {
+  display: flex;
+}
+
+.keyboard-toolbar .key-menu > button {
+  width: 48px;
+  height: 48px;
+}
+
+.keyboard-toolbar .key-menu .callout-icon {
+  width: 24px;
+  height: 24px;
+  color: var(--callout);
+}
+
+.keyboard-toolbar .key-menu > [aria-checked="true"] {
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
 }
 
 /* The formatting toolbar (docs/DESIGN.md, Formatting toolbar): over the
@@ -2535,14 +2677,33 @@ body:has(> .keyboard-toolbar) .editor {
   anchor-name: --table-button;
 }
 
-/* A table's edit that does not apply to the cell. */
+/* Quote in a vault's note: its format's icon, then the ▾ of its menu. */
+.format-bar > button.quote {
+  display: flex;
+  width: auto;
+  padding: 0 0 0 var(--space-1);
+  anchor-name: --callout-type;
+}
+
+.format-bar > button > .callout-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.format-bar > button:not([aria-disabled]) > .callout-icon {
+  color: var(--callout);
+}
+
+/* A button off where it writes nothing, as a table's edit that does not
+   apply to the cell. */
 .format-bar > button[aria-disabled="true"] {
   background-image: none;
   color: color-mix(in srgb, var(--on-surface) 38%, transparent);
   cursor: default;
 }
 
-.style-menu {
+.style-menu,
+.callout-menu {
   inset: calc(var(--app-bar-bottom) + 48px) auto auto var(--space-4);
 }
 
@@ -2552,16 +2713,42 @@ body:has(> .keyboard-toolbar) .editor {
     inset: anchor(bottom) auto auto anchor(left);
     margin: var(--space-1) 0 0;
   }
+
+  .callout-menu {
+    position-anchor: --callout-type;
+    inset: anchor(bottom) auto auto anchor(left);
+    margin: var(--space-1) 0 0;
+  }
 }
 
-/* Dense under a mouse, which alone shows it. */
-.style-menu > button {
+/* Dense under a mouse, which alone shows them. */
+:is(.style-menu, .callout-menu) > button {
   min-height: 32px;
 }
 
-.style-menu > [aria-checked="true"] {
+:is(.style-menu, .callout-menu) > [aria-checked="true"] {
   background: var(--secondary-container);
   color: var(--on-secondary-container);
+}
+
+/* Each format after its icon, a type's in its color, as Visual draws it. */
+.callout-menu {
+  min-width: 180px;
+}
+
+.callout-menu :is(.icon, .callout-icon) {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
+.callout-menu .callout-icon {
+  color: var(--callout);
+}
+
+/* No quote, lined up with the formats' names after their icons. */
+.callout-menu > .none {
+  padding-inline-start: calc(var(--space-4) + 20px + var(--space-3));
 }
 
 .style-menu .key {

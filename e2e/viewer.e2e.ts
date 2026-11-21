@@ -197,8 +197,8 @@ test("formats the source from the keyboard toolbar on touch screens", async ({
   // Along the screen's bottom edge, where the keyboard would rise.
   const bar = await toolbar.boundingBox();
   expect((bar?.y ?? 0) + (bar?.height ?? 0)).toBe(page.viewportSize()?.height);
-  const checkbox = toolbar.getByRole("button", { name: "Checkbox" });
-  expect((await checkbox.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  const list = toolbar.getByRole("button", { name: "List" });
+  expect((await list.boundingBox())?.height).toBeGreaterThanOrEqual(44);
   // Each key's icon sits in its middle.
   for (const key of await toolbar.getByRole("button").all()) {
     const button = await key.boundingBox();
@@ -207,14 +207,31 @@ test("formats the source from the keyboard toolbar on touch screens", async ({
     expect(icon.x + icon.width / 2).toBeCloseTo(button.x + button.width / 2, 0);
   }
 
-  await checkbox.tap();
+  // Each key's menu, a row of icons, 4 px above the key and centered on it.
+  const pick = async (name: string, item: string) => {
+    const opener = toolbar.getByRole("button", { name });
+    await opener.tap();
+    const menu = toolbar.getByRole("menu", { name });
+    const key = await opener.boundingBox();
+    const shown = await menu.boundingBox();
+    if (!key || !shown) throw new Error("Not shown");
+    expect(shown.height).toBe(56);
+    expect(shown.y + shown.height).toBeCloseTo(key.y - 4, 0);
+    expect(shown.x + shown.width / 2).toBeCloseTo(key.x + key.width / 2, 0);
+    await menu.getByRole("menuitemcheckbox", { name: item }).tap();
+    await expect(menu).toBeHidden();
+  };
+  await pick("List", "Checkbox");
   await expect(source.locator(".cm-line").nth(1)).toHaveText("- [ ] two");
-  // The key left the focus, and the keyboard, with the editor.
+  await source.locator(".cm-line").first().click();
+  await pick("Heading", "Heading 2");
+  await expect(source.locator(".cm-line").first()).toHaveText("## one");
+  // The keys and the menus left the focus, and the keyboard, with the editor.
   await expect(source).toBeFocused();
   await page.getByRole("button", { name: "Save", exact: true }).click();
 
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
-  expect(String(drive.files.get("notes")?.content)).toBe("one\n- [ ] two\n");
+  expect(String(drive.files.get("notes")?.content)).toBe("## one\n- [ ] two\n");
 });
 
 test("hides the note under the keyboard toolbar, down to the screen's bottom", async ({

@@ -41,7 +41,11 @@ async function openFromDrive(page: Page) {
   await shown(page);
 }
 
-/** Waits for the note, and for Drive to answer all it was asked. */
+/**
+ * Waits for the note, and for Drive to answer all it was asked: its links
+ * and its picture too, which are looked for once they come near the screen,
+ * at times after the network has been idle a while.
+ */
 async function shown(page: Page) {
   await expect(
     page.getByRole("heading", { level: 1, name: "The plan" }),
@@ -49,6 +53,18 @@ async function shown(page: Page) {
   await expect(
     page.getByRole("banner").getByRole("button", { name: "More actions" }),
   ).toBeVisible();
+  // As the preview or the reader shows them, not the source. Scrolled to
+  // at once: Playwright's wait for the line to be still would wait for
+  // frames, which WebKit draws slowly on a page at rest.
+  const links = page.getByRole("paragraph").filter({ hasText: /^Next:/ });
+  await links.evaluate((line) => {
+    line.scrollIntoView({ block: "center" });
+  });
+  await expect(links.getByText("nothing")).toContainClass("unresolved");
+  await expect(page.getByRole("img", { name: "The photo" })).toHaveAttribute(
+    "src",
+    /^blob:/,
+  );
   await page.waitForLoadState("networkidle");
 }
 

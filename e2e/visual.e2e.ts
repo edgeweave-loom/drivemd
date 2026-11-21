@@ -154,7 +154,7 @@ test("shows the formatting toolbar under the app bar with a mouse, Find in note 
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   expect(String(drive.files.get("plan")?.content)).toContain(
-    "Line 1.\n> Line 2. Tea.\nLine 3.\n",
+    "> Line 1.\n> Line 2. Tea.\n> Line 3.\n",
   );
 });
 
@@ -444,6 +444,172 @@ test("draws a vault's callout in Visual as the viewer does, its marks shown wher
   );
 });
 
+test("makes a callout from Quote's menu in a vault's note, changes its type, and turns it back into text, by mouse and by keyboard", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.name !== "desktop-chromium",
+    "A touch screen has the keyboard toolbar",
+  );
+  const today = drive.files.get("today");
+  if (!today) throw new Error("No today");
+  today.content = "Tea.\n\nWhy tea?\n";
+  const note = await editInVisual(page, "today");
+  const title = note.locator(".cm-line").nth(2);
+  const toolbar = page.getByRole("toolbar", { name: "Format", exact: true });
+  const quote = toolbar.getByRole("button", { name: "Quote", exact: true });
+  const menu = page.getByRole("menu", { name: "Quote", exact: true });
+
+  // With a mouse: the line's text becomes the title.
+  await title.click();
+  await quote.click();
+  await expect(
+    menu.getByRole("menuitemradio", { name: "Warning" }).locator("svg"),
+  ).toHaveCSS("color", "rgb(236, 117, 0)");
+  await menu.getByRole("menuitemradio", { name: "Question" }).click();
+  await expect(menu).toBeHidden();
+  await expect(title).toHaveText("> [!question] Why tea?");
+  await expect(note).toBeFocused();
+  // The button shows the callout's icon, in its color.
+  await expect(quote.locator(".callout-icon")).toHaveCSS(
+    "color",
+    "rgb(236, 117, 0)",
+  );
+
+  // From the keyboard: Quote opens its menu, as Style does.
+  await page.keyboard.press("Alt+F10");
+  await page.keyboard.press("End");
+  for (let stop = 0; stop < 3; stop++) await page.keyboard.press("ArrowLeft");
+  await expect(quote).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(
+    menu.getByRole("menuitemradio", { name: "Question" }),
+  ).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(note).toBeFocused();
+  await expect(title).toHaveText("> [!warning] Why tea?");
+
+  // No quote turns the callout back into text.
+  await quote.click();
+  await menu.getByRole("menuitemradio", { name: "No quote" }).click();
+  await expect(title).toHaveText("Why tea?");
+
+  // Each pick, one edit that undo takes back.
+  await page.keyboard.press("Control+z");
+  await expect(title).toHaveText("> [!warning] Why tea?");
+  await page.keyboard.press("Control+z");
+  await expect(title).toHaveText("> [!question] Why tea?");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("today")?.content)).toBe(
+    "Tea.\n\n> [!question] Why tea?\n",
+  );
+});
+
+test("quotes a line from Quote's key in a vault's note, then makes it a callout, or text again, from its menu", async ({
+  page,
+  drive,
+}, info) => {
+  test.skip(
+    info.project.name === "desktop-chromium",
+    "A mouse has the formatting toolbar",
+  );
+  const today = drive.files.get("today");
+  if (!today) throw new Error("No today");
+  today.content = "Tea.\n\nWhy tea?\n";
+  const note = await editInVisual(page, "today");
+  const line = note.locator(".cm-line").nth(2);
+  const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+  const key = toolbar.getByRole("button", { name: "Quote" });
+  const menu = toolbar.getByRole("menu", { name: "Quote" });
+
+  await expect(note.locator(".cm-line")).toHaveText([
+    "Tea.",
+    "",
+    "Why tea?",
+    "",
+  ]);
+
+  // A tap quotes the line and opens the menu: two rows of seven, 4 px
+  // above the key, within the screen.
+  await line.tap();
+  await key.tap();
+  await expect(menu).toBeVisible();
+  await expect(line).toHaveText("> Why tea?");
+  await expect(
+    menu.getByRole("menuitemcheckbox", { name: "Plain quote" }),
+  ).toHaveAttribute("aria-checked", "true");
+  const shown = await menu.boundingBox();
+  const under = await key.boundingBox();
+  const width = page.viewportSize()?.width ?? 0;
+  if (!shown || !under) throw new Error("Not shown");
+  expect(shown.height).toBe(2 * 48 + 2 * 4);
+  expect(shown.y + shown.height).toBeCloseTo(under.y - 4, 0);
+  expect(shown.x).toBeGreaterThanOrEqual(8);
+  expect(shown.x + shown.width).toBeLessThanOrEqual(width - 8);
+  await expect(
+    menu.getByRole("menuitemcheckbox", { name: "Warning" }).locator("svg"),
+  ).toHaveCSS("color", "rgb(236, 117, 0)");
+
+  // A type makes it a callout, the line's text its title.
+  await menu.getByRole("menuitemcheckbox", { name: "Question" }).tap();
+  await expect(menu).toBeHidden();
+  await expect(note).toBeFocused();
+  await expect(line).toHaveText("> [!question] Why tea?");
+
+  // Its type, checked, turns it back into text.
+  await key.tap();
+  await expect(line).toHaveText("> [!question] Why tea?");
+  const question = menu.getByRole("menuitemcheckbox", { name: "Question" });
+  await expect(question).toHaveAttribute("aria-checked", "true");
+  await question.tap();
+  await expect(line).toHaveText("Why tea?");
+
+  // Each, one edit that undo takes back.
+  await toolbar.getByRole("button", { name: "Undo" }).tap();
+  await expect(line).toHaveText("> [!question] Why tea?");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("today")?.content)).toBe(
+    "Tea.\n\n> [!question] Why tea?\n",
+  );
+});
+
+test.describe("on a 320 px phone", () => {
+  test.use({ viewport: { width: 320, height: 568 } });
+
+  test("keeps Quote's menu 8 px in from the screen's edges", async ({
+    page,
+    drive,
+  }, info) => {
+    test.skip(
+      info.project.name !== "iphone-webkit",
+      "A phone held upright alone is this narrow",
+    );
+    const today = drive.files.get("today");
+    if (!today) throw new Error("No today");
+    today.content = "Tea.\n";
+    const note = await editInVisual(page, "today");
+    await expect(note.locator(".cm-line").first()).toHaveText("Tea.");
+    await note.locator(".cm-line").first().tap();
+    const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+    await toolbar.getByRole("button", { name: "Quote" }).tap();
+
+    const menu = toolbar.getByRole("menu", { name: "Quote" });
+    await expect(menu).toBeVisible();
+    const shown = await menu.boundingBox();
+    if (!shown) throw new Error("Not shown");
+    expect(shown.x).toBeGreaterThanOrEqual(8);
+    expect(shown.x + shown.width).toBeLessThanOrEqual(320 - 8);
+    for (const item of await menu.getByRole("menuitemcheckbox").all()) {
+      const box = await item.boundingBox();
+      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320 - 8);
+    }
+  });
+});
+
 test("folds a vault's callout in Visual as its `-` says, which a tap on its chevron opens, writing nothing", async ({
   page,
   drive,
@@ -528,10 +694,13 @@ test("draws a code block in a quote in Visual after its bar, its text 1rem in", 
   const rem = await page.evaluate(() =>
     Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
   );
-  expect(await inset(lines.nth(2))).toBeCloseTo(
-    (await inset(lines.nth(0))) + rem,
-    0,
-  );
+  // Once Visual has drawn the code block, and the quote around it, which
+  // comes later in WebKit at times.
+  await expect(lines.nth(0)).toContainClass("cm-quote-1");
+  await expect(lines.nth(2)).toContainClass("cm-quote-1 cm-code-block");
+  await expect
+    .poll(async () => (await inset(lines.nth(2))) - (await inset(lines.nth(0))))
+    .toBeCloseTo(rem, 0);
 });
 
 test("draws a table in a vault's callout in Visual, in its box, whose cells a tap edits in place", async ({
@@ -986,10 +1155,52 @@ test("edits a table's rows and columns from a toolbar's buttons or its Table men
   );
 });
 
+test("inserts an empty table from a toolbar, its first cell edited", async ({
+  page,
+  drive,
+}, info) => {
+  const plan = drive.files.get("plan");
+  if (!plan) throw new Error("No plan");
+  plan.content = "# The plan\n\nNotes.\n";
+  const note = await editInVisual(page);
+  const mouse = info.project.name === "desktop-chromium";
+  // The formatting toolbar with a mouse, the keyboard toolbar on a touch
+  // screen, where Insert table scrolls into view.
+  const toolbar = mouse
+    ? page.getByRole("toolbar", { name: "Format", exact: true })
+    : page.getByRole("toolbar", { name: "Formatting" });
+  await note.locator(".cm-line").filter({ hasText: "Notes." }).click();
+  const insert = toolbar.getByRole("button", { name: "Insert table" });
+  await (mouse ? insert.click() : insert.tap());
+
+  // Drawn under the line, a blank line apart, its first cell edited.
+  const editing = note.getByRole("textbox", { name: "Cell" });
+  await expect(editing).toBeFocused();
+  await expect(note.getByRole("table").getByRole("columnheader")).toHaveCount(
+    2,
+  );
+  await page.keyboard.type("Tea");
+  await expect(editing).toHaveText("Tea");
+  // The table's edits in the toolbar, as in any cell.
+  await expect(
+    toolbar.getByRole("button", { name: "Add row below" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(String(drive.files.get("plan")?.content)).toBe(
+    "# The plan\n\nNotes.\n\n| Tea |  |\n| --- | --- |\n|  |  |\n",
+  );
+});
+
 test("writes a line break in a table's cell from its menu, which a phone's keyboard has no Shift+Enter for", async ({
   page,
   drive,
 }, info) => {
+  const mouse = info.project.name === "desktop-chromium";
+  // The keyboard toolbar's 30 frames waited for below, which WebKit draws
+  // slowly on a page at rest: over seconds on a tablet.
+  test.slow(!mouse);
   const plan = drive.files.get("plan");
   if (!plan) throw new Error("No plan");
   plan.content =
@@ -999,7 +1210,6 @@ test("writes a line break in a table's cell from its menu, which a phone's keybo
   const editing = note.getByRole("textbox", { name: "Cell" });
   const menu = page.getByRole("menu", { name: "Table" });
   const item = menu.getByRole("menuitem", { name: "Insert line break" });
-  const mouse = info.project.name === "desktop-chromium";
   const toolbar = mouse
     ? page.getByRole("toolbar", { name: "Format", exact: true })
     : page.getByRole("toolbar", { name: "Formatting" });
@@ -1038,7 +1248,18 @@ test("writes a line break in a table's cell from its menu, which a phone's keybo
 
   const heading = note.getByText("The plan");
   if (mouse) await heading.click();
-  else await heading.tap();
+  else {
+    // Once the keyboard toolbar has settled, over 30 frames, which WebKit
+    // draws on a page at rest only when asked: its scroll to the cursor,
+    // were it to come with the tap's frames, would put the note's cursor
+    // back in the table before WebKit tells where the tap placed it (#386).
+    await page.evaluate(async () => {
+      for (let frame = 0; frame <= 30; frame++) {
+        await new Promise(requestAnimationFrame);
+      }
+    });
+    await heading.tap();
+  }
   await expect(editing).toHaveCount(0);
   await expect
     .poll(() =>

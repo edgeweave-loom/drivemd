@@ -7,25 +7,26 @@ import {
   useRef,
   type KeyboardEvent,
 } from "react";
+import { CalloutIcon } from "./CalloutIcon.tsx";
 import { findInNote } from "./find.ts";
 import {
-  cycleTask,
   FORMATTING_KEYS,
   HEADINGS,
   indentLines,
   insertLink,
   outdentLines,
+  QUOTE_FORMATS,
+  quoteAs,
   toggleBold,
   toggleCode,
   toggleItalic,
-  toggleList,
-  toggleNumbered,
   toggleQuote,
   toggleStrikethrough,
   type Formats,
 } from "./formatting.ts";
 import { Icon } from "./Icon.tsx";
-import { editTable, type CellMenu } from "./live-preview.ts";
+import { LISTS } from "./lists.ts";
+import { editTable, insertTable, type CellMenu } from "./live-preview.ts";
 import { ALIGNS, TABLE_EDITS } from "./table-edits.ts";
 import type { IconName } from "./icons.ts";
 import { ariaKeys, keepFocus, keyLabel, MAC } from "./keys.ts";
@@ -65,27 +66,7 @@ const GROUPS: Button[][] = [
     { name: "Link", command: insertLink, icon: "link" },
   ],
   [
-    {
-      name: "Bulleted list",
-      command: toggleList,
-      icon: "format_list_bulleted",
-      lines: true,
-      toggle: true,
-    },
-    {
-      name: "Numbered list",
-      command: toggleNumbered,
-      icon: "format_list_numbered",
-      lines: true,
-      toggle: true,
-    },
-    {
-      name: "Checkbox",
-      command: cycleTask,
-      icon: "check_box",
-      lines: true,
-      toggle: true,
-    },
+    ...LISTS.map((list) => ({ ...list, lines: true, toggle: true }) as const),
     {
       name: "Quote",
       command: toggleQuote,
@@ -93,6 +74,7 @@ const GROUPS: Button[][] = [
       lines: true,
       toggle: true,
     },
+    { name: "Insert table", command: insertTable, icon: "table", lines: true },
   ],
   [
     {
@@ -164,20 +146,10 @@ const STYLES = [
 ];
 
 /**
- * The cursor's line's style, as Docs's toolbar gives it: a button naming
- * it, and a menu of text and the six headings, each with its key, the one
- * shown checked. The focus starts at it, and goes back to the text once a
- * style is picked.
+ * A toolbar's menu: its id, the element it holds, and the ref that holds
+ * it, which focuses its checked item, or else its first, once it opens.
  */
-function StyleMenu({
-  heading,
-  onCommand,
-  onLeave,
-}: {
-  heading: number;
-  onCommand: (command: Command) => void;
-  onLeave: () => void;
-}) {
+function useMenu() {
   const id = useId();
   const menu = useRef<HTMLDivElement>(null);
   const holding = useCallback((element: HTMLDivElement | null) => {
@@ -185,7 +157,10 @@ function StyleMenu({
     if (!element) return;
     const opened = (event: Event) => {
       if ((event as ToggleEvent).newState !== "open") return;
-      element.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+      const item =
+        element.querySelector<HTMLElement>('[aria-checked="true"]') ??
+        element.querySelector<HTMLElement>('[role^="menuitem"]');
+      item?.focus();
     };
     element.addEventListener("toggle", opened);
     return () => {
@@ -193,6 +168,28 @@ function StyleMenu({
       menu.current = null;
     };
   }, []);
+  return [id, menu, holding] as const;
+}
+
+/**
+ * The cursor's line's style, as Docs's toolbar gives it: a button naming
+ * it, and a menu of text and the six headings, each with its key, the one
+ * shown checked. The focus starts at it, and goes back to the text once a
+ * style is picked. It is off where no style applies, opening nothing.
+ */
+function StyleMenu({
+  heading,
+  off,
+  onCommand,
+  onLeave,
+}: {
+  heading: number;
+  /** Whether no style applies: in code, the front matter or a task. */
+  off: boolean;
+  onCommand: (command: Command) => void;
+  onLeave: () => void;
+}) {
+  const [id, menu, holding] = useMenu();
   return (
     <>
       <button
@@ -200,7 +197,8 @@ function StyleMenu({
         className="style"
         aria-label="Style"
         aria-haspopup="menu"
-        popoverTarget={id}
+        aria-disabled={off || undefined}
+        popoverTarget={off ? undefined : id}
         tabIndex={-1}
         title="Style"
       >
@@ -250,20 +248,124 @@ function StyleMenu({
   );
 }
 
+// Takes the quote around the cursor away, as Style's Normal text a heading.
+const NO_QUOTE = quoteAs("text");
+
+/**
+ * Quote, in a vault's note, as Style is: a button showing the format of the
+ * quote the cursor is in, a plain quote's icon or a callout's in its color,
+ * and a menu of No quote, a plain quote, then Obsidian's callout types, each
+ * after its icon, that format checked. A format picked sets the quote's.
+ */
+function QuoteMenu({
+  formats,
+  off,
+  onCommand,
+  onLeave,
+}: {
+  /** Where the cursor is, whose quote's format shows checked. */
+  formats: Formats;
+  /** Whether it opens nothing: in code, the front matter, or idle. */
+  off: boolean;
+  onCommand: (command: Command) => void;
+  onLeave: () => void;
+}) {
+  const [id, menu, holding] = useMenu();
+  const pick = (command: Command | null) => {
+    menu.current?.hidePopover();
+    if (command) onCommand(command);
+    onLeave();
+  };
+  return (
+    <>
+      <button
+        type="button"
+        className="quote"
+        aria-label="Quote"
+        aria-haspopup="menu"
+        aria-disabled={off || undefined}
+        popoverTarget={off ? undefined : id}
+        tabIndex={-1}
+        title="Quote"
+        data-callout={formats.callout ?? undefined}
+      >
+        {formats.callout ? (
+          <CalloutIcon type={formats.callout} />
+        ) : (
+          <Icon name="blockquote" />
+        )}
+        <Icon name="arrow_drop_down" />
+      </button>
+      <div
+        ref={holding}
+        id={id}
+        popover="auto"
+        role="menu"
+        aria-label="Quote"
+        className="menu callout-menu"
+        // Its keys stay its own, rather than moving along the toolbar.
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          moveInMenu(event);
+        }}
+      >
+        <button
+          type="button"
+          role="menuitemradio"
+          className="none"
+          aria-checked={!formats.quoted}
+          onClick={() => {
+            pick(formats.quoted ? NO_QUOTE : null);
+          }}
+        >
+          No quote
+        </button>
+        {QUOTE_FORMATS.map((format) => {
+          const checked = format.on(formats);
+          return (
+            <button
+              key={format.name}
+              type="button"
+              role="menuitemradio"
+              aria-checked={checked}
+              data-callout={format.callout}
+              onClick={() => {
+                // The checked one leaves the quote as it is, as a radio.
+                pick(checked ? null : format.command);
+              }}
+            >
+              {format.callout ? (
+                <CalloutIcon type={format.callout} />
+              ) : (
+                <Icon name={format.icon} />
+              )}
+              {format.name}
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
 /**
  * The formatting commands as buttons over the note, as Google Docs shows
  * them, where the pointer is a mouse's or a trackpad's. Each button's name
  * and key show in its tooltip. A click keeps the focus in the text; from
  * the keyboard, Alt+F10 reaches the toolbar, and a button pressed gives the
  * focus back to the text. The cursor's line's style shows in its menu, and
- * the formatting around the cursor as buttons pressed. In a table's cell,
- * the style and the buttons of lines leave, since their marks would break
- * its row.
+ * the formatting around the cursor as buttons pressed; in a vault's note,
+ * Quote is a menu, as Style is, of a quote's formats, plain or a callout's.
+ * In a table's cell, the style and the buttons of lines leave, since their
+ * marks would break its row. Until the note first has the cursor, only Find in
+ * note is on: the others would write where no cursor shows.
  */
 export function FormattingBar({
   cell,
+  vault,
   tableMenu,
   formats,
+  idle,
   onCommand,
   onLeave,
   onHold,
@@ -273,10 +375,14 @@ export function FormattingBar({
    * edits that apply, and its column's alignment.
    */
   cell: CellMenu | null;
+  /** Whether the note is in a vault, whose callouts Quote's menu makes. */
+  vault: boolean;
   /** The table's menu's id, which the Table button opens in a cell. */
   tableMenu: string;
   /** The formatting where the cursor is, which its buttons show pressed. */
   formats: Formats;
+  /** Whether the note has not had the cursor yet. */
+  idle: boolean;
   onCommand: (command: Command) => void;
   /** Gives the focus back to the text. */
   onLeave: () => void;
@@ -321,6 +427,9 @@ export function FormattingBar({
             <>
               <StyleMenu
                 heading={formats.heading}
+                off={
+                  idle || HEADINGS.every((command) => formats.off.has(command))
+                }
                 onCommand={onCommand}
                 onLeave={onLeave}
               />
@@ -329,6 +438,22 @@ export function FormattingBar({
           )}
           {group.map(({ name, command, icon, toggle }, position) => {
             const key = keyOf(command);
+            // Off where it writes nothing, as a table's button.
+            const off =
+              (idle && command !== findInNote) ||
+              (command === insertTable && formats.tableOff) ||
+              formats.off.has(command);
+            if (command === toggleQuote && vault) {
+              return (
+                <QuoteMenu
+                  key={name}
+                  formats={formats}
+                  off={idle || formats.calloutOff}
+                  onCommand={onCommand}
+                  onLeave={onLeave}
+                />
+              );
+            }
             return (
               <button
                 key={name}
@@ -336,10 +461,12 @@ export function FormattingBar({
                 aria-label={name}
                 aria-keyshortcuts={key && ariaKeys(key)}
                 aria-pressed={toggle ? formats.on.has(command) : undefined}
+                aria-disabled={off || undefined}
                 title={key ? `${name} (${keyLabel(key)})` : name}
                 // One stop for Tab, the arrows moving between them.
                 tabIndex={index === 0 && position === 0 ? 0 : -1}
                 onClick={(event) => {
+                  if (off) return;
                   const toolbar = event.currentTarget.parentElement;
                   onCommand(command);
                   left(toolbar);

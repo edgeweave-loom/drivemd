@@ -6,8 +6,10 @@ import {
 } from "@codemirror/commands";
 import {
   codeFolding,
+  ensureSyntaxTree,
   foldEffect,
   foldedRanges,
+  forceParsing,
   highlightingFor,
   syntaxTree,
   syntaxTreeAvailable,
@@ -26,7 +28,9 @@ import {
   type ChangeSpec,
   type StateEffectType,
   type Extension,
+  type Line,
   type Range,
+  type Text,
 } from "@codemirror/state";
 import {
   Decoration,
@@ -42,14 +46,9 @@ import {
 import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
 import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
 import { calloutFold, calloutIcon } from "./callout-icons.tsx";
-import {
-  CALLOUT_TYPES,
-  calloutMarker,
-  titled,
-  type CalloutType,
-} from "./callouts.ts";
+import { CALLOUT_TYPES, titled, type CalloutType } from "./callouts.ts";
 import { findInNote } from "./find.ts";
-import { INLINE_KEYS } from "./formatting.ts";
+import { INLINE_KEYS, quoteOpening, writeTable } from "./formatting.ts";
 import { TOUCH } from "./layout.ts";
 
 interface Stretch {
@@ -313,12 +312,9 @@ function calloutOf(state: EditorState, quote: SyntaxNode): Callout | null {
     if (around.name === "Blockquote") depth++;
   }
   if (depth > QUOTE_LINES.length) return null;
-  let first = quote.firstChild;
-  while (first?.name === "QuoteMark") first = first.nextSibling;
-  if (first?.name !== "Paragraph") return null;
+  const { first, marker } = quoteOpening(state, quote);
+  if (!first || !marker) return null;
   const line = state.doc.lineAt(first.from);
-  const marker = calloutMarker(state.sliceDoc(first.from, line.to));
-  if (!marker) return null;
   const untitled = !state.sliceDoc(first.from + marker.length, line.to).trim();
   const last = state.doc.lineAt(quote.to);
   return {
@@ -1213,7 +1209,7 @@ const tables = StateField.define<DecorationSet>({
       foldedRanges(state) !== foldedRanges(startState) ||
       searchPanelOpen(state) !== searchPanelOpen(startState) ||
       syntaxTree(state) !== syntaxTree(startState)
-      ? drawnTables(state, drawn)
+      ? drawnTables(state, drawn.map(transaction.changes))
       : drawn;
   },
   provide: (field) => EditorView.decorations.from(field),
@@ -1221,7 +1217,10 @@ const tables = StateField.define<DecorationSet>({
 
 /**
  * Each table outside the lines being written, drawn, with the widget drawn
- * before for the same Markdown, which is kept rather than built anew.
+ * before for the same Markdown, which is kept rather than built anew. Where
+ * the parse has yet to read past a table, as when it runs out of time on a
+ * busy device, the table drawn there before stays: one cut short, or gone,
+ * would take the cell edited in it with it.
  */
 function drawnTables(
   state: EditorState,
@@ -1234,8 +1233,13 @@ function drawnTables(
     if (widget instanceof Table) kept.set(widget.source, widget);
     drawn.next();
   }
+  const { doc } = state;
+  const read = (to: number) => syntaxTreeAvailable(state, pastTable(doc, to));
   const writing =
     state.field(hasFocus) || searchPanelOpen(state) ? linesWritten(state) : [];
+  const meets =
+    (from: number, to: number) => (other: { from: number; to: number }) =>
+      from <= other.to && to >= other.from;
   const ranges: Range<Decoration>[] = [];
   syntaxTree(state).iterate({
     enter: (node) => {
@@ -1247,9 +1251,7 @@ function drawnTables(
       // An indented table's lines whole, or a quoted one's, with its marks.
       const from = state.doc.lineAt(node.from).from;
       const { to } = node;
-      if (writing.some((line) => from <= line.to && to >= line.from)) {
-        return false;
-      }
+      if (!read(to) || writing.some(meets(from, to))) return false;
       const levels = quoteLevels(state, node.node);
       if (levels === null) return false;
       const before = kept.get(state.sliceDoc(node.from, to));
@@ -1261,7 +1263,17 @@ function drawnTables(
       return false;
     },
   });
-  return Decoration.set(ranges);
+  // The tables drawn before where the parse has yet to read.
+  before.between(0, doc.length, (from, to, value) => {
+    if (
+      !read(to) &&
+      !ranges.some(meets(from, to)) &&
+      !writing.some(meets(from, to))
+    ) {
+      ranges.push(value.range(from, to));
+    }
+  });
+  return Decoration.set(ranges, true);
 }
 
 /**
@@ -1476,13 +1488,30 @@ function placeOf(cell: HTMLTableCellElement): Place | null {
 /**
  * The table drawn in `frame`, in the note's syntax tree: from its first
  * line's end, past its indent and its quotes' marks, which the frame draws
- * but the table lacks.
+ * but the table lacks. Read whole, should the parse lag behind.
  */
 function tableIn(view: EditorView, frame: Element): SyntaxNode | null {
-  const { to } = view.state.doc.lineAt(view.posAtDOM(frame));
-  let node: SyntaxNode | null = syntaxTree(view.state).resolveInner(to, -1);
+  const { state } = view;
+  const from = view.posAtDOM(frame);
+  const { to } = state.doc.lineAt(from);
+  let end = to;
+  state.field(tables).between(from, from, (drawn, drawnTo) => {
+    if (drawn === from) end = drawnTo;
+  });
+  const tree =
+    ensureSyntaxTree(state, pastTable(state.doc, end), 100) ??
+    syntaxTree(state);
+  let node: SyntaxNode | null = tree.resolveInner(to, -1);
   while (node && node.name !== "Table") node = node.parent;
   return node;
+}
+
+/**
+ * Where the parse has read past a table ending at `to`: the line after it,
+ * which tells whether the table goes on.
+ */
+function pastTable(doc: Text, to: number): number {
+  return doc.lineAt(Math.min(to + 1, doc.length)).to;
 }
 
 /** The frame of the table drawn from `from` on, if in view. */
@@ -1541,7 +1570,7 @@ export interface CellMenu {
  * The edits that apply to the cell at `place`, in a table of `rows`, its
  * head's included, and `columns`: nothing moves the head or comes above
  * it, since a GFM table starts with its head and its delimiter row, and a
- * table keeps a column.
+ * table keeps a column. Its head deleted, its first row takes its place.
  */
 function editsAt(
   { row, column }: Place,
@@ -1554,7 +1583,7 @@ function editsAt(
     ["addRowBelow", true],
     ["moveRowUp", row > 1],
     ["moveRowDown", row > 0 && row < rows - 1],
-    ["deleteRow", row > 0],
+    ["deleteRow", true],
     ["addColumnLeft", true],
     ["addColumnRight", true],
     ["moveColumnLeft", column > 0],
@@ -1682,6 +1711,17 @@ function swapped(line: Written, at: number): string {
   return `${text.slice(0, one.from)}${before}|${after}${text.slice(other.to)}`;
 }
 
+/**
+ * A line with `cell` added past its last until it has `columns`, which a
+ * head and its delimiter row must have alike for GFM.
+ */
+function padded(line: Written, columns: number, cell: string): string {
+  const missing = columns - line.cells.length;
+  if (missing <= 0) return line.text;
+  const once = withCell(line, line.cells.length, cell).trimEnd();
+  return once + ` ${cell} |`.repeat(missing - 1);
+}
+
 /** A delimiter row's cell's marks for `alignment`, as wide as they were. */
 function marks(width: number, alignment: Alignment): string {
   const left = alignment === "left" || alignment === "center";
@@ -1714,17 +1754,39 @@ export const ALIGNING = {
 } as const satisfies Partial<Record<TableEdit, Alignment>>;
 
 /**
+ * The changes that delete a table, its lines and a line break beside them,
+ * the one after unless it ends the note. Should a blank line, or the
+ * note's start, come before and a blank line after, that line goes too,
+ * as before the table was inserted.
+ */
+function tableDeleted(state: EditorState, table: SyntaxNode): ChangeSpec {
+  const { doc } = state;
+  const first = doc.lineAt(table.from);
+  const last = doc.lineAt(tableRows(table).at(-1)?.to ?? table.to);
+  const line = (at: number) =>
+    at >= 1 && at <= doc.lines ? doc.line(at) : null;
+  const blank = (one: Line | null) => one && /^[\s>]*$/.test(one.text);
+  const [before, after] = [line(first.number - 1), line(last.number + 1)];
+  if (!after) return { from: before ? before.to : first.from, to: last.to };
+  if (!blank(after) || (before && !blank(before))) {
+    return { from: first.from, to: after.from };
+  }
+  if (before) return { from: before.to, to: after.to };
+  return { from: first.from, to: line(after.number + 1)?.from ?? after.to };
+}
+
+/**
  * The changes that make `edit` to the cell at `place` of `table`, which
  * write only the lines that must change, and the cell to edit then: the
  * one added or moved, the next in place of one deleted, or in a row too
- * short for it, the row's own.
+ * short for it, the row's own; none once the table is deleted.
  */
 function tableEdited(
   state: EditorState,
   table: SyntaxNode,
   place: Place,
   edit: Exclude<TableEdit, "lineBreak">,
-): { changes: ChangeSpec[]; to: Place } {
+): { changes: ChangeSpec[]; to: Place | null } {
   const { row, column } = place;
   const lines = tableRows(table);
   const columns = lines[0] ? cellsOf(state, lines[0]).length : 0;
@@ -1790,6 +1852,34 @@ function tableEdited(
       };
     }
     case "deleteRow": {
+      const [head, delimiter, first] = lines;
+      if (row === 0 && !first) {
+        return { changes: [tableDeleted(state, table)], to: null };
+      }
+      if (row === 0 && head && delimiter && first) {
+        // The first row takes the head's place, as wide as the delimiter
+        // row, which widens should the row be wider.
+        const raised = asWritten(state, first);
+        const marked = asWritten(state, delimiter);
+        const wide = Math.max(raised.cells.length, columns);
+        const gone = doc.lineAt(first.from);
+        return {
+          changes: [
+            { from: head.from, to: head.to, insert: padded(raised, wide, "") },
+            ...(marked.cells.length < wide
+              ? [
+                  {
+                    from: delimiter.from,
+                    to: delimiter.to,
+                    insert: padded(marked, wide, "---"),
+                  },
+                ]
+              : []),
+            { from: gone.from - 1, to: gone.to },
+          ],
+          to: place,
+        };
+      }
       const gone = doc.lineAt(rowOf(table, row)?.from ?? table.to);
       return {
         changes: [{ from: gone.from - 1, to: gone.to }],
@@ -1912,6 +2002,24 @@ function cellMenu(
 export function editTable(view: EditorView, edit: TableEdit): boolean {
   return view.plugin(editingCells)?.edit(edit) ?? false;
 }
+
+/**
+ * Writes an empty table where the cursor is, `writeTable`, then, where
+ * tables show drawn, edits its head's first cell, once read.
+ */
+export const insertTable: Command = (view) => {
+  if (!writeTable(view)) return false;
+  const cells = view.plugin(editingCells);
+  if (!cells) return true;
+  const { doc, selection } = view.state;
+  const head = doc.lineAt(selection.main.head);
+  // Drawn, though the cursor is in it, as with a cell edited, which takes
+  // the focus; should none be, `followingFocus` sets it back.
+  view.dispatch({ effects: focused.of(false) });
+  forceParsing(view, pastTable(doc, doc.line(head.number + 2).to));
+  cells.arrive(head.from, 1, false);
+  return true;
+};
 
 /**
  * Keeps the cell edited in place edited while the focus is away from it,
@@ -2402,15 +2510,28 @@ const editingCells = ViewPlugin.fromClass(
     /**
      * Writes `changes` to `table`, as one step for undo, apart from the
      * edits next to it, then edits the cell `to`, or should its row lack
-     * it, the row's last.
+     * it, the row's last; without one, the note takes the focus, the
+     * cursor where the table was.
      */
     rewrite(
       table: SyntaxNode,
-      { changes, to }: { changes: ChangeSpec[]; to: Place },
+      { changes, to }: { changes: ChangeSpec[]; to: Place | null },
     ): void {
       const { view } = this;
       const from = view.state.doc.lineAt(table.from).from;
-      view.dispatch({ changes, annotations: isolateHistory.of("full") });
+      const done = view.state.changes(changes);
+      if (!to) {
+        view.focus();
+        view.dispatch({
+          changes: done,
+          selection: { anchor: done.mapPos(from) },
+          annotations: isolateHistory.of("full"),
+        });
+        return;
+      }
+      view.dispatch({ changes: done, annotations: isolateHistory.of("full") });
+      // Drawn anew once read, which a busy device's parse may not have yet.
+      forceParsing(view, pastTable(view.state.doc, done.mapPos(table.to, 1)));
       const frame = frameAt(view, from);
       const node = frame && tableIn(view, frame);
       const row = frame?.querySelector("table")?.rows[to.row];

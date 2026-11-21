@@ -1,22 +1,34 @@
 import { redo, undo } from "@codemirror/commands";
 import type { Command } from "@codemirror/view";
-import { Fragment, useEffectEvent, useLayoutEffect, useRef } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffectEvent,
+  useId,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import { createPortal } from "react-dom";
+import { CalloutIcon } from "./CalloutIcon.tsx";
+import type { CalloutType } from "./callouts.ts";
 import { findInNote } from "./find.ts";
 import { Icon } from "./Icon.tsx";
 import type { IconName } from "./icons.ts";
 import { keepFocus } from "./keys.ts";
+import { LISTS } from "./lists.ts";
 import {
-  cycleHeading,
-  cycleList,
-  cycleTask,
   indentLines,
   insertLink,
   outdentLines,
+  QUOTE_FORMATS,
+  quoteLines,
   toggleBold,
   toggleItalic,
+  toggleQuote,
+  TOGGLE_HEADINGS,
+  type Formats,
 } from "./formatting.ts";
-import { editTable, type CellMenu } from "./live-preview.ts";
+import { editTable, insertTable, type CellMenu } from "./live-preview.ts";
 import { peekScale, rowItems } from "./peek.ts";
 import { ALIGNS, TABLE_EDITS } from "./table-edits.ts";
 import { keepRoom, keepVisible } from "./visual-viewport.ts";
@@ -24,13 +36,39 @@ import { keepRoom, keepVisible } from "./visual-viewport.ts";
 /** The toolbar's height, which the editor keeps clear of the cursor. */
 export const TOOLBAR_HEIGHT = 48;
 
-interface Key {
+interface Item {
   name: string;
   command: Command;
   icon: IconName;
+  /** The callout type whose icon it shows, in its color, in `icon`'s place. */
+  callout?: CalloutType;
+  /** Whether it shows checked, or else where its command's formatting is. */
+  on?: (formats: Formats) => boolean;
+}
+
+type Key = Omit<Item, "command" | "callout" | "on"> & {
   /** Whether it changes the lines the cursor is on, which a cell lacks. */
   lines?: true;
-}
+} & (
+    | {
+        command: Command;
+        menu?: never;
+        showsItem?: never;
+        /**
+         * In a vault's note, but in code and the front matter, the menu it
+         * opens in its command's place, after its own command where none of
+         * its items is on.
+         */
+        vaultMenu?: { command: Command; items: readonly Item[] };
+      }
+    | {
+        command?: never;
+        /** The items of the menu it opens, which show checked where on. */
+        menu: readonly Item[];
+        /** Whether it takes the icon of its item that is on. */
+        showsItem?: true;
+      }
+  );
 
 const HISTORY: Key[] = [
   {
@@ -45,11 +83,17 @@ const HISTORY: Key[] = [
   },
 ];
 
+const HEADING_ITEMS: Item[] = [
+  { name: "Heading 1", command: TOGGLE_HEADINGS[0], icon: "format_h1" },
+  { name: "Heading 2", command: TOGGLE_HEADINGS[1], icon: "format_h2" },
+  { name: "Heading 3", command: TOGGLE_HEADINGS[2], icon: "format_h3" },
+];
+
 const KEYS: Key[] = [
   ...HISTORY,
   {
     name: "Heading",
-    command: cycleHeading,
+    menu: HEADING_ITEMS,
     icon: "title",
     lines: true,
   },
@@ -65,14 +109,9 @@ const KEYS: Key[] = [
   },
   {
     name: "List",
-    command: cycleList,
+    menu: LISTS,
     icon: "format_list_bulleted",
-    lines: true,
-  },
-  {
-    name: "Checkbox",
-    command: cycleTask,
-    icon: "check_box",
+    showsItem: true,
     lines: true,
   },
   {
@@ -93,11 +132,31 @@ const KEYS: Key[] = [
     lines: true,
   },
   {
+    name: "Quote",
+    command: toggleQuote,
+    icon: "blockquote",
+    // The tree tells the quote, which the text may not have reached yet:
+    // a tap that misread it never takes a quote away.
+    vaultMenu: { command: quoteLines, items: QUOTE_FORMATS },
+    lines: true,
+  },
+  {
+    name: "Insert table",
+    command: insertTable,
+    icon: "table",
+    lines: true,
+  },
+  {
     name: "Find in note",
     command: findInNote,
     icon: "search",
   },
 ];
+
+/** Whether the item shows checked where the cursor is. */
+function isOn(item: Item, formats: Formats): boolean {
+  return item.on ? item.on(formats) : formats.on.has(item.command);
+}
 
 // In a table's cell, the keys that leave its row whole but Undo and Redo,
 // which come first, as a key there deletes a row or a column at a tap.
@@ -119,10 +178,17 @@ const TABLE_KEYS = TABLE_EDITS.map((group) =>
  * end, opens the table's menu, `tableMenu`, above it, with the others.
  * The keys that do not fit scroll sideways, the last one in view cut in the
  * middle of its icon, under a shade, so that the row shows it scrolls.
+ * Heading and List open a menu above them, a row of Heading 1 to 3 and of
+ * the formatting toolbar's lists, a ▾ in their corner, and show pressed in
+ * their formatting, List with the cursor's list, as do their menus. In a
+ * vault's note, Quote quotes the lines, unless they are, and opens a menu
+ * of a plain quote and the callout types, the quote's format checked.
  */
 export function KeyboardToolbar({
   link,
+  vault,
   cell,
+  formats,
   tableMenu,
   onCommand,
   onFollow,
@@ -130,11 +196,18 @@ export function KeyboardToolbar({
 }: {
   /** The address of the link the cursor is in. */
   link: string | undefined;
+  /** Whether the note is in an Obsidian vault, whose callouts Quote makes. */
+  vault: boolean;
   /**
    * The table's cell edited in place that the cursor is in, if any: the
    * edits that apply, and its column's alignment.
    */
   cell: CellMenu | null;
+  /**
+   * The formatting where the cursor is, which Heading, List and their menus
+   * show.
+   */
+  formats: Formats;
   /** The table's menu's id, which the Table options key opens in a cell. */
   tableMenu: string;
   onCommand: (command: Command) => void;
@@ -147,6 +220,7 @@ export function KeyboardToolbar({
 }) {
   const bar = useRef<HTMLDivElement>(null);
   const row = useRef<HTMLDivElement>(null);
+  const menus = useId();
   const inCell = cell !== null;
   useLayoutEffect(() => {
     const keys = row.current;
@@ -166,6 +240,28 @@ export function KeyboardToolbar({
       removeEventListener("resize", fit);
     };
   }, [inCell]);
+  // Typing goes on in the note, under the menu, whose items stay where it
+  // opened: it closes, as a tap elsewhere closes it.
+  const closing = useCallback((menu: HTMLDivElement | null) => {
+    if (!menu) return;
+    const close = () => {
+      menu.hidePopover();
+    };
+    const listen = (open: boolean) => {
+      for (const type of ["keydown", "beforeinput"]) {
+        if (open) document.addEventListener(type, close, true);
+        else document.removeEventListener(type, close, true);
+      }
+    };
+    const toggled = (event: Event) => {
+      listen((event as ToggleEvent).newState === "open");
+    };
+    menu.addEventListener("toggle", toggled);
+    return () => {
+      menu.removeEventListener("toggle", toggled);
+      listen(false);
+    };
+  }, []);
   const settled = useEffectEvent(onSettle);
   useLayoutEffect(() => {
     if (!bar.current) return;
@@ -181,16 +277,51 @@ export function KeyboardToolbar({
       for (const stop of stops) stop();
     };
   }, []);
-  const keyOf = ({ name, command, icon }: Key) => {
+  // The menu a key opens, and the command it runs first, where none of
+  // the menu's items is on: Quote's in a vault's note but in code.
+  const menuOf = (key: Key) => {
+    if (key.menu) return { items: key.menu, first: undefined };
+    if (!key.vaultMenu || !vault || formats.calloutOff) return null;
+    return { items: key.vaultMenu.items, first: key.vaultMenu.command };
+  };
+  const keyOf = (key: Key) => {
+    const { name, command, icon } = key;
+    const menu = menuOf(key);
+    if (menu) {
+      const on = menu.items.find((item) => isOn(item, formats));
+      const off = menu.items.every((item) => formats.off.has(item.command));
+      return (
+        <button
+          key={name}
+          type="button"
+          className={on ? "menu-key on" : "menu-key"}
+          aria-label={name}
+          aria-haspopup="menu"
+          aria-disabled={off || undefined}
+          popoverTarget={off ? undefined : `${menus}${name}`}
+          onClick={() => {
+            if (menu.first && !on) onCommand(menu.first);
+          }}
+        >
+          <Icon name={key.showsItem && on ? on.icon : icon} />
+        </button>
+      );
+    }
     const follows = command === insertLink ? link : undefined;
     return (
       <button
         key={name}
         type="button"
         aria-label={follows === undefined ? name : "Open link"}
+        // Off where it writes nothing, which a tap then leaves undone.
+        aria-disabled={
+          (command === insertTable && formats.tableOff) ||
+          (command !== undefined && formats.off.has(command)) ||
+          undefined
+        }
         onClick={() => {
-          if (follows === undefined) onCommand(command);
-          else onFollow(follows);
+          if (follows !== undefined) onFollow(follows);
+          else if (command) onCommand(command);
         }}
       >
         <Icon name={follows === undefined ? icon : "open_in_new"} />
@@ -244,6 +375,46 @@ export function KeyboardToolbar({
           KEYS.map(keyOf)
         )}
       </div>
+      {!cell &&
+        KEYS.map((key) => {
+          const name = key.name;
+          const menu = menuOf(key)?.items;
+          return (
+            menu && (
+              <div
+                key={name}
+                ref={closing}
+                id={`${menus}${name}`}
+                popover="auto"
+                role="menu"
+                aria-label={name}
+                className="key-menu"
+              >
+                {menu.map((item) => (
+                  <button
+                    key={item.name}
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-label={item.name}
+                    aria-checked={isOn(item, formats)}
+                    aria-disabled={formats.off.has(item.command) || undefined}
+                    data-callout={item.callout}
+                    onClick={(event) => {
+                      event.currentTarget.parentElement?.hidePopover();
+                      onCommand(item.command);
+                    }}
+                  >
+                    {item.callout ? (
+                      <CalloutIcon type={item.callout} />
+                    ) : (
+                      <Icon name={item.icon} />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )
+          );
+        })}
       {cell && (
         <>
           <hr aria-orientation="vertical" />
