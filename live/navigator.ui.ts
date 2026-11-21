@@ -441,6 +441,14 @@ test("creates, renames, moves and trashes a note", async ({ page, run }) => {
   // Once the note shows, as a person would rename it: before the vault check
   // has answered, renaming asks first.
   await loaded(page);
+  // A new note opens in the editor, whose bar on a phone holds Done in
+  // Back's place: Done leaves it, for the note's bar.
+  if (phone()) {
+    await page
+      .getByRole("banner")
+      .getByRole("button", { name: "Done" })
+      .click();
+  }
 
   await renameNote(page, `${RUN} idea.md`, `${RUN} plan`);
   await expect(noteName(page, `${RUN} plan.md`)).toBeVisible();
